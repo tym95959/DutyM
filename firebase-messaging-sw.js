@@ -16,43 +16,45 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Handle background messages
-messaging.setBackgroundMessageHandler(function(payload) {
-    console.log('[firebase-messaging-sw.js] Received background message:', payload);
-    
-    const notificationTitle = payload.data?.title || 'Duty Manager';
-    const notificationOptions = {
-        body: payload.data?.body || 'You have a new notification',
-        icon: '/icon-192x192.png',
-        badge: '/icon-72x72.png',
-        data: payload.data || {},
-        tag: 'duty-manager-notification'
-    };
+// Handle background messages and show notifications
+messaging.onBackgroundMessage((payload) => {
+  console.log('Background message received: ', payload);
+  
+  const notificationTitle = payload.notification.title || 'New Announcement';
+  const notificationOptions = {
+    body: payload.notification.body || 'You have a new message',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/badge-72x72.png',
+    tag: 'duty-manager-notification',
+    data: payload.data || {},
+    actions: [
+      {
+        action: 'open',
+        title: 'Open App'
+      }
+    ]
+  };
 
-    return self.registration.showNotification(notificationTitle, notificationOptions);
+  self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
 // Handle notification click
-self.addEventListener('notificationclick', function(event) {
-    console.log('[firebase-messaging-sw.js] Notification click received.');
-    
-    event.notification.close();
-
-    const data = event.notification.data;
-    
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  
+  if (event.action === 'open') {
     event.waitUntil(
-        clients.matchAll({type: 'window', includeUncontrolled: true})
-            .then(function(clientList) {
-                for (let i = 0; i < clientList.length; i++) {
-                    const client = clientList[i];
-                    if (client.url === '/' && 'focus' in client) {
-                        return client.focus();
-                    }
-                }
-                
-                if (clients.openWindow) {
-                    return clients.openWindow('/');
-                }
-            })
+      clients.matchAll({type: 'window', includeUncontrolled: true})
+      .then((clientList) => {
+        for (const client of clientList) {
+          if (client.url === '/' && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        if (clients.openWindow) {
+          return clients.openWindow('/');
+        }
+      })
     );
+  }
 });
