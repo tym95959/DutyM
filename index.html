@@ -2021,6 +2021,123 @@ function showToast(message, type = 'info', duration = 3000) {
         }
     }, duration);
 }
+// Function: showNotificationInApp (NEW - Add this right after showToast)
+function showNotificationInApp(payload) {
+    // Don't show if user is not logged in
+    if (!currentUser) return;
+    
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = 'mobile-notification';
+    
+    // Sanitize content to prevent XSS
+    const title = payload.notification?.title || 'New Message';
+    const body = payload.notification?.body || 'You have a new notification';
+    const action = payload.data?.action || 'view';
+    
+    notification.innerHTML = `
+        <div class="notification-header">
+            <strong>${escapeHtml(title)}</strong>
+            <button class="notification-close">×</button>
+        </div>
+        <div class="notification-body">
+            ${escapeHtml(body)}
+        </div>
+        <div class="notification-footer">
+            <small>${new Date().toLocaleTimeString()}</small>
+            <button class="notification-action-btn" data-action="${escapeHtml(action)}">
+                View
+            </button>
+        </div>
+    `;
+    
+    // Add styles dynamically
+    notification.style.cssText = `
+        position: fixed;
+        top: ${isMobile ? '80px' : '70px'};
+        right: 20px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        padding: 15px;
+        z-index: 10001;
+        max-width: ${isMobile ? 'calc(100% - 40px)' : '350px'};
+        animation: notificationSlideIn 0.3s ease;
+        border-left: 4px solid #3498db;
+    `;
+    
+    // Add to document
+    document.body.appendChild(notification);
+    
+    // Add event listeners
+    notification.querySelector('.notification-close').addEventListener('click', function() {
+        closeNotification(notification);
+    });
+    
+    notification.querySelector('.notification-action-btn').addEventListener('click', function() {
+        handleNotificationAction(this.getAttribute('data-action'), payload.data);
+        closeNotification(notification);
+    });
+    
+    // Auto-remove after 10 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            closeNotification(notification);
+        }
+    }, 10000);
+    
+    // Play sound if available
+    playNotificationSound();
+}
+
+function closeNotification(notification) {
+    notification.style.animation = 'notificationSlideOut 0.3s ease';
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 300);
+}
+
+function handleNotificationAction(action, data) {
+    switch(action) {
+        case 'viewAnnouncement':
+            showSection('home');
+            break;
+        case 'viewRequest':
+            if (data?.requestType === 'dutyChange') {
+                showSection('pendingRequests');
+            } else {
+                showSection('myRequests');
+            }
+            break;
+        case 'viewRoster':
+            showSection('viewAllRoster');
+            break;
+        default:
+            showSection('home');
+    }
+}
+
+function playNotificationSound() {
+    // Create audio context for notification sound
+    try {
+        if (window.Notification && Notification.permission === 'granted') {
+            const audio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAZGF0YQQ=');
+            audio.volume = 0.3;
+            audio.play().catch(() => {});
+        }
+    } catch (e) {
+        // Silent fail if audio not supported
+    }
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 function checkSession() {
     const session = localStorage.getItem('dutySystemSession');
