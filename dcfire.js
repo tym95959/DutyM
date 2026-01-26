@@ -1,217 +1,206 @@
+// dcfire.js - Corrected version
+console.log("dcfire.js loading...");
+
+// Check if Firebase is already initialized
+if (typeof firebase === 'undefined') {
+    console.error("Firebase SDK not loaded. Make sure firebase scripts are loaded before this file.");
+} else {
+    console.log("Firebase SDK is available");
+}
+
 // Your Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
-  authDomain: "leelidc-1f753.firebaseapp.com",
-  projectId: "leelidc-1f753",
-  storageBucket: "leelidc-1f753.firebasestorage.app",
-  messagingSenderId: "43622932335",
-  appId: "1:43622932335:web:a7529bce1f19714687129a",
-  measurementId: "G-3KD6ZYS599",
-  vapidKey: "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o"
+    apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+    authDomain: "leelidc-1f753.firebaseapp.com",
+    projectId: "leelidc-1f753",
+    storageBucket: "leelidc-1f753.firebasestorage.app",
+    messagingSenderId: "43622932335",
+    appId: "1:43622932335:web:a7529bce1f19714687129a",
+    measurementId: "G-3KD6ZYS599"
 };
 
-// Initialize Firebase
-const app = firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+console.log("Initializing Firebase...");
 
-// Initialize Analytics
-let analytics = null;
+// Initialize Firebase (only if not already initialized)
+let app, db, messaging, analytics;
+
 try {
-  analytics = firebase.analytics();
+    if (!firebase.apps.length) {
+        app = firebase.initializeApp(firebaseConfig);
+        console.log("✅ Firebase initialized successfully");
+    } else {
+        app = firebase.app();
+        console.log("✅ Using existing Firebase app");
+    }
+    
+    // Initialize Firestore
+    db = firebase.firestore();
+    console.log("✅ Firestore initialized");
+    
+    // Initialize Analytics if available
+    try {
+        analytics = firebase.analytics();
+        console.log("✅ Analytics initialized");
+    } catch (analyticsError) {
+        console.warn("Analytics not available:", analyticsError);
+        analytics = null;
+    }
+    
+    // Initialize Messaging if available
+    try {
+        if (firebase.messaging && firebase.messaging.isSupported()) {
+            messaging = firebase.messaging();
+            console.log("✅ Messaging initialized");
+        } else {
+            console.warn("Messaging not supported");
+            messaging = null;
+        }
+    } catch (messagingError) {
+        console.warn("Messaging initialization failed:", messagingError);
+        messaging = null;
+    }
+    
+    // Test Firestore connection
+    testFirestoreConnection();
+    
 } catch (error) {
-  console.log('Analytics initialization failed:', error);
+    console.error("❌ Firebase initialization error:", error);
+    alert("Firebase initialization failed. Please check console for details.");
 }
 
-// Initialize Messaging
-let messaging = null;
-try {
-  if (firebase.messaging.isSupported()) {
-    messaging = firebase.messaging();
-  }
-} catch (error) {
-  console.log('Messaging initialization failed:', error);
+// Test Firestore Connection
+async function testFirestoreConnection() {
+    if (!db) {
+        console.error("❌ db is not initialized");
+        return;
+    }
+    
+    try {
+        console.log("Testing Firestore connection...");
+        
+        // Create test collection if it doesn't exist
+        await db.collection("testConnection").doc("test").set({
+            timestamp: new Date().toISOString(),
+            message: "Firestore connection successful"
+        }, { merge: true });
+        
+        console.log("✅ Firestore test successful");
+        
+    } catch (error) {
+        console.error("❌ Firestore connection test failed:", error);
+        
+        // Show helpful error messages
+        switch (error.code) {
+            case 'permission-denied':
+                console.error("💡 Firestore Rules Issue. Go to Firebase Console → Firestore Database → Rules tab and set:");
+                console.error("rules_version = '2';");
+                console.error("service cloud.firestore {");
+                console.error("  match /databases/{database}/documents {");
+                console.error("    match /{document=**} {");
+                console.error("      allow read, write: if true;");
+                console.error("    }");
+                console.error("  }");
+                console.error("}");
+                break;
+            case 'unavailable':
+                console.error("💡 Firestore is unavailable. Check internet connection.");
+                break;
+            case 'failed-precondition':
+                console.error("💡 Firestore not enabled. Enable it in Firebase Console.");
+                break;
+            default:
+                console.error("💡 Unknown error. Check Firebase Console project status.");
+        }
+    }
 }
 
-// Request notification permission
+// Request Notification Permission
 function requestNotificationPermission() {
-  console.log('Requesting notification permission...');
-  
-  if (!messaging) {
-    console.log('Firebase Messaging not supported');
-    return;
-  }
-  
-  Notification.requestPermission().then((permission) => {
-    if (permission === 'granted') {
-      console.log('Notification permission granted.');
-      getFCMToken();
-    } else {
-      console.log('Unable to get permission to notify.');
+    if (!messaging) {
+        console.log("Messaging not available");
+        return;
     }
-  });
+    
+    console.log("Requesting notification permission...");
+    Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') {
+            console.log('Notification permission granted.');
+            getFCMToken();
+        } else {
+            console.log('Unable to get permission to notify.');
+        }
+    }).catch((err) => {
+        console.error('Error requesting notification permission:', err);
+    });
 }
 
-// Get FCM token
+// Get FCM Token
 function getFCMToken() {
-  if (!messaging) {
-    console.log('Firebase Messaging not available');
-    return;
-  }
-  
-  messaging.getToken({vapidKey: firebaseConfig.vapidKey}).then((currentToken) => {
-    if (currentToken) {
-      console.log('FCM Token:', currentToken);
-      // Send token to Firestore
-      saveTokenToDatabase(currentToken);
-    } else {
-      console.log('No registration token available.');
+    if (!messaging) {
+        console.log("Messaging not available for token");
+        return;
     }
-  }).catch((err) => {
-    console.log('An error occurred while retrieving token. ', err);
-  });
+    
+    messaging.getToken({ vapidKey: 'BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o' })
+        .then((currentToken) => {
+            if (currentToken) {
+                console.log('FCM Token:', currentToken);
+                saveTokenToFirestore(currentToken);
+            } else {
+                console.log('No registration token available.');
+            }
+        })
+        .catch((err) => {
+            console.log('Error getting token:', err);
+        });
 }
 
-// Save token to Firestore
-function saveTokenToDatabase(token) {
-  const currentUser = JSON.parse(localStorage.getItem('dutySystemSession'));
-  if (currentUser && db) {
+// Save Token to Firestore
+function saveTokenToFirestore(token) {
+    if (!db) {
+        console.log("Firestore not available to save token");
+        return;
+    }
+    
+    const currentUser = JSON.parse(localStorage.getItem('dutySystemSession'));
+    if (!currentUser) {
+        console.log("No user logged in to save token");
+        return;
+    }
+    
     db.collection('fcmTokens').doc(currentUser.username).set({
-      token: token,
-      username: currentUser.username,
-      name: currentUser.name,
-      rcNo: currentUser.rcNo,
-      level: currentUser.level,
-      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-      lastActive: new Date().toISOString(),
-      userAgent: navigator.userAgent,
-      platform: navigator.platform
+        token: token,
+        username: currentUser.username,
+        name: currentUser.name,
+        rcNo: currentUser.rcNo,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        lastActive: new Date().toISOString()
     }, { merge: true })
-    .then(() => {
-      console.log('Token saved to Firestore');
-    })
-    .catch((error) => {
-      console.error('Error saving token:', error);
-    });
-  }
+    .then(() => console.log('Token saved'))
+    .catch(error => console.error('Error saving token:', error));
 }
 
-// Send push notification to specific user
-async function sendPushNotificationToUser(username, title, body, data = {}) {
-  try {
-    // Get user's token from Firestore
-    const tokenDoc = await db.collection('fcmTokens').doc(username).get();
-    
-    if (!tokenDoc.exists) {
-      console.log('User has no FCM token');
-      return false;
-    }
-    
-    const userToken = tokenDoc.data().token;
-    
-    // For production, you would use a backend server to send notifications
-    // This is just for demonstration
-    console.log('Would send notification to:', username);
-    console.log('Title:', title);
-    console.log('Body:', body);
-    console.log('Data:', data);
-    
-    // Here you would typically call your backend server
-    // Example:
-    // return fetch('/api/send-notification', {
-    //   method: 'POST',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //   },
-    //   body: JSON.stringify({
-    //     to: userToken,
-    //     notification: { title, body },
-    //     data
-    //   })
-    // });
-    
-    return true;
-  } catch (error) {
-    console.error('Error sending push notification:', error);
-    return false;
-  }
-}
-
-// Send announcement to all users
-async function sendAnnouncementToAllUsers(title, content, priority = 'medium', createdBy) {
-  try {
-    // Get all active tokens
-    const tokensSnapshot = await db.collection('fcmTokens').get();
-    const tokens = [];
-    
-    tokensSnapshot.forEach(doc => {
-      tokens.push(doc.data().token);
-    });
-    
-    console.log('Would send announcement to', tokens.length, 'users');
-    
-    // In production, you would batch send notifications
-    // For demo, we'll just log
-    tokens.forEach(token => {
-      console.log('Notification for token:', token.substring(0, 20) + '...');
-    });
-    
-    return tokens.length;
-  } catch (error) {
-    console.error('Error sending announcement:', error);
-    return 0;
-  }
-}
-
-// Track user activity
-function trackUserActivity(action, details = {}) {
-  if (!analytics) return;
-  
-  const currentUser = JSON.parse(localStorage.getItem('dutySystemSession'));
-  if (currentUser) {
-    analytics.setUserId(currentUser.username);
-    analytics.setUserProperties({
-      rcNo: currentUser.rcNo,
-      level: currentUser.level
-    });
-  }
-  
-  analytics.logEvent(action, details);
-}
-
-// Initialize notifications after login
+// Initialize Notifications
 function initNotifications() {
-  requestNotificationPermission();
+    requestNotificationPermission();
 }
 
-// Update user last active time
+// Update user last active
 function updateUserLastActive() {
-  const currentUser = JSON.parse(localStorage.getItem('dutySystemSession'));
-  if (currentUser && db) {
-    db.collection('fcmTokens').doc(currentUser.username).update({
-      lastActive: new Date().toISOString()
-    });
-  }
+    if (!db) return;
+    
+    const currentUser = JSON.parse(localStorage.getItem('dutySystemSession'));
+    if (currentUser) {
+        db.collection('fcmTokens').doc(currentUser.username).update({
+            lastActive: new Date().toISOString()
+        }).catch(error => console.error('Error updating last active:', error));
+    }
 }
 
-// Update last active every minute when user is logged in
-setInterval(() => {
-  if (localStorage.getItem('dutySystemSession')) {
-    updateUserLastActive();
-  }
-}, 60000);
+// Export Firebase instances for use in other files
+window.firebaseApp = app;
+window.firebaseDb = db;
+window.firebaseMessaging = messaging;
+window.firebaseAnalytics = analytics;
 
-// Export Firebase instances
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    app,
-    db,
-    messaging,
-    analytics,
-    requestNotificationPermission,
-    getFCMToken,
-    sendPushNotificationToUser,
-    sendAnnouncementToAllUsers,
-    trackUserActivity,
-    initNotifications
-  };
-}
+console.log("dcfire.js loaded successfully");
