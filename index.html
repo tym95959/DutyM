@@ -2,40 +2,62 @@
 <html>
 <head>
   <title>PAW Alerts</title>
+
+  <!-- PWA -->
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+
 <h2>PAW Announcements</h2>
 <ul id="messages"></ul>
 
+<!-- 1️⃣ Firebase SDKs FIRST -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+
+<!-- 2️⃣ Your Firebase config -->
 <script src="dcfire.js"></script>
 
 <script>
-navigator.serviceWorker.register("firebase-messaging-sw.js");
+/* ✅ Register service worker */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/firebase-messaging-sw.js')
+    .then(() => console.log("Service Worker registered"));
+}
 
-messaging.requestPermission()
-.then(() => messaging.getToken({
-  vapidKey: "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o"
-}))
-.then(token => {
-  db.collection("tokens").doc(token).set({ token });
-  console.log("FCM Token:", token);
-})
-.catch(err => {
-  console.error("Permission denied", err);
+/* ✅ Get messaging instance */
+const messaging = firebase.messaging();
+
+/* ✅ Request permission & get token */
+Notification.requestPermission().then(permission => {
+  if (permission === "granted") {
+    messaging.getToken({
+      vapidKey: "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o"
+    }).then(token => {
+      console.log("FCM Token:", token);
+      db.collection("tokens").doc(token).set({ token });
+    });
+  }
 });
 
+/* ✅ Foreground message listener */
+messaging.onMessage(payload => {
+  alert(payload.notification.title + "\n" + payload.notification.body);
+});
 
+/* ✅ Load announcements */
 db.collection("announcements")
-.orderBy("time","desc")
-.onSnapshot(snapshot => {
-  messages.innerHTML = "";
-  snapshot.forEach(doc => {
-    const li = document.createElement("li");
-    li.textContent = doc.data().text;
-    messages.appendChild(li);
+  .orderBy("time", "desc")
+  .onSnapshot(snapshot => {
+    messages.innerHTML = "";
+    snapshot.forEach(doc => {
+      const li = document.createElement("li");
+      li.textContent = doc.data().text;
+      messages.appendChild(li);
+    });
   });
-});
 </script>
+
 </body>
 </html>
