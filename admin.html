@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - Send Messages</title>
+    <!-- Firebase CDN -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <style>
         * {
             margin: 0;
@@ -213,7 +215,7 @@
                 </select>
             </div>
             
-            <button class="send-btn" onclick="sendMessage()">
+            <button class="send-btn" id="sendBtn">
                 <span class="btn-text">Send Notification</span>
                 <div class="loading"></div>
             </button>
@@ -227,104 +229,143 @@
         </div>
     </div>
 
-    <script type="module">
-        import firebaseService from './firebase-service.js';
-        
-        // Listen for recent messages
-        firebaseService.listenForMessages((messages) => {
-            const container = document.getElementById('recentMessages');
-            container.innerHTML = '';
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+            authDomain: "leelidc-1f753.firebaseapp.com",
+            projectId: "leelidc-1f753",
+            storageBucket: "leelidc-1f753.firebasestorage.app",
+            messagingSenderId: "43622932335",
+            appId: "1:43622932335:web:a7529bce1f19714687129a",
+            measurementId: "G-3KD6ZYS599"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const messagesCollection = db.collection('messages');
+
+        // DOM Elements
+        const sendBtn = document.getElementById('sendBtn');
+        const titleInput = document.getElementById('title');
+        const messageInput = document.getElementById('message');
+        const prioritySelect = document.getElementById('priority');
+        const messageStatus = document.getElementById('messageStatus');
+        const recentMessages = document.getElementById('recentMessages');
+        const btnText = sendBtn.querySelector('.btn-text');
+        const loading = sendBtn.querySelector('.loading');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Listen for recent messages
+            listenForMessages();
             
-            messages.slice(0, 5).forEach(msg => {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'message-item';
-                messageDiv.innerHTML = `
-                    <strong>${msg.title || 'No Title'}</strong>
-                    <p>${msg.body || msg.message || 'No content'}</p>
-                    <small>${msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleString() : 'Just now'}</small>
-                `;
-                container.appendChild(messageDiv);
-            });
+            // Setup send button click
+            sendBtn.addEventListener('click', sendMessage);
         });
-        
-        window.sendMessage = async function() {
-            const title = document.getElementById('title').value;
-            const message = document.getElementById('message').value;
-            const priority = document.getElementById('priority').value;
-            
+
+        // Send message function
+        async function sendMessage() {
+            const title = titleInput.value.trim();
+            const message = messageInput.value.trim();
+            const priority = prioritySelect.value;
+
             if (!title || !message) {
                 showStatus('Please fill in all fields', 'error');
                 return;
             }
-            
-            const btn = document.querySelector('.send-btn');
-            const btnText = document.querySelector('.btn-text');
-            const loading = document.querySelector('.loading');
-            
+
             // Show loading
             btnText.textContent = 'Sending...';
             loading.style.display = 'block';
-            btn.disabled = true;
-            
+            sendBtn.disabled = true;
+
             try {
                 // Send to Firebase
-                await firebaseService.sendMessage({
+                const docRef = await messagesCollection.add({
                     title: title,
                     body: message,
+                    message: message, // Keep both for compatibility
                     priority: priority,
                     type: 'notification',
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    read: false,
                     sentAt: new Date().toISOString()
                 });
+
+                console.log("Message sent with ID: ", docRef.id);
                 
                 // Show success
                 showStatus('Message sent successfully!', 'success');
                 
                 // Clear form
-                document.getElementById('title').value = '';
-                document.getElementById('message').value = '';
-                
-                // Request FCM notification
-                await sendPushNotification(title, message);
-                
+                titleInput.value = '';
+                messageInput.value = '';
+                prioritySelect.value = 'normal';
+
             } catch (error) {
-                console.error('Error:', error);
+                console.error('Error sending message:', error);
                 showStatus('Failed to send message: ' + error.message, 'error');
             } finally {
                 // Reset button
                 btnText.textContent = 'Send Notification';
                 loading.style.display = 'none';
-                btn.disabled = false;
-            }
-        };
-        
-        async function sendPushNotification(title, body) {
-            try {
-                // This is a simple implementation. In production, you'd use a server or Cloud Functions
-                console.log('Push notification would be sent:', { title, body });
-                
-                // You would typically send to your server or use Firebase Cloud Functions
-                // Example using fetch to your server endpoint:
-                // await fetch('/api/send-notification', {
-                //     method: 'POST',
-                //     headers: { 'Content-Type': 'application/json' },
-                //     body: JSON.stringify({ title, body })
-                // });
-                
-            } catch (error) {
-                console.error('Push notification error:', error);
+                sendBtn.disabled = false;
             }
         }
-        
+
+        // Listen for recent messages
+        function listenForMessages() {
+            messagesCollection
+                .orderBy('timestamp', 'desc')
+                .limit(5)
+                .onSnapshot((snapshot) => {
+                    recentMessages.innerHTML = '';
+                    
+                    if (snapshot.empty) {
+                        recentMessages.innerHTML = '<p style="text-align: center; color: #888;">No messages yet</p>';
+                        return;
+                    }
+                    
+                    snapshot.forEach(doc => {
+                        const msg = doc.data();
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = 'message-item';
+                        
+                        // Format timestamp
+                        let timestamp = 'Just now';
+                        if (msg.timestamp) {
+                            const date = msg.timestamp.toDate();
+                            timestamp = date.toLocaleString();
+                        }
+                        
+                        messageDiv.innerHTML = `
+                            <strong>${msg.title || 'No Title'}</strong>
+                            <p>${msg.body || msg.message || 'No content'}</p>
+                            ${msg.priority ? `<small style="color: #666; display: block; margin-top: 5px;">Priority: ${msg.priority}</small>` : ''}
+                            <small>${timestamp}</small>
+                        `;
+                        recentMessages.appendChild(messageDiv);
+                    });
+                }, (error) => {
+                    console.error('Error listening to messages:', error);
+                });
+        }
+
+        // Show status message
         function showStatus(message, type) {
-            const statusDiv = document.getElementById('messageStatus');
-            statusDiv.textContent = message;
-            statusDiv.className = `message-status ${type}`;
-            statusDiv.style.display = 'block';
+            messageStatus.textContent = message;
+            messageStatus.className = `message-status ${type}`;
+            messageStatus.style.display = 'block';
             
             setTimeout(() => {
-                statusDiv.style.display = 'none';
+                messageStatus.style.display = 'none';
             }, 5000);
         }
+
+        // Make function available globally (for onclick attribute if needed)
+        window.sendMessage = sendMessage;
     </script>
 </body>
 </html>
