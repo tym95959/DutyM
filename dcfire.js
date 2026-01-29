@@ -1,3 +1,9 @@
+// Ensure Firebase SDK is loaded
+if (typeof window.firebase === "undefined") {
+  throw new Error("Firebase SDK not loaded. Check script order.");
+}
+
+// Your Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
@@ -8,7 +14,9 @@ const firebaseConfig = {
   measurementId: "G-3KD6ZYS599"
 };
 
+// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 
-// expose globally
+// Expose globals (VERY IMPORTANT)
 window.db = firebase.firestore();
+window.messaging = firebase.messaging();
