@@ -3,43 +3,59 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Leeli Alerts</title>
+<title>Leeli DC Announcements</title>
 <link rel="manifest" href="manifest.json">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="dcfire.js"></script>
+<style>
+body { font-family: Arial; padding: 20px; }
+#messages { margin-top: 20px; }
+.message { border: 1px solid #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; }
+</style>
 </head>
 <body>
-<h2>Leeli Announcement App</h2>
-<p>Install this app to receive live announcements!</p>
-<script type="module">
-import { messaging } from './dcfire.js';
-import { getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-messaging.js";
+<h1>Announcements</h1>
+<button id="enablePush">Enable Notifications</button>
+<div id="messages"></div>
 
-// Request permission for notifications
-Notification.requestPermission().then(permission => {
-    if(permission === "granted"){
-        console.log("Notification permission granted.");
-        getToken(messaging, { vapidKey: 'BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o' })
-        .then((currentToken) => {
-            if(currentToken){
-                console.log("FCM Token:", currentToken);
-                // TODO: save this token to your database if you want to target specific users
-            } else {
-                console.log('No registration token available.');
-            }
-        }).catch(console.error);
+<script>
+// Request permission and get FCM token
+document.getElementById('enablePush').onclick = async () => {
+    try {
+        await Notification.requestPermission();
+        const token = await messaging.getToken({ vapidKey: 'BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o' });
+        console.log('FCM Token:', token);
+        alert('Notifications enabled!');
+    } catch (err) {
+        console.error(err);
+        alert('Notification permission denied.');
     }
+};
+
+// Listen for live messages
+messaging.onMessage(payload => {
+    console.log('Message received: ', payload);
+    const div = document.createElement('div');
+    div.className = 'message';
+    div.innerText = payload.notification.title + "\n" + payload.notification.body;
+    document.getElementById('messages').prepend(div);
 });
 
-// Listen to foreground messages
-onMessage(messaging, (payload) => {
-    console.log('Message received. ', payload);
-    const notificationTitle = payload.notification.title;
-    const notificationOptions = {
-        body: payload.notification.body,
-        icon: '/icon.png'
-    };
-    new Notification(notificationTitle, notificationOptions);
+// Fetch latest announcements from Firestore
+db.collection('announcements').orderBy('timestamp', 'desc').limit(10)
+.onSnapshot(snapshot => {
+    const container = document.getElementById('messages');
+    container.innerHTML = '';
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        const div = document.createElement('div');
+        div.className = 'message';
+        div.innerHTML = `<strong>${data.title}</strong><br>${data.message}`;
+        container.appendChild(div);
+    });
 });
 </script>
-<script src="sw-register.js"></script>
 </body>
 </html>
