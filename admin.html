@@ -1,32 +1,330 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Admin</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Send Messages</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .admin-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4a6ee0 0%, #6a11cb 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .form-container {
+            padding: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #6a11cb;
+            box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.1);
+        }
+        
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        
+        .send-btn {
+            background: linear-gradient(135deg, #4a6ee0 0%, #6a11cb 100%);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .send-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(106, 17, 203, 0.2);
+        }
+        
+        .send-btn:active {
+            transform: translateY(0);
+        }
+        
+        .loading {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .message-status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            animation: fadeIn 0.3s;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .recent-messages {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #eee;
+        }
+        
+        .recent-messages h3 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .message-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 4px solid #6a11cb;
+        }
+        
+        .message-item strong {
+            color: #6a11cb;
+            font-size: 14px;
+        }
+        
+        .message-item p {
+            margin: 8px 0;
+            color: #555;
+        }
+        
+        .message-item small {
+            color: #888;
+            font-size: 12px;
+        }
+    </style>
 </head>
 <body>
-  <h2>Admin – Send Message</h2>
-  <input id="msg" placeholder="Type message">
-  <button onclick="send()">Send</button>
+    <div class="admin-container">
+        <div class="header">
+            <h1>📨 Message Admin Panel</h1>
+            <p>Send notifications to users instantly</p>
+        </div>
+        
+        <div class="form-container">
+            <div class="form-group">
+                <label for="title">Notification Title</label>
+                <input type="text" id="title" placeholder="Enter message title" maxlength="100">
+            </div>
+            
+            <div class="form-group">
+                <label for="message">Message Body</label>
+                <textarea id="message" placeholder="Enter your message here..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="priority">Priority Level</label>
+                <select id="priority">
+                    <option value="normal">Normal</option>
+                    <option value="high">High Priority</option>
+                    <option value="urgent">Urgent</option>
+                </select>
+            </div>
+            
+            <button class="send-btn" onclick="sendMessage()">
+                <span class="btn-text">Send Notification</span>
+                <div class="loading"></div>
+            </button>
+            
+            <div id="messageStatus" class="message-status"></div>
+        </div>
+        
+        <div class="form-container recent-messages">
+            <h3>Recent Messages</h3>
+            <div id="recentMessages"></div>
+        </div>
+    </div>
 
-  <script type="module">
-    import { db } from "./dcfire.js";
-    import { collection, addDoc, serverTimestamp } from
-      "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-    async function send() {
-      const text = msg.value;
-      if (!text) return alert("Enter message");
-
-      await addDoc(collection(db, "messages"), {
-        text,
-        createdAt: serverTimestamp()
-      });
-
-      msg.value = "";
-      alert("Message sent");
-    }
-
-    window.send = send;
-  </script>
+    <script type="module">
+        import firebaseService from './firebase-service.js';
+        
+        // Listen for recent messages
+        firebaseService.listenForMessages((messages) => {
+            const container = document.getElementById('recentMessages');
+            container.innerHTML = '';
+            
+            messages.slice(0, 5).forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message-item';
+                messageDiv.innerHTML = `
+                    <strong>${msg.title || 'No Title'}</strong>
+                    <p>${msg.body || msg.message || 'No content'}</p>
+                    <small>${msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleString() : 'Just now'}</small>
+                `;
+                container.appendChild(messageDiv);
+            });
+        });
+        
+        window.sendMessage = async function() {
+            const title = document.getElementById('title').value;
+            const message = document.getElementById('message').value;
+            const priority = document.getElementById('priority').value;
+            
+            if (!title || !message) {
+                showStatus('Please fill in all fields', 'error');
+                return;
+            }
+            
+            const btn = document.querySelector('.send-btn');
+            const btnText = document.querySelector('.btn-text');
+            const loading = document.querySelector('.loading');
+            
+            // Show loading
+            btnText.textContent = 'Sending...';
+            loading.style.display = 'block';
+            btn.disabled = true;
+            
+            try {
+                // Send to Firebase
+                await firebaseService.sendMessage({
+                    title: title,
+                    body: message,
+                    priority: priority,
+                    type: 'notification',
+                    sentAt: new Date().toISOString()
+                });
+                
+                // Show success
+                showStatus('Message sent successfully!', 'success');
+                
+                // Clear form
+                document.getElementById('title').value = '';
+                document.getElementById('message').value = '';
+                
+                // Request FCM notification
+                await sendPushNotification(title, message);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('Failed to send message: ' + error.message, 'error');
+            } finally {
+                // Reset button
+                btnText.textContent = 'Send Notification';
+                loading.style.display = 'none';
+                btn.disabled = false;
+            }
+        };
+        
+        async function sendPushNotification(title, body) {
+            try {
+                // This is a simple implementation. In production, you'd use a server or Cloud Functions
+                console.log('Push notification would be sent:', { title, body });
+                
+                // You would typically send to your server or use Firebase Cloud Functions
+                // Example using fetch to your server endpoint:
+                // await fetch('/api/send-notification', {
+                //     method: 'POST',
+                //     headers: { 'Content-Type': 'application/json' },
+                //     body: JSON.stringify({ title, body })
+                // });
+                
+            } catch (error) {
+                console.error('Push notification error:', error);
+            }
+        }
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('messageStatus');
+            statusDiv.textContent = message;
+            statusDiv.className = `message-status ${type}`;
+            statusDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+    </script>
 </body>
 </html>
