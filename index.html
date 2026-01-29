@@ -21,20 +21,28 @@ body { font-family: Arial; padding: 20px; }
 <div id="messages"></div>
 
 <script>
-// Request permission and get FCM token
+// Initialize messaging here
+const messaging = firebase.messaging();
+
+// Request notification permission and get FCM token
 document.getElementById('enablePush').onclick = async () => {
     try {
-        await Notification.requestPermission();
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") throw new Error("Permission not granted");
+        
         const token = await messaging.getToken({ vapidKey: 'BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o' });
         console.log('FCM Token:', token);
         alert('Notifications enabled!');
+        
+        // Optionally, save token to Firestore for targeted messaging
+        await db.collection('users').doc(token).set({ token, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
     } catch (err) {
         console.error(err);
         alert('Notification permission denied.');
     }
 };
 
-// Listen for live messages
+// Listen for messages when app is in foreground
 messaging.onMessage(payload => {
     console.log('Message received: ', payload);
     const div = document.createElement('div');
