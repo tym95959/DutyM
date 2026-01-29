@@ -1,8 +1,4 @@
-// dcfire.js
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-app.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-firestore.js";
-import { getMessaging } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-messaging.js";
-
+// Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
@@ -13,6 +9,7 @@ const firebaseConfig = {
   measurementId: "G-3KD6ZYS599"
 };
 
-export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-export const messaging = getMessaging(app);
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const messaging = firebase.messaging();
