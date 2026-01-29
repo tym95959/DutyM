@@ -1,6 +1,9 @@
 // dcfire.js
-// Just config and initialization
-const firebaseConfig = {
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getMessaging } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
+
+export const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
   projectId: "leelidc-1f753",
@@ -10,7 +13,6 @@ const firebaseConfig = {
   measurementId: "G-3KD6ZYS599"
 };
 
-firebase.initializeApp(firebaseConfig);
-
-// NO firestore() or messaging() here!
-// Let each page initialize what it needs.
+export const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const messaging = getMessaging(app);
