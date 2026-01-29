@@ -1,22 +1,26 @@
-// Ensure Firebase SDK is loaded
-if (typeof window.firebase === "undefined") {
-  throw new Error("Firebase SDK not loaded. Check script order.");
-}
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
-// Your Firebase config
-const firebaseConfig = {
+firebase.initializeApp({
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
   projectId: "leelidc-1f753",
   storageBucket: "leelidc-1f753.firebasestorage.app",
   messagingSenderId: "43622932335",
-  appId: "1:43622932335:web:a7529bce1f19714687129a",
-  measurementId: "G-3KD6ZYS599"
-};
+  appId: "1:43622932335:web:a7529bce1f19714687129a"
+});
 
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
+const messaging = firebase.messaging();
 
-// Expose globals (VERY IMPORTANT)
-window.db = firebase.firestore();
-window.messaging = firebase.messaging();
+// Listen for background messages
+messaging.onBackgroundMessage(function(payload) {
+  console.log('[firebase-messaging-sw.js] Received background message ', payload);
+  
+  const notificationTitle = payload.notification.title;
+  const notificationOptions = {
+    body: payload.notification.body,
+    icon: '/icon.png'
+  };
+
+  self.registration.showNotification(notificationTitle, notificationOptions);
+});
