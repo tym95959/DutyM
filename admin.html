@@ -1,54 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Panel</title>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="dcfire.js"></script>
-<style>
-body { font-family: Arial; padding: 20px; }
-input, textarea { width: 100%; padding: 10px; margin: 10px 0; }
-button { padding: 10px 20px; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Add Announcement</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="dcfire.js"></script>
 </head>
 <body>
-<h1>Admin - Post Announcement</h1>
-<input type="text" id="title" placeholder="Title">
-<textarea id="message" placeholder="Message"></textarea>
-<button id="send">Send Announcement</button>
+  <h1>Admin: New Announcement</h1>
+  <form id="ann-form">
+    <input type="text" id="title" placeholder="Title" required><br>
+    <textarea id="body" placeholder="Message" required></textarea><br>
+    <button type="submit">Send Announcement (Triggers Push)</button>
+  </form>
 
-<script>
-document.getElementById('send').onclick = async () => {
-    const title = document.getElementById('title').value.trim();
-    const message = document.getElementById('message').value.trim();
-    if (!title || !message) return alert('Fill all fields!');
-    
-    // Save to Firestore
-    await db.collection('announcements').add({
-        title,
-        message,
-        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+    const app = initializeApp(window.firebaseConfig || firebaseConfig);
+    const db = getFirestore(app);
+
+    document.getElementById('ann-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('title').value;
+      const body = document.getElementById('body').value;
+
+      try {
+        await addDoc(collection(db, "announcements"), {
+          title,
+          body,
+          timestamp: serverTimestamp()
+        });
+        alert('Announcement saved and push sent to users!');
+        e.target.reset();
+      } catch (err) {
+        console.error(err);
+        alert('Error: ' + err.message);
+      }
     });
-
-    // Send push notification via FCM server
-    await fetch('https://fcm.googleapis.com/fcm/send', {
-        method: 'POST',
-        headers: {
-            'Authorization': 'key=43622932335',  // Replace with your Firebase server key
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            notification: { title, body: message },
-            to: '/topics/all'  // Or use individual tokens if stored
-        })
-    });
-
-    alert('Announcement sent!');
-    document.getElementById('title').value = '';
-    document.getElementById('message').value = '';
-};
-</script>
+  </script>
 </body>
 </html>
