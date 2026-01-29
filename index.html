@@ -1,59 +1,395 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>PAW Alerts</title>
-  <link rel="manifest" href="/manifest.json">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leeli Announcements</title>
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            padding: 40px 20px;
+            color: white;
+        }
+        
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .status {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        #notification-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: white;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4757;
+        }
+        
+        .status-dot.active {
+            background: #2ed573;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .announcements {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-top: 20px;
+        }
+        
+        .announcement {
+            padding: 20px;
+            border-left: 4px solid #667eea;
+            margin-bottom: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .announcement h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+        
+        .announcement p {
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .announcement .time {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 10px;
+            text-align: right;
+        }
+        
+        .install-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 50px;
+            text-decoration: none;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+            display: none;
+            z-index: 1000;
+        }
+        
+        .notification-badge {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #ff4757;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            z-index: 1000;
+        }
+    </style>
 </head>
 <body>
+    <div class="notification-badge" id="notificationBadge"></div>
+    
+    <div class="container">
+        <header>
+            <h1>📢 Leeli Announcements</h1>
+            <p>Stay updated with latest announcements</p>
+        </header>
+        
+        <div class="status">
+            <div id="notification-status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Setting up notifications...</span>
+            </div>
+        </div>
+        
+        <div class="announcements">
+            <h2 style="color: #333; margin-bottom: 20px;">📬 Latest Announcements</h2>
+            <div id="announcementsList">
+                <div class="announcement">
+                    <h3>Welcome!</h3>
+                    <p>You'll see announcements from admin here.</p>
+                    <div class="time">Just now</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <a href="#" class="install-btn" id="installBtn">📱 Install App</a>
+    
+    <script type="module">
+        import { 
+            messaging, 
+            getToken, 
+            onMessage, 
+            db, 
+            collection, 
+            query, 
+            orderBy, 
+            onSnapshot,
+            auth,
+            signInAnonymously 
+        } from './dcfire.js';
 
-<h2>PAW Announcements</h2>
-<ul id="messages"></ul>
+        let deferredPrompt;
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const installBtn = document.getElementById('installBtn');
+        const announcementsList = document.getElementById('announcementsList');
+        const notificationBadge = document.getElementById('notificationBadge');
 
-<!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+        // Handle PWA installation
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'block';
+            
+            installBtn.addEventListener('click', () => {
+                installBtn.style.display = 'none';
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted install');
+                    }
+                    deferredPrompt = null;
+                });
+            });
+        });
 
-<!-- Firebase config -->
-<script src="/dcfire.js"></script>
+        // Request notification permission
+        async function requestNotificationPermission() {
+            try {
+                statusText.textContent = 'Requesting permission...';
+                
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    console.log('Notification permission granted.');
+                    await setupMessaging();
+                } else {
+                    statusDot.classList.remove('active');
+                    statusText.textContent = 'Notifications blocked. Please enable in browser settings.';
+                }
+            } catch (error) {
+                console.error('Error requesting permission:', error);
+                statusText.textContent = 'Error setting up notifications';
+            }
+        }
 
-<script>
-// Register Service Worker
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/firebase-messaging-sw.js')
-    .then(() => console.log('Service Worker registered'));
-}
+        // Setup Firebase Messaging
+        async function setupMessaging() {
+            try {
+                // Sign in anonymously
+                await signInAnonymously(auth);
+                
+                // Get FCM token
+                const token = await getToken(messaging, {
+                    vapidKey: 'BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o' // You need to generate this
+                });
+                
+                if (token) {
+                    statusDot.classList.add('active');
+                    statusText.textContent = 'Notifications enabled ✓';
+                    console.log('FCM Token:', token);
+                    
+                    // Store token in Firestore
+                    await storeToken(token);
+                } else {
+                    statusText.textContent = 'No registration token available';
+                }
+                
+                // Handle foreground messages
+                onMessage(messaging, (payload) => {
+                    console.log('Foreground message:', payload);
+                    showNotification(payload);
+                    updateBadge();
+                });
+                
+            } catch (error) {
+                console.error('Error setting up messaging:', error);
+                statusText.textContent = 'Error setting up notifications';
+            }
+        }
 
-// Request permission for notifications
-Notification.requestPermission().then(permission => {
-  if (permission === 'granted') {
-    messaging.getToken({
-      vapidKey: "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o"
-    }).then(token => {
-      console.log("FCM Token:", token);
-      db.collection("tokens").doc(token).set({ token });
-    });
-  }
-});
+        // Store token in Firestore
+        async function storeToken(token) {
+            try {
+                // You can store tokens in a separate collection if needed
+                console.log('Token stored:', token);
+            } catch (error) {
+                console.error('Error storing token:', error);
+            }
+        }
 
-// Listen for foreground messages
-messaging.onMessage(payload => {
-  alert(payload.notification.title + "\n" + payload.notification.body);
-});
+        // Show notification
+        function showNotification(payload) {
+            if (Notification.permission === 'granted') {
+                const title = payload.data?.title || payload.notification?.title || 'New Announcement';
+                const options = {
+                    body: payload.data?.body || payload.notification?.body || 'Check the app for details',
+                    icon: '/icon-192x192.png',
+                    badge: '/icon-72x72.png',
+                    tag: 'announcement',
+                    vibrate: [200, 100, 200],
+                    data: payload.data
+                };
+                
+                navigator.serviceWorker.ready.then(registration => {
+                    registration.showNotification(title, options);
+                });
+                
+                // Update UI
+                updateBadge();
+            }
+        }
 
-// Display announcements
-db.collection("announcements")
-  .orderBy("time", "desc")
-  .onSnapshot(snapshot => {
-    const messages = document.getElementById("messages");
-    messages.innerHTML = "";
-    snapshot.forEach(doc => {
-      const li = document.createElement("li");
-      li.textContent = doc.data().text;
-      messages.appendChild(li);
-    });
-  });
-</script>
+        // Update notification badge
+        function updateBadge() {
+            if ('setAppBadge' in navigator) {
+                navigator.setAppBadge(1);
+            }
+            notificationBadge.textContent = '1';
+            notificationBadge.style.display = 'flex';
+            
+            // Clear badge after 5 seconds
+            setTimeout(() => {
+                if ('clearAppBadge' in navigator) {
+                    navigator.clearAppBadge();
+                }
+                notificationBadge.style.display = 'none';
+            }, 5000);
+        }
 
+        // Load announcements from Firestore
+        function loadAnnouncements() {
+            const announcementsRef = collection(db, 'announcements');
+            const q = query(announcementsRef, orderBy('timestamp', 'desc'));
+            
+            onSnapshot(q, (snapshot) => {
+                announcementsList.innerHTML = '';
+                
+                if (snapshot.empty) {
+                    announcementsList.innerHTML = `
+                        <div class="announcement">
+                            <h3>No announcements yet</h3>
+                            <p>Check back later for updates</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const announcement = document.createElement('div');
+                    announcement.className = 'announcement';
+                    announcement.innerHTML = `
+                        <h3>${data.title}</h3>
+                        <p>${data.message}</p>
+                        <div class="time">${formatTime(data.timestamp?.toDate())}</div>
+                    `;
+                    announcementsList.appendChild(announcement);
+                });
+            });
+        }
+
+        // Format timestamp
+        function formatTime(date) {
+            if (!date) return '';
+            return date.toLocaleString();
+        }
+
+        // Initialize Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(() => {
+                    console.log('Service Worker registered');
+                    requestNotificationPermission();
+                    loadAnnouncements();
+                })
+                .catch(error => {
+                    console.error('Service Worker registration failed:', error);
+                    statusText.textContent = 'Failed to setup notifications';
+                });
+        } else {
+            statusText.textContent = 'Service Worker not supported';
+        }
+
+        // Listen for app visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                if ('clearAppBadge' in navigator) {
+                    navigator.clearAppBadge();
+                }
+                notificationBadge.style.display = 'none';
+            }
+        });
+
+        // Add click sound for notifications (optional)
+        document.addEventListener('click', () => {
+            const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-select-click-1109.mp3');
+            audio.volume = 0.1;
+            audio.play().catch(() => {});
+        });
+
+    </script>
 </body>
 </html>
