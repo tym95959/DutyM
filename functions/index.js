@@ -1,26 +1,35 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+
 admin.initializeApp();
 
-exports.sendAnnouncementPush = functions.firestore
-  .document('announcements/{docId}')
-  .onCreate(async (snap, context) => {
-    const newData = snap.data();
-    const text = newData.text;
+exports.sendAnnouncementNotification = functions.firestore
+    .document('announcements/{announcementId}')
+    .onCreate(async (snapshot, context) => {
+        const announcement = snapshot.data();
+        
+        // Only send notification for high priority announcements
+        if (!announcement.priority) return null;
 
-    // Get all FCM tokens
-    const tokensSnap = await admin.firestore().collection('tokens').get();
-    const tokens = tokensSnap.docs.map(doc => doc.data().token);
+        const message = {
+            notification: {
+                title: announcement.title,
+                body: announcement.message.substring(0, 100) + '...'
+            },
+            data: {
+                type: 'announcement',
+                announcementId: context.params.announcementId,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            },
+            topic: 'announcements' // Or send to specific tokens
+        };
 
-    if (tokens.length === 0) return null;
-
-    const payload = {
-      notification: {
-        title: "New Announcement",
-        body: text,
-        click_action: "/index.html"
-      }
-    };
-
-    return admin.messaging().sendToDevice(tokens, payload);
-  });
+        try {
+            const response = await admin.messaging().send(message);
+            console.log('Successfully sent message:', response);
+            return response;
+        } catch (error) {
+            console.error('Error sending message:', error);
+            return null;
+        }
+    });
