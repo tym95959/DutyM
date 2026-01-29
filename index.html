@@ -1,75 +1,77 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Leeli DC Announcements</title>
-<link rel="manifest" href="manifest.json">
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
-<script src="dcfire.js"></script>
-
-<script>
-const db = firebase.firestore();
-const messaging = firebase.messaging();
-</script>
-
-<style>
-body { font-family: Arial; padding: 20px; }
-#messages { margin-top: 20px; }
-.message { border: 1px solid #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leeli DC Announcements</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="dcfire.js"></script>  <!-- Your existing file -->
 </head>
 <body>
-<h1>Announcements</h1>
-<button id="enablePush">Enable Notifications</button>
-<div id="messages"></div>
+  <h1>Announcements</h1>
+  <button id="enable-notif">Enable Live Notifications</button>
+  <div id="announcements-list"></div>
 
-<script>
-// Initialize messaging here
-const messaging = firebase.messaging();
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import { getFirestore, collection, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+    import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging.js";
 
-// Request notification permission and get FCM token
-document.getElementById('enablePush').onclick = async () => {
-    try {
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") throw new Error("Permission not granted");
-        
-        const token = await messaging.getToken({ vapidKey: 'BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o' });
-        console.log('FCM Token:', token);
-        alert('Notifications enabled!');
-        
-        // Optionally, save token to Firestore for targeted messaging
-        await db.collection('users').doc(token).set({ token, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
-    } catch (err) {
-        console.error(err);
-        alert('Notification permission denied.');
+    const app = initializeApp(window.firebaseConfig || firebaseConfig);  // fallback to global if dcfire sets it
+    const db = getFirestore(app);
+    const messaging = getMessaging(app);
+    const vapidKey = "YOUR_PUBLIC_VAPID_KEY_HERE";  // ← Paste from Firebase console
+
+    const announcementsList = document.getElementById('announcements-list');
+    const enableBtn = document.getElementById('enable-notif');
+
+    // Register SW
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/firebase-messaging-sw.js')
+        .then(reg => console.log('SW registered'))
+        .catch(err => console.error('SW error', err));
     }
-};
 
-// Listen for messages when app is in foreground
-messaging.onMessage(payload => {
-    console.log('Message received: ', payload);
-    const div = document.createElement('div');
-    div.className = 'message';
-    div.innerText = payload.notification.title + "\n" + payload.notification.body;
-    document.getElementById('messages').prepend(div);
-});
-
-// Fetch latest announcements from Firestore
-db.collection('announcements').orderBy('timestamp', 'desc').limit(10)
-.onSnapshot(snapshot => {
-    const container = document.getElementById('messages');
-    container.innerHTML = '';
-    snapshot.forEach(doc => {
+    // Realtime announcements list
+    const q = query(collection(db, "announcements"), orderBy("timestamp", "desc"));
+    onSnapshot(q, (snapshot) => {
+      announcementsList.innerHTML = '';
+      snapshot.forEach(doc => {
         const data = doc.data();
         const div = document.createElement('div');
-        div.className = 'message';
-        div.innerHTML = `<strong>${data.title}</strong><br>${data.message}`;
-        container.appendChild(div);
+        div.innerHTML = `<strong>${data.title}</strong><p>${data.body}</p><small>${data.timestamp ? data.timestamp.toDate() : ''}</small>`;
+        announcementsList.appendChild(div);
+      });
     });
-});
-</script>
+
+    // Enable notifications
+    enableBtn.addEventListener('click', async () => {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        try {
+          const token = await getToken(messaging, { vapidKey });
+          console.log('FCM Token:', token);
+          if (token) {
+            await setDoc(doc(db, "fcmTokens", token), {
+              token: token,
+              timestamp: serverTimestamp()
+            }, { merge: true });
+            alert('Notifications enabled! You will receive live alerts.');
+          }
+        } catch (err) {
+          console.error('Token error', err);
+        }
+      }
+    });
+
+    // Foreground messages
+    onMessage(messaging, (payload) => {
+      console.log('Foreground message:', payload);
+      const title = payload.notification.title;
+      const body = payload.notification.body;
+      alert(`New Announcement: ${title} - ${body}`);  // Or show toast/notification
+      // Optionally: new Notification(title, {body, icon: 'icon-192.png'});
+    });
+  </script>
 </body>
 </html>
