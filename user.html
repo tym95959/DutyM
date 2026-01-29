@@ -2,11 +2,16 @@
 <html>
 <head>
   <title>User App</title>
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="/manifest.json">
 </head>
 <body>
   <h2>User App</h2>
   <div id="log"></div>
+  
+  <!-- Add Install Button -->
+  <button id="installBtn" style="display:none; padding:10px; margin:10px; font-size:16px;">
+    Install App
+  </button>
 
   <script type="module">
     import { messaging, db } from "./dcfire.js";
@@ -18,7 +23,26 @@
     // Register service worker
     await navigator.serviceWorker.register("/firebase-messaging-sw.js");
 
-    // Ask permission + get token
+    // Install prompt
+    let deferredPrompt;
+    const installBtn = document.getElementById('installBtn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.style.display = 'block';
+    });
+
+    installBtn.addEventListener('click', async () => {
+      installBtn.style.display = 'none';
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      console.log('Install choice:', choice.outcome);
+      deferredPrompt = null;
+    });
+
+    // Ask notification permission + save FCM token
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       const token = await getToken(messaging, {
@@ -27,7 +51,6 @@
 
       console.log("FCM Token:", token);
 
-      // SAVE TOKEN (CRITICAL)
       await setDoc(doc(db, "tokens", token), {
         token,
         updatedAt: new Date()
@@ -39,7 +62,7 @@
       alert(payload.notification.title + "\n" + payload.notification.body);
     });
 
-    // Live messages
+    // Live Firestore messages
     onSnapshot(collection(db, "messages"), snap => {
       snap.docChanges().forEach(c => {
         if (c.type === "added") {
