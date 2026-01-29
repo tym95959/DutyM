@@ -1,4 +1,5 @@
-// Firebase config
+// dcfire.js
+// Just config and initialization
 const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
@@ -9,6 +10,7 @@ const firebaseConfig = {
   measurementId: "G-3KD6ZYS599"
 };
 
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+
+// NO firestore() or messaging() here!
+// Let each page initialize what it needs.
