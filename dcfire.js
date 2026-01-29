@@ -1,16 +1,14 @@
-// dcfire.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getMessaging } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
 
-export const firebaseConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
   projectId: "leelidc-1f753",
   storageBucket: "leelidc-1f753.firebasestorage.app",
   messagingSenderId: "43622932335",
-  appId: "1:43622932335:web:a7529bce1f19714687129a",
-  measurementId: "G-3KD6ZYS599"
+  appId: "1:43622932335:web:a7529bce1f19714687129a"
 };
 
 export const app = initializeApp(firebaseConfig);
