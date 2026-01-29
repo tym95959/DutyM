@@ -10,5 +10,5 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-// 🔥 VERY IMPORTANT
-const db = firebase.firestore();
+// expose globally
+window.db = firebase.firestore();
