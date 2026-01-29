@@ -1,8 +1,7 @@
-// dcfire.js - Updated with messaging
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js';
-import { getFirestore, collection, addDoc, query, orderBy, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+// dcfire.js
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-app.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-firestore.js";
+import { getMessaging } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-messaging.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
@@ -14,10 +13,6 @@ const firebaseConfig = {
   measurementId: "G-3KD6ZYS599"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const messaging = getMessaging(app);
-const db = getFirestore(app);
-const auth = getAuth(app);
-
-export { app, messaging, getToken, onMessage, db, collection, addDoc, query, orderBy, onSnapshot, auth, signInAnonymously };
+export const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const messaging = getMessaging(app);
