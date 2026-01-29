@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User App</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <h2>User App</h2>
+  <div id="log"></div>
+
+  <script type="module">
+    import { messaging, db } from "./dcfire.js";
+    import { getToken, onMessage } from
+      "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
+    import { setDoc, doc, onSnapshot, collection } from
+      "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // Register service worker
+    await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+
+    // Ask permission + get token
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      const token = await getToken(messaging, {
+        vapidKey: "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o"
+      });
+
+      console.log("FCM Token:", token);
+
+      // SAVE TOKEN (CRITICAL)
+      await setDoc(doc(db, "tokens", token), {
+        token,
+        updatedAt: new Date()
+      });
+    }
+
+    // Foreground notification
+    onMessage(messaging, payload => {
+      alert(payload.notification.title + "\n" + payload.notification.body);
+    });
+
+    // Live messages
+    onSnapshot(collection(db, "messages"), snap => {
+      snap.docChanges().forEach(c => {
+        if (c.type === "added") {
+          log.innerHTML += "<p>" + c.doc.data().text + "</p>";
+        }
+      });
+    });
+  </script>
+</body>
+</html>
