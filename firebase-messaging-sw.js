@@ -4,7 +4,7 @@ importScripts('dcfire.js');
 
 const messaging = firebase.messaging();
 
-messaging.onBackgroundMessage(function(payload) {
+messaging.onBackgroundMessage(payload => {
     console.log('Received background message ', payload);
     const notificationTitle = payload.notification.title;
     const notificationOptions = {
