@@ -1,9 +1,9 @@
-// Ensure Firebase SDK is loaded
-if (typeof window.firebase === "undefined") {
-  throw new Error("Firebase SDK not loaded. Check script order.");
-}
+// dcfire.js - Updated with messaging
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js';
+import { getFirestore, collection, addDoc, query, orderBy, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
-// Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
@@ -15,8 +15,9 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig);
+const messaging = getMessaging(app);
+const db = getFirestore(app);
+const auth = getAuth(app);
 
-// Expose globals
-window.db = firebase.firestore();
-window.messaging = firebase.messaging();
+export { app, messaging, getToken, onMessage, db, collection, addDoc, query, orderBy, onSnapshot, auth, signInAnonymously };
