@@ -1,7 +1,9 @@
-// dcfire.js
-import { initializeApp } from "firebase/app";
-import { getMessaging, getToken, onMessage } from "firebase/messaging";
-import { getDatabase, ref, push, onChildAdded } from "firebase/database";
+// dcfire.js - Using CDN imports
+// This will be loaded with type="module" in your HTML
+
+// Import from CDN
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getDatabase, ref, push, onChildAdded } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
@@ -16,7 +18,6 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const messaging = getMessaging(app);
 const database = getDatabase(app);
 
-export { app, messaging, database, getToken, onMessage, ref, push, onChildAdded };
+export { database, ref, push, onChildAdded };
