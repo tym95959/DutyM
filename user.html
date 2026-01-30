@@ -3,991 +3,236 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PAW Messages</title>
-    <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#4A6EE0">
-    <meta name="description" content="Real-time messaging application">
+    <meta name="theme-color" content="#667eea">
+    <title>DC Messages App</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="icon-192.png" type="image/png">
-    <link rel="apple-touch-icon" href="icon-192.png">
-    <!-- Firebase CDN -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
+    
     <style>
-        /* Reset and Base Styles */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: #f0f2f5;
-            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding-top: env(safe-area-inset-top);
         }
-        
-        /* App Header */
-        .app-header {
-            background: linear-gradient(135deg, #4A6EE0 0%, #6A11CB 100%);
-            color: white;
-            padding: 20px;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .notification-bell {
+            animation: ring 2s ease-in-out infinite;
         }
-        
-        .header-content h1 {
-            font-size: 20px;
-            margin-bottom: 4px;
-        }
-        
-        .header-content p {
-            font-size: 12px;
-            opacity: 0.9;
-        }
-        
-        .notification-badge {
-            background: #FF4757;
-            color: white;
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
-            position: absolute;
-            top: 15px;
-            right: 20px;
-        }
-        
-        /* Main Content */
-        .messages-container {
-            margin-top: 100px;
-            padding: 16px;
-            padding-bottom: 80px;
-        }
-        
-        /* Message Cards */
-        .message-card {
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            border-left: 4px solid #4A6EE0;
-            animation: slideIn 0.3s ease;
-        }
-        
-        .message-card.unread {
-            border-left-color: #FF4757;
-            background: linear-gradient(to right, #fff5f7, white);
-        }
-        
-        .message-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 8px;
-        }
-        
-        .message-title {
-            font-weight: 600;
-            color: #2c3e50;
-            font-size: 16px;
-        }
-        
-        .message-time {
-            color: #7f8c8d;
-            font-size: 12px;
-        }
-        
-        .message-body {
-            color: #34495e;
-            line-height: 1.5;
-            margin-bottom: 12px;
-        }
-        
-        .message-priority {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        
-        .priority-normal { background: #e3f2fd; color: #1976d2; }
-        .priority-high { background: #fff3e0; color: #f57c00; }
-        .priority-urgent { background: #ffebee; color: #d32f2f; }
-        
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #7f8c8d;
-        }
-        
-        .empty-state-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-            opacity: 0.3;
-        }
-        
-        /* Install Prompt */
-        .install-prompt {
-            position: fixed;
-            bottom: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            z-index: 10000;
-            width: 90%;
-            max-width: 400px;
-            animation: slideUp 0.3s ease;
-            display: none;
-        }
-        
-        .install-prompt-content {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .install-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, #4A6EE0 0%, #6A11CB 100%);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 20px;
-        }
-        
-        .install-text h4 {
-            margin-bottom: 4px;
-            color: #2c3e50;
-        }
-        
-        .install-text p {
-            color: #7f8c8d;
-            font-size: 14px;
-        }
-        
-        .install-buttons {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-        
-        .install-btn, .cancel-btn {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        
-        .install-btn {
-            background: linear-gradient(135deg, #4A6EE0 0%, #6A11CB 100%);
-            color: white;
-        }
-        
-        .cancel-btn {
-            background: #f5f5f5;
-            color: #666;
-        }
-        
-        /* Notification Permission */
-        .permission-box {
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            margin: 20px;
-            text-align: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            animation: fadeIn 0.5s;
-        }
-        
-        .permission-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-            color: #4A6EE0;
-        }
-        
-        .permission-box h3 {
-            color: #2c3e50;
-            margin-bottom: 8px;
-        }
-        
-        .permission-box p {
-            color: #7f8c8d;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
-        
-        .enable-btn {
-            background: linear-gradient(135deg, #4A6EE0 0%, #6A11CB 100%);
-            color: white;
-            border: none;
-            padding: 14px 28px;
-            border-radius: 25px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        
-        .enable-btn:hover {
-            transform: scale(1.05);
-        }
-        
-        /* Floating Notification */
-        .floating-notification {
-            position: fixed;
-            top: 100px;
-            right: 16px;
-            background: white;
-            border-radius: 10px;
-            padding: 14px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
-            z-index: 10000;
-            max-width: 320px;
-            border-left: 4px solid #4A6EE0;
-            animation: slideInRight 0.3s ease, fadeOut 0.5s 4.5s forwards;
-        }
-        
-        /* Bottom Navigation */
-        .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: white;
-            padding: 12px 20px;
-            display: flex;
-            justify-content: space-around;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-            z-index: 1000;
-        }
-        
-        .nav-btn {
-            background: none;
-            border: none;
-            color: #7f8c8d;
-            font-size: 12px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 6px;
-            cursor: pointer;
-            transition: color 0.3s;
-            padding: 8px;
-            border-radius: 8px;
-        }
-        
-        .nav-btn.active {
-            color: #4A6EE0;
-            background: rgba(74, 110, 224, 0.1);
-        }
-        
-        .nav-btn i {
-            font-size: 20px;
-        }
-        
-        /* Refresh Button */
-        .refresh-btn {
-            position: fixed;
-            bottom: 70px;
-            right: 20px;
-            background: linear-gradient(135deg, #4A6EE0 0%, #6A11CB 100%);
-            color: white;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            border: none;
-            font-size: 20px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(74, 110, 224, 0.4);
-            z-index: 1000;
-            transition: all 0.3s;
-        }
-        
-        .refresh-btn:hover {
-            transform: rotate(180deg);
-        }
-        
-        /* Animations */
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translate(-50%, 20px);
-            }
-            to {
-                opacity: 1;
-                transform: translate(-50%, 0);
-            }
-        }
-        
-        @keyframes slideInRight {
-            from {
-                opacity: 0;
-                transform: translateX(100%);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-        
-        @keyframes fadeOut {
-            to {
-                opacity: 0;
-                transform: translateX(100%);
-            }
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        /* Loading Spinner */
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #4A6EE0;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 40px auto;
-        }
-        
-        @keyframes spin {
+        @keyframes ring {
             0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            10% { transform: rotate(15deg); }
+            20% { transform: rotate(-15deg); }
+            30% { transform: rotate(15deg); }
+            40% { transform: rotate(-15deg); }
+            50%, 100% { transform: rotate(0deg); }
+        }
+        .message-card {
+            transition: transform 0.3s;
+        }
+        .message-card:hover {
+            transform: translateY(-5px);
+        }
+        #installButton {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
     </style>
 </head>
 <body>
-    <!-- App Header -->
-    <header class="app-header">
-        <div class="header-content">
-            <h1>🐾 PAW Messages</h1>
-            <p>Real-time notifications</p>
-        </div>
-        <div class="notification-badge" id="notificationBadge" style="display: none;">0</div>
-    </header>
+    <!-- Install Button -->
+    <button id="installButton" class="btn btn-success btn-lg d-none" style="border-radius: 50px; padding: 15px 25px;">
+        <i class="fas fa-download me-2"></i>Install App
+    </button>
 
-    <!-- Notification Permission Box -->
-    <div id="permissionBox" class="permission-box" style="display: none;">
-        <div class="permission-icon">🔔</div>
-        <h3>Enable Push Notifications</h3>
-        <p>Get instant alerts for new messages even when the app is closed</p>
-        <button class="enable-btn" onclick="requestNotificationPermission()">Enable Notifications</button>
-    </div>
-
-    <!-- Messages Container -->
-    <main class="messages-container" id="messagesContainer">
-        <div class="empty-state" id="emptyState">
-            <div class="empty-state-icon">📭</div>
-            <h3>No messages yet</h3>
-            <p>Messages will appear here when received</p>
-        </div>
-        <!-- Messages will be inserted here by JavaScript -->
-    </main>
-
-    <!-- Install Prompt -->
-    <div id="installPrompt" class="install-prompt">
-        <div class="install-prompt-content">
-            <div class="install-icon">📱</div>
-            <div class="install-text">
-                <h4>Install PAW Messages</h4>
-                <p>Install for better experience and offline access</p>
-                <div class="install-buttons">
-                    <button class="install-btn" onclick="installApp()">Install</button>
-                    <button class="cancel-btn" onclick="hideInstallPrompt()">Later</button>
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card shadow-lg border-0">
+                    <div class="card-header bg-gradient-primary text-white d-flex justify-content-between align-items-center">
+                        <div>
+                            <h3 class="mb-0"><i class="fas fa-bell notification-bell me-2"></i>DC Messages</h3>
+                            <small id="connectionStatus">Connecting...</small>
+                        </div>
+                        <div>
+                            <span class="badge bg-light text-primary" id="messageCount">0 Messages</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card-body">
+                        <!-- Current Notification -->
+                        <div class="alert alert-warning d-none" id="liveNotification">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <strong id="notifTitle"></strong><br>
+                                    <span id="notifBody"></span>
+                                </div>
+                                <button class="btn-close" onclick="dismissNotification()"></button>
+                            </div>
+                        </div>
+                        
+                        <!-- Messages List -->
+                        <div id="messagesContainer">
+                            <div class="text-center py-5" id="loadingSpinner">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-3">Loading messages...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card-footer text-center">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Install this app for push notifications even when closed
+                        </small>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Bottom Navigation -->
-    <nav class="bottom-nav">
-        <button class="nav-btn active" onclick="showMessages()">
-            <div>📨</div>
-            <span>Messages</span>
-        </button>
-        <button class="nav-btn" onclick="showSettings()">
-            <div>⚙️</div>
-            <span>Settings</span>
-        </button>
-        <button class="nav-btn" onclick="showProfile()">
-            <div>👤</div>
-            <span>Profile</span>
-        </button>
-    </nav>
-
-    <!-- Refresh Button -->
-    <button class="refresh-btn" onclick="loadMessages()" title="Refresh messages">↻</button>
-
-    <script>
-        // ========== FIREBASE CONFIGURATION ==========
-        const firebaseConfig = {
-            apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
-            authDomain: "leelidc-1f753.firebaseapp.com",
-            projectId: "leelidc-1f753",
-            storageBucket: "leelidc-1f753.firebasestorage.app",
-            messagingSenderId: "43622932335",
-            appId: "1:43622932335:web:a7529bce1f19714687129a",
-            measurementId: "G-3KD6ZYS599"
-        };
-
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const messaging = firebase.messaging();
-
-        // ========== GLOBAL VARIABLES ==========
-        let messages = [];
-        let unreadCount = 0;
-        let deferredPrompt = null;
-        let isSubscribed = false;
-        let fcmToken = null;
-
-        // ========== DOM ELEMENTS ==========
-        const permissionBox = document.getElementById('permissionBox');
-        const installPrompt = document.getElementById('installPrompt');
-        const notificationBadge = document.getElementById('notificationBadge');
-        const messagesContainer = document.getElementById('messagesContainer');
-        const emptyState = document.getElementById('emptyState');
-
-        // ========== INITIALIZATION ==========
-        document.addEventListener('DOMContentLoaded', async () => {
-            console.log('App initialized');
+    <script type="module">
+        import { messaging, database, getToken, onMessage, ref, onChildAdded } from './dcfire.js';
+        
+        let deferredPrompt;
+        const installButton = document.getElementById('installButton');
+        
+        // PWA Installation
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installButton.classList.remove('d-none');
             
-            // Register Service Worker
-            await registerServiceWorker();
-            
-            // Check and request notification permission
-            await checkNotificationPermission();
-            
-            // Load messages
-            loadMessages();
-            
-            // Setup install prompt
-            setupInstallPrompt();
-            
-            // Initialize Firebase Messaging
-            await initializeFirebaseMessaging();
-        });
-
-        // ========== SERVICE WORKER REGISTRATION ==========
-        async function registerServiceWorker() {
-            if ('serviceWorker' in navigator) {
-                try {
-                    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-                    console.log('Service Worker registered:', registration);
-                    
-                    // Store registration for later use
-                    window.serviceWorkerRegistration = registration;
-                    
-                } catch (error) {
-                    console.error('Service Worker registration failed:', error);
-                }
-            }
-        }
-
-        // ========== NOTIFICATION PERMISSION ==========
-        async function checkNotificationPermission() {
-            if (!('Notification' in window)) {
-                console.log('This browser does not support notifications');
-                return;
-            }
-            
-            const permission = Notification.permission;
-            
-            if (permission === 'granted') {
-                console.log('Notification permission already granted');
-                permissionBox.style.display = 'none';
-                return true;
-            } else if (permission === 'denied') {
-                console.log('Notification permission denied by user');
-                permissionBox.style.display = 'block';
-                return false;
-            } else {
-                // Permission not requested yet
-                console.log('Notification permission not requested yet');
-                permissionBox.style.display = 'block';
-                return false;
-            }
-        }
-
-        async function requestNotificationPermission() {
-            try {
-                const permission = await Notification.requestPermission();
-                
-                if (permission === 'granted') {
-                    console.log('Notification permission granted!');
-                    permissionBox.style.display = 'none';
-                    
-                    // Show success message
-                    showFloatingNotification('Success!', 'Notifications enabled');
-                    
-                    // Initialize Firebase messaging
-                    await initializeFirebaseMessaging();
-                    
-                } else {
-                    console.log('Notification permission denied');
-                    showFloatingNotification('Permission Denied', 'You can enable notifications in settings later');
-                }
-            } catch (error) {
-                console.error('Error requesting notification permission:', error);
-            }
-        }
-
-        // ========== FIREBASE MESSAGING ==========
-        async function initializeFirebaseMessaging() {
-            try {
-                console.log('Initializing Firebase Messaging...');
-                
-                // Get FCM token
-                const token = await messaging.getToken({ 
-                    vapidKey: 'BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o' // Get this from Firebase Console
-                });
-                
-                if (token) {
-                    console.log('FCM Token obtained:', token);
-                    fcmToken = token;
-                    localStorage.setItem('fcmToken', token);
-                    isSubscribed = true;
-                    
-                    // Save token to Firestore (optional)
-                    await saveFCMToken(token);
-                } else {
-                    console.log('No registration token available.');
-                }
-                
-                // Handle foreground messages
-                messaging.onMessage((payload) => {
-                    console.log('Foreground message received:', payload);
-                    
-                    // Show notification
-                    showPushNotification(payload);
-                    
-                    // Show floating notification
-                    showFloatingNotification(
-                        payload.notification?.title || 'New Message',
-                        payload.notification?.body || 'You have a new message'
-                    );
-                    
-                    // Update unread count
-                    unreadCount++;
-                    updateNotificationBadge();
-                    
-                    // Refresh messages
-                    loadMessages();
-                });
-                
-                console.log('Firebase Messaging initialized successfully');
-                
-            } catch (error) {
-                console.error('Error initializing Firebase Messaging:', error);
-                
-                if (error.code === 'messaging/permission-blocked') {
-                    console.log('Notification permission blocked by user');
-                } else if (error.code === 'messaging/permission-default') {
-                    console.log('Notification permission not granted');
-                }
-            }
-        }
-
-        async function saveFCMToken(token) {
-            try {
-                // Save token to Firestore or your database
-                const tokensRef = db.collection('fcmTokens');
-                await tokensRef.add({
-                    token: token,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    userAgent: navigator.userAgent
-                });
-                console.log('FCM token saved to Firestore');
-            } catch (error) {
-                console.error('Error saving FCM token:', error);
-            }
-        }
-
-        // ========== PUSH NOTIFICATIONS ==========
-        function showPushNotification(payload) {
-            if (Notification.permission !== 'granted') return;
-            
-            const title = payload.notification?.title || 'New Message';
-            const options = {
-                body: payload.notification?.body || 'You have a new message',
-                icon: 'icon-192.png',
-                badge: 'icon-192.png',
-                tag: 'paw-message',
-                renotify: true,
-                vibrate: [200, 100, 200],
-                data: payload.data || {},
-                actions: [
-                    {
-                        action: 'open',
-                        title: 'Open App'
-                    }
-                ]
-            };
-            
-            if ('showNotification' in ServiceWorkerRegistration.prototype) {
-                navigator.serviceWorker.ready.then(registration => {
-                    registration.showNotification(title, options);
-                });
-            } else {
-                new Notification(title, options);
-            }
-            
-            // Play notification sound
-            playNotificationSound();
-        }
-
-        function showFloatingNotification(title, message) {
-            const notification = document.createElement('div');
-            notification.className = 'floating-notification';
-            notification.innerHTML = `
-                <strong style="display: block; margin-bottom: 5px;">${title}</strong>
-                <p style="font-size: 14px; color: #666;">${message}</p>
-            `;
-            
-            document.body.appendChild(notification);
-            
-            // Auto remove after 5 seconds
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-            }, 5000);
-        }
-
-        function playNotificationSound() {
-            try {
-                // Use a simple beep sound
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                
-                oscillator.frequency.value = 800;
-                oscillator.type = 'sine';
-                
-                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-                
-                oscillator.start(audioContext.currentTime);
-                oscillator.stop(audioContext.currentTime + 0.5);
-                
-            } catch (error) {
-                console.log('Could not play notification sound:', error);
-            }
-        }
-
-        // ========== MESSAGES MANAGEMENT ==========
-        function loadMessages() {
-            emptyState.innerHTML = `
-                <div class="spinner"></div>
-                <p>Loading messages...</p>
-            `;
-            emptyState.style.display = 'block';
-            
-            db.collection('messages')
-                .orderBy('timestamp', 'desc')
-                .limit(50)
-                .onSnapshot((snapshot) => {
-                    messages = [];
-                    snapshot.forEach(doc => {
-                        messages.push({
-                            id: doc.id,
-                            ...doc.data()
-                        });
-                    });
-                    
-                    renderMessages();
-                }, (error) => {
-                    console.error('Error loading messages:', error);
-                    emptyState.innerHTML = `
-                        <div style="font-size: 48px; margin-bottom: 16px;">😕</div>
-                        <h3>Error loading messages</h3>
-                        <p>Please check your connection</p>
-                    `;
-                });
-        }
-
-        function renderMessages() {
-            if (messages.length === 0) {
-                emptyState.innerHTML = `
-                    <div class="empty-state-icon">📭</div>
-                    <h3>No messages yet</h3>
-                    <p>Messages will appear here when received</p>
-                `;
-                emptyState.style.display = 'block';
-                messagesContainer.innerHTML = '';
-                return;
-            }
-            
-            emptyState.style.display = 'none';
-            
-            let messagesHTML = '';
-            messages.forEach((msg, index) => {
-                const time = msg.timestamp ? 
-                    formatTime(msg.timestamp.toDate()) : 'Just now';
-                
-                const date = msg.timestamp ?
-                    formatDate(msg.timestamp.toDate()) : '';
-                
-                const isUnread = !msg.read;
-                const priorityClass = msg.priority ? `priority-${msg.priority}` : '';
-                
-                messagesHTML += `
-                    <div class="message-card ${isUnread ? 'unread' : ''}" 
-                         onclick="markAsRead('${msg.id}')"
-                         style="animation-delay: ${index * 0.1}s">
-                        <div class="message-header">
-                            <div class="message-title">${msg.title || 'Notification'}</div>
-                            <div class="message-time">${time}</div>
-                        </div>
-                        <div class="message-body">${msg.body || msg.message || ''}</div>
-                        ${msg.priority ? `<span class="message-priority ${priorityClass}">${msg.priority.toUpperCase()}</span>` : ''}
-                        <small style="display: block; margin-top: 10px; color: #7f8c8d;">${date}</small>
-                    </div>
-                `;
-            });
-            
-            messagesContainer.innerHTML = messagesHTML;
-        }
-
-        function markAsRead(messageId) {
-            // Update in Firestore
-            db.collection('messages').doc(messageId).update({
-                read: true,
-                readAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            
-            // Update locally
-            const messageIndex = messages.findIndex(m => m.id === messageId);
-            if (messageIndex > -1) {
-                messages[messageIndex].read = true;
-                unreadCount = Math.max(0, unreadCount - 1);
-                updateNotificationBadge();
-                
-                // Update UI
-                const messageCard = document.querySelector(`[onclick="markAsRead('${messageId}')"]`);
-                if (messageCard) {
-                    messageCard.classList.remove('unread');
-                }
-            }
-        }
-
-        function updateNotificationBadge() {
-            if (unreadCount > 0) {
-                notificationBadge.textContent = unreadCount > 9 ? '9+' : unreadCount;
-                notificationBadge.style.display = 'flex';
-            } else {
-                notificationBadge.style.display = 'none';
-            }
-        }
-
-        // ========== PWA INSTALLATION ==========
-        function setupInstallPrompt() {
-            window.addEventListener('beforeinstallprompt', (e) => {
-                e.preventDefault();
-                deferredPrompt = e;
-                
-                // Show install prompt after 5 seconds
-                setTimeout(() => {
-                    if (deferredPrompt && !isAppInstalled()) {
-                        showInstallPrompt();
-                    }
-                }, 5000);
-            });
-            
-            // Check if app is already installed
-            window.addEventListener('appinstalled', () => {
-                console.log('App installed successfully');
-                deferredPrompt = null;
-                hideInstallPrompt();
-                showFloatingNotification('App Installed', 'PAW Messages has been installed successfully!');
-            });
-        }
-
-        function showInstallPrompt() {
-            installPrompt.style.display = 'block';
-        }
-
-        function hideInstallPrompt() {
-            installPrompt.style.display = 'none';
-        }
-
-        async function installApp() {
-            if (!deferredPrompt) {
-                console.log('No install prompt available');
-                return;
-            }
-            
-            try {
+            installButton.addEventListener('click', async () => {
+                installButton.classList.add('d-none');
                 deferredPrompt.prompt();
                 const { outcome } = await deferredPrompt.userChoice;
-                
-                if (outcome === 'accepted') {
-                    console.log('User accepted the install prompt');
-                } else {
-                    console.log('User dismissed the install prompt');
-                }
-                
                 deferredPrompt = null;
-                hideInstallPrompt();
-                
-            } catch (error) {
-                console.error('Error during installation:', error);
-            }
-        }
-
-        function isAppInstalled() {
-            return window.matchMedia('(display-mode: standalone)').matches || 
-                   window.navigator.standalone ||
-                   document.referrer.includes('android-app://');
-        }
-
-        // ========== NAVIGATION FUNCTIONS ==========
-        function showMessages() {
-            loadMessages();
-            setActiveNavButton(0);
-        }
-
-        function showSettings() {
-            setActiveNavButton(1);
-            messagesContainer.innerHTML = `
-                <div class="permission-box">
-                    <div class="permission-icon">⚙️</div>
-                    <h3>Settings</h3>
-                    <p>Configure your notification preferences</p>
-                    <div style="margin-top: 20px;">
-                        <button class="enable-btn" onclick="toggleNotifications()" style="margin: 5px;">
-                            ${isSubscribed ? 'Disable' : 'Enable'} Notifications
-                        </button>
-                        <button class="enable-btn" onclick="clearAllMessages()" style="margin: 5px; background: #FF4757;">
-                            Clear All Messages
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
-
-        function showProfile() {
-            setActiveNavButton(2);
-            messagesContainer.innerHTML = `
-                <div class="permission-box">
-                    <div class="permission-icon">👤</div>
-                    <h3>Profile</h3>
-                    <p>User information and app status</p>
-                    <div style="text-align: left; margin-top: 20px; background: #f8f9fa; padding: 15px; border-radius: 10px;">
-                        <p><strong>App Status:</strong> ${isAppInstalled() ? 'Installed' : 'Not Installed'}</p>
-                        <p><strong>Notifications:</strong> ${Notification.permission}</p>
-                        <p><strong>Messages:</strong> ${messages.length} total</p>
-                        <p><strong>Unread:</strong> ${unreadCount} messages</p>
-                    </div>
-                </div>
-            `;
-        }
-
-        function setActiveNavButton(index) {
-            document.querySelectorAll('.nav-btn').forEach((btn, i) => {
-                if (i === index) {
-                    btn.classList.add('active');
+            });
+        });
+        
+        // Check if app is already installed
+        window.addEventListener('appinstalled', () => {
+            installButton.classList.add('d-none');
+            deferredPrompt = null;
+            showAlert('App installed successfully!', 'success');
+        });
+        
+        // Firebase Messaging Setup
+        async function initializeMessaging() {
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    const token = await getToken(messaging, {
+                        vapidKey: 'BHe0ZMk9TJF5...' // You need to generate this in Firebase Console
+                    });
+                    
+                    if (token) {
+                        document.getElementById('connectionStatus').textContent = 'Connected';
+                        document.getElementById('connectionStatus').className = 'text-success';
+                        console.log('FCM Token:', token);
+                    }
+                    
+                    // Handle incoming foreground messages
+                    onMessage(messaging, (payload) => {
+                        console.log('Foreground message:', payload);
+                        showLiveNotification(payload.data);
+                        playNotificationSound();
+                    });
                 } else {
-                    btn.classList.remove('active');
+                    document.getElementById('connectionStatus').textContent = 'Notifications blocked';
+                    document.getElementById('connectionStatus').className = 'text-danger';
                 }
-            });
-        }
-
-        // ========== UTILITY FUNCTIONS ==========
-        function formatTime(date) {
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        function formatDate(date) {
-            return date.toLocaleDateString([], { 
-                weekday: 'short', 
-                year: 'numeric', 
-                month: 'short', 
-                day: 'numeric' 
-            });
-        }
-
-        async function toggleNotifications() {
-            if (isSubscribed) {
-                // Unsubscribe logic
-                console.log('Unsubscribing from notifications');
-                isSubscribed = false;
-            } else {
-                // Subscribe logic
-                await requestNotificationPermission();
-            }
-            showSettings(); // Refresh settings view
-        }
-
-        async function clearAllMessages() {
-            if (confirm('Are you sure you want to clear all messages?')) {
-                // Note: In production, you would delete from Firestore
-                // For now, just clear locally
-                messages = [];
-                unreadCount = 0;
-                updateNotificationBadge();
-                renderMessages();
-                showFloatingNotification('Cleared', 'All messages cleared');
+            } catch (error) {
+                console.error('Error initializing messaging:', error);
+                document.getElementById('connectionStatus').textContent = 'Connection failed';
+                document.getElementById('connectionStatus').className = 'text-danger';
             }
         }
-
-        // ========== EXPOSE FUNCTIONS TO GLOBAL SCOPE ==========
-        window.requestNotificationPermission = requestNotificationPermission;
-        window.loadMessages = loadMessages;
-        window.markAsRead = markAsRead;
-        window.installApp = installApp;
-        window.hideInstallPrompt = hideInstallPrompt;
-        window.showMessages = showMessages;
-        window.showSettings = showSettings;
-        window.showProfile = showProfile;
-        window.toggleNotifications = toggleNotifications;
-        window.clearAllMessages = clearAllMessages;
+        
+        function showLiveNotification(data) {
+            const notificationDiv = document.getElementById('liveNotification');
+            document.getElementById('notifTitle').textContent = data.title;
+            document.getElementById('notifBody').textContent = data.body;
+            notificationDiv.classList.remove('d-none');
+            
+            // Auto-dismiss after 10 seconds
+            setTimeout(dismissNotification, 10000);
+        }
+        
+        window.dismissNotification = function() {
+            document.getElementById('liveNotification').classList.add('d-none');
+        }
+        
+        function playNotificationSound() {
+            const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3');
+            audio.play().catch(e => console.log('Audio play failed:', e));
+        }
+        
+        // Load messages from Firebase
+        async function loadMessages() {
+            const messagesRef = ref(database, 'messages');
+            let messageCount = 0;
+            
+            onChildAdded(messagesRef, (snapshot) => {
+                const message = snapshot.val();
+                messageCount++;
+                document.getElementById('messageCount').textContent = `${messageCount} Messages`;
+                
+                if (document.getElementById('loadingSpinner')) {
+                    document.getElementById('loadingSpinner').remove();
+                }
+                
+                addMessageToUI(message);
+            });
+        }
+        
+        function addMessageToUI(message) {
+            const messagesContainer = document.getElementById('messagesContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'card message-card mb-3';
+            messageDiv.innerHTML = `
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <h5 class="card-title">${message.title}</h5>
+                        <small class="text-muted">${message.date}</small>
+                    </div>
+                    <p class="card-text">${message.body}</p>
+                    ${message.icon ? `<img src="${message.icon}" alt="Icon" style="max-width: 50px;" class="mt-2">` : ''}
+                </div>
+            `;
+            messagesContainer.prepend(messageDiv);
+        }
+        
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+            alertDiv.style.zIndex = '9999';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertDiv);
+            setTimeout(() => alertDiv.remove(), 5000);
+        }
+        
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initializeMessaging();
+            await loadMessages();
+            
+            // Register service worker for PWA
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('firebase-messaging-sw.js')
+                    .then(() => console.log('Service Worker registered'))
+                    .catch(err => console.log('Service Worker registration failed:', err));
+            }
+        });
     </script>
 </body>
 </html>
