@@ -1,17 +1,19 @@
 // Service Worker for Duty Manager PWA
-const CACHE_NAME = 'duty-manager-v1';
+const CACHE_NAME = 'duty-manager-v2';
 const urlsToCache = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icons/icon-72x72.png',
-  './icons/icon-96x96.png',
-  './icons/icon-128x128.png',
-  './icons/icon-144x144.png',
-  './icons/icon-152x152.png',
-  './icons/icon-192x192.png',
-  './icons/icon-384x384.png',
-  './icons/icon-512x512.png'
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/sha256.min.js',
+  '/icons/icon-72.png',
+  '/icons/icon-96.png',
+  '/icons/icon-128.png',
+  '/icons/icon-144.png',
+  '/icons/icon-152.png',
+  '/icons/icon-192.png',
+  '/icons/icon-384.png',
+  '/icons/icon-512.png',
+  '/icons/badge-96.png'
 ];
 
 // Install event
@@ -19,8 +21,10 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
+        console.log('Cache opened');
+        return cache.addAll(urlsToCache).catch(error => {
+          console.error('Failed to cache some resources:', error);
+        });
       })
   );
   self.skipWaiting();
@@ -43,46 +47,74 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// Fetch event
+// Fetch event with network-first strategy for dynamic content
 self.addEventListener('fetch', event => {
-  // Skip cross-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
+  // Skip non-GET requests and cross-origin requests
+  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
+  // For API requests, use network-first
+  if (event.request.url.includes('/api/') || event.request.url.includes('firestore.googleapis.com')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          // Cache successful responses
+          if (response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME)
+              .then(cache => {
+                cache.put(event.request, responseToCache);
+              });
+          }
+          return response;
+        })
+        .catch(() => {
+          // If network fails, try cache
+          return caches.match(event.request);
+        })
+    );
+    return;
+  }
+
+  // For static assets, use cache-first
   event.respondWith(
     caches.match(event.request)
       .then(response => {
-        // Return cached version if found
         if (response) {
           return response;
         }
 
-        // Clone the request
-        const fetchRequest = event.request.clone();
+        return fetch(event.request)
+          .then(response => {
+            // Check if valid response
+            if (!response || response.status !== 200 || response.type !== 'basic') {
+              return response;
+            }
 
-        return fetch(fetchRequest).then(response => {
-          // Check if valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
+            // Clone the response
+            const responseToCache = response.clone();
+
+            caches.open(CACHE_NAME)
+              .then(cache => {
+                cache.put(event.request, responseToCache);
+              });
+
             return response;
-          }
-
-          // Clone the response
-          const responseToCache = response.clone();
-
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
+          })
+          .catch(() => {
+            // If both cache and network fail, return offline page
+            if (event.request.mode === 'navigate') {
+              return caches.match('/');
+            }
+            return new Response('Offline', {
+              status: 503,
+              statusText: 'Service Unavailable',
+              headers: new Headers({
+                'Content-Type': 'text/plain'
+              })
             });
-
-          return response;
-        });
-      })
-      .catch(() => {
-        // If both cache and network fail, show offline page
-        if (event.request.mode === 'navigate') {
-          return caches.match('./');
-        }
+          });
       })
   );
 });
@@ -91,11 +123,22 @@ self.addEventListener('fetch', event => {
 self.addEventListener('push', event => {
   if (!event.data) return;
 
-  const data = event.data.json();
+  let data;
+  try {
+    data = event.data.json();
+  } catch (e) {
+    data = {
+      title: 'Duty Manager',
+      body: event.data.text() || 'New notification',
+      icon: '/icons/icon-96.png',
+      badge: '/icons/badge-96.png'
+    };
+  }
+
   const options = {
-    body: data.body,
-    icon: './icons/icon-96x96.png',
-    badge: './icons/badge-96x96.png',
+    body: data.body || 'New notification',
+    icon: data.icon || '/icons/icon-96.png',
+    badge: data.badge || '/icons/badge-96.png',
     vibrate: [100, 50, 100],
     data: data.data || {},
     tag: 'duty-manager-notification',
@@ -104,16 +147,12 @@ self.addEventListener('push', event => {
       {
         action: 'view',
         title: 'View'
-      },
-      {
-        action: 'dismiss',
-        title: 'Dismiss'
       }
     ]
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(data.title || 'Duty Manager', options)
   );
 });
 
@@ -132,10 +171,18 @@ self.addEventListener('notificationclick', event => {
       type: 'window',
       includeUncontrolled: true
     }).then(windowClients => {
-      // Check if there's already a window/tab open
+      // Check if there's already a window/tab open with the app
       for (let client of windowClients) {
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus();
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus().then(() => {
+            // Send message to focus on specific section if needed
+            if (event.notification.data && event.notification.data.type === 'request') {
+              client.postMessage({
+                type: 'navigate',
+                section: 'pendingRequests'
+              });
+            }
+          });
         }
       }
       // If not, open a new window
@@ -145,3 +192,15 @@ self.addEventListener('notificationclick', event => {
     })
   );
 });
+
+// Background sync for offline requests
+self.addEventListener('sync', event => {
+  if (event.tag === 'sync-requests') {
+    event.waitUntil(syncPendingRequests());
+  }
+});
+
+async function syncPendingRequests() {
+  // This would sync any pending requests that were made offline
+  console.log('Syncing pending requests...');
+}
