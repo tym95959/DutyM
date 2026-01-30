@@ -25,7 +25,7 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%233498db'/%3E%3Ccircle cx='50' cy='35' r='12' fill='white'/%3E%3Cpath d='M50,55 C65,55 70,70 70,70 L30,70 C30,70 35,55 50,55 Z' fill='white'/%3E%3Cpath d='M35,75 L65,75 L65,85 C65,90 60,95 50,95 C40,95 35,90 35,85 Z' fill='white'/%3E%3Cpath d='M20,20 L20,40 L30,30 Z' fill='%2327ae60'/%3E%3C/svg%3E">
     <link rel="shortcut icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%233498db'/%3E%3Ccircle cx='50' cy='35' r='12' fill='white'/%3E%3Cpath d='M50,55 C65,55 70,70 70,70 L30,70 C30,70 35,55 50,55 Z' fill='white'/%3E%3Cpath d='M35,75 L65,75 L65,85 C65,90 60,95 50,95 C40,95 35,90 35,85 Z' fill='white'/%3E%3Cpath d='M20,20 L20,40 L30,30 Z' fill='%2327ae60'/%3E%3C/svg%3E">
     
-    <!-- Replace the existing manifest link with this simple one -->
+    <!-- Manifest -->
     <link rel="manifest" href="manifest.json">
     <title>Duty Management System</title>
     
@@ -33,18 +33,889 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-analytics.js"></script>
     
     <!-- SHA-256 Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.9.0/sha256.min.js"></script>
     
-    <!-- External Configuration Files -->
-    <script src="users.js"></script>
-    <script src="dcfire.js"></script>
-    
-    <!-- Rest of the CSS and HTML remains the same -->
-     <style>
+    <style>
+        
         /* Mobile-First CSS */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: #f5f7fa;
+            min-height: 100vh;
+            overflow-x: hidden;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* Loading Overlay */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            display: none;
+        }
+
+        #loadingOverlay.active {
+            display: flex;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        /* Toast Container */
+        #toastContainer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            max-width: calc(100% - 40px);
+        }
+
+        .toast {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideInRight 0.3s ease;
+            max-width: 350px;
+        }
+
+        .toast.success {
+            border-left: 4px solid #27ae60;
+        }
+
+        .toast.error {
+            border-left: 4px solid #e74c3c;
+        }
+
+        .toast.warning {
+            border-left: 4px solid #f39c12;
+        }
+
+        .toast.info {
+            border-left: 4px solid #3498db;
+        }
+
+        /* Login Page */
+        .login-container {
+            background: white;
+            width: 100%;
+            min-height: 100vh;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo h1 {
+            color: #2c3e50;
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .logo p {
+            color: #7f8c8d;
+            font-size: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #2c3e50;
+            font-size: 15px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 16px;
+            border: 2px solid #e0e6ed;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 16px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            touch-action: manipulation;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #219653;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d68910;
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        /* Dashboard */
+        .dashboard-container {
+            display: none;
+            width: 100%;
+            min-height: 100vh;
+            background: #f5f7fa;
+        }
+
+        /* Mobile Header */
+        .mobile-header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            height: 60px;
+        }
+
+        .menu-toggle {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+            margin: -8px;
+        }
+
+        .mobile-title {
+            font-size: 18px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 60%;
+        }
+
+        .mobile-user {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .mobile-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        /* Mobile Navigation */
+        .mobile-nav-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: none;
+        }
+
+        .mobile-nav-overlay.active {
+            display: block;
+        }
+
+        .mobile-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 280px;
+            background: white;
+            z-index: 1001;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .mobile-nav.active {
+            transform: translateX(0);
+        }
+
+        .nav-header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .nav-user-name {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .nav-user-details {
+            font-size: 14px;
+            opacity: 0.9;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .nav-items {
+            flex: 1;
+            padding: 10px 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            color: #2c3e50;
+            text-decoration: none;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 15px;
+        }
+
+        .nav-item.active {
+            background: #e8f4fc;
+            color: #3498db;
+            border-left: 4px solid #3498db;
+        }
+
+        .nav-item-icon {
+            font-size: 18px;
+            width: 24px;
+            text-align: center;
+        }
+
+        .nav-item-badge {
+            margin-left: auto;
+            background: #e74c3c;
+            color: white;
+            border-radius: 10px;
+            padding: 2px 8px;
+            font-size: 12px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .nav-footer {
+            padding: 20px;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        /* Bottom Navigation */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 1px solid #e0e6ed;
+            display: flex;
+            justify-content: space-around;
+            padding: 10px 0;
+            z-index: 99;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .bottom-nav-btn {
+            background: none;
+            border: none;
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: #7f8c8d;
+            font-size: 12px;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .bottom-nav-btn.active {
+            color: #3498db;
+        }
+
+        .bottom-nav-icon {
+            font-size: 20px;
+        }
+
+        /* Content Area */
+        .dashboard-content {
+            padding: 20px;
+            padding-bottom: 80px; /* Space for bottom nav */
+            min-height: calc(100vh - 60px);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .section {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e0e6ed;
+        }
+
+        .card h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 16px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 8px;
+            font-weight: 600;
+        }
+
+        /* Balance Display */
+        .balance-display {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .balance-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #e0e6ed;
+        }
+
+        .balance-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 5px 0;
+        }
+
+        .balance-label {
+            font-size: 13px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        /* Form Rows */
+        .form-row {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 4px solid;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .alert-info {
+            background: #e8f4fc;
+            border-color: #3498db;
+            color: #2c3e50;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            border-color: #27ae60;
+            color: #155724;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            border-color: #f39c12;
+            color: #856404;
+        }
+
+        .alert-danger {
+            background: #f8d7da;
+            border-color: #e74c3c;
+            color: #721c24;
+        }
+
+        /* Tables */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 15px;
+            border: 1px solid #e0e6ed;
+            border-radius: 8px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            min-width: 600px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e6ed;
+            font-size: 14px;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+            position: sticky;
+            top: 0;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .action-btn:active {
+            transform: scale(0.95);
+        }
+
+        .action-btn.approve {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .action-btn.reject {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .action-btn.view {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        /* Announcement Banner */
+        .announcement-banner {
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .announcement-banner.priority-high {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .announcement-banner.priority-medium {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .announcement-banner.priority-low {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+
+        .announcement-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Duty Time Colors */
+        .duty-0730-1530 {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%) !important;
+            color: #856404 !important;
+        }
+
+        .duty-0830-1630 {
+            background: linear-gradient(135deg, #e2d9f3 0%, #d6c6f7 100%) !important;
+            color: #563d7c !important;
+        }
+
+        .duty-1030-1830 {
+            background: linear-gradient(135deg, #fffde7 0%, #fff9c4 100%) !important;
+            color: #827717 !important;
+        }
+
+        .duty-1530-2330 {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%) !important;
+            color: #0d47a1 !important;
+        }
+
+        .duty-1630-0030 {
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%) !important;
+            color: #424242 !important;
+        }
+
+        .duty-leave {
+            background: linear-gradient(135deg, #ffd8a6 0%, #ffc078 100%) !important;
+            color: #e8590c !important;
+            border: 1px dashed #fd7e14 !important;
+        }
+
+        .off-day-cell {
+            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%) !important;
+            color: #155724 !important;
+            font-weight: 500;
+        }
+
+        /* Empty States */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #7f8c8d;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        .empty-state-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        /* Mobile Optimized Form Elements */
+        select.form-control {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%237f8c8d' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            background-size: 12px;
+            padding-right: 40px;
+        }
+
+        textarea.form-control {
+            min-height: 100px;
+            resize: vertical;
+            line-height: 1.4;
+        }
+
+        /* Touch-friendly Date Inputs */
+        input[type="date"] {
+            min-height: 48px;
+        }
+
+        /* Responsive Grids */
+        @media (min-width: 768px) {
+            .balance-display {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            
+            .form-row {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+            
+            .form-group {
+                flex: 1;
+                min-width: 200px;
+            }
+        }
+
+        /* Animations */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Mobile Specific */
+        @media (max-width: 767px) {
+            .dashboard-content {
+                padding: 15px;
+                padding-bottom: 70px;
+            }
+            
+            .card {
+                padding: 15px;
+            }
+            
+            .btn {
+                padding: 14px 20px;
+                font-size: 15px;
+            }
+            
+            th, td {
+                padding: 10px;
+                font-size: 13px;
+            }
+            
+            .action-btn {
+                padding: 5px 10px;
+                font-size: 11px;
+            }
+        }
+        
+        /* Install App Button */
+        #installBtnContainer {
+            position: fixed;
+            bottom: 90px;
+            right: 15px;
+            z-index: 1000;
+        }
+        
+        #installBtn {
+            background: linear-gradient(135deg, #3498db, #2c3e50);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 12px 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            animation: pulse 2s infinite;
+        }
+        
+        #installBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        
+        /* Push Notification Permission Prompt */
+        .notification-permission {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+            animation: slideInUp 0.3s ease;
+        }
+        
+        .notification-permission h4 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+        
+        /* PWA App Styles */
+        .standalone-app .bottom-nav {
+            padding-bottom: env(safe-area-inset-bottom, 10px);
+        }
+        
+        .standalone-app .dashboard-content {
+            padding-top: env(safe-area-inset-top, 20px);
+        }
+        
+        /* Notification Badge */
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #e74c3c;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        /* Animation for new notifications */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes slideInUp {
+            from {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOutDown {
+            from {
+                transform: translateY(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+        }
+        
+        /* Service Worker Status */
+        .service-worker-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(52, 152, 219, 0.9);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+  
+        
         * {
             margin: 0;
             padding: 0;
@@ -1380,7 +2251,7 @@
         // APPLICATION VARIABLES
         // ============================================
         let currentUser = null;
-        let allUsers = []; // Will be populated from users.js
+        let allUsers = [];
         let dutyRoster = {};
         let leaveBalances = {};
         let allRequests = [];
@@ -1404,78 +2275,119 @@
             initializeFirebase();
             setupPWAInstall();
             checkNotificationPermission();
-            createDynamicManifest(); // Add this here
         });
 
-        // ============================================
-        /// DYNAMIC MANIFEST CREATION
-        // ============================================
-        function createDynamicManifest() {
-            const manifest = {
-                name: "Duty Manager",
-                short_name: "DutyMgr",
-                description: "Duty and Leave Management System",
-                start_url: "./",
-                display: "standalone",
-                background_color: "#3498db",
-                theme_color: "#3498db",
-                orientation: "portrait",
-                scope: "./",
-                categories: ["productivity", "business"],
-                icons: [{
-                    src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%233498db'/%3E%3Ccircle cx='50' cy='35' r='12' fill='white'/%3E%3Cpath d='M50,55 C65,55 70,70 70,70 L30,70 C30,70 35,55 50,55 Z' fill='white'/%3E%3Cpath d='M35,75 L65,75 L65,85 C65,90 60,95 50,95 C40,95 35,90 35,85 Z' fill='white'/%3E%3Cpath d='M20,20 L20,40 L30,30 Z' fill='%2327ae60'/%3E%3C/svg%3E",
-                    sizes: "512x512",
-                    type: "image/svg+xml",
-                    purpose: "any maskable"
-                }, {
-                    src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%233498db'/%3E%3Ccircle cx='50' cy='35' r='12' fill='white'/%3E%3Cpath d='M50,55 C65,55 70,70 70,70 L30,70 C30,70 35,55 50,55 Z' fill='white'/%3E%3Cpath d='M35,75 L65,75 L65,85 C65,90 60,95 50,95 C40,95 35,90 35,85 Z' fill='white'/%3E%3Cpath d='M20,20 L20,40 L30,30 Z' fill='%2327ae60'/%3E%3C/svg%3E",
-                    sizes: "192x192",
-                    type: "image/svg+xml",
-                    purpose: "any maskable"
-                }, {
-                    src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%233498db'/%3E%3Ccircle cx='50' cy='35' r='12' fill='white'/%3E%3Cpath d='M50,55 C65,55 70,70 70,70 L30,70 C30,70 35,55 50,55 Z' fill='white'/%3E%3Cpath d='M35,75 L65,75 L65,85 C65,90 60,95 50,95 C40,95 35,90 35,85 Z' fill='white'/%3E%3Cpath d='M20,20 L20,40 L30,30 Z' fill='%2327ae60'/%3E%3C/svg%3E",
-                    sizes: "144x144",
-                    type: "image/svg+xml",
-                    purpose: "any maskable"
-                }]
-            };
-            
-            const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-            
-            // Remove existing manifest link
-            const existingManifest = document.querySelector('link[rel="manifest"]');
-            if (existingManifest) {
-                existingManifest.remove();
+        function detectMobile() {
+            isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (isMobile) {
+                document.body.classList.add('mobile');
             }
-            
-            // Create new manifest link
-            const link = document.createElement('link');
-            link.rel = 'manifest';
-            link.href = url;
-            document.head.appendChild(link);
-            
-            console.log('Dynamic manifest created and applied');
-        }       
+        }
 
-        
+        function initApp() {
+            setupEventListeners();
+            checkSession();
+            setupMobileMenu();
+            
+            // Add login form submit handler
+            const loginForm = document.getElementById('loginForm');
+            if (loginForm) {
+                loginForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    handleLogin();
+                });
+            }
+        }
 
-        // ... REST OF THE SCRIPT.JS CODE REMAINS THE SAME ...
-        // (The functions that reference users will now use the global `users` variable from users.js)
-        // (The functions that reference firebaseConfig will now use the global `firebaseConfig` from dcfire.js)
+        function checkSession() {
+            const sessionData = localStorage.getItem('dutySystemSession');
+            if (sessionData) {
+                try {
+                    const session = JSON.parse(sessionData);
+                    if (session.expiry > Date.now()) {
+                        loginUser(session);
+                    } else {
+                        localStorage.removeItem('dutySystemSession');
+                        showToast('Session expired. Please login again.', 'warning');
+                    }
+                } catch (error) {
+                    console.error('Error parsing session data:', error);
+                    localStorage.removeItem('dutySystemSession');
+                }
+            }
+        }
+
+        function setupMobileMenu() {
+            const menuToggle = document.getElementById('menuToggle');
+            const mobileNav = document.getElementById('mobileNav');
+            const mobileNavOverlay = document.getElementById('mobileNavOverlay');
+
+            if (menuToggle) {
+                menuToggle.addEventListener('click', function() {
+                    mobileNav.classList.add('active');
+                    mobileNavOverlay.classList.add('active');
+                });
+            }
+
+            if (mobileNavOverlay) {
+                mobileNavOverlay.addEventListener('click', function() {
+                    mobileNav.classList.remove('active');
+                    mobileNavOverlay.classList.remove('active');
+                });
+            }
+
+            // Close menu when clicking on nav items
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    mobileNav.classList.remove('active');
+                    mobileNavOverlay.classList.remove('active');
+                });
+            });
+        }
+
+        // ============================================
+        // SERVICE WORKER
+        // ============================================
+        function initializeServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js')
+                    .then(registration => {
+                        console.log('Service Worker registered with scope:', registration.scope);
+                        updateServiceWorkerStatus('Service Worker: Active');
+                    })
+                    .catch(error => {
+                        console.error('Service Worker registration failed:', error);
+                        updateServiceWorkerStatus('Service Worker: Failed');
+                    });
+            }
+        }
+
+        function updateServiceWorkerStatus(message) {
+            const statusEl = document.getElementById('serviceWorkerStatus');
+            if (statusEl) {
+                statusEl.textContent = message;
+                statusEl.style.display = 'block';
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                }, 3000);
+            }
+        }
 
         // ============================================
         // FIREBASE
         // ============================================
         function initializeFirebase() {
             try {
-                // firebaseConfig is now defined in dcfire.js
-                if (!firebaseConfig) {
-                    console.error('Firebase configuration not found in dcfire.js');
-                    showToast('Firebase configuration missing', 'error');
-                    firebaseInitialized = false;
-                    return;
-                }
+                // For demo purposes, using a simple configuration
+                // You should replace this with your actual Firebase config
+                const firebaseConfig = {
+                    apiKey: "AIzaSyCw8Pvq3e8T0X5v1Q2Z3X4Y5Z6A7B8C9D0",
+                    authDomain: "duty-manager-demo.firebaseapp.com",
+                    projectId: "duty-manager-demo",
+                    storageBucket: "duty-manager-demo.appspot.com",
+                    messagingSenderId: "123456789012",
+                    appId: "1:123456789012:web:abcdef1234567890"
+                };
                 
                 firebase.initializeApp(firebaseConfig);
                 db = firebase.firestore();
@@ -1486,6 +2398,140 @@
                 console.error('Firebase initialization failed:', error);
                 firebaseInitialized = false;
             }
+        }
+
+        // ============================================
+        // PWA INSTALL
+        // ============================================
+        function setupPWAInstall() {
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+                const installBtnContainer = document.getElementById('installBtnContainer');
+                if (installBtnContainer) {
+                    installBtnContainer.style.display = 'block';
+                }
+            });
+
+            window.addEventListener('appinstalled', () => {
+                console.log('App installed');
+                deferredPrompt = null;
+                const installBtnContainer = document.getElementById('installBtnContainer');
+                if (installBtnContainer) {
+                    installBtnContainer.style.display = 'none';
+                }
+            });
+        }
+
+        // ============================================
+        // NOTIFICATIONS
+        // ============================================
+        function checkNotificationPermission() {
+            notificationPermission = Notification.permission;
+            const statusEl = document.getElementById('notificationStatus');
+            if (statusEl) {
+                statusEl.textContent = notificationPermission === 'granted' ? 'On' : 'Off';
+            }
+        }
+
+        function requestNotificationPermission() {
+            if ('Notification' in window) {
+                Notification.requestPermission().then(permission => {
+                    notificationPermission = permission;
+                    const statusEl = document.getElementById('notificationStatus');
+                    if (statusEl) {
+                        statusEl.textContent = permission === 'granted' ? 'On' : 'Off';
+                    }
+                    
+                    if (permission === 'granted') {
+                        showToast('Notifications enabled!', 'success');
+                        initializeFirebaseMessaging();
+                    } else if (permission === 'denied') {
+                        showToast('Notifications blocked. Enable in browser settings.', 'warning');
+                    }
+                });
+            } else {
+                showToast('Notifications not supported in this browser', 'warning');
+            }
+        }
+
+        async function initializeFirebaseMessaging() {
+            if (!firebaseInitialized) return;
+            
+            try {
+                messaging = firebase.messaging();
+                
+                // Request permission and get token
+                const token = await messaging.getToken({ vapidKey: 'YOUR_VAPID_KEY_HERE' });
+                if (token) {
+                    console.log('FCM Token:', token);
+                    localStorage.setItem('fcmToken', token);
+                    
+                    // You would typically send this token to your server here
+                    // await sendTokenToServer(token, currentUser.username);
+                }
+                
+                // Handle incoming messages
+                messaging.onMessage((payload) => {
+                    console.log('Message received:', payload);
+                    showToast(payload.notification.title, 'info');
+                    
+                    // Update notification badge
+                    unreadNotifications++;
+                    updateNotificationBadge();
+                });
+                
+            } catch (error) {
+                console.error('Firebase Messaging initialization failed:', error);
+            }
+        }
+
+        async function sendPushNotification(toUsername, title, body, data) {
+            // In a real app, you would send this to your server
+            // For demo, we'll just show a local notification
+            if (Notification.permission === 'granted') {
+                const notification = new Notification(title, {
+                    body: body,
+                    icon: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%233498db%22/%3E%3C/svg%3E',
+                    data: data
+                });
+                
+                notification.onclick = function() {
+                    window.focus();
+                    this.close();
+                };
+            }
+        }
+
+        function testPushNotification() {
+            if (Notification.permission === 'granted') {
+                sendPushNotification(
+                    currentUser.username,
+                    'Test Notification',
+                    'This is a test push notification from Duty Manager!',
+                    { type: 'test' }
+                );
+                showToast('Test notification sent!', 'success');
+            } else {
+                requestNotificationPermission();
+            }
+        }
+
+        function updateNotificationBadge() {
+            const badge = document.getElementById('headerNotificationBadge');
+            if (badge) {
+                if (unreadNotifications > 0) {
+                    badge.textContent = unreadNotifications;
+                    badge.style.display = 'block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+        }
+
+        function clearNotifications() {
+            unreadNotifications = 0;
+            updateNotificationBadge();
         }
 
         // ============================================
@@ -1503,40 +2549,55 @@
                 return;
             }
             
-            // users is now defined in users.js
-            const user = users.find(u => u.username === username);
-            
-            if (!user) {
-                showToast('Invalid username or password', 'error');
-                document.getElementById('errorMessage').style.display = 'block';
-                showLoading(false);
-                return;
-            }
-            
-            const hashedPassword = sha256(password);
-            
-            if (hashedPassword === user.passwordHash) {
-                const sessionData = {
-                    username: user.username,
-                    name: user.name,
-                    rcNo: user.RCNo,
-                    level: user.Level,
-                    expiry: Date.now() + (8 * 60 * 60 * 1000)
-                };
+            try {
+                // Load users.js dynamically
+                const response = await fetch('users.js');
+                const userScript = await response.text();
                 
-                localStorage.setItem('dutySystemSession', JSON.stringify(sessionData));
-                await loginUser(sessionData);
-                showLoading(false);
-            } else {
-                showToast('Invalid username or password', 'error');
-                document.getElementById('errorMessage').style.display = 'block';
-                showLoading(false);
+                // Extract users array from the script
+                const usersMatch = userScript.match(/const users = (\[.*?\]);/s);
+                if (usersMatch) {
+                    const users = eval(usersMatch[1]);
+                    const user = users.find(u => u.username === username);
+                    
+                    if (!user) {
+                        showToast('Invalid username or password', 'error');
+                        document.getElementById('errorMessage').style.display = 'block';
+                        showLoading(false);
+                        return;
+                    }
+                    
+                    const hashedPassword = sha256(password);
+                    
+                    if (hashedPassword === user.passwordHash) {
+                        const sessionData = {
+                            username: user.username,
+                            name: user.name,
+                            rcNo: user.RCNo,
+                            level: user.Level,
+                            expiry: Date.now() + (8 * 60 * 60 * 1000) // 8 hours
+                        };
+                        
+                        localStorage.setItem('dutySystemSession', JSON.stringify(sessionData));
+                        allUsers = users;
+                        await loginUser(sessionData);
+                    } else {
+                        showToast('Invalid username or password', 'error');
+                        document.getElementById('errorMessage').style.display = 'block';
+                    }
+                } else {
+                    showToast('User database not found', 'error');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showToast('Login failed. Please try again.', 'error');
             }
+            
+            showLoading(false);
         }
 
-      async function loginUser(userData) {
+        async function loginUser(userData) {
             currentUser = userData;
-            allUsers = users || [];
             
             document.getElementById('loginContainer').style.display = 'none';
             document.getElementById('dashboardContainer').style.display = 'block';
@@ -1548,6 +2609,7 @@
             document.getElementById('navUserLevel').textContent = userData.level;
             document.getElementById('welcomeName').textContent = userData.name;
             
+            // Show/hide admin sections
             const isAdmin = userData.level === 'Supervisor';
             document.querySelectorAll('.admin-nav').forEach(el => {
                 el.style.display = isAdmin ? 'flex' : 'none';
@@ -1557,42 +2619,123 @@
                 await initializeFirebaseMessaging();
             }
             
-            setupNotificationListener();
             await initializeData();
-            setupEventListeners();
+            setupDashboardEventListeners();
             
             showToast(`Welcome back, ${userData.name}!`, 'success');
-            
-            setTimeout(() => {
-                sendPushNotification(
-                    userData.username,
-                    'Welcome to Duty Manager!',
-                    'You have successfully logged in.',
-                    { type: 'welcome' }
-                );
-            }, 2000);
         }
 
         async function initializeData() {
             showLoading(true, 'Loading data...');
             
             try {
-                await Promise.all([
-                    loadDutyRoster(),
-                    loadLeaveBalances(),
-                    loadAllRequests(),
-                    loadAnnouncements()
-                ]);
+                // Load initial data
+                await loadDutyRoster();
+                await loadLeaveBalances();
+                await loadAllRequests();
+                await loadAnnouncements();
                 
                 updateUserBalance();
                 updateRequestCounts();
                 loadHomeAnnouncements();
+                updateDashboard();
                 
                 showLoading(false);
             } catch (error) {
                 console.error('Error initializing data:', error);
                 showToast('Failed to load data', 'error');
                 showLoading(false);
+            }
+        }
+
+        async function loadDutyRoster() {
+            // For demo, create a sample roster
+            dutyRoster = {};
+            const today = new Date();
+            
+            for (let i = 0; i < 30; i++) {
+                const date = new Date(today);
+                date.setDate(today.getDate() + i);
+                const dateStr = date.toISOString().split('T')[0];
+                dutyRoster[dateStr] = {};
+                
+                allUsers.forEach(user => {
+                    if (user.Level === 'User') {
+                        // Assign random duty times for demo
+                        const dutyTimes = ['0730-1530', '0830-1630', '1030-1830', '1530-2330', '1630-0030', 'Off'];
+                        const randomDuty = dutyTimes[Math.floor(Math.random() * dutyTimes.length)];
+                        dutyRoster[dateStr][user.username] = randomDuty;
+                    }
+                });
+            }
+        }
+
+        async function loadLeaveBalances() {
+            // For demo, set initial leave balances
+            leaveBalances = {};
+            allUsers.forEach(user => {
+                leaveBalances[user.username] = {
+                    SL: 14, // 14 days sick leave
+                    FRL: 7  // 7 days FRL
+                };
+            });
+        }
+
+        async function loadAllRequests() {
+            // For demo, start with empty requests
+            allRequests = [];
+        }
+
+        async function loadAnnouncements() {
+            // For demo, start with empty announcements
+            announcements = [];
+        }
+
+        async function saveAllRequests() {
+            // In a real app, save to Firebase
+            // For demo, just save to localStorage
+            try {
+                localStorage.setItem('dutyRequests', JSON.stringify(allRequests));
+                return true;
+            } catch (error) {
+                console.error('Error saving requests:', error);
+                return false;
+            }
+        }
+
+        async function saveLeaveBalances() {
+            // In a real app, save to Firebase
+            // For demo, just save to localStorage
+            try {
+                localStorage.setItem('leaveBalances', JSON.stringify(leaveBalances));
+                return true;
+            } catch (error) {
+                console.error('Error saving leave balances:', error);
+                return false;
+            }
+        }
+
+        async function saveDutyRoster() {
+            // In a real app, save to Firebase
+            // For demo, just save to localStorage
+            try {
+                localStorage.setItem('dutyRoster', JSON.stringify(dutyRoster));
+                return true;
+            } catch (error) {
+                console.error('Error saving duty roster:', error);
+                return false;
+            }
+        }
+
+        async function saveAnnouncements() {
+            // In a real app, save to Firebase
+            // For demo, just save to localStorage
+            try {
+                localStorage.setItem('announcements', JSON.stringify(announcements));
+                return true;
+            } catch (error) {
+                console.error('Error saving announcements:', error);
+                return false;
             }
         }
 
@@ -1666,15 +2809,18 @@
             
             document.getElementById('mobileTitle').textContent = titles[sectionId] || sectionId;
             
+            // Hide all sections
             document.querySelectorAll('.section').forEach(section => {
                 section.classList.remove('active');
             });
             
+            // Show selected section
             const sectionElement = document.getElementById(sectionId + 'Section');
             if (sectionElement) {
                 sectionElement.classList.add('active');
             }
             
+            // Update navigation
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.classList.remove('active');
                 if (item.getAttribute('data-section') === sectionId) {
@@ -1682,6 +2828,7 @@
                 }
             });
             
+            // Update bottom navigation
             document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
                 btn.classList.remove('active');
                 const btnText = btn.querySelector('span:last-child').textContent.toLowerCase();
@@ -1692,8 +2839,10 @@
                 if (sectionId === 'viewAllRoster' && btnText === 'roster') btn.classList.add('active');
             });
             
+            // Load section data
             loadSectionData(sectionId);
             
+            // Scroll to top
             const dashboardContent = document.getElementById('dashboardContent');
             if (dashboardContent) {
                 dashboardContent.scrollTop = 0;
@@ -1789,6 +2938,7 @@
                 todayDutyTime.textContent = 'Not Scheduled';
             }
             
+            // Find next duty
             const tomorrow = new Date();
             let foundNext = false;
             
@@ -1884,8 +3034,12 @@
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const changeDateEl = document.getElementById('changeDate');
-            if (changeDateEl) changeDateEl.value = tomorrow.toISOString().split('T')[0];
+            if (changeDateEl) {
+                changeDateEl.value = tomorrow.toISOString().split('T')[0];
+                changeDateEl.min = tomorrow.toISOString().split('T')[0];
+            }
             
+            // Populate staff select
             const staffSelect = document.getElementById('requestToStaff');
             if (staffSelect) {
                 staffSelect.innerHTML = '<option value="">Select staff member</option>';
@@ -1899,6 +3053,7 @@
                 });
             }
             
+            // Load user's duty time
             loadUserDutyTimes('changeDutyTime', tomorrow.toISOString().split('T')[0]);
         }
 
@@ -1977,6 +3132,7 @@
             
             const success = await saveAllRequests();
             if (success) {
+                // Send notification
                 await sendPushNotification(
                     toStaff,
                     'New Duty Change Request',
@@ -2003,7 +3159,10 @@
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const leaveDateEl = document.getElementById('leaveDate');
-            if (leaveDateEl) leaveDateEl.value = tomorrow.toISOString().split('T')[0];
+            if (leaveDateEl) {
+                leaveDateEl.value = tomorrow.toISOString().split('T')[0];
+                leaveDateEl.min = tomorrow.toISOString().split('T')[0];
+            }
             loadUserDutyTimes('leaveDutyTime', tomorrow.toISOString().split('T')[0]);
             updateLeaveRules();
         }
@@ -2140,6 +3299,7 @@
                 updateUserBalance();
                 updateRequestCounts();
                 
+                // Notify supervisor
                 const supervisor = allUsers.find(u => u.Level === 'Supervisor');
                 if (supervisor) {
                     await sendPushNotification(
@@ -2159,8 +3319,6 @@
                 showToast(`${leaveType} application submitted successfully! ${duration} day(s) deducted from your balance.`, 'success');
                 showSection('home');
                 document.getElementById('leaveApplicationForm').reset();
-                
-                showToast(`New ${leaveType} balance: ${leaveType === 'Sick Leave' ? userBalance.SL.toFixed(1) : userBalance.FRL.toFixed(1)} days`, 'info', 2000);
             }
         }
 
@@ -2557,9 +3715,10 @@
         }
 
         // ============================================
-        // EVENT LISTENERS
+        // DASHBOARD EVENT LISTENERS
         // ============================================
-        function setupEventListeners() {
+        function setupDashboardEventListeners() {
+            // Duty Change Form
             const dutyChangeForm = document.getElementById('dutyChangeForm');
             if (dutyChangeForm) {
                 dutyChangeForm.addEventListener('submit', function(e) {
@@ -2568,6 +3727,7 @@
                 });
             }
             
+            // Leave Application Form
             const leaveApplicationForm = document.getElementById('leaveApplicationForm');
             if (leaveApplicationForm) {
                 leaveApplicationForm.addEventListener('submit', function(e) {
@@ -2576,6 +3736,7 @@
                 });
             }
             
+            // Announcement Form
             const announcementForm = document.getElementById('announcementForm');
             if (announcementForm) {
                 announcementForm.addEventListener('submit', function(e) {
@@ -2584,6 +3745,7 @@
                 });
             }
             
+            // Date change listeners
             document.getElementById('changeDate')?.addEventListener('change', function() {
                 loadUserDutyTimes('changeDutyTime', this.value);
             });
@@ -2607,6 +3769,7 @@
                 }
             });
             
+            // Leave form listeners
             document.getElementById('leaveDate')?.addEventListener('change', function() {
                 loadUserDutyTimes('leaveDutyTime', this.value);
                 updateLeaveRules();
@@ -2616,6 +3779,7 @@
             document.getElementById('leaveDutyTime')?.addEventListener('change', updateLeaveRules);
             document.getElementById('leaveDuration')?.addEventListener('change', updateLeaveRules);
             
+            // Logout button
             document.getElementById('logoutBtn')?.addEventListener('click', function() {
                 if (confirm('Are you sure you want to logout?')) {
                     localStorage.removeItem('dutySystemSession');
@@ -2624,6 +3788,7 @@
                 }
             });
             
+            // Install button
             document.getElementById('installBtn')?.addEventListener('click', async () => {
                 if (deferredPrompt) {
                     deferredPrompt.prompt();
@@ -2654,29 +3819,6 @@
         window.deleteAnnouncement = deleteAnnouncement;
         window.loadAllRoster = loadAllRoster;
         window.clearNotifications = clearNotifications;
-
-        // ============================================
-        // ANIMATIONS
-        // ============================================
-        document.addEventListener('DOMContentLoaded', function() {
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes pulse {
-                    0% { transform: scale(1); }
-                    50% { transform: scale(1.05); }
-                    100% { transform: scale(1); }
-                }
-                @keyframes slideInUp {
-                    from { transform: translateY(100%); opacity: 0; }
-                    to { transform: translateY(0); opacity: 1; }
-                }
-                @keyframes slideOutDown {
-                    from { transform: translateY(0); opacity: 1; }
-                    to { transform: translateY(100%); opacity: 0; }
-                }
-            `;
-            document.head.appendChild(style);
-        });
     </script>
 </body>
 </html>
