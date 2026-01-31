@@ -3,83 +3,211 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pushup Notification App</title>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="manifest" href="manifest.json">
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-messaging-compat.js"></script>
+    <title>Push Notification App</title>
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: white;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            text-align: center;
+            opacity: 0.9;
+            margin-bottom: 40px;
+        }
+        
+        .status-card {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .status-item:last-child {
+            margin-bottom: 0;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        
+        .status-label {
+            font-weight: 500;
+        }
+        
+        .status-value {
+            font-weight: 600;
+        }
+        
+        .status-value.active {
+            color: #4ade80;
+        }
+        
+        .status-value.inactive {
+            color: #f87171;
+        }
+        
+        .btn {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn.primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .notification {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .notification.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .notification-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .notification-body {
+            opacity: 0.9;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .permission-note {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 15px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>💪 Pushup Tracker</h1>
-            <p>Get notified to do pushups and track your progress</p>
-        </header>
-
-        <div class="auth-section" id="authSection">
-            <div class="auth-form" id="loginForm">
-                <h3>Login / Sign Up</h3>
-                <input type="email" id="email" placeholder="Email">
-                <input type="password" id="password" placeholder="Password">
-                <button onclick="login()">Login / Sign Up</button>
+        <h1>🔔 Push App</h1>
+        <p class="subtitle">Get instant notifications even when the app is closed</p>
+        
+        <div class="status-card">
+            <div class="status-item">
+                <span class="status-label">Service Worker</span>
+                <span id="swStatus" class="status-value inactive">Inactive</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Push Permission</span>
+                <span id="permissionStatus" class="status-value inactive">Denied</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">FCM Token</span>
+                <span id="tokenStatus" class="status-value inactive">Not Registered</span>
             </div>
         </div>
-
-        <div class="main-app" id="mainApp" style="display: none;">
-            <div class="user-info">
-                <span id="userEmail"></span>
-                <button onclick="logout()" class="logout-btn">Logout</button>
-            </div>
-
-            <div class="dashboard">
-                <div class="stats">
-                    <div class="stat-card">
-                        <h3>Today's Pushups</h3>
-                        <p id="todayCount">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Total Pushups</h3>
-                        <p id="totalCount">0</p>
-                    </div>
-                </div>
-
-                <div class="log-section">
-                    <h3>Log Pushups</h3>
-                    <div class="log-controls">
-                        <input type="number" id="pushupCount" placeholder="Number of pushups" min="1" max="100">
-                        <button onclick="logPushups()">Log Pushups</button>
-                        <button onclick="quickLog(10)">+10</button>
-                        <button onclick="quickLog(5)">+5</button>
-                    </div>
-                </div>
-
-                <div class="notification-section">
-                    <h3>Notifications</h3>
-                    <div class="notification-controls">
-                        <label>
-                            <input type="checkbox" id="notificationToggle">
-                            Enable Push Notifications
-                        </label>
-                        <div class="time-selection">
-                            <label>Reminder Time:</label>
-                            <input type="time" id="reminderTime" value="18:00">
-                        </div>
-                        <button onclick="scheduleReminder()">Save Schedule</button>
-                    </div>
-                    <p class="subscription-status" id="subscriptionStatus"></p>
-                </div>
-
-                <div class="history-section">
-                    <h3>Recent History</h3>
-                    <ul id="historyList"></ul>
-                </div>
-            </div>
+        
+        <button id="requestPermissionBtn" class="btn primary">Enable Push Notifications</button>
+        <button id="copyTokenBtn" class="btn">Copy Token</button>
+        
+        <div id="notification" class="notification">
+            <div class="notification-title" id="notificationTitle"></div>
+            <div class="notification-body" id="notificationBody"></div>
+        </div>
+        
+        <div class="permission-note">
+            ⚠️ For best experience, install this PWA to your home screen
         </div>
     </div>
-
-    <script src="firebase-config.js"></script>
-    <script src="app.js"></script>
+    
+    <!-- Firebase SDK -->
+    <script type="module" src="/app.js"></script>
+    
+    <script>
+        // PWA installation prompt
+        let deferredPrompt;
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            // Show install button or custom prompt
+            setTimeout(() => {
+                if (confirm('Install this app for better experience?')) {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then((choiceResult) => {
+                        deferredPrompt = null;
+                    });
+                }
+            }, 3000);
+        });
+    </script>
 </body>
 </html>
