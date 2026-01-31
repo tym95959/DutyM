@@ -1,6 +1,6 @@
 // firebase-messaging-sw.js
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.6.1/firebase-messaging-compat.js');
 
 firebase.initializeApp({
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
@@ -13,40 +13,39 @@ firebase.initializeApp({
   databaseURL: "https://leelidc-1f753-default-rtdb.firebaseio.com/"
 });
 
+firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // Handle background messages
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  
-  const notificationTitle = payload.data?.title || 'New Message';
-  const notificationOptions = {
-    body: payload.data?.body || 'You have a new message',
-    icon: '/icon-192x192.png',
-    badge: '/badge-72x72.png',
-    tag: 'message-notification',
-    renotify: true,
-    requireInteraction: true,
-    data: payload.data
-  };
+    console.log('[firebase-messaging-sw.js] Received background message:', payload);
+    
+    const notificationTitle = payload.notification?.title || 'Pushup Reminder';
+    const notificationOptions = {
+        body: payload.notification?.body || 'Time for pushups! 💪',
+        icon: '/icon.png',
+        badge: '/badge.png',
+        data: payload.data || {}
+    };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+    self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  
-  event.waitUntil(
-    clients.matchAll({type: 'window', includeUncontrolled: true}).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url === '/' && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow('/user.html');
-      }
-    })
-  );
+    event.notification.close();
+    
+    event.waitUntil(
+        clients.matchAll({type: 'window', includeUncontrolled: true})
+            .then((clientList) => {
+                for (const client of clientList) {
+                    if (client.url === '/' && 'focus' in client) {
+                        return client.focus();
+                    }
+                }
+                if (clients.openWindow) {
+                    return clients.openWindow('/');
+                }
+            })
+    );
 });
