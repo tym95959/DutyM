@@ -13,17 +13,20 @@ firebase.initializeApp({
   databaseURL: "https://leelidc-1f753-default-rtdb.firebaseio.com/"
 });
 
+// Initialize Firebase INSIDE the service worker
 firebase.initializeApp(firebaseConfig);
 
+// Retrieve messaging instance
 const messaging = firebase.messaging();
 
+// Background message handler
 messaging.onBackgroundMessage((payload) => {
-  console.log("Background message received:", payload);
+  console.log("[firebase-messaging-sw.js] BG message:", payload);
 
   self.registration.showNotification(
-    payload.notification.title,
+    payload.notification?.title || "Notification",
     {
-      body: payload.notification.body,
+      body: payload.notification?.body || "",
       icon: "/icon-192.png"
     }
   );
