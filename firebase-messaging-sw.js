@@ -2,7 +2,7 @@
 importScripts("https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js");
 
-firebase.initializeApp({
+const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
   projectId: "leelidc-1f753",
@@ -11,9 +11,9 @@ firebase.initializeApp({
   appId: "1:43622932335:web:a7529bce1f19714687129a",
   measurementId: "G-3KD6ZYS599",
   databaseURL: "https://leelidc-1f753-default-rtdb.firebaseio.com/"
-});
+};
 
-// Initialize Firebase INSIDE the service worker
+// Initialize Firebase inside the SW
 firebase.initializeApp(firebaseConfig);
 
 // Retrieve messaging instance
@@ -21,7 +21,7 @@ const messaging = firebase.messaging();
 
 // Background message handler
 messaging.onBackgroundMessage((payload) => {
-  console.log("[firebase-messaging-sw.js] BG message:", payload);
+  console.log("[firebase-messaging-sw.js] Background message received:", payload);
 
   self.registration.showNotification(
     payload.notification?.title || "Notification",
