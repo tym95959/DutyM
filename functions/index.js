@@ -1,22 +1,26 @@
+// functions/index.js
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-
 admin.initializeApp();
 
-exports.notifyOnSave = functions.firestore
-  .document("users/{docId}")
-  .onCreate(async () => {
-    const tokensSnap = await admin.firestore().collection("tokens").get();
-    const tokens = tokensSnap.docs.map(d => d.id);
+exports.sendUserNotification = functions.firestore
+    .document("users/{docId}")
+    .onCreate(async (snap, context) => {
+        const newUser = snap.data();
 
-    if (tokens.length === 0) return;
+        // Get all FCM tokens
+        const tokensSnapshot = await admin.firestore().collection("tokens").get();
+        const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
 
-    const payload = {
-      notification: {
-        title: "Saved successfully ✅",
-        body: "You have saved a message"
-      }
-    };
+        if (tokens.length === 0) return;
 
-    await admin.messaging().sendToDevice(tokens, payload);
-  });
+        const message = {
+            notification: {
+                title: "New User Added",
+                body: `Name: ${newUser.name}, Age: ${newUser.age}`,
+            },
+            tokens: tokens
+        };
+
+        await admin.messaging().sendMulticast(message);
+    });
