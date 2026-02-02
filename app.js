@@ -14,7 +14,7 @@ const app = firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // Vercel server URL - REPLACE WITH YOUR VERCEL URL
-const SERVER_URL = 'https://your-vercel-app.vercel.app';
+const SERVER_URL = 'https://duty-m.vercel.app/admin1.html';
 
 // DOM elements
 const enableButton = document.getElementById('enableButton');
@@ -47,7 +47,7 @@ async function requestPermission() {
 async function getToken() {
   try {
     const currentToken = await messaging.getToken({
-      vapidKey: "YOUR_VAPID_KEY" // Get this from Firebase Console > Cloud Messaging
+      vapidKey: "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o" // Get this from Firebase Console > Cloud Messaging
     });
     
     if (currentToken) {
