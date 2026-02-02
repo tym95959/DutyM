@@ -1,19 +1,14 @@
-// functions/index.js
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-
 admin.initializeApp();
 
 exports.sendUserNotification = functions.firestore
   .document("users/{docId}")
-  .onCreate(async (snap, context) => {
+  .onCreate(async (snap, context)=>{
     const newUser = snap.data();
-
-    // Get all saved FCM tokens
     const tokensSnapshot = await admin.firestore().collection("tokens").get();
-    const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
-
-    if (tokens.length === 0) return;
+    const tokens = tokensSnapshot.docs.map(doc=>doc.data().token);
+    if(tokens.length===0) return;
 
     const message = {
       notification: {
@@ -24,5 +19,5 @@ exports.sendUserNotification = functions.firestore
     };
 
     await admin.messaging().sendMulticast(message);
-    console.log("Notifications sent to tokens:", tokens);
+    console.log("Notifications sent:", tokens);
   });
