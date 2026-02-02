@@ -3,26 +3,20 @@ const admin = require("firebase-admin");
 
 admin.initializeApp();
 
-exports.sendPushOnMessage = functions.firestore
-  .document("messages/{id}")
-  .onCreate(async (snap) => {
-    const message = snap.data().text;
+exports.notifyOnSave = functions.firestore
+  .document("users/{docId}")
+  .onCreate(async () => {
+    const tokensSnap = await admin.firestore().collection("tokens").get();
+    const tokens = tokensSnap.docs.map(d => d.id);
 
-    const tokenSnap = await admin.firestore()
-      .collection("tokens")
-      .get();
-
-    if (tokenSnap.empty) return null;
-
-    const tokens = tokenSnap.docs.map(d => d.data().token);
+    if (tokens.length === 0) return;
 
     const payload = {
       notification: {
-        title: "DC Alert",
-        body: message
+        title: "Saved successfully ✅",
+        body: "You have saved a message"
       }
     };
 
     await admin.messaging().sendToDevice(tokens, payload);
-    return null;
   });
