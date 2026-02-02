@@ -1,285 +1,156 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
-import { getMessaging, getToken, onMessage, isSupported } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging.js';
-
-// Firebase configuration
+// Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "leelidc-1f753.firebaseapp.com",
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "leelidc-1f753",
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "leelidc-1f753.firebasestorage.app",
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "43622932335",
-    appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:43622932335:web:a7529bce1f19714687129a",
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-let messaging = null;
+const app = firebase.initializeApp(firebaseConfig);
+const messaging = firebase.messaging();
 
-// DOM Elements
-const swStatus = document.getElementById('swStatus');
-const permissionStatus = document.getElementById('permissionStatus');
-const tokenStatus = document.getElementById('tokenStatus');
-const requestPermissionBtn = document.getElementById('requestPermissionBtn');
-const copyTokenBtn = document.getElementById('copyTokenBtn');
-const notificationElement = document.getElementById('notification');
-const notificationTitle = document.getElementById('notificationTitle');
-const notificationBody = document.getElementById('notificationBody');
+// Vercel server URL - REPLACE WITH YOUR VERCEL URL
+const SERVER_URL = 'https://your-vercel-app.vercel.app';
 
-// Check and update service worker status
-async function checkServiceWorker() {
-    if ('serviceWorker' in navigator) {
-        try {
-            const registration = await navigator.serviceWorker.getRegistration();
-            if (registration) {
-                swStatus.textContent = 'Active';
-                swStatus.className = 'status-value active';
-                return true;
-            } else {
-                swStatus.textContent = 'Not Registered';
-                swStatus.className = 'status-value inactive';
-                return false;
-            }
-        } catch (error) {
-            console.error('Service Worker check failed:', error);
-            swStatus.textContent = 'Error';
-            swStatus.className = 'status-value inactive';
-            return false;
-        }
-    } else {
-        swStatus.textContent = 'Not Supported';
-        swStatus.className = 'status-value inactive';
-        return false;
-    }
-}
+// DOM elements
+const enableButton = document.getElementById('enableButton');
+const testButton = document.getElementById('testButton');
+const statusDiv = document.getElementById('status');
+const notificationDiv = document.getElementById('notification');
+const notificationText = document.getElementById('notificationText');
 
-// Check notification permission
-function checkNotificationPermission() {
-    const permission = Notification.permission;
-    permissionStatus.textContent = permission.charAt(0).toUpperCase() + permission.slice(1);
-    permissionStatus.className = `status-value ${permission === 'granted' ? 'active' : 'inactive'}`;
+// Request permission for notifications
+async function requestPermission() {
+  try {
+    const permission = await Notification.requestPermission();
     
     if (permission === 'granted') {
-        requestPermissionBtn.textContent = 'Permission Granted ✓';
-        requestPermissionBtn.disabled = true;
+      statusDiv.textContent = 'Notification permission granted!';
+      enableButton.disabled = true;
+      enableButton.textContent = '✓ Notifications Enabled';
+      testButton.disabled = false;
+      await getToken();
     } else {
-        requestPermissionBtn.textContent = 'Enable Push Notifications';
-        requestPermissionBtn.disabled = false;
+      statusDiv.textContent = 'Notification permission denied.';
     }
+  } catch (error) {
+    console.error('Error requesting permission:', error);
+    statusDiv.textContent = 'Error requesting permission.';
+  }
+}
+
+// Get FCM token
+async function getToken() {
+  try {
+    const currentToken = await messaging.getToken({
+      vapidKey: "YOUR_VAPID_KEY" // Get this from Firebase Console > Cloud Messaging
+    });
     
-    return permission === 'granted';
-}
-
-// Register service worker
-async function registerServiceWorker() {
-    try {
-        const registration = await navigator.serviceWorker.register('/sw.js', {
-            scope: '/'
-        });
-        console.log('Service Worker registered:', registration);
-        swStatus.textContent = 'Active';
-        swStatus.className = 'status-value active';
-        return registration;
-    } catch (error) {
-        console.error('Service Worker registration failed:', error);
-        swStatus.textContent = 'Registration Failed';
-        swStatus.className = 'status-value inactive';
-        throw error;
+    if (currentToken) {
+      console.log('FCM Token:', currentToken);
+      statusDiv.textContent = 'Token received! Ready for notifications.';
+      
+      // Send token to your server (Vercel function)
+      await sendTokenToServer(currentToken);
+    } else {
+      statusDiv.textContent = 'No registration token available.';
     }
+  } catch (error) {
+    console.error('Error getting token:', error);
+    statusDiv.textContent = 'Error getting token.';
+  }
 }
 
-// Initialize Firebase Messaging
-async function initFirebaseMessaging() {
-    const isFcmSupported = await isSupported();
-    if (!isFcmSupported) {
-        console.error('FCM is not supported in this browser');
-        tokenStatus.textContent = 'Not Supported';
-        tokenStatus.className = 'status-value inactive';
-        return null;
-    }
-    
-    messaging = getMessaging(app);
-    return messaging;
-}
-
-// Request notification permission and get FCM token
-async function requestNotificationPermission() {
-    try {
-        const permission = await Notification.requestPermission();
-        checkNotificationPermission();
-        
-        if (permission === 'granted') {
-            const messaging = await initFirebaseMessaging();
-            if (!messaging) return;
-            
-            // Get VAPID key from environment or use your public key
-            const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || "BGpd...";
-            
-            // Get FCM token
-            const token = await getToken(messaging, { vapidKey });
-            
-            if (token) {
-                tokenStatus.textContent = 'Registered ✓';
-                tokenStatus.className = 'status-value active';
-                
-                // Store token in localStorage
-                localStorage.setItem('fcm_token', token);
-                console.log('FCM Token:', token);
-                
-                // Send token to your server (optional)
-                await sendTokenToServer(token);
-                
-                return token;
-            } else {
-                tokenStatus.textContent = 'No Token';
-                tokenStatus.className = 'status-value inactive';
-                return null;
-            }
-        }
-    } catch (error) {
-        console.error('Error getting permission or token:', error);
-        tokenStatus.textContent = 'Error';
-        tokenStatus.className = 'status-value inactive';
-        return null;
-    }
-}
-
-// Send token to server (optional)
+// Send token to Vercel server
 async function sendTokenToServer(token) {
-    try {
-        const response = await fetch('/api/save-token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ token })
-        });
-        
-        if (response.ok) {
-            console.log('Token saved to server');
-        }
-    } catch (error) {
-        console.error('Error sending token to server:', error);
+  try {
+    const response = await fetch(`${SERVER_URL}/api/save-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token })
+    });
+    
+    if (response.ok) {
+      console.log('Token saved to server');
     }
+  } catch (error) {
+    console.error('Error sending token to server:', error);
+  }
+}
+
+// Send test notification
+async function sendTestNotification() {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/send-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Test Notification',
+        body: 'This is a test notification!',
+        icon: '/icon-192.png'
+      })
+    });
+    
+    if (response.ok) {
+      notificationText.textContent = 'Test notification sent! Check your notifications.';
+      notificationDiv.style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Error sending test notification:', error);
+    notificationText.textContent = 'Error sending notification.';
+    notificationDiv.style.display = 'block';
+  }
 }
 
 // Handle incoming messages when app is in foreground
-function setupForegroundMessages(messaging) {
-    onMessage(messaging, (payload) => {
-        console.log('Message received in foreground:', payload);
-        
-        // Show notification
-        showLocalNotification(payload);
-        
-        // Update UI
-        if (payload.notification) {
-            notificationTitle.textContent = payload.notification.title;
-            notificationBody.textContent = payload.notification.body;
-            notificationElement.classList.add('show');
-            
-            // Auto hide after 5 seconds
-            setTimeout(() => {
-                notificationElement.classList.remove('show');
-            }, 5000);
-        }
+messaging.onMessage((payload) => {
+  console.log('Foreground message:', payload);
+  
+  notificationText.textContent = payload.notification?.body || 'New notification received!';
+  notificationDiv.style.display = 'block';
+  
+  // Show local notification
+  if (Notification.permission === 'granted') {
+    new Notification(payload.notification?.title || 'New Message', {
+      body: payload.notification?.body,
+      icon: payload.notification?.icon || '/icon-192.png'
     });
-}
+  }
+});
 
-// Show local notification (for foreground)
-function showLocalNotification(payload) {
+// Check notification permission on load
+document.addEventListener('DOMContentLoaded', () => {
+  if ('Notification' in window) {
     if (Notification.permission === 'granted') {
-        const options = {
-            body: payload.notification?.body || 'New message',
-            icon: '/icon-192.png',
-            badge: '/badge-72.png',
-            tag: 'push-notification',
-            requireInteraction: true,
-            actions: [
-                {
-                    action: 'open',
-                    title: 'Open App'
-                },
-                {
-                    action: 'close',
-                    title: 'Close'
-                }
-            ]
-        };
-        
-        const notification = new Notification(
-            payload.notification?.title || 'New Notification',
-            options
-        );
-        
-        notification.onclick = () => {
-            window.focus();
-            notification.close();
-        };
+      statusDiv.textContent = 'Notifications already enabled!';
+      enableButton.disabled = true;
+      enableButton.textContent = '✓ Notifications Enabled';
+      testButton.disabled = false;
+      getToken();
+    } else if (Notification.permission === 'denied') {
+      statusDiv.textContent = 'Notifications blocked. Please enable in browser settings.';
+      enableButton.disabled = true;
     }
-}
-
-// Copy token to clipboard
-copyTokenBtn.addEventListener('click', async () => {
-    const token = localStorage.getItem('fcm_token');
-    if (token) {
-        try {
-            await navigator.clipboard.writeText(token);
-            alert('Token copied to clipboard!');
-        } catch (err) {
-            console.error('Failed to copy:', err);
-        }
-    } else {
-        alert('No token available. Please enable notifications first.');
-    }
+  } else {
+    statusDiv.textContent = 'This browser does not support notifications.';
+    enableButton.disabled = true;
+  }
+  
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+      .then(() => console.log('Service Worker registered'))
+      .catch(error => console.error('Service Worker registration failed:', error));
+  }
 });
 
-// Request permission button click
-requestPermissionBtn.addEventListener('click', async () => {
-    if (!('serviceWorker' in navigator)) {
-        alert('Service workers are not supported in your browser.');
-        return;
-    }
-    
-    if (!('Notification' in window)) {
-        alert('Notifications are not supported in your browser.');
-        return;
-    }
-    
-    // Register service worker
-    await registerServiceWorker();
-    
-    // Request permission and get token
-    await requestNotificationPermission();
-});
-
-// Initialize app
-async function initApp() {
-    // Check initial status
-    await checkServiceWorker();
-    checkNotificationPermission();
-    
-    // If already have permission, initialize messaging
-    if (Notification.permission === 'granted') {
-        const messaging = await initFirebaseMessaging();
-        if (messaging) {
-            setupForegroundMessages(messaging);
-            
-            // Try to get existing token
-            const token = localStorage.getItem('fcm_token');
-            if (token) {
-                tokenStatus.textContent = 'Registered ✓';
-                tokenStatus.className = 'status-value active';
-            }
-        }
-    }
-}
-
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', initApp);
-
-// Handle page visibility changes
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-        // Page became visible, you might want to sync notifications
-        console.log('App is now visible');
-    }
-});
+// Event listeners
+enableButton.addEventListener('click', requestPermission);
+testButton.addEventListener('click', sendTestNotification);
