@@ -7,9 +7,9 @@
 <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#1976d2" />
 <style>
-body { font-family: Arial; padding:20px; max-width:400px; margin:auto; }
-input, button { width:100%; padding:10px; margin-top:10px; font-size:16px; }
-#installBtn { display:none; background:#1976d2; color:white; border:none; }
+  body { font-family: Arial; padding: 20px; max-width: 400px; margin: auto; }
+  input, button { width: 100%; padding: 10px; margin-top: 10px; font-size: 16px; }
+  #installBtn { display: none; background: #1976d2; color: white; border: none; }
 </style>
 </head>
 <body>
@@ -24,60 +24,60 @@ import { app, db } from "./dcfire.js";
 import { collection, addDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
 
-// Save form data
+// Save user data
 document.getElementById("saveBtn").onclick = async () => {
-  const name = document.getElementById("name").value;
-  const age = document.getElementById("age").value;
-  if(!name || !age){ alert("Enter name and age"); return; }
-
-  await addDoc(collection(db, "users"), {
-    name, age: Number(age), created: new Date()
-  });
+  const name = document.getElementById("name").value.trim();
+  const age = document.getElementById("age").value.trim();
+  if (!name || !age) {
+    alert("Enter name and age");
+    return;
+  }
+  await addDoc(collection(db, "users"), { name, age: Number(age), created: new Date() });
   alert("Saved!");
 };
 
-// FCM setup
+// Firebase Messaging setup
 const messaging = getMessaging(app);
 const vapidKey = "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o";
 
-Notification.requestPermission().then(async permission=>{
-  if(permission==="granted"){
+Notification.requestPermission().then(async permission => {
+  if (permission === "granted") {
     const registration = await navigator.serviceWorker.ready;
     const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration });
-    if(token){
-      await setDoc(doc(db, "tokens", token), { token, created:new Date() });
-      console.log("FCM Token saved");
+    if (token) {
+      await setDoc(doc(db, "tokens", token), { token, created: new Date() });
+      console.log("FCM Token saved:", token);
     }
   }
 });
 
-// Foreground messages
-onMessage(messaging, payload=>{
+// Show notifications in foreground
+onMessage(messaging, payload => {
   new Notification(payload.notification?.title || "Notification", {
     body: payload.notification?.body || "",
     icon: "/icon-192.png"
   });
 });
 
-// Register PWA SW
-if("serviceWorker" in navigator){
+// Register Service Worker
+if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/firebase-messaging-sw.js")
-    .then(()=>console.log("PWA SW registered"));
+    .then(() => console.log("Service Worker registered"));
 }
 
-// PWA Install prompt
+// PWA install prompt logic
 let deferredPrompt;
 const installBtn = document.getElementById("installBtn");
-window.addEventListener("beforeinstallprompt", e=>{
+window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault();
-  deferredPrompt=e;
-  installBtn.style.display="block";
+  deferredPrompt = e;
+  installBtn.style.display = "block";
 });
-installBtn.addEventListener("click", async ()=>{
+installBtn.addEventListener("click", async () => {
   deferredPrompt.prompt();
   await deferredPrompt.userChoice;
-  deferredPrompt=null;
-  installBtn.style.display="none";
+  deferredPrompt = null;
+  installBtn.style.display = "none";
 });
 </script>
 </body>
