@@ -1,12 +1,23 @@
-const cacheName = "my-pwa-cache-v1";
-const assets = ["/", "/myapps.html", "/manifest.json", "/icon-192.png", "/icon-512.png"];
+importScripts("https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js");
 
-self.addEventListener("install", e=>{
-  e.waitUntil(
-    caches.open(cacheName).then(cache=>cache.addAll(assets)).catch(err=>console.error("Cache error:", err))
+const firebaseConfig = {
+  apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+  authDomain: "leelidc-1f753.firebaseapp.com",
+  projectId: "leelidc-1f753",
+  storageBucket: "leelidc-1f753.firebasestorage.app",
+  messagingSenderId: "43622932335",
+  appId: "1:43622932335:web:a7529bce1f19714687129a",
+  measurementId: "G-3KD6ZYS599",
+  databaseURL: "https://leelidc-1f753-default-rtdb.firebaseio.com/"
+};
+
+firebase.initializeApp(firebaseConfig);
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage((payload) => {
+  self.registration.showNotification(
+    payload.notification?.title || "Notification",
+    { body: payload.notification?.body || "", icon: "/icon-192.png" }
   );
-});
-
-self.addEventListener("fetch", e=>{
-  e.respondWith(caches.match(e.request).then(res=>res || fetch(e.request)));
 });
