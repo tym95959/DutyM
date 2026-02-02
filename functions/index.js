@@ -7,20 +7,22 @@ exports.sendUserNotification = functions.firestore
   .onCreate(async (snap, context) => {
     const newUser = snap.data();
 
-    // Get all device tokens
     const tokensSnapshot = await admin.firestore().collection("tokens").get();
     const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
-    if(tokens.length === 0) return;
+    if (tokens.length === 0) return;
 
-    // Send notification
     const message = {
       notification: {
         title: "New User Added",
         body: `Name: ${newUser.name}, Age: ${newUser.age}`
       },
-      tokens: tokens
+      tokens: tokens,
     };
 
-    await admin.messaging().sendMulticast(message);
-    console.log("Notifications sent to", tokens.length, "devices");
+    try {
+      const response = await admin.messaging().sendMulticast(message);
+      console.log("Notifications sent:", response.successCount);
+    } catch (error) {
+      console.error("Error sending notifications:", error);
+    }
   });
