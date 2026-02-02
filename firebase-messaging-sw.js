@@ -14,10 +14,15 @@ const firebaseConfig = {
   databaseURL: "https://leelidc-1f753-default-rtdb.firebaseio.com/"
 };
 
+
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
+// Background notification handler
 messaging.onBackgroundMessage((payload) => {
+  console.log("[firebase-messaging-sw.js] BG message:", payload);
+
+  // Show system notification
   self.registration.showNotification(
     payload.notification?.title || "Notification",
     {
