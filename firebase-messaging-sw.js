@@ -15,14 +15,14 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-
 const messaging = firebase.messaging();
 
-// Optional: background notifications
 messaging.onBackgroundMessage((payload) => {
-  console.log("[firebase-messaging-sw.js] BG message:", payload);
   self.registration.showNotification(
     payload.notification?.title || "Notification",
-    { body: payload.notification?.body || "", icon: "/icon-192.png" }
+    {
+      body: payload.notification?.body || "",
+      icon: "/icon-192.png"
+    }
   );
 });
