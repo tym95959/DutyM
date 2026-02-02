@@ -1,7 +1,8 @@
-// firebase-messaging-sw.js
+
 importScripts("https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js");
 
+// 🔴 Define your config here (cannot import from other files)
 const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
@@ -13,21 +14,15 @@ const firebaseConfig = {
   databaseURL: "https://leelidc-1f753-default-rtdb.firebaseio.com/"
 };
 
-// Initialize Firebase inside the SW
 firebase.initializeApp(firebaseConfig);
 
-// Retrieve messaging instance
 const messaging = firebase.messaging();
 
-// Background message handler
+// Optional: background notifications
 messaging.onBackgroundMessage((payload) => {
-  console.log("[firebase-messaging-sw.js] Background message received:", payload);
-
+  console.log("[firebase-messaging-sw.js] BG message:", payload);
   self.registration.showNotification(
     payload.notification?.title || "Notification",
-    {
-      body: payload.notification?.body || "",
-      icon: "/icon-192.png"
-    }
+    { body: payload.notification?.body || "", icon: "/icon-192.png" }
   );
 });
