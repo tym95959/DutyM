@@ -21,6 +21,6 @@ exports.sendUserNotification = functions.firestore
       tokens: tokens
     };
 
-    const response = await admin.messaging().sendMulticast(message);
-    console.log("Notifications sent:", response.successCount);
+    await admin.messaging().sendMulticast(message);
+    console.log("Notifications sent to", tokens.length, "devices");
   });
