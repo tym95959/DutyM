@@ -1,25 +1,18 @@
-const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-admin.initializeApp();
+admin.initializeApp({
+  credential: admin.credential.applicationDefault()
+});
 
-exports.sendUserNotification = functions.firestore
-    .document("users/{docId}")
-    .onCreate(async (snap, context) => {
-        const newUser = snap.data();
-        
-        // Get all saved FCM tokens
-        const tokensSnapshot = await admin.firestore().collection("tokens").get();
-        const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
+const token = "epuhpWilcSuL2RjkVLLmxC:APA91bErgnzZx8esng95a2NXZPQA8btNTCSKYnXPn_VR9Kgru4bxJAF_U2s26TlhQJGzrhdjvPpeMQjRcA7z9mrA07Jd3TC15o8EE8G05PBU9HkDOxg4wkw";
 
-        if (tokens.length === 0) return;
-
-        const message = {
-            notification: {
-                title: "New User Added",
-                body: `Name: ${newUser.name}, Age: ${newUser.age}`,
-            },
-            tokens: tokens,
-        };
-
-        await admin.messaging().sendMulticast(message);
-    });
+admin.messaging().send({
+  token,
+  notification: {
+    title: "Test Notification",
+    body: "If you see this, push works!"
+  }
+}).then(response => {
+  console.log("Notification sent successfully:", response);
+}).catch(error => {
+  console.error("Error sending notification:", error);
+});
