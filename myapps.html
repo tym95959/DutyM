@@ -7,28 +7,7 @@
 
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#1976d2" />
-<script type="module">
-  import { db } from "./dcfire.js";
-  import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-  import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
-  import { app } from "./dcfire.js";
 
-  const messaging = getMessaging(app);
-
-  const vapidKey = "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o";
-
-  Notification.requestPermission().then(async permission => {
-    if (permission === "granted") {
-      const token = await getToken(messaging, { vapidKey });
-      if (token) {
-        await setDoc(doc(db, "tokens", token), {
-          token,
-          created: new Date()
-        });
-      }
-    }
-  });
-</script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -60,11 +39,40 @@
 
   <button id="installBtn">Install App</button>
 
-  <!-- Firebase -->
+  <!-- Firebase + Firestore + Messaging -->
   <script type="module">
-    import { db } from "./dcfire.js";
-    import { collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { app, db } from "./dcfire.js";
+    import { collection, addDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
 
+    const messaging = getMessaging(app);
+
+    const vapidKey = "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o";
+
+    // Request notification permission & get token
+    async function initMessaging() {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") return;
+
+      const token = await getToken(messaging, { vapidKey });
+      if (token) {
+        await setDoc(doc(db, "tokens", token), {
+          token,
+          created: new Date()
+        });
+        console.log("FCM Token saved");
+      }
+    }
+
+    initMessaging();
+
+    // Foreground notification handler
+    onMessage(messaging, payload => {
+      console.log("Foreground message:", payload);
+      alert(payload.notification?.title || "New notification");
+    });
+
+    // Save form data
     document.getElementById("saveBtn").onclick = async () => {
       const name = document.getElementById("name").value;
       const age = document.getElementById("age").value;
@@ -84,10 +92,10 @@
     };
   </script>
 
-  <!-- Service Worker -->
+  <!-- PWA Service Worker -->
   <script>
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js");
+      navigator.serviceWorker.register("/sw.js");
     }
 
     let deferredPrompt;
