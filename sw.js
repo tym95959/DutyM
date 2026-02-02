@@ -1,6 +1,6 @@
 // Import and configure Firebase in Service Worker
-importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.6.0/firebase-messaging-compat.js');
 
 // Firebase configuration
 const firebaseConfig = {
@@ -14,136 +14,77 @@ const firebaseConfig = {
 
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
+
+// Initialize Firebase Cloud Messaging
 const messaging = firebase.messaging();
 
 // Handle background messages
 messaging.onBackgroundMessage((payload) => {
-    console.log('Received background message:', payload);
-    
-    const notificationTitle = payload.notification?.title || 'New Message';
-    const notificationOptions = {
-        body: payload.notification?.body || 'You have a new notification',
-        icon: '/icon-192.png',
-        badge: '/badge-72.png',
-        tag: 'push-notification',
-        data: payload.data || {},
-        actions: [
-            {
-                action: 'open',
-                title: 'Open App'
-            },
-            {
-                action: 'close',
-                title: 'Close'
-            }
-        ]
-    };
-    
-    return self.registration.showNotification(notificationTitle, notificationOptions);
+  console.log('Received background message:', payload);
+  
+  const notificationTitle = payload.notification?.title || 'New Message';
+  const notificationOptions = {
+    body: payload.notification?.body || 'You have a new notification',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    data: payload.data || {},
+    tag: 'push-notification'
+  };
+
+  self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
-    console.log('Notification clicked:', event.notification.tag);
-    event.notification.close();
-    
-    if (event.action === 'open' || event.action === '') {
-        // Open or focus the app
-        event.waitUntil(
-            clients.matchAll({ type: 'window', includeUncontrolled: true })
-                .then((windowClients) => {
-                    // Check if there's already a window/tab open
-                    for (const client of windowClients) {
-                        if (client.url === '/' && 'focus' in client) {
-                            return client.focus();
-                        }
-                    }
-                    
-                    // If no window is open, open a new one
-                    if (clients.openWindow) {
-                        return clients.openWindow('/');
-                    }
-                })
-        );
-    }
+  event.notification.close();
+  
+  const urlToOpen = new URL('/', self.location.origin).href;
+
+  event.waitUntil(
+    clients.matchAll({type: 'window', includeUncontrolled: true})
+      .then((windowClients) => {
+        // Check if there is already a window/tab open
+        for (let client of windowClients) {
+          if (client.url === urlToOpen && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        // Open new window if none exists
+        if (clients.openWindow) {
+          return clients.openWindow(urlToOpen);
+        }
+      })
+  );
 });
 
-// Handle notification close
-self.addEventListener('notificationclose', (event) => {
-    console.log('Notification closed:', event.notification.tag);
-});
-
-// Cache important files
+// Cache handling
 const CACHE_NAME = 'push-app-v1';
 const urlsToCache = [
-    '/',
-    '/index.html',
-    '/app.js',
-    '/icon-192.png',
-    '/icon-512.png',
-    '/badge-72.png'
+  '/',
+  '/index.html',
+  '/app.js',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
-// Install event - cache files
+// Install service worker
 self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then((cache) => {
-                console.log('Opened cache');
-                return cache.addAll(urlsToCache);
-            })
-    );
-    self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(urlsToCache))
+  );
 });
 
-// Activate event - clean up old caches
-self.addEventListener('activate', (event) => {
-    event.waitUntil(
-        caches.keys().then((cacheNames) => {
-            return Promise.all(
-                cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME) {
-                        console.log('Deleting old cache:', cacheName);
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        })
-    );
-    self.clients.claim();
-});
-
-// Fetch event - serve from cache, fallback to network
+// Fetch from cache first, then network
 self.addEventListener('fetch', (event) => {
-    event.respondWith(
-        caches.match(event.request)
-            .then((response) => {
-                // Return cached response if found
-                if (response) {
-                    return response;
-                }
-                
-                // Clone the request
-                const fetchRequest = event.request.clone();
-                
-                // Make network request
-                return fetch(fetchRequest).then((response) => {
-                    // Check if valid response
-                    if (!response || response.status !== 200 || response.type !== 'basic') {
-                        return response;
-                    }
-                    
-                    // Clone the response
-                    const responseToCache = response.clone();
-                    
-                    // Cache the new response
-                    caches.open(CACHE_NAME)
-                        .then((cache) => {
-                            cache.put(event.request, responseToCache);
-                        });
-                    
-                    return response;
-                });
-            })
-    );
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        if (response) {
+          return response;
+        }
+        return fetch(event.request);
+      })
+  );
 });
