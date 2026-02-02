@@ -1,28 +1,25 @@
-// Node.js Firebase Admin SDK
-import admin from "firebase-admin";
-import serviceAccount from "./serviceAccountKey.json" assert { type: "json" };
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+admin.initializeApp();
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+exports.sendUserNotification = functions.firestore
+    .document("users/{docId}")
+    .onCreate(async (snap, context) => {
+        const newUser = snap.data();
+        
+        // Get all saved FCM tokens
+        const tokensSnapshot = await admin.firestore().collection("tokens").get();
+        const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
 
-const db = admin.firestore();
+        if (tokens.length === 0) return;
 
-db.collection("announcements").onSnapshot(async (snapshot) => {
-  snapshot.docChanges().forEach(async (change) => {
-    if(change.type === "added"){
-      const msg = change.doc.data().message;
+        const message = {
+            notification: {
+                title: "New User Added",
+                body: `Name: ${newUser.name}, Age: ${newUser.age}`,
+            },
+            tokens: tokens,
+        };
 
-      const payload = {
-        notification: {
-          title: "New Announcement",
-          body: msg
-        }
-      };
-
-      // Send to all FCM tokens stored in your DB
-      const tokens = ["user_token_1", "user_token_2"]; 
-      await admin.messaging().sendToDevice(tokens, payload);
-    }
-  });
-});
+        await admin.messaging().sendMulticast(message);
+    });
