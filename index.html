@@ -3,167 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Push App</title>
-    <meta name="theme-color" content="#4A90E2">
+    <title>Push Notification PWA</title>
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
-            align-items: center;
             justify-content: center;
+            align-items: center;
             padding: 20px;
-            color: white;
         }
-        
         .container {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
+            background: white;
             border-radius: 20px;
             padding: 40px;
-            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             max-width: 500px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            text-align: center;
         }
-        
         h1 {
-            font-size: 2.5em;
-            margin-bottom: 20px;
-            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
         }
-        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
         .status {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 15px;
+            background: #f8f9fa;
             border-radius: 10px;
+            padding: 15px;
             margin: 20px 0;
-            text-align: center;
+            font-family: monospace;
+            text-align: left;
         }
-        
         .button {
-            background: white;
-            color: #667eea;
+            background: #4CAF50;
+            color: white;
             border: none;
             padding: 15px 30px;
             border-radius: 50px;
-            font-size: 1.1em;
-            font-weight: 600;
+            font-size: 16px;
+            font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s ease;
-            width: 100%;
-            margin: 10px 0;
+            margin: 10px;
+            transition: all 0.3s;
+            display: inline-block;
         }
-        
         .button:hover {
+            background: #45a049;
             transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
         }
-        
+        .button.secondary {
+            background: #2196F3;
+        }
+        .button.secondary:hover {
+            background: #0b7dda;
+        }
         .button:disabled {
-            opacity: 0.5;
+            background: #cccccc;
             cursor: not-allowed;
+            transform: none;
         }
-        
-        #installButton {
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
             background: #4CAF50;
             color: white;
-            display: none;
-        }
-        
-        .notification {
-            background: rgba(255, 255, 255, 0.2);
             padding: 15px;
             border-radius: 10px;
-            margin-top: 20px;
+            animation: slideIn 0.5s;
             display: none;
         }
-        
-        .instructions {
-            margin-top: 30px;
-            font-size: 0.9em;
-            opacity: 0.8;
-        }
-        
-        .icon {
-            font-size: 4em;
-            margin-bottom: 20px;
-            text-align: center;
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
         }
     </style>
 </head>
 <body>
-    <div class="icon">📱</div>
     <div class="container">
-        <h1>Push App</h1>
+        <h1>🔔 Push Notification PWA</h1>
+        <p class="subtitle">Receive notifications even when app is closed</p>
         
         <div class="status" id="status">
-            Checking notifications permissions...
+            Initializing...
         </div>
         
-        <button class="button" id="enableButton">
+        <button class="button" id="requestPermission" disabled>
+            Request Notification Permission
+        </button>
+        
+        <button class="button secondary" id="subscribeButton" disabled>
             Enable Push Notifications
         </button>
         
-        <button class="button" id="installButton">
-            📲 Install App
-        </button>
-        
-        <button class="button" id="testButton" disabled>
+        <button class="button" id="sendTestButton" disabled>
             Send Test Notification
         </button>
         
         <div class="notification" id="notification">
-            <strong>Last Notification:</strong><br>
-            <span id="notificationText">No notifications yet</span>
-        </div>
-        
-        <div class="instructions">
-            <h3>To install this app:</h3>
-            1. Click "Install App" button above<br>
-            2. Or look for "Add to Home Screen" in your browser menu<br>
-            3. Notifications work even when app is closed!
+            Notification received!
         </div>
     </div>
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-messaging-compat.js"></script>
-    
-    <script src="app.js"></script>
-    <script>
-        // Initialize deferredPrompt for use later to show browser install prompt
-        let deferredPrompt;
-        
-        window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent the mini-infobar from appearing on mobile
-            e.preventDefault();
-            // Stash the event so it can be triggered later
-            deferredPrompt = e;
-            // Update UI to notify the user they can install the PWA
-            const installButton = document.getElementById('installButton');
-            installButton.style.display = 'block';
-            
-            installButton.addEventListener('click', async () => {
-                // Show the install prompt
-                deferredPrompt.prompt();
-                // Wait for the user to respond to the prompt
-                const { outcome } = await deferredPrompt.userChoice;
-                console.log(`User response to the install prompt: ${outcome}`);
-                // We no longer need the prompt. Clear it up.
-                deferredPrompt = null;
-                // Hide the install button
-                installButton.style.display = 'none';
-            });
-        });
-    </script>
+    <!-- Firebase SDKs -->
+    <script type="module" src="firebase-config.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
