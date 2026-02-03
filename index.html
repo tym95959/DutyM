@@ -1,120 +1,247 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Push Notification PWA</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 500px;
-            width: 100%;
-            text-align: center;
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-        }
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-        }
-        .status {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 20px 0;
-            font-family: monospace;
-            text-align: left;
-        }
-        .button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 50px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            margin: 10px;
-            transition: all 0.3s;
-            display: inline-block;
-        }
-        .button:hover {
-            background: #45a049;
-            transform: translateY(-2px);
-        }
-        .button.secondary {
-            background: #2196F3;
-        }
-        .button.secondary:hover {
-            background: #0b7dda;
-        }
-        .button:disabled {
-            background: #cccccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #4CAF50;
-            color: white;
-            padding: 15px;
-            border-radius: 10px;
-            animation: slideIn 0.5s;
-            display: none;
-        }
-        @keyframes slideIn {
-            from { transform: translateX(100%); }
-            to { transform: translateX(0); }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🔔 Push Notification PWA</h1>
-        <p class="subtitle">Receive notifications even when app is closed</p>
-        
-        <div class="status" id="status">
-            Initializing...
-        </div>
-        
-        <button class="button" id="requestPermission" disabled>
-            Request Notification Permission
-        </button>
-        
-        <button class="button secondary" id="subscribeButton" disabled>
-            Enable Push Notifications
-        </button>
-        
-        <button class="button" id="sendTestButton" disabled>
-            Send Test Notification
-        </button>
-        
-        <div class="notification" id="notification">
-            Notification received!
-        </div>
-    </div>
+import { 
+    messaging, 
+    functions, 
+    getToken, 
+    onMessage, 
+    httpsCallable 
+} from './firebase-config.js';
 
-    <!-- Firebase SDKs -->
-    <script type="module" src="firebase-config.js"></script>
-    <script type="module" src="app.js"></script>
-</body>
-</html>
+// DOM Elements
+const statusEl = document.getElementById('status');
+const requestPermissionBtn = document.getElementById('requestPermission');
+const subscribeButton = document.getElementById('subscribeButton');
+const sendTestButton = document.getElementById('sendTestButton');
+const notificationEl = document.getElementById('notification');
+
+// Your VAPID key (Replace with your own from Firebase Console)
+// Get it from: Firebase Console → Project Settings → Cloud Messaging → Web configuration
+const VAPID_KEY = "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o";
+
+let currentToken = null;
+
+// Initialize app
+async function initApp() {
+    statusEl.textContent = 'Checking browser support...';
+    
+    if (!('serviceWorker' in navigator)) {
+        statusEl.textContent = 'Service Workers not supported';
+        return;
+    }
+    
+    if (!('PushManager' in window)) {
+        statusEl.textContent = 'Push Notifications not supported';
+        return;
+    }
+    
+    if (!messaging) {
+        statusEl.textContent = 'Firebase Messaging not available';
+        return;
+    }
+    
+    // Request notification permission
+    requestPermissionBtn.disabled = false;
+    requestPermissionBtn.addEventListener('click', requestPermission);
+    
+    statusEl.textContent = 'Ready to request permission';
+}
+
+// Request notification permission
+async function requestPermission() {
+    try {
+        const permission = await Notification.requestPermission();
+        
+        if (permission === 'granted') {
+            statusEl.textContent = 'Permission granted! Setting up push notifications...';
+            requestPermissionBtn.disabled = true;
+            subscribeButton.disabled = false;
+            
+            // Register service worker
+            await registerServiceWorker();
+        } else {
+            statusEl.textContent = 'Permission denied';
+        }
+    } catch (error) {
+        console.error('Error requesting permission:', error);
+        statusEl.textContent = 'Error: ' + error.message;
+    }
+}
+
+// Register Service Worker
+async function registerServiceWorker() {
+    try {
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        console.log('Service Worker registered:', registration);
+        
+        // Enable subscribe button
+        subscribeButton.disabled = false;
+        subscribeButton.addEventListener('click', subscribeToPush);
+        
+        statusEl.textContent = 'Service Worker registered. Click "Enable Push Notifications"';
+    } catch (error) {
+        console.error('Service Worker registration failed:', error);
+        statusEl.textContent = 'Failed to register Service Worker';
+    }
+}
+
+// Subscribe to push notifications
+async function subscribeToPush() {
+    try {
+        statusEl.textContent = 'Getting FCM token...';
+        
+        // Get FCM token
+        currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
+        
+        if (currentToken) {
+            statusEl.innerHTML = `
+                <strong>Token obtained successfully!</strong><br>
+                <small style="word-break: break-all;">${currentToken}</small>
+            `;
+            
+            // Save token to Firebase Functions
+            await saveTokenToFirestore(currentToken);
+            
+            // Enable test button
+            sendTestButton.disabled = false;
+            sendTestButton.addEventListener('click', sendTestNotification);
+            subscribeButton.disabled = true;
+            
+            // Listen for foreground messages
+            setupMessageListener();
+        } else {
+            statusEl.textContent = 'No registration token available. Request permission to generate one.';
+        }
+    } catch (error) {
+        console.error('Error getting token:', error);
+        statusEl.textContent = 'Error getting token: ' + error.message;
+    }
+}
+
+// Save token to Firebase Functions
+async function saveTokenToFirestore(token) {
+    try {
+        const saveTokenFunction = httpsCallable(functions, 'saveToken');
+        await saveTokenFunction({ token: token });
+        console.log('Token saved successfully');
+    } catch (error) {
+        console.error('Error saving token:', error);
+    }
+}
+
+// Send test notification
+async function sendTestNotification() {
+    try {
+        if (!currentToken) {
+            alert('No token available. Please enable notifications first.');
+            return;
+        }
+        
+        statusEl.textContent = 'Sending test notification...';
+        sendTestButton.disabled = true;
+        
+        const sendTestFunction = httpsCallable(functions, 'sendTestNotification');
+        const result = await sendTestFunction({
+            token: currentToken,
+            title: 'Test Notification',
+            body: 'This is a test from your PWA! 🎉'
+        });
+        
+        statusEl.innerHTML = `
+            <strong>Test notification sent!</strong><br>
+            <small>Message ID: ${result.data.messageId}</small>
+        `;
+        
+        sendTestButton.disabled = false;
+    } catch (error) {
+        console.error('Error sending notification:', error);
+        statusEl.textContent = 'Error: ' + error.message;
+        sendTestButton.disabled = false;
+    }
+}
+
+// Setup message listener for foreground messages
+function setupMessageListener() {
+    onMessage(messaging, (payload) => {
+        console.log('Message received in foreground:', payload);
+        
+        // Show notification
+        showNotification(payload.notification);
+    });
+}
+
+// Show notification in UI
+function showNotification(notification) {
+    notificationEl.textContent = `${notification.title}: ${notification.body}`;
+    notificationEl.style.display = 'block';
+    
+    setTimeout(() => {
+        notificationEl.style.display = 'none';
+    }, 5000);
+}
+
+// Service Worker file for background notifications
+if ('serviceWorker' in navigator) {
+    // Create the service worker file dynamically
+    const swContent = `
+// Firebase Service Worker for background messages
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js');
+
+firebase.initializeApp({
+    apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+    authDomain: "leelidc-1f753.firebaseapp.com",
+    projectId: "leelidc-1f753",
+    storageBucket: "leelidc-1f753.firebasestorage.app",
+    messagingSenderId: "43622932335",
+    appId: "1:43622932335:web:a7529bce1f19714687129a",
+    measurementId: "G-3KD6ZYS599"
+});
+
+const messaging = firebase.messaging();
+
+// Background message handler
+messaging.onBackgroundMessage((payload) => {
+    console.log('[firebase-messaging-sw.js] Received background message:', payload);
+    
+    const notificationTitle = payload.notification.title;
+    const notificationOptions = {
+        body: payload.notification.body,
+        icon: 'https://leelidc-1f753.firebaseapp.com/icon-192x192.png',
+        badge: 'https://leelidc-1f753.firebasestorage.app/badge-72x72.png',
+        data: payload.data || {}
+    };
+    
+    self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// Handle notification click
+self.addEventListener('notificationclick', (event) => {
+    console.log('Notification clicked:', event.notification);
+    event.notification.close();
+    
+    // Open the app
+    event.waitUntil(
+        clients.matchAll({type: 'window', includeUncontrolled: true})
+        .then((clientList) => {
+            for (const client of clientList) {
+                if (client.url === '/' && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            if (clients.openWindow) {
+                return clients.openWindow('/');
+            }
+        })
+    );
+});
+    `;
+    
+    // Create blob URL for service worker
+    const blob = new Blob([swContent], { type: 'application/javascript' });
+    const swUrl = URL.createObjectURL(blob);
+    
+    // Store URL for later use
+    window.serviceWorkerUrl = swUrl;
+}
+
+// Start the app
+document.addEventListener('DOMContentLoaded', initApp);
