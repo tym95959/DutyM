@@ -1,62 +1,62 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>PWA Receiver</title>
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#2196f3">
-
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 </head>
-
 <body>
-  <h2>📲 Receiver PWA</h2>
-  <button onclick="enablePush()">Enable Notifications</button>
-  <div id="tokenArea"></div>
+  <h1>PWA Receiver</h1>
+  <button id="enable">Enable Notifications</button>
 
-<script>
-const firebaseConfig = {
-  apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
-  projectId: "leelidc-1f753",
-  messagingSenderId: "43622932335",
-  appId: "1:43622932335:web:a7529bce1f19714687129a"
-};
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
 
-firebase.initializeApp(firebaseConfig);
+  <script>
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+      authDomain: "leelidc-1f753.firebaseapp.com",
+      projectId: "leelidc-1f753",
+      storageBucket: "leelidc-1f753.firebasestorage.app",
+      messagingSenderId: "43622932335",
+      appId: "1:43622932335:web:a7529bce1f19714687129a",
+      measurementId: "G-3KD6ZYS599"
+    };
 
-const messaging = firebase.messaging();
-const db = firebase.firestore();
+    firebase.initializeApp(firebaseConfig);
+    const messaging = firebase.messaging();
 
-// Register service worker for push
-navigator.serviceWorker.register('/firebase-messaging-sw.js');
-
-function enablePush() {
-  Notification.requestPermission().then(permission => {
-    if (permission === 'granted') {
-      messaging.getToken({ vapidKey: "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o" })
-        .then(token => {
-          // Save token in Firestore
-          db.collection("tokens").doc(token).set({
-            token,
-            created: new Date()
-          });
-
-          // Show confirmation & token on page
-          const area = document.getElementById("tokenArea");
-          area.innerHTML = `<p>Device registered ✅<br>Token:<br>${token}</p>`;
-        })
-        .catch(err => {
-          console.error("Error getting token:", err);
-          alert("Failed to get token. Check console.");
-        });
-    } else {
-      alert("Notifications permission denied");
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/firebase-messaging-sw.js')
+      .then(registration => {
+        messaging.useServiceWorker(registration);
+      });
     }
-  });
-}
-</script>
+
+    document.getElementById('enable').onclick = async () => {
+      try {
+        const token = await messaging.getToken({ vapidKey: 'BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o' });
+        console.log("FCM TOKEN:", token);
+
+        // Save token to Firestore via serverless function
+        await fetch('/api/saveToken', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+
+        alert("Device registered for notifications ✅");
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    messaging.onMessage(payload => {
+      console.log("Message received: ", payload);
+      alert(`Notification: ${payload.notification.title} - ${payload.notification.body}`);
+    });
+  </script>
 </body>
 </html>
