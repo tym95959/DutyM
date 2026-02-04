@@ -1,79 +1,24 @@
-// public/service-worker.js
-self.addEventListener('install', (event) => {
-  console.log('Service Worker installing...');
-  self.skipWaiting();
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+  authDomain: "leelidc-1f753.firebaseapp.com",
+  projectId: "leelidc-1f753",
+  storageBucket: "leelidc-1f753.firebasestorage.app",
+  messagingSenderId: "43622932335",
+  appId: "1:43622932335:web:a7529bce1f19714687129a",
+  measurementId: "G-3KD6ZYS599"
 });
 
-self.addEventListener('activate', (event) => {
-  console.log('Service Worker activating...');
-  return self.clients.claim();
-});
+const messaging = firebase.messaging();
 
-// Handle push notifications
-self.addEventListener('push', (event) => {
-  console.log('Push event received:', event);
-  
-  let data = {
-    title: 'New Notification',
-    body: 'You have a new message!',
-    icon: '/icon-192x192.png',
-    badge: '/badge-72x72.png',
-    data: { url: '/' }
-  };
-  
-  if (event.data) {
-    try {
-      data = { ...data, ...event.data.json() };
-    } catch (e) {
-      console.log('Push data parse error:', e);
+messaging.onBackgroundMessage(payload => {
+  self.registration.showNotification(
+    payload.notification.title,
+    {
+      body: payload.notification.body,
+      icon: '/icon.png'
     }
-  }
-  
-  const options = {
-    body: data.body,
-    icon: data.icon || '/icon-192x192.png',
-    badge: data.badge || '/badge-72x72.png',
-    vibrate: [200, 100, 200],
-    data: data.data || {},
-    actions: [
-      {
-        action: 'open',
-        title: 'Open App'
-      },
-      {
-        action: 'close',
-        title: 'Close'
-      }
-    ]
-  };
-  
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
-});
-
-// Handle notification click
-self.addEventListener('notificationclick', (event) => {
-  console.log('Notification click:', event.notification.tag);
-  event.notification.close();
-  
-  const urlToOpen = event.notification.data?.url || '/';
-  
-  event.waitUntil(
-    clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    }).then((clientList) => {
-      // Check if there's already a window/tab open
-      for (const client of clientList) {
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      // If not, open a new window
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
   );
 });
