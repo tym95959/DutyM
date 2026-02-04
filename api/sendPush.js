@@ -1,4 +1,8 @@
 // api/sendPush.js
+
+console.log("ENV FIREBASE_PROJECT_ID:", process.env.FIREBASE_PROJECT_ID);
+console.log("ENV FIREBASE_PRIVATE_KEY_BASE64 length:", process.env.FIREBASE_PRIVATE_KEY_BASE64?.length);
+console.log("Request body:", req.body);
 import admin from "firebase-admin";
 
 if (!admin.apps.length) {
