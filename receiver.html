@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <title>PWA Receiver</title>
-
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2196f3">
 
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -15,16 +15,14 @@
 <body>
   <h2>📲 Receiver PWA</h2>
   <button onclick="enablePush()">Enable Notifications</button>
+  <div id="tokenArea"></div>
 
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
-  authDomain: "leelidc-1f753.firebaseapp.com",
   projectId: "leelidc-1f753",
-  storageBucket: "leelidc-1f753.firebasestorage.app",
   messagingSenderId: "43622932335",
-  appId: "1:43622932335:web:a7529bce1f19714687129a",
-  measurementId: "G-3KD6ZYS599"
+  appId: "1:43622932335:web:a7529bce1f19714687129a"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -32,6 +30,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 const db = firebase.firestore();
 
+// Register service worker for push
 navigator.serviceWorker.register('/firebase-messaging-sw.js');
 
 function enablePush() {
@@ -39,15 +38,22 @@ function enablePush() {
     if (permission === 'granted') {
       messaging.getToken({ vapidKey: "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o" })
         .then(token => {
+          // Save token in Firestore
           db.collection("tokens").doc(token).set({
             token,
             created: new Date()
           });
 
-          const p = document.createElement("p");
-          p.innerText = "Your device is registered for notifications ✅";
-          document.body.appendChild(p);
+          // Show confirmation & token on page
+          const area = document.getElementById("tokenArea");
+          area.innerHTML = `<p>Device registered ✅<br>Token:<br>${token}</p>`;
+        })
+        .catch(err => {
+          console.error("Error getting token:", err);
+          alert("Failed to get token. Check console.");
         });
+    } else {
+      alert("Notifications permission denied");
     }
   });
 }
