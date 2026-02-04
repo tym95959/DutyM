@@ -1,55 +1,614 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>PWA Push Test</title>
-
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#2196f3">
-
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Dashboard - Leave Management System</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="manifest" href="manifest.json">
 </head>
-
 <body>
-  <h2>📲 PWA Push Notification Test</h2>
-  <button onclick="enablePush()">Enable Push</button>
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">
+            <i class="fas fa-calendar-alt fa-2x"></i>
+            <h1>Leave Management System</h1>
+        </div>
+        <div class="user-info">
+            <div class="notification-icon">
+                <i class="fas fa-bell fa-lg"></i>
+                <span class="notification-badge">3</span>
+            </div>
+            <div class="user-details">
+                <span id="userName"></span>
+                <span id="userRc" class="badge badge-info"></span>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        </div>
+    </header>
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
-      authDomain: "leelidc-1f753.firebaseapp.com",
-      projectId: "leelidc-1f753",
-      storageBucket: "leelidc-1f753.firebasestorage.app",
-      messagingSenderId: "43622932335",
-      appId: "1:43622932335:web:a7529bce1f19714687129a",
-      measurementId: "G-3KD6ZYS599"
-    };
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Dashboard Stats -->
+        <div class="stats-grid" id="dashboardStats">
+            <div class="stat-card">
+                <div class="stat-number" id="slBalance">0</div>
+                <div class="stat-label">Sick Leave Balance</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="frlBalance">0</div>
+                <div class="stat-label">FRL Balance</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="upcomingDuty">0</div>
+                <div class="stat-label">Upcoming Duties</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="pendingRequests">0</div>
+                <div class="stat-label">Pending Requests</div>
+            </div>
+        </div>
 
-    firebase.initializeApp(firebaseConfig);
-    const messaging = firebase.messaging();
+        <!-- Navigation Tabs -->
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="switchTab('overview')">Overview</button>
+            <button class="nav-tab" onclick="switchTab('leave')">Apply Leave</button>
+            <button class="nav-tab" onclick="switchTab('dutyChange')">Duty Change</button>
+            <button class="nav-tab" onclick="switchTab('roster')">Roster</button>
+            <button class="nav-tab" onclick="switchTab('announcements')">Announcements</button>
+        </div>
 
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/firebase-messaging-sw.js')
-        .then(() => console.log("Service Worker ready"));
-    }
+        <!-- Overview Tab -->
+        <div id="overviewTab" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- Upcoming Roster -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Upcoming Roster (Next 7 Days)</h2>
+                    </div>
+                    <div class="table-container">
+                        <table class="table" id="upcomingRosterTable">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Day</th>
+                                    <th>Duty Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Roster data will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
-    function enablePush() {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          messaging.getToken({
-            vapidKey: "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o"
-          }).then(token => {
-            console.log("FCM TOKEN:", token);
-            alert("Token printed in console");
-          });
+                <!-- Pending Requests -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Pending Duty Change Requests</h2>
+                    </div>
+                    <div id="pendingRequestsContainer">
+                        <!-- Requests will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Recent Announcements -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Recent Announcements</h2>
+                    </div>
+                    <div id="announcementsContainer">
+                        <!-- Announcements will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Apply Leave Tab -->
+        <div id="leaveTab" class="tab-content" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Apply Leave</h2>
+                </div>
+                <div class="card-body">
+                    <div class="tabs">
+                        <button class="btn btn-primary" onclick="showLeaveForm('SL')">Sick Leave</button>
+                        <button class="btn btn-success" onclick="showLeaveForm('FRL')">FRL</button>
+                    </div>
+                    
+                    <!-- Sick Leave Form -->
+                    <div id="slForm" class="leave-form">
+                        <form id="sickLeaveForm">
+                            <div class="form-group">
+                                <label class="form-label">Date</label>
+                                <input type="date" class="form-control" id="slDate" required>
+                                <small class="form-text">No backdates allowed. Minimum 2 hours before duty.</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Duty Time</label>
+                                <input type="time" class="form-control" id="slDutyTime" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Reason</label>
+                                <textarea class="form-control" id="slReason" rows="3" required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-paper-plane"></i> Apply Sick Leave
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- FRL Form -->
+                    <div id="frlForm" class="leave-form" style="display: none;">
+                        <form id="frLeaveForm">
+                            <div class="form-group">
+                                <label class="form-label">Date</label>
+                                <input type="date" class="form-control" id="frlDate" required>
+                                <small class="form-text">No backdates allowed. Minimum 1 hour before duty.</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Duty Time</label>
+                                <input type="time" class="form-control" id="frlDutyTime" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Reason</label>
+                                <textarea class="form-control" id="frlReason" rows="3" required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-paper-plane"></i> Apply FRL
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Leave History -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Leave History</h2>
+                </div>
+                <div class="table-container">
+                    <table class="table" id="leaveHistoryTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Duty Time</th>
+                                <th>Reason</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Leave history will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Duty Change Tab -->
+        <div id="dutyChangeTab" class="tab-content" style="display: none;">
+            <div class="dashboard-grid">
+                <!-- Request Duty Change -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Request Duty Change</h2>
+                    </div>
+                    <div class="card-body">
+                        <form id="dutyChangeForm">
+                            <div class="form-group">
+                                <label class="form-label">Change Date</label>
+                                <input type="date" class="form-control" id="changeDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Your Duty Time (on that day)</label>
+                                <input type="time" class="form-control" id="requesterDutyTime" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Staff to Swap With</label>
+                                <select class="form-control" id="requestedStaff" required>
+                                    <option value="">Select Staff</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Their Duty Time (on that day)</label>
+                                <input type="time" class="form-control" id="requestedDutyTime" disabled>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-exchange-alt"></i> Request Duty Change
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Received Requests -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Received Requests</h2>
+                    </div>
+                    <div id="receivedRequestsContainer">
+                        <!-- Received requests will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Roster Tab -->
+        <div id="rosterTab" class="tab-content" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Monthly Roster</h2>
+                    <div>
+                        <button class="btn btn-primary" onclick="previousMonth()">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span id="currentMonth" class="mx-2"></span>
+                        <button class="btn btn-primary" onclick="nextMonth()">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="table" id="rosterTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Day</th>
+                                <th>Duty Time</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Roster data will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Announcements Tab -->
+        <div id="announcementsTab" class="tab-content" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">All Announcements</h2>
+                </div>
+                <div id="allAnnouncementsContainer">
+                    <!-- All announcements will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="notificationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Notifications</h3>
+                <button class="btn btn-sm" onclick="closeModal('notificationModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="notificationList">
+                <!-- Notifications will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-messaging.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="auth.js"></script>
+    <script src="user.js"></script>
+    <script src="app.js"></script>
+    
+    <script>
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
+        });
+
+        function initializeApp() {
+            // Check authentication
+            if (!authManager.isAuthenticated()) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Load user info
+            document.getElementById('userName').textContent = sessionStorage.getItem('userName');
+            document.getElementById('userRc').textContent = sessionStorage.getItem('rcNumber');
+
+            // Load dashboard data
+            loadDashboardData();
+
+            // Setup event listeners
+            setupEventListeners();
+
+            // Request notification permission
+            requestNotificationPermission();
         }
-      });
-    }
 
-    messaging.onMessage(payload => {
-      alert(payload.notification.title + "\n" + payload.notification.body);
-    });
-  </script>
+        function setupEventListeners() {
+            // Leave form date changes
+            document.getElementById('slDate').addEventListener('change', async function() {
+                const date = this.value;
+                const dutyTime = await userManager.getDutyTime(date);
+                document.getElementById('slDutyTime').value = dutyTime;
+            });
+
+            document.getElementById('frlDate').addEventListener('change', async function() {
+                const date = this.value;
+                const dutyTime = await userManager.getDutyTime(date);
+                document.getElementById('frlDutyTime').value = dutyTime;
+            });
+
+            // Duty change date change
+            document.getElementById('changeDate').addEventListener('change', async function() {
+                const date = this.value;
+                const dutyTime = await userManager.getDutyTime(date);
+                document.getElementById('requesterDutyTime').value = dutyTime;
+                
+                // Load staff list for that date
+                await loadStaffForDate(date);
+            });
+
+            // Requested staff change
+            document.getElementById('requestedStaff').addEventListener('change', async function() {
+                const staffId = this.value;
+                const date = document.getElementById('changeDate').value;
+                if (staffId && date) {
+                    const dutyTime = await getStaffDutyTime(staffId, date);
+                    document.getElementById('requestedDutyTime').value = dutyTime;
+                }
+            });
+
+            // Form submissions
+            document.getElementById('sickLeaveForm').addEventListener('submit', handleSickLeave);
+            document.getElementById('frLeaveForm').addEventListener('submit', handleFRL);
+            document.getElementById('dutyChangeForm').addEventListener('submit', handleDutyChange);
+        }
+
+        async function loadDashboardData() {
+            try {
+                const data = await userManager.getDashboardData();
+                
+                // Update stats
+                document.getElementById('slBalance').textContent = data.leaveBalance.sl;
+                document.getElementById('frlBalance').textContent = data.leaveBalance.frl;
+                document.getElementById('upcomingDuty').textContent = data.roster.length;
+                document.getElementById('pendingRequests').textContent = data.requests.received.length;
+
+                // Update upcoming roster
+                updateRosterTable(data.roster);
+                
+                // Update pending requests
+                updateRequestsDisplay(data.requests);
+                
+                // Update announcements
+                updateAnnouncementsDisplay(data.announcements);
+                
+            } catch (error) {
+                showError('Failed to load dashboard data');
+            }
+        }
+
+        function switchTab(tabName) {
+            // Hide all tabs
+            const tabs = ['overview', 'leave', 'dutyChange', 'roster', 'announcements'];
+            tabs.forEach(tab => {
+                document.getElementById(tab + 'Tab').style.display = 'none';
+                document.querySelector(`[onclick="switchTab('${tab}')"]`).classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(tabName + 'Tab').style.display = 'block';
+            document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+
+            // Load tab-specific data
+            if (tabName === 'roster') {
+                loadMonthlyRoster();
+            } else if (tabName === 'announcements') {
+                loadAllAnnouncements();
+            }
+        }
+
+        function showLeaveForm(type) {
+            document.getElementById('slForm').style.display = type === 'SL' ? 'block' : 'none';
+            document.getElementById('frlForm').style.display = type === 'FRL' ? 'block' : 'none';
+            
+            // Reset forms
+            document.getElementById('slDate').value = '';
+            document.getElementById('frlDate').value = '';
+            document.getElementById('slReason').value = '';
+            document.getElementById('frlReason').value = '';
+        }
+
+        async function handleSickLeave(e) {
+            e.preventDefault();
+            
+            const date = document.getElementById('slDate').value;
+            const reason = document.getElementById('slReason').value;
+            
+            const result = await userManager.applySickLeave(date, reason);
+            if (result.success) {
+                showSuccess('Sick leave applied successfully');
+                document.getElementById('sickLeaveForm').reset();
+            } else {
+                showError(result.error);
+            }
+        }
+
+        async function handleFRL(e) {
+            e.preventDefault();
+            
+            const date = document.getElementById('frlDate').value;
+            const reason = document.getElementById('frlReason').value;
+            
+            const result = await userManager.applyFRL(date, reason);
+            if (result.success) {
+                showSuccess('FRL applied successfully');
+                document.getElementById('frLeaveForm').reset();
+            } else {
+                showError(result.error);
+            }
+        }
+
+        async function handleDutyChange(e) {
+            e.preventDefault();
+            
+            const changeDate = document.getElementById('changeDate').value;
+            const requestedStaffId = document.getElementById('requestedStaff').value;
+            const requesterDutyTime = document.getElementById('requesterDutyTime').value;
+            const requestedDutyTime = document.getElementById('requestedDutyTime').value;
+            
+            const result = await userManager.requestDutyChange(
+                changeDate,
+                requestedStaffId,
+                requesterDutyTime,
+                requestedDutyTime
+            );
+            
+            if (result.success) {
+                showSuccess('Duty change request sent');
+                document.getElementById('dutyChangeForm').reset();
+            } else {
+                showError(result.error);
+            }
+        }
+
+        async function loadStaffForDate(date) {
+            const staffList = await userManager.getStaffList();
+            const select = document.getElementById('requestedStaff');
+            select.innerHTML = '<option value="">Select Staff</option>';
+            
+            staffList.forEach(staff => {
+                if (staff.id !== userManager.userId) {
+                    const option = document.createElement('option');
+                    option.value = staff.id;
+                    option.textContent = `${staff.rcNumber} - ${staff.name}`;
+                    select.appendChild(option);
+                }
+            });
+        }
+
+        async function getStaffDutyTime(staffId, date) {
+            // Implementation needed
+            return '08:00'; // Placeholder
+        }
+
+        function updateRosterTable(roster) {
+            const tbody = document.querySelector('#upcomingRosterTable tbody');
+            tbody.innerHTML = '';
+            
+            roster.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${formatDate(item.date)}</td>
+                    <td>${getDayName(item.date)}</td>
+                    <td>${item.dutyTime}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateRequestsDisplay(requests) {
+            const container = document.getElementById('pendingRequestsContainer');
+            
+            if (requests.received.length === 0) {
+                container.innerHTML = '<p class="empty-state">No pending requests</p>';
+                return;
+            }
+            
+            let html = '';
+            requests.received.forEach(request => {
+                html += `
+                    <div class="request-item">
+                        <p><strong>From:</strong> RC ${request.requesterRc}</p>
+                        <p><strong>Date:</strong> ${formatDate(request.changeDate)}</p>
+                        <p><strong>Swap:</strong> ${request.requesterDutyTime} ↔ ${request.requestedDutyTime}</p>
+                        <div class="request-actions">
+                            <button class="btn btn-success btn-sm" onclick="respondToRequest('${request.id}', true)">
+                                Accept
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="respondToRequest('${request.id}', false)">
+                                Reject
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function updateAnnouncementsDisplay(announcements) {
+            const container = document.getElementById('announcementsContainer');
+            
+            if (announcements.length === 0) {
+                container.innerHTML = '<p class="empty-state">No announcements</p>';
+                return;
+            }
+            
+            let html = '';
+            announcements.forEach(announcement => {
+                html += `
+                    <div class="announcement-item">
+                        <h4>${announcement.title}</h4>
+                        <p>${announcement.content}</p>
+                        <small>Posted on ${formatDate(announcement.createdAt.toDate())}</small>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        async function respondToRequest(requestId, accept) {
+            const result = await userManager.respondToDutyChange(requestId, accept);
+            if (result.success) {
+                showSuccess(result.message);
+                loadDashboardData(); // Refresh data
+            } else {
+                showError(result.error);
+            }
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        function getDayName(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { weekday: 'long' });
+        }
+
+        function showSuccess(message) {
+            alert(message); // Replace with better notification system
+        }
+
+        function showError(message) {
+            alert('Error: ' + message); // Replace with better notification system
+        }
+
+        function logout() {
+            authManager.logout();
+        }
+
+        function requestNotificationPermission() {
+            if ('Notification' in window) {
+                Notification.requestPermission();
+            }
+        }
+    </script>
 </body>
 </html>
