@@ -1,247 +1,431 @@
-import { 
-    messaging, 
-    functions, 
-    getToken, 
-    onMessage, 
-    httpsCallable 
-} from './firebase-config.js';
-
-// DOM Elements
-const statusEl = document.getElementById('status');
-const requestPermissionBtn = document.getElementById('requestPermission');
-const subscribeButton = document.getElementById('subscribeButton');
-const sendTestButton = document.getElementById('sendTestButton');
-const notificationEl = document.getElementById('notification');
-
-// Your VAPID key (Replace with your own from Firebase Console)
-// Get it from: Firebase Console → Project Settings → Cloud Messaging → Web configuration
-const VAPID_KEY = "BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o";
-
-let currentToken = null;
-
-// Initialize app
-async function initApp() {
-    statusEl.textContent = 'Checking browser support...';
-    
-    if (!('serviceWorker' in navigator)) {
-        statusEl.textContent = 'Service Workers not supported';
-        return;
-    }
-    
-    if (!('PushManager' in window)) {
-        statusEl.textContent = 'Push Notifications not supported';
-        return;
-    }
-    
-    if (!messaging) {
-        statusEl.textContent = 'Firebase Messaging not available';
-        return;
-    }
-    
-    // Request notification permission
-    requestPermissionBtn.disabled = false;
-    requestPermissionBtn.addEventListener('click', requestPermission);
-    
-    statusEl.textContent = 'Ready to request permission';
-}
-
-// Request notification permission
-async function requestPermission() {
-    try {
-        const permission = await Notification.requestPermission();
-        
-        if (permission === 'granted') {
-            statusEl.textContent = 'Permission granted! Setting up push notifications...';
-            requestPermissionBtn.disabled = true;
-            subscribeButton.disabled = false;
-            
-            // Register service worker
-            await registerServiceWorker();
-        } else {
-            statusEl.textContent = 'Permission denied';
-        }
-    } catch (error) {
-        console.error('Error requesting permission:', error);
-        statusEl.textContent = 'Error: ' + error.message;
-    }
-}
-
-// Register Service Worker
-async function registerServiceWorker() {
-    try {
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-        console.log('Service Worker registered:', registration);
-        
-        // Enable subscribe button
-        subscribeButton.disabled = false;
-        subscribeButton.addEventListener('click', subscribeToPush);
-        
-        statusEl.textContent = 'Service Worker registered. Click "Enable Push Notifications"';
-    } catch (error) {
-        console.error('Service Worker registration failed:', error);
-        statusEl.textContent = 'Failed to register Service Worker';
-    }
-}
-
-// Subscribe to push notifications
-async function subscribeToPush() {
-    try {
-        statusEl.textContent = 'Getting FCM token...';
-        
-        // Get FCM token
-        currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
-        
-        if (currentToken) {
-            statusEl.innerHTML = `
-                <strong>Token obtained successfully!</strong><br>
-                <small style="word-break: break-all;">${currentToken}</small>
-            `;
-            
-            // Save token to Firebase Functions
-            await saveTokenToFirestore(currentToken);
-            
-            // Enable test button
-            sendTestButton.disabled = false;
-            sendTestButton.addEventListener('click', sendTestNotification);
-            subscribeButton.disabled = true;
-            
-            // Listen for foreground messages
-            setupMessageListener();
-        } else {
-            statusEl.textContent = 'No registration token available. Request permission to generate one.';
-        }
-    } catch (error) {
-        console.error('Error getting token:', error);
-        statusEl.textContent = 'Error getting token: ' + error.message;
-    }
-}
-
-// Save token to Firebase Functions
-async function saveTokenToFirestore(token) {
-    try {
-        const saveTokenFunction = httpsCallable(functions, 'saveToken');
-        await saveTokenFunction({ token: token });
-        console.log('Token saved successfully');
-    } catch (error) {
-        console.error('Error saving token:', error);
-    }
-}
-
-// Send test notification
-async function sendTestNotification() {
-    try {
-        if (!currentToken) {
-            alert('No token available. Please enable notifications first.');
-            return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Push Notification PWA</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/icon-192x192.png" type="image/png">
+    <link rel="apple-touch-icon" href="/icon-192x192.png">
+    <meta name="theme-color" content="#4A90E2">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
         
-        statusEl.textContent = 'Sending test notification...';
-        sendTestButton.disabled = true;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
         
-        const sendTestFunction = httpsCallable(functions, 'sendTestNotification');
-        const result = await sendTestFunction({
-            token: currentToken,
-            title: 'Test Notification',
-            body: 'This is a test from your PWA! 🎉'
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .status {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: left;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 10px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+        
+        .notification-area {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        .input-group {
+            margin: 15px 0;
+            text-align: left;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        .install-btn {
+            background: #4CAF50;
+            margin-top: 20px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Push Notification PWA</h1>
+        <p class="subtitle">Test Firebase Cloud Messaging with Progressive Web App</p>
+        
+        <div class="status" id="status">
+            Initializing...
+        </div>
+        
+        <div class="btn-group">
+            <button class="btn" id="requestPermission">
+                <span>🔔</span> Enable Notifications
+            </button>
+            
+            <button class="btn btn-secondary" id="testNotification">
+                <span>🚀</span> Test Notification
+            </button>
+            
+            <button class="btn btn-secondary" id="sendToAll">
+                <span>📢</span> Send to All Users
+            </button>
+        </div>
+        
+        <button class="btn install-btn" id="installButton" style="display: none;">
+            <span>⬇️</span> Install App
+        </button>
+        
+        <div class="notification-area" id="notificationArea" style="display: none;">
+            <h3>Send Custom Notification</h3>
+            
+            <div class="input-group">
+                <label for="notificationTitle">Title:</label>
+                <input type="text" id="notificationTitle" placeholder="Enter notification title" value="Hello!">
+            </div>
+            
+            <div class="input-group">
+                <label for="notificationBody">Message:</label>
+                <textarea id="notificationBody" placeholder="Enter notification message">This is a custom notification!</textarea>
+            </div>
+            
+            <div class="input-group">
+                <label for="notificationData">Additional Data (JSON):</label>
+                <textarea id="notificationData" placeholder='{"url": "/", "timestamp": ""}'>{"url": "/", "timestamp": ""}</textarea>
+            </div>
+            
+            <button class="btn" id="sendCustom">
+                <span>📨</span> Send Custom Notification
+            </button>
+        </div>
+    </div>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js"></script>
+    
+    <script type="module">
+        // Firebase configuration - Replace with your actual config
+        const firebaseConfig = {
+          apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+          authDomain: "leelidc-1f753.firebaseapp.com",
+          projectId: "leelidc-1f753",
+          storageBucket: "leelidc-1f753.firebasestorage.app",
+          messagingSenderId: "43622932335",
+          appId: "1:43622932335:web:a7529bce1f19714687129a",
+          measurementId: "G-3KD6ZYS599"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const messaging = firebase.messaging();
+        
+        // DOM Elements
+        const statusEl = document.getElementById('status');
+        const requestPermissionBtn = document.getElementById('requestPermission');
+        const testNotificationBtn = document.getElementById('testNotification');
+        const sendCustomBtn = document.getElementById('sendCustom');
+        const sendToAllBtn = document.getElementById('sendToAll');
+        const installButton = document.getElementById('installButton');
+        const notificationArea = document.getElementById('notificationArea');
+        
+        let deferredPrompt;
+        let fcmToken = null;
+        
+        // Update status
+        function updateStatus(message) {
+            statusEl.innerHTML = message + '<br>' + statusEl.innerHTML;
+            console.log(message);
+        }
+        
+        // Request notification permission
+        requestPermissionBtn.addEventListener('click', async () => {
+            try {
+                const permission = await Notification.requestPermission();
+                
+                if (permission === 'granted') {
+                    updateStatus('✅ Notification permission granted');
+                    await getFCMToken();
+                } else {
+                    updateStatus('❌ Notification permission denied');
+                }
+            } catch (error) {
+                updateStatus('❌ Error requesting permission: ' + error.message);
+            }
         });
         
-        statusEl.innerHTML = `
-            <strong>Test notification sent!</strong><br>
-            <small>Message ID: ${result.data.messageId}</small>
-        `;
-        
-        sendTestButton.disabled = false;
-    } catch (error) {
-        console.error('Error sending notification:', error);
-        statusEl.textContent = 'Error: ' + error.message;
-        sendTestButton.disabled = false;
-    }
-}
-
-// Setup message listener for foreground messages
-function setupMessageListener() {
-    onMessage(messaging, (payload) => {
-        console.log('Message received in foreground:', payload);
-        
-        // Show notification
-        showNotification(payload.notification);
-    });
-}
-
-// Show notification in UI
-function showNotification(notification) {
-    notificationEl.textContent = `${notification.title}: ${notification.body}`;
-    notificationEl.style.display = 'block';
-    
-    setTimeout(() => {
-        notificationEl.style.display = 'none';
-    }, 5000);
-}
-
-// Service Worker file for background notifications
-if ('serviceWorker' in navigator) {
-    // Create the service worker file dynamically
-    const swContent = `
-// Firebase Service Worker for background messages
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js');
-
-firebase.initializeApp({
-    apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
-    authDomain: "leelidc-1f753.firebaseapp.com",
-    projectId: "leelidc-1f753",
-    storageBucket: "leelidc-1f753.firebasestorage.app",
-    messagingSenderId: "43622932335",
-    appId: "1:43622932335:web:a7529bce1f19714687129a",
-    measurementId: "G-3KD6ZYS599"
-});
-
-const messaging = firebase.messaging();
-
-// Background message handler
-messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Received background message:', payload);
-    
-    const notificationTitle = payload.notification.title;
-    const notificationOptions = {
-        body: payload.notification.body,
-        icon: 'https://leelidc-1f753.firebaseapp.com/icon-192x192.png',
-        badge: 'https://leelidc-1f753.firebasestorage.app/badge-72x72.png',
-        data: payload.data || {}
-    };
-    
-    self.registration.showNotification(notificationTitle, notificationOptions);
-});
-
-// Handle notification click
-self.addEventListener('notificationclick', (event) => {
-    console.log('Notification clicked:', event.notification);
-    event.notification.close();
-    
-    // Open the app
-    event.waitUntil(
-        clients.matchAll({type: 'window', includeUncontrolled: true})
-        .then((clientList) => {
-            for (const client of clientList) {
-                if (client.url === '/' && 'focus' in client) {
-                    return client.focus();
+        // Get FCM token
+        async function getFCMToken() {
+            try {
+                fcmToken = await messaging.getToken({ 
+                    vapidKey: 'BCMEhQHZvwuii0Pul11PRfM68N_C4iox9c6jUwWoj21lvKZ2hhAfRe-5KwG_A1xMsQ04aelb8XM7x-mXNYzak1o' // Get from Firebase Console > Cloud Messaging
+                });
+                
+                if (fcmToken) {
+                    updateStatus('✅ FCM Token obtained: ' + fcmToken.substring(0, 50) + '...');
+                    
+                    // Save token to server
+                    await saveTokenToServer(fcmToken);
+                    notificationArea.style.display = 'block';
+                } else {
+                    updateStatus('❌ No registration token available');
                 }
+            } catch (error) {
+                updateStatus('❌ Error getting FCM token: ' + error.message);
             }
-            if (clients.openWindow) {
-                return clients.openWindow('/');
+        }
+        
+        // Save token to server
+        async function saveTokenToServer(token) {
+            try {
+                const response = await fetch('/save-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, userId: 'user_' + Date.now() })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    updateStatus('✅ Token saved to server');
+                }
+            } catch (error) {
+                updateStatus('❌ Error saving token: ' + error.message);
             }
-        })
-    );
-});
-    `;
-    
-    // Create blob URL for service worker
-    const blob = new Blob([swContent], { type: 'application/javascript' });
-    const swUrl = URL.createObjectURL(blob);
-    
-    // Store URL for later use
-    window.serviceWorkerUrl = swUrl;
-}
-
-// Start the app
-document.addEventListener('DOMContentLoaded', initApp);
+        }
+        
+        // Send test notification
+        testNotificationBtn.addEventListener('click', async () => {
+            if (!fcmToken) {
+                updateStatus('❌ Please enable notifications first');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/send-notification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: 'Test Notification',
+                        body: 'This is a test notification from Firebase!',
+                        userId: 'user_' + Date.now()
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    updateStatus('✅ Test notification sent successfully');
+                }
+            } catch (error) {
+                updateStatus('❌ Error sending notification: ' + error.message);
+            }
+        });
+        
+        // Send custom notification
+        sendCustomBtn.addEventListener('click', async () => {
+            if (!fcmToken) {
+                updateStatus('❌ Please enable notifications first');
+                return;
+            }
+            
+            const title = document.getElementById('notificationTitle').value;
+            const body = document.getElementById('notificationBody').value;
+            const data = JSON.parse(document.getElementById('notificationData').value);
+            data.timestamp = new Date().toISOString();
+            
+            try {
+                const response = await fetch('/send-notification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title,
+                        body,
+                        data,
+                        userId: 'user_' + Date.now()
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    updateStatus('✅ Custom notification sent successfully');
+                }
+            } catch (error) {
+                updateStatus('❌ Error sending custom notification: ' + error.message);
+            }
+        });
+        
+        // Send to all users
+        sendToAllBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/send-test-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    updateStatus(`✅ Sent to ${data.sentCount} users, failed: ${data.failedCount}`);
+                }
+            } catch (error) {
+                updateStatus('❌ Error sending to all: ' + error.message);
+            }
+        });
+        
+        // Handle foreground messages
+        messaging.onMessage((payload) => {
+            updateStatus('📨 Foreground message received: ' + payload.notification.title);
+            
+            // Show in-app notification
+            if (Notification.permission === 'granted') {
+                new Notification(payload.notification.title, {
+                    body: payload.notification.body,
+                    icon: '/icon-192x192.png'
+                });
+            }
+        });
+        
+        // PWA Installation
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installButton.style.display = 'block';
+        });
+        
+        installButton.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            
+            if (outcome === 'accepted') {
+                updateStatus('✅ PWA installed successfully');
+                installButton.style.display = 'none';
+            }
+            
+            deferredPrompt = null;
+        });
+        
+        // Check if app is installed
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            updateStatus('📱 App is running in standalone mode');
+        }
+        
+        // Initialize
+        updateStatus('🚀 Initializing Firebase Push Notifications...');
+        
+        // Check existing permission
+        if (Notification.permission === 'granted') {
+            updateStatus('✅ Notification permission already granted');
+            getFCMToken();
+        } else if (Notification.permission === 'denied') {
+            updateStatus('❌ Notification permission denied. Please enable in browser settings.');
+        }
+        
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/firebase-messaging-sw.js')
+                .then(registration => {
+                    updateStatus('✅ Service Worker registered');
+                })
+                .catch(error => {
+                    updateStatus('❌ Service Worker registration failed: ' + error.message);
+                });
+        }
+    </script>
+</body>
+</html>
