@@ -1,7 +1,7 @@
 // api/sendPush.js
 import admin from "firebase-admin";
 
-// Initialize Firebase Admin only once
+// Initialize Firebase Admin once
 if (!admin.apps.length) {
   const serviceAccount = {
     type: "service_account",
@@ -24,7 +24,6 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method not allowed" });
     }
 
-    // Get the notification data from request
     const { title, body } = req.body;
 
     // Fetch all device tokens from Firestore
@@ -35,13 +34,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: "No registered devices." });
     }
 
-    // Prepare the message
     const message = {
       notification: { title, body },
       tokens,
     };
 
-    // Send the push
     const response = await admin.messaging().sendMulticast(message);
 
     res.status(200).json({
