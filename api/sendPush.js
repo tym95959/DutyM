@@ -1,16 +1,12 @@
 // api/sendPush.js
 import admin from "firebase-admin";
 
-// Initialize Firebase Admin once
 if (!admin.apps.length) {
   const serviceAccount = {
     type: "service_account",
     project_id: process.env.FIREBASE_PROJECT_ID,
-    private_key: Buffer.from(
-      process.env.FIREBASE_PRIVATE_KEY_BASE64,
-      "base64"
-    ).toString("utf-8"),
     client_email: process.env.FIREBASE_CLIENT_EMAIL,
+    private_key: Buffer.from(process.env.FIREBASE_PRIVATE_KEY_BASE64, 'base64').toString('utf-8'),
   };
 
   admin.initializeApp({
@@ -20,24 +16,18 @@ if (!admin.apps.length) {
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
-    }
+    if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
     const { title, body } = req.body;
+    if (!title || !body) return res.status(400).json({ error: "Missing title or body" });
 
-    // Fetch all device tokens from Firestore
+    // Fetch all tokens
     const tokensSnapshot = await admin.firestore().collection("tokens").get();
-    const tokens = tokensSnapshot.docs.map((doc) => doc.id);
+    const tokens = tokensSnapshot.docs.map(doc => doc.id);
 
-    if (tokens.length === 0) {
-      return res.status(200).json({ message: "No registered devices." });
-    }
+    if (tokens.length === 0) return res.status(200).json({ message: "No registered devices." });
 
-    const message = {
-      notification: { title, body },
-      tokens,
-    };
+    const message = { notification: { title, body }, tokens };
 
     const response = await admin.messaging().sendMulticast(message);
 
