@@ -1,74 +1,54 @@
+// api/sendPush.js
 import admin from "firebase-admin";
-import fetch from "node-fetch";
-import jwt from "jsonwebtoken";
 
-const serviceAccount = {
-  project_id: process.env.FIREBASE_PROJECT_ID,
-  client_email: process.env.FIREBASE_CLIENT_EMAIL,
-  private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
-};
-
-// Initialize Firebase Admin
+// Initialize Firebase Admin only once
 if (!admin.apps.length) {
+  const serviceAccount = {
+    type: "service_account",
+    project_id: process.env.FIREBASE_PROJECT_ID,
+    private_key: Buffer.from(
+      process.env.FIREBASE_PRIVATE_KEY_BASE64,
+      "base64"
+    ).toString("utf-8"),
+    client_email: process.env.FIREBASE_CLIENT_EMAIL,
+  };
+
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(serviceAccount),
   });
 }
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
-    const { title, body } = req.body;
-
-    // 1️⃣ Fetch all registered tokens from Firestore
-    const snapshot = await admin.firestore().collection("tokens").get();
-    const tokens = snapshot.docs.map(doc => doc.data().token);
-
-    if (!tokens.length) return res.json({ message: "No registered devices" });
-
-    // 2️⃣ Get access token for FCM HTTP v1
-    const now = Math.floor(Date.now() / 1000);
-    const jwtToken = jwt.sign({
-      iss: serviceAccount.client_email,
-      scope: "https://www.googleapis.com/auth/firebase.messaging",
-      aud: "https://oauth2.googleapis.com/token",
-      iat: now,
-      exp: now + 3600
-    }, serviceAccount.private_key, { algorithm: "RS256" });
-
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwtToken}`
-    });
-
-    const { access_token } = await tokenRes.json();
-
-    // 3️⃣ Send push to all tokens
-    const results = [];
-    for (const token of tokens) {
-      const fcmRes = await fetch(
-        `https://fcm.googleapis.com/v1/projects/${process.env.FIREBASE_PROJECT_ID}/messages:send`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${access_token}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            message: {
-              token,
-              notification: { title, body }
-            }
-          })
-        }
-      );
-      results.push(await fcmRes.json());
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method not allowed" });
     }
 
-    res.json({ message: `Push sent to ${tokens.length} devices`, results });
+    // Get the notification data from request
+    const { title, body } = req.body;
 
+    // Fetch all device tokens from Firestore
+    const tokensSnapshot = await admin.firestore().collection("tokens").get();
+    const tokens = tokensSnapshot.docs.map((doc) => doc.id);
+
+    if (tokens.length === 0) {
+      return res.status(200).json({ message: "No registered devices." });
+    }
+
+    // Prepare the message
+    const message = {
+      notification: { title, body },
+      tokens,
+    };
+
+    // Send the push
+    const response = await admin.messaging().sendMulticast(message);
+
+    res.status(200).json({
+      message: "Notification sent!",
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+    });
   } catch (err) {
     console.error("SERVER ERROR:", err);
     res.status(500).json({ error: err.message });
