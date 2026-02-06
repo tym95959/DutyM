@@ -1,196 +1,150 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Push Notification Test</title>
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
-    
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json">
-    
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        h1 {
-            color: #333;
-            margin-bottom: 20px;
-        }
-        
-        .status-box {
-            padding: 15px;
-            border-radius: 5px;
-            margin: 15px 0;
-            font-weight: bold;
-        }
-        
-        .success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .info {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-        
-        button {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 10px 5px;
-            transition: background-color 0.3s;
-        }
-        
-        button:hover {
-            background-color: #0056b3;
-        }
-        
-        button:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-        }
-        
-        .section {
-            margin: 25px 0;
-            padding: 20px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        
-        pre {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            overflow-x: auto;
-            margin: 10px 0;
-        }
-        
-        label {
-            display: block;
-            margin: 10px 0 5px;
-            font-weight: bold;
-        }
-        
-        input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-bottom: 10px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Web Push Notification Test</h1>
-        
-        <div class="section">
-            <h2>Step 1: Configure Firebase</h2>
-            <div id="firebaseConfig">
-                <label for="apiKey">API Key:</label>
-                <input type="text" id="apiKey" placeholder="Enter your Firebase API Key">
-                
-                <label for="authDomain">Auth Domain:</label>
-                <input type="text" id="authDomain" placeholder="your-app.firebaseapp.com">
-                
-                <label for="projectId">Project ID:</label>
-                <input type="text" id="projectId" placeholder="your-project-id">
-                
-                <label for="storageBucket">Storage Bucket:</label>
-                <input type="text" id="storageBucket" placeholder="your-app.appspot.com">
-                
-                <label for="messagingSenderId">Messaging Sender ID:</label>
-                <input type="text" id="messagingSenderId" placeholder="1234567890">
-                
-                <label for="appId">App ID:</label>
-                <input type="text" id="appId" placeholder="1:1234567890:web:abc123def456">
-                
-                <label for="vapidKey">VAPID Key:</label>
-                <input type="text" id="vapidKey" placeholder="Your Web Push Certificate Key">
-                
-                <button onclick="saveConfig()">Save Configuration</button>
-            </div>
-        </div>
-        
-        <div class="section">
-            <h2>Step 2: Request Permission</h2>
-            <div id="permissionStatus" class="status-box info">
-                Notification permission: Checking...
-            </div>
-            <button onclick="requestPermission()" id="permissionBtn">Request Notification Permission</button>
-        </div>
-        
-        <div class="section">
-            <h2>Step 3: Initialize Firebase Messaging</h2>
-            <div id="firebaseStatus" class="status-box info">
-                Firebase Messaging: Not initialized
-            </div>
-            <button onclick="initializeFirebase()" id="initBtn">Initialize Firebase</button>
-        </div>
-        
-        <div class="section">
-            <h2>Step 4: Get FCM Token</h2>
-            <div id="tokenStatus" class="status-box info">
-                FCM Token: Not retrieved
-            </div>
-            <button onclick="getToken()" id="tokenBtn">Get FCM Token</button>
-            <button onclick="copyToken()" id="copyBtn">Copy Token</button>
-        </div>
-        
-        <div class="section">
-            <h2>Step 5: Test Notification</h2>
-            <div id="testNotification">
-                <label for="notificationTitle">Title:</label>
-                <input type="text" id="notificationTitle" value="Test Notification">
-                
-                <label for="notificationBody">Body:</label>
-                <input type="text" id="notificationBody" value="This is a test notification">
-                
-                <button onclick="sendTestNotification()">Send Test Notification</button>
-            </div>
-        </div>
-        
-        <div class="section">
-            <h2>Debug Information</h2>
-            <div id="debugInfo"></div>
-            <button onclick="clearDebug()">Clear Debug</button>
-        </div>
-    </div>
+// firebase-messaging-sw.js
+importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
 
-    <script src="app.js"></script>
-</body>
-</html>
+const defaultFirebaseConfig = {
+    apiKey: "AIzaSyDummyKeyReplaceWithYours",
+    authDomain: "your-app.firebaseapp.com",
+    projectId: "your-project-id",
+    storageBucket: "your-app.appspot.com",
+    messagingSenderId: "1234567890",
+    appId: "1:1234567890:web:abc123def456"
+};
+
+let messaging = null;
+let currentConfig = null;
+
+async function initializeFirebase(config) {
+    try {
+        if (firebase.apps.length > 0) {
+            await firebase.app().delete();
+        }
+        const app = firebase.initializeApp(config);
+        messaging = firebase.messaging(app);
+        currentConfig = config;
+        setupMessageHandlers();
+        return true;
+    } catch (error) {
+        console.error('[Service Worker] Firebase initialization error:', error);
+        return false;
+    }
+}
+
+function setupMessageHandlers() {
+    if (!messaging) return;
+    
+    messaging.onBackgroundMessage((payload) => {
+        console.log('[Service Worker] Received background message:', payload);
+        
+        const notificationTitle = payload.notification?.title || 'Duty Manager Notification';
+        const notificationBody = payload.notification?.body || 'You have a new notification';
+        
+        let icon = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Ccircle cx=\'50\' cy=\'50\' r=\'45\' fill=\'%233498db\'/%3E%3Ccircle cx=\'50\' cy=\'35\' r=\'12\' fill=\'white\'/%3E%3Cpath d=\'M50,55 C65,55 70,70 70,70 L30,70 C30,70 35,55 50,55 Z\' fill=\'white\'/%3E%3Cpath d=\'M35,75 L65,75 L65,85 C65,90 60,95 50,95 C40,95 35,90 35,85 Z\' fill=\'white\'/%3E%3Cpath d=\'M20,20 L20,40 L30,30 Z\' fill=\'%2327ae60\'/%3E%3C/svg%3E';
+        let badge = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Ccircle cx=\'50\' cy=\'50\' r=\'45\' fill=\'%233498db\'/%3E%3C/svg%3E';
+        let actions = [];
+        
+        switch(payload.data?.type) {
+            case 'duty_change_request':
+                icon = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Ccircle cx=\'50\' cy=\'50\' r=\'45\' fill=\'%23f39c12\'/%3E%3Ctext x=\'50\' y=\'55\' text-anchor=\'middle\' fill=\'white\' font-size=\'30\' font-family=\'Arial\'%3E🔄%3C/text%3E%3C/svg%3E';
+                actions = [
+                    { action: 'accept', title: 'Accept' },
+                    { action: 'reject', title: 'Reject' },
+                    { action: 'view', title: 'View' }
+                ];
+                break;
+            case 'leave_request':
+                icon = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Ccircle cx=\'50\' cy=\'50\' r=\'45\' fill=\'%2327ae60\'/%3E%3Ctext x=\'50\' y=\'55\' text-anchor=\'middle\' fill=\'white\' font-size=\'30\' font-family=\'Arial\'%3E📅%3C/text%3E%3C/svg%3E';
+                actions = [
+                    { action: 'approve', title: 'Approve' },
+                    { action: 'reject', title: 'Reject' },
+                    { action: 'view', title: 'View' }
+                ];
+                break;
+            case 'announcement':
+                const priority = payload.data?.priority;
+                let bgColor = '#3498db';
+                if (priority === 'high') bgColor = '#e74c3c';
+                if (priority === 'medium') bgColor = '#f39c12';
+                icon = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='${bgColor}'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='white' font-size='30' font-family='Arial'%3E📢%3C/text%3E%3C/svg%3E`;
+                actions = [
+                    { action: 'read', title: 'Read' },
+                    { action: 'dismiss', title: 'Dismiss' }
+                ];
+                break;
+            default:
+                actions = [
+                    { action: 'open', title: 'Open App' },
+                    { action: 'dismiss', title: 'Dismiss' }
+                ];
+        }
+        
+        const notificationOptions = {
+            body: notificationBody,
+            icon: icon,
+            badge: badge,
+            data: payload.data || {},
+            actions: actions,
+            tag: payload.data?.type || 'general',
+            renotify: true
+        };
+        
+        if (payload.data?.priority === 'high') {
+            notificationOptions.requireInteraction = true;
+        }
+        
+        self.registration.showNotification(notificationTitle, notificationOptions);
+    });
+}
+
+self.addEventListener('notificationclick', (event) => {
+    console.log('[Service Worker] Notification clicked:', event.notification.data);
+    event.notification.close();
+    
+    const data = event.notification.data || {};
+    const action = event.action || 'open';
+    
+    event.waitUntil(
+        clients.matchAll({type: 'window', includeUncontrolled: true})
+        .then((clientList) => {
+            for (const client of clientList) {
+                if (client.url.includes('/') && 'focus' in client) {
+                    client.postMessage({
+                        type: 'NOTIFICATION_CLICK',
+                        data: data
+                    });
+                    return client.focus();
+                }
+            }
+            if (clients.openWindow) {
+                return clients.openWindow('/');
+            }
+        })
+    );
+});
+
+self.addEventListener('message', (event) => {
+    console.log('[Service Worker] Received message:', event.data.type);
+    switch(event.data.type) {
+        case 'UPDATE_FIREBASE_CONFIG':
+            console.log('[Service Worker] Updating Firebase config');
+            initializeFirebase(event.data.config);
+            break;
+        case 'TEST_NOTIFICATION':
+            self.registration.showNotification('Test Notification', {
+                body: 'This is a test notification from Service Worker',
+                icon: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Ccircle cx=\'50\' cy=\'50\' r=\'45\' fill=\'%233498db\'/%3E%3Ccircle cx=\'50\' cy=\'35\' r=\'12\' fill=\'white\'/%3E%3Cpath d=\'M50,55 C65,55 70,70 70,70 L30,70 C30,70 35,55 50,55 Z\' fill=\'white\'/%3E%3Cpath d=\'M35,75 L65,75 L65,85 C65,90 60,95 50,95 C40,95 35,90 35,85 Z\' fill=\'white\'/%3E%3Cpath d=\'M20,20 L20,40 L30,30 Z\' fill=\'%2327ae60\'/%3E%3C/svg%3E',
+                data: { type: 'test' }
+            });
+            break;
+    }
+});
+
+self.addEventListener('install', (event) => {
+    console.log('[Service Worker] Installing...');
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+    console.log('[Service Worker] Activating...');
+    event.waitUntil(clients.claim());
+});
