@@ -9,6 +9,7 @@
         messagingSenderId: "43622932335",
         appId: "1:43622932335:web:a7529bce1f19714687129a",
         measurementId: "G-3KD6ZYS599"
+        vapidKey: "BCS5MgDiA9DOzT_CI12agRMwNRtU6wehijEVEkjY77LMRnv6Fh9mlGocJ87k_5w862iwomMSx1xRGJFRH9W3s_8"  // ← ADD THIS
     };
     
     // Check if Firebase is already initialized
