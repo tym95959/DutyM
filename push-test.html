@@ -6,6 +6,7 @@
     <title>📱 Mobile Push Notification Tester</title>
     <link rel="manifest" href="manifest.json">
     <style>
+        /* All your existing CSS styles remain the same */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -404,6 +405,7 @@
                         <option value="specific">Specific Device</option>
                         <option value="broadcast">Broadcast to All Devices</option>
                         <option value="topic">Send to Topic</option>
+                        <option value="webhook">Send via Webhook (Real)</option>
                     </select>
                 </div>
                 
@@ -422,6 +424,13 @@
                     <div class="notification-item" style="background: #e8f4fc;">
                         <div class="notification-title">📢 Broadcast to All Devices</div>
                         <div class="notification-body">This will send notification to ALL devices that have installed this app and are subscribed to the 'all_devices' topic</div>
+                    </div>
+                </div>
+                
+                <div class="input-group" id="webhookInfo" style="display: none;">
+                    <div class="notification-item" style="background: #e8f5e8;">
+                        <div class="notification-title">🌐 Webhook Method (Real Notifications)</div>
+                        <div class="notification-body">This will send REAL notifications using a backend webhook. Make sure the backend is configured properly.</div>
                     </div>
                 </div>
                 
@@ -445,11 +454,11 @@
                     </select>
                 </div>
                 
-                <button class="btn btn-success" onclick="sendRealNotification()" id="sendBtn">
-                    <span>📤</span> Send Real Notification
+                <button class="btn btn-success" onclick="sendViaWebhook()" id="sendWebhookBtn">
+                    <span>🌐</span> Send via Webhook
                 </button>
                 
-                <button class="btn btn-primary" onclick="sendDemoNotification()" id="sendBtnDemo" style="margin-top: 10px;">
+                <button class="btn btn-primary" onclick="sendDemoNotification()" id="sendDemoBtn" style="margin-top: 10px;">
                     <span>🧪</span> Send Demo Notification
                 </button>
                 
@@ -499,6 +508,10 @@
                 <button class="btn" onclick="registerServiceWorker()" style="background: #6c757d; color: white; margin-top: 10px;">
                     <span>⚙️</span> Register Service Worker
                 </button>
+                
+                <button class="btn" onclick="setupBackendInstructions()" style="background: #28a745; color: white; margin-top: 10px;">
+                    <span>📋</span> Backend Setup Instructions
+                </button>
             </div>
         </div>
     </div>
@@ -522,6 +535,9 @@
         // Your Firebase Cloud Messaging Server Key
         const SERVER_KEY = "BCS5MgDiA9DOzT_CI12agRMwNRtU6wehijEVEkjY77LMRnv6Fh9mlGocJ87k_5w862iwomMSx1xRGJFRH9W3s_8";
         
+        // Webhook URL for real notifications (you need to set this up)
+        const WEBHOOK_URL = "https://your-backend.com/send-notification"; // Change this to your backend
+        
         // Global variables
         let messaging = null;
         let fcmToken = null;
@@ -540,11 +556,9 @@
             }
             
             try {
-                // Try to register from file first
                 const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
                 console.log('✅ Service Worker registered:', registration);
                 
-                // Update UI
                 document.getElementById("serviceWorkerBadge").textContent = "Registered";
                 document.getElementById("serviceWorkerBadge").className = "status-badge status-success";
                 document.getElementById("serviceWorkerStatus").style.display = "block";
@@ -552,15 +566,12 @@
                 
                 updateStatus("Service Worker registered successfully!", "success");
                 
-                // Store registration for messaging
                 if (messaging) {
                     messaging.useServiceWorker(registration);
                 }
                 
             } catch (error) {
                 console.error('❌ Service Worker registration failed:', error);
-                
-                // Create a simple service worker inline
                 createInlineServiceWorker();
             }
         }
@@ -674,6 +685,14 @@ self.addEventListener('notificationclick', (event) => {
                         messaging = firebase.messaging();
                         console.log("✅ Firebase Messaging supported");
                         updateStatus("Firebase initialized successfully", "success");
+                        
+                        // Register service worker
+                        if ('serviceWorker' in navigator) {
+                            setTimeout(() => {
+                                registerServiceWorker();
+                            }, 1000);
+                        }
+                        
                         return true;
                     } else {
                         console.log("❌ Firebase Messaging not supported");
@@ -740,7 +759,6 @@ self.addEventListener('notificationclick', (event) => {
                     document.getElementById("fcmTokenDisplay").textContent = fcmToken;
                     document.getElementById("tokenStatus").style.display = "block";
                     
-                    // Save token for later use
                     localStorage.setItem("fcmToken", fcmToken);
                     localStorage.setItem("lastTokenUpdate", Date.now());
                     
@@ -755,13 +773,13 @@ self.addEventListener('notificationclick', (event) => {
                     document.getElementById("tokenStatus").style.display = "block";
                 }
                 
-                // 5. Set up message listener for foreground
+                // 5. Set up message listener
                 messaging.onMessage((payload) => {
                     console.log("📱 Foreground message received:", payload);
                     showNotification(payload);
                 });
                 
-                // 6. Set up message listener from service worker
+                // 6. Set up service worker message listener
                 if ('serviceWorker' in navigator) {
                     navigator.serviceWorker.addEventListener('message', (event) => {
                         if (event.data && event.data.type === 'NOTIFICATION_RECEIVED') {
@@ -791,7 +809,7 @@ self.addEventListener('notificationclick', (event) => {
                 initBtn.innerHTML = '<span>✅</span> Notifications Enabled';
                 initBtn.className = "btn btn-success";
                 
-                updateStatus("✅ Push notifications enabled! You can now receive notifications even when app is closed.", "success");
+                updateStatus("✅ Push notifications enabled! You can now receive notifications.", "success");
                 
                 // 11. Update system status
                 updateSystemStatus();
@@ -804,7 +822,7 @@ self.addEventListener('notificationclick', (event) => {
                 
                 // 14. Send welcome notification
                 setTimeout(() => {
-                    addNotification("Welcome!", "Push notifications are now enabled. You will receive notifications even when the app is closed!", "test");
+                    addNotification("Welcome!", "Push notifications are now enabled. Share your Device ID with others to test!", "test");
                 }, 1000);
                 
             } catch (error) {
@@ -816,15 +834,15 @@ self.addEventListener('notificationclick', (event) => {
             }
         }
         
-        // ==================== REAL NOTIFICATION SENDING ====================
+        // ==================== REAL NOTIFICATION VIA WEBHOOK ====================
         
-        // Send Real Notification
-        async function sendRealNotification() {
-            const sendBtn = document.getElementById("sendBtn");
+        // Send notification via webhook (REAL notifications)
+        async function sendViaWebhook() {
+            const sendBtn = document.getElementById("sendWebhookBtn");
             const sendResult = document.getElementById("sendResult");
             
             sendBtn.disabled = true;
-            sendBtn.innerHTML = '<span>⏳</span> Sending...';
+            sendBtn.innerHTML = '<span>⏳</span> Sending via Webhook...';
             sendResult.innerHTML = "";
             
             try {
@@ -836,266 +854,150 @@ self.addEventListener('notificationclick', (event) => {
                 if (!title) throw new Error("Please enter a title");
                 if (!message) throw new Error("Please enter a message");
                 
-                let payload;
-                let targetToken = "";
+                // Check if webhook URL is configured
+                if (WEBHOOK_URL === "https://your-backend.com/send-notification") {
+                    throw new Error("Please configure the WEBHOOK_URL in the code to point to your backend server");
+                }
                 
-                // Build payload based on target type
-                if (targetType === 'broadcast') {
-                    payload = {
-                        to: "/topics/all_devices",
-                        notification: {
-                            title: title,
-                            body: message,
-                            icon: "https://leelidc-1f753.firebaseapp.com/icon-192x192.png"
-                        },
-                        data: {
-                            type: type,
-                            senderId: deviceId || "broadcast",
-                            timestamp: new Date().toISOString(),
-                            isBroadcast: "true",
-                            message: message,
-                            url: window.location.href
-                        }
-                    };
-                    updateStatus("📢 Broadcasting to all devices...", "warning");
-                    
+                let payload = {
+                    targetType: targetType,
+                    title: title,
+                    message: message,
+                    type: type,
+                    senderId: deviceId || "unknown",
+                    timestamp: new Date().toISOString()
+                };
+                
+                if (targetType === 'specific') {
+                    const targetToken = document.getElementById("targetToken").value.trim();
+                    if (!targetToken) throw new Error("Please enter a target Device ID or FCM Token");
+                    payload.target = targetToken;
+                    addRecentDevice(targetToken, title);
                 } else if (targetType === 'topic') {
                     const topicName = document.getElementById("topicName").value.trim();
                     if (!topicName) throw new Error("Please enter a topic name");
-                    
-                    payload = {
-                        to: `/topics/${topicName}`,
-                        notification: {
-                            title: title,
-                            body: message,
-                            icon: "https://leelidc-1f753.firebaseapp.com/icon-192x192.png"
-                        },
-                        data: {
-                            type: type,
-                            senderId: deviceId || "topic_sender",
-                            timestamp: new Date().toISOString(),
-                            topic: topicName,
-                            url: window.location.href
-                        }
-                    };
-                    updateStatus(`📤 Sending to topic: ${topicName}...`, "warning");
-                    
-                } else {
-                    targetToken = document.getElementById("targetToken").value.trim();
-                    if (!targetToken) throw new Error("Please enter a target Device ID or FCM Token");
-                    
-                    payload = {
-                        to: targetToken,
-                        notification: {
-                            title: title,
-                            body: message,
-                            icon: "https://leelidc-1f753.firebaseapp.com/icon-192x192.png"
-                        },
-                        data: {
-                            type: type,
-                            senderId: deviceId || "unknown",
-                            timestamp: new Date().toISOString(),
-                            url: window.location.href
-                        }
-                    };
-                    updateStatus(`Sending to: ${targetToken.substring(0, 30)}...`, "warning");
-                    addRecentDevice(targetToken, title);
+                    payload.topic = topicName;
+                } else if (targetType === 'broadcast') {
+                    payload.topic = "all_devices";
                 }
                 
-                console.log("Sending real payload:", payload);
+                console.log("Sending via webhook:", payload);
                 
-                // Method 1: Use CORS proxy to call FCM directly
-                const proxyUrl = "https://corsproxy.io/?";
-                const fcmUrl = "https://fcm.googleapis.com/fcm/send";
-                const fullUrl = proxyUrl + encodeURIComponent(fcmUrl);
-                
-                const response = await fetch(fullUrl, {
+                // Send to your backend webhook
+                const response = await fetch(WEBHOOK_URL, {
                     method: "POST",
                     headers: {
-                        "Authorization": `key=${SERVER_KEY}`,
                         "Content-Type": "application/json"
                     },
                     body: JSON.stringify(payload)
                 });
                 
-                console.log("Response status:", response.status);
-                
                 if (!response.ok) {
-                    throw new Error(`FCM API error: ${response.status}`);
+                    throw new Error(`Backend error: ${response.status}`);
                 }
                 
                 const result = await response.json();
-                console.log("FCM response:", result);
+                console.log("Webhook response:", result);
                 
-                if (result.success === 1 || result.message_id) {
-                    // Success
-                    let successMessage = "";
-                    if (targetType === 'broadcast') {
-                        successMessage = "📢 Broadcast sent successfully to all devices!";
-                    } else if (targetType === 'topic') {
-                        successMessage = `✅ Notification sent to topic: ${document.getElementById("topicName").value}`;
-                    } else {
-                        successMessage = "✅ Real notification sent! Check target device.";
-                    }
-                    
-                    sendResult.innerHTML = `
-                        <div class="notification-item" style="background: #d4edda; border-left-color: #28a745;">
-                            <div class="notification-title">${successMessage}</div>
-                            <div class="notification-body">Message ID: ${result.message_id || "N/A"}</div>
-                            <div class="notification-time">${new Date().toLocaleTimeString()}</div>
-                        </div>
-                    `;
-                    
-                    updateStatus(successMessage, "success");
-                    playSound("success");
-                    
-                    const targetDesc = targetType === 'broadcast' ? 'All Devices' : 
-                                     targetType === 'topic' ? `Topic: ${document.getElementById("topicName").value}` : 
-                                     `To: ${targetToken.substring(0, 30)}...`;
-                    addNotification(`Sent: ${title}`, targetDesc, "sent");
-                    
-                } else {
-                    throw new Error(result.error || "Failed to send notification");
-                }
-                
-            } catch (error) {
-                console.error("❌ Send error:", error);
-                
-                // Fallback: Try alternative CORS proxy
-                if (error.message.includes("FCM API error") || error.message.includes("Failed to fetch")) {
-                    try {
-                        await sendWithAlternativeProxy();
-                        return;
-                    } catch (fallbackError) {
-                        console.error("Fallback also failed:", fallbackError);
-                        error = fallbackError;
-                    }
+                // Show success
+                let successMessage = "✅ Notification sent via webhook!";
+                if (targetType === 'broadcast') {
+                    successMessage = "📢 Broadcast sent via webhook!";
+                } else if (targetType === 'topic') {
+                    successMessage = `✅ Sent to topic via webhook: ${payload.topic}`;
                 }
                 
                 sendResult.innerHTML = `
-                    <div class="notification-item" style="background: #f8d7da; border-left-color: #dc3545;">
-                        <div class="notification-title">❌ Failed to Send Real Notification</div>
-                        <div class="notification-body">${error.message}</div>
-                        <div class="notification-body">Note: CORS restrictions may prevent sending from browser. Consider setting up a backend server.</div>
+                    <div class="notification-item" style="background: #d4edda; border-left-color: #28a745;">
+                        <div class="notification-title">${successMessage}</div>
+                        <div class="notification-body">Message ID: ${result.message_id || "N/A"}</div>
                         <div class="notification-time">${new Date().toLocaleTimeString()}</div>
                     </div>
                 `;
                 
-                updateStatus(`❌ Send failed: ${error.message}`, "danger");
+                updateStatus(successMessage, "success");
+                playSound("success");
+                
+                const targetDesc = targetType === 'broadcast' ? 'All Devices' : 
+                                 targetType === 'topic' ? `Topic: ${payload.topic}` : 
+                                 `To: ${payload.target?.substring(0, 30)}...`;
+                addNotification(`Sent via Webhook: ${title}`, targetDesc, "sent");
+                
+            } catch (error) {
+                console.error("❌ Webhook send error:", error);
+                
+                sendResult.innerHTML = `
+                    <div class="notification-item" style="background: #f8d7da; border-left-color: #dc3545;">
+                        <div class="notification-title">❌ Webhook Send Failed</div>
+                        <div class="notification-body">${error.message}</div>
+                        <div class="notification-body">You need to set up a backend server. Click "Backend Setup Instructions" for help.</div>
+                        <div class="notification-time">${new Date().toLocaleTimeString()}</div>
+                    </div>
+                `;
+                
+                updateStatus(`❌ Webhook failed: ${error.message}`, "danger");
                 playSound("error");
             } finally {
                 sendBtn.disabled = false;
-                sendBtn.innerHTML = '<span>📤</span> Send Real Notification';
+                sendBtn.innerHTML = '<span>🌐</span> Send via Webhook';
             }
         }
         
-        // Alternative CORS proxy method
-        async function sendWithAlternativeProxy() {
-            const targetType = document.getElementById("targetType").value;
-            const title = document.getElementById("sendTitle").value.trim();
-            const message = document.getElementById("sendMessage").value.trim();
-            const type = document.getElementById("notificationType").value;
-            let targetToken = "";
-            
-            let payload;
-            if (targetType === 'broadcast') {
-                payload = { to: "/topics/all_devices", notification: { title, body: message } };
-            } else if (targetType === 'topic') {
-                const topicName = document.getElementById("topicName").value.trim();
-                payload = { to: `/topics/${topicName}`, notification: { title, body: message } };
-            } else {
-                targetToken = document.getElementById("targetToken").value.trim();
-                payload = { to: targetToken, notification: { title, body: message } };
-            }
-            
-            // Try different CORS proxies
-            const proxies = [
-                "https://api.allorigins.win/post?url=",
-                "https://cors-proxy.htmldriven.com/?url=",
-                "https://proxy.cors.sh/"
-            ];
-            
-            const fcmUrl = "https://fcm.googleapis.com/fcm/send";
-            
-            for (const proxy of proxies) {
-                try {
-                    console.log(`Trying proxy: ${proxy}`);
-                    const proxyFullUrl = proxy + encodeURIComponent(fcmUrl);
-                    
-                    const response = await fetch(proxy === "https://proxy.cors.sh/" ? 
-                        "https://proxy.cors.sh/https://fcm.googleapis.com/fcm/send" : 
-                        proxyFullUrl, {
-                        method: "POST",
-                        headers: {
-                            "Authorization": `key=${SERVER_KEY}`,
-                            "Content-Type": "application/json",
-                            ...(proxy === "https://proxy.cors.sh/" ? { "x-cors-api-key": "temp_2a4b5c6d7e8f9g0h1i2j3k4l5m6n7o8p" } : {})
-                        },
-                        body: JSON.stringify(payload)
-                    });
-                    
-                    if (response.ok) {
-                        const result = await response.json();
-                        console.log(`Proxy ${proxy} success:`, result);
-                        
-                        if (result.success === 1 || result.message_id) {
-                            let successMessage = targetType === 'broadcast' ? "📢 Broadcast sent via proxy!" :
-                                               targetType === 'topic' ? `✅ Sent to topic via proxy` :
-                                               "✅ Notification sent via proxy!";
-                            
-                            document.getElementById("sendResult").innerHTML = `
-                                <div class="notification-item" style="background: #d4edda; border-left-color: #28a745;">
-                                    <div class="notification-title">${successMessage}</div>
-                                    <div class="notification-body">Message ID: ${result.message_id || "N/A"}</div>
-                                    <div class="notification-time">${new Date().toLocaleTimeString()}</div>
-                                </div>
-                            `;
-                            
-                            updateStatus(successMessage, "success");
-                            playSound("success");
-                            return;
-                        }
-                    }
-                } catch (proxyError) {
-                    console.log(`Proxy ${proxy} failed:`, proxyError);
-                    continue;
-                }
-            }
-            
-            throw new Error("All proxy attempts failed");
-        }
+        // ==================== DEMO NOTIFICATION ====================
         
-        // Demo notification
+        // Send demo notification (local only)
         async function sendDemoNotification() {
-            const sendBtn = document.getElementById("sendBtnDemo");
+            const sendBtn = document.getElementById("sendDemoBtn");
             const sendResult = document.getElementById("sendResult");
             
             sendBtn.disabled = true;
             sendBtn.innerHTML = '<span>⏳</span> Sending Demo...';
             
             try {
+                const targetType = document.getElementById("targetType").value;
                 const title = document.getElementById("sendTitle").value.trim() || "Demo Notification";
                 const message = document.getElementById("sendMessage").value.trim() || "This is a demo notification";
+                const type = document.getElementById("notificationType").value;
                 
                 // Show demo result
+                let demoMessage = "";
+                if (targetType === 'broadcast') {
+                    demoMessage = "📢 Demo Broadcast to all devices";
+                } else if (targetType === 'topic') {
+                    const topicName = document.getElementById("topicName").value.trim() || "all_devices";
+                    demoMessage = `📤 Demo to topic: ${topicName}`;
+                } else if (targetType === 'specific') {
+                    const targetToken = document.getElementById("targetToken").value.trim();
+                    if (targetToken) {
+                        demoMessage = `📱 Demo to: ${targetToken.substring(0, 30)}...`;
+                        addRecentDevice(targetToken, title);
+                    } else {
+                        demoMessage = "📱 Demo notification";
+                    }
+                } else {
+                    demoMessage = "🧪 Demo notification";
+                }
+                
                 sendResult.innerHTML = `
                     <div class="notification-item" style="background: #e8f4fc; border-left-color: #2196f3;">
-                        <div class="notification-title">🧪 Demo Notification Sent</div>
+                        <div class="notification-title">${demoMessage}</div>
                         <div class="notification-body">${title}: ${message}</div>
-                        <div class="notification-body">Note: This is a demo. For real notifications between devices, use "Send Real Notification" button.</div>
+                        <div class="notification-body">This is a local demo. For real notifications between devices, set up a backend webhook.</div>
                         <div class="notification-time">${new Date().toLocaleTimeString()}</div>
                     </div>
                 `;
                 
                 updateStatus("Demo notification sent", "warning");
                 
-                // Also show a local notification
-                addNotification("[Demo] " + title, message, "test");
+                // Add to notification list
+                addNotification("[Demo] " + title, message, type);
                 
+                // Show local notification
                 if (Notification.permission === "granted") {
                     new Notification("[Demo] " + title, {
                         body: message,
-                        icon: "https://leelidc-1f753.firebaseapp.com/icon-192x192.png"
+                        icon: "https://leelidc-1f753.firebaseapp.com/icon-192x192.png",
+                        vibrate: [200, 100, 200]
                     });
                 }
                 
@@ -1103,10 +1005,111 @@ self.addEventListener('notificationclick', (event) => {
                 
             } catch (error) {
                 console.error("Demo error:", error);
+                sendResult.innerHTML = `
+                    <div class="notification-item" style="background: #f8d7da; border-left-color: #dc3545;">
+                        <div class="notification-title">❌ Demo Failed</div>
+                        <div class="notification-body">${error.message}</div>
+                        <div class="notification-time">${new Date().toLocaleTimeString()}</div>
+                    </div>
+                `;
             } finally {
                 sendBtn.disabled = false;
                 sendBtn.innerHTML = '<span>🧪</span> Send Demo Notification';
             }
+        }
+        
+        // ==================== BACKEND SETUP INSTRUCTIONS ====================
+        
+        function setupBackendInstructions() {
+            const instructions = `
+                <div class="notification-item" style="background: #fff3cd; border-left-color: #ffc107;">
+                    <div class="notification-title">📋 Backend Setup Instructions</div>
+                    <div class="notification-body">
+                        <strong>To send REAL notifications between devices, you need a backend server.</strong>
+                        <br><br>
+                        <strong>Option 1: Firebase Cloud Functions (Recommended)</strong>
+                        <ol>
+                            <li>Install Firebase CLI: <code>npm install -g firebase-tools</code></li>
+                            <li>Login: <code>firebase login</code></li>
+                            <li>Init project: <code>firebase init functions</code></li>
+                            <li>Create this function in <code>functions/index.js</code>:</li>
+                        </ol>
+                        <pre style="background: #f8f9fa; padding: 10px; border-radius: 5px; overflow: auto;">
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+admin.initializeApp();
+
+exports.sendNotification = functions.https.onRequest(async (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+        return res.status(204).send('');
+    }
+    
+    try {
+        const { targetType, title, message, type, target, topic, senderId } = req.body;
+        
+        let messagePayload = {
+            notification: {
+                title: title,
+                body: message
+            },
+            data: {
+                type: type,
+                senderId: senderId,
+                timestamp: new Date().toISOString()
+            }
+        };
+        
+        if (targetType === 'specific' && target) {
+            messagePayload.token = target;
+        } else if (targetType === 'topic' && topic) {
+            messagePayload.topic = topic;
+        } else if (targetType === 'broadcast') {
+            messagePayload.topic = 'all_devices';
+        }
+        
+        const response = await admin.messaging().send(messagePayload);
+        
+        res.status(200).json({
+            success: true,
+            message_id: response
+        });
+        
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+                        </pre>
+                        <li>Deploy: <code>firebase deploy --only functions</code></li>
+                        <li>Update WEBHOOK_URL in the frontend code with your function URL</li>
+                        <br>
+                        <strong>Option 2: Vercel Serverless Function</strong>
+                        <ol>
+                            <li>Create <code>/api/send-notification.js</code> in your Vercel project</li>
+                            <li>Use the Node.js code from Option 1</li>
+                            <li>Deploy to Vercel</li>
+                            <li>Update WEBHOOK_URL with your Vercel function URL</li>
+                        </ol>
+                        <br>
+                        <strong>Option 3: Simple Node.js/Express Server</strong>
+                        <ol>
+                            <li>Create a simple Express server</li>
+                            <li>Deploy to Heroku/Railway/Render</li>
+                            <li>Update WEBHOOK_URL</li>
+                        </ol>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById("sendResult").innerHTML = instructions;
+            switchTab("send");
         }
         
         // ==================== NOTIFICATION HANDLING ====================
@@ -1118,13 +1121,11 @@ self.addEventListener('notificationclick', (event) => {
             const body = notification.body || notification.message || "New notification";
             const type = notification.type || "info";
             
-            // Check if it's a broadcast
             const isBroadcast = notification.isBroadcast === "true";
             const senderInfo = isBroadcast ? "[Broadcast] " : "";
             
             addNotification(senderInfo + title, body, type);
             
-            // Show browser notification if permission granted and app is open
             if (Notification.permission === "granted" && document.visibilityState === 'visible') {
                 const options = {
                     body: body,
@@ -1138,10 +1139,7 @@ self.addEventListener('notificationclick', (event) => {
                 new Notification(senderInfo + title, options);
             }
             
-            // Play notification sound
             playSound("notification");
-            
-            // Update status
             updateStatus(`📨 Received notification: ${senderInfo}${title}`, "success");
         }
         
@@ -1149,10 +1147,7 @@ self.addEventListener('notificationclick', (event) => {
         
         // Subscribe to topic
         async function subscribeToTopic(topicName) {
-            if (!fcmToken) {
-                console.log("No FCM token available for topic subscription");
-                return;
-            }
+            if (!fcmToken) return;
             
             try {
                 console.log(`Subscribing to topic: ${topicName}`);
@@ -1177,13 +1172,10 @@ self.addEventListener('notificationclick', (event) => {
         // Toggle target input based on selection
         function toggleTargetInput() {
             const targetType = document.getElementById("targetType").value;
-            const specificGroup = document.getElementById("specificTargetGroup");
-            const topicGroup = document.getElementById("topicGroup");
-            const broadcastInfo = document.getElementById("broadcastInfo");
-            
-            specificGroup.style.display = targetType === 'specific' ? 'block' : 'none';
-            topicGroup.style.display = targetType === 'topic' ? 'block' : 'none';
-            broadcastInfo.style.display = targetType === 'broadcast' ? 'block' : 'none';
+            document.getElementById("specificTargetGroup").style.display = targetType === 'specific' ? 'block' : 'none';
+            document.getElementById("topicGroup").style.display = targetType === 'topic' ? 'block' : 'none';
+            document.getElementById("broadcastInfo").style.display = targetType === 'broadcast' ? 'block' : 'none';
+            document.getElementById("webhookInfo").style.display = targetType === 'webhook' ? 'block' : 'none';
         }
         
         // Switch tabs
@@ -1213,7 +1205,7 @@ self.addEventListener('notificationclick', (event) => {
                     <div><strong>Platform:</strong> ${navigator.platform}</div>
                     <div><strong>Notifications:</strong> ${notifications.length} received</div>
                     <div><strong>Service Worker:</strong> ${serviceWorkerRegistered ? "✓ Registered" : "✗ Not registered"}</div>
-                    <div><strong>Background Support:</strong> ${serviceWorkerRegistered ? "✓ Yes" : "✗ No"}</div>
+                    <div><strong>Backend Configured:</strong> ${WEBHOOK_URL !== "https://your-backend.com/send-notification" ? "✓ Yes" : "✗ No"}</div>
                 </div>
             `;
             
@@ -1222,7 +1214,7 @@ self.addEventListener('notificationclick', (event) => {
                     <div><strong>User Agent:</strong> ${navigator.userAgent}</div>
                     <div><strong>Screen:</strong> ${screen.width}x${screen.height}</div>
                     <div><strong>Location:</strong> ${window.location.href}</div>
-                    <div><strong>Service Worker:</strong> ${serviceWorkerRegistered ? "Registered" : "Not registered"}</div>
+                    <div><strong>Webhook URL:</strong> ${WEBHOOK_URL}</div>
                 </div>
             `;
         }
@@ -1403,7 +1395,7 @@ self.addEventListener('notificationclick', (event) => {
             document.getElementById("notificationType").value = "test";
             switchTab("send");
             setTimeout(() => {
-                document.getElementById("sendBtn").click();
+                document.getElementById("sendDemoBtn").click();
             }, 500);
         }
         
