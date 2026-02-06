@@ -1,8 +1,10 @@
-// dcfire.js
+// dcfire.js - ES Module Version
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-export const firebaseConfig = {
+// Your Firebase configuration
+const firebaseConfig = {
   apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
   authDomain: "leelidc-1f753.firebaseapp.com",
   projectId: "leelidc-1f753",
@@ -12,5 +14,10 @@ export const firebaseConfig = {
   measurementId: "G-3KD6ZYS599"
 };
 
-export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+// Export for use in your app
+export { app, db, auth, firebaseConfig };
