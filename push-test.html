@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📢 Broadcast Notification Tester</title>
+    <title>📡 P2P Broadcast Notifications</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; color: #333; }
@@ -37,9 +37,11 @@
         .notification-title { font-weight: 600; margin-bottom: 5px; color: #2c3e50; }
         .notification-body { color: #6c757d; margin-bottom: 5px; }
         .notification-time { font-size: 12px; color: #adb5bd; text-align: right; }
-        .online-users { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
-        .user-badge { background: #e3f2fd; padding: 8px 15px; border-radius: 20px; font-size: 14px; }
+        .peer-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+        .peer-badge { background: #e3f2fd; padding: 8px 15px; border-radius: 20px; font-size: 14px; }
         .broadcast-info { background: #fff3cd; padding: 15px; border-radius: 10px; margin: 15px 0; border-left: 4px solid #ffc107; }
+        .qr-container { text-align: center; margin: 20px 0; }
+        .qr-code { display: inline-block; padding: 20px; background: white; border-radius: 10px; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
         @media (max-width: 600px) { .container { border-radius: 15px; } .header { padding: 20px; } .tab-content { padding: 20px; } .btn { padding: 12px 20px; } }
@@ -48,26 +50,26 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>📢 Broadcast Notification Tester</h1>
-            <p>Send notifications to ALL connected devices in real-time</p>
+            <h1>📡 P2P Broadcast Notifications</h1>
+            <p>Direct device-to-device notifications - No servers needed!</p>
         </div>
         
         <div class="tabs">
             <div class="tab active" onclick="switchTab('receive')">📲 Receive</div>
             <div class="tab" onclick="switchTab('send')">📤 Send</div>
-            <div class="tab" onclick="switchTab('status')">📊 Status</div>
+            <div class="tab" onclick="switchTab('peers')">🔗 Peers</div>
         </div>
         
         <!-- RECEIVE TAB -->
         <div class="tab-content active" id="receiveTab">
             <div class="card">
                 <h3><span>🔔</span> Your Device Status</h3>
-                <div id="statusMessage">Initializing connection...</div>
+                <div id="statusMessage">Initializing P2P network...</div>
                 
                 <div class="input-group">
-                    <label>Your Device ID:</label>
-                    <div class="token-display" id="deviceId">Generating...</div>
-                    <button class="btn copy-btn" onclick="copyDeviceId()" style="width: auto; padding: 8px 15px;">Copy</button>
+                    <label>Your Peer ID:</label>
+                    <div class="token-display" id="peerId">Generating...</div>
+                    <button class="btn copy-btn" onclick="copyPeerId()" style="width: auto; padding: 8px 15px; margin-top: 10px;">Copy Peer ID</button>
                 </div>
                 
                 <div class="input-group">
@@ -76,13 +78,16 @@
                 </div>
                 
                 <div class="input-group">
-                    <label>Connected Users:</label>
-                    <div id="onlineCount">0 users online</div>
-                    <div class="online-users" id="onlineUsers"></div>
+                    <label>Connected Peers:</label>
+                    <div id="peerCount">0 peers connected</div>
                 </div>
                 
-                <button class="btn btn-primary" onclick="connectToServer()" id="connectBtn">
-                    <span>🔗</span> Connect to Server
+                <button class="btn btn-primary" onclick="startP2P()" id="startBtn">
+                    <span>🔗</span> Start P2P Network
+                </button>
+                
+                <button class="btn" onclick="generateQR()" style="background: #6c757d; color: white; margin-top: 10px;">
+                    <span>🔗</span> Generate Connection QR Code
                 </button>
             </div>
             
@@ -94,27 +99,30 @@
                         <div class="notification-body">Notifications will appear here when you receive them</div>
                     </div>
                 </div>
+                <button class="btn" onclick="clearNotifications()" style="background: #6c757d; color: white; margin-top: 10px;">
+                    <span>🗑️</span> Clear All Notifications
+                </button>
             </div>
         </div>
         
         <!-- SEND TAB -->
         <div class="tab-content" id="sendTab">
             <div class="card">
-                <h3><span>📤</span> Send Notification</h3>
+                <h3><span>📤</span> Send Broadcast</h3>
                 
                 <div class="broadcast-info">
-                    <div class="notification-title">📢 Broadcast to All Devices</div>
-                    <div class="notification-body">This will send notification to ALL connected devices. Currently <span id="currentUsers">0</span> devices are online.</div>
+                    <div class="notification-title">📢 Broadcast to All Connected Devices</div>
+                    <div class="notification-body">This will send notification to ALL connected peers. Currently <span id="currentPeers">0</span> devices are connected.</div>
                 </div>
                 
                 <div class="input-group">
                     <label>Notification Title:</label>
-                    <input type="text" id="sendTitle" value="Important Announcement" placeholder="Enter notification title">
+                    <input type="text" id="sendTitle" value="Important Broadcast" placeholder="Enter notification title">
                 </div>
                 
                 <div class="input-group">
                     <label>Notification Message:</label>
-                    <textarea id="sendMessage" placeholder="Enter notification message">Attention all users! This is a broadcast message to everyone.</textarea>
+                    <textarea id="sendMessage" placeholder="Enter notification message">This message will be sent to all connected devices instantly!</textarea>
                 </div>
                 
                 <div class="input-group">
@@ -124,244 +132,429 @@
                         <option value="alert">⚠️ Alert</option>
                         <option value="message">💬 Message</option>
                         <option value="urgent">🚨 Urgent</option>
+                        <option value="test">🧪 Test</option>
                     </select>
                 </div>
                 
                 <button class="btn btn-success" onclick="sendBroadcast()" id="broadcastBtn">
-                    <span>📢</span> Broadcast to All Devices
+                    <span>📢</span> Broadcast to All Peers
                 </button>
                 
-                <button class="btn btn-primary" onclick="sendToSelected()" id="selectiveBtn" style="margin-top: 10px;">
-                    <span>👥</span> Send to Selected Users
+                <button class="btn" onclick="testBroadcast()" style="background: #17a2b8; color: white; margin-top: 10px;">
+                    <span>🧪</span> Send Test Broadcast
                 </button>
                 
                 <div id="sendResult"></div>
             </div>
             
             <div class="card">
-                <h3><span>👥</span> Select Users to Send</h3>
-                <div id="userSelection">
-                    <p>Select specific users to send notifications to:</p>
-                    <div id="userCheckboxes"></div>
-                    <button class="btn" onclick="selectAllUsers()" style="background: #6c757d; color: white; margin-top: 10px;">
-                        <span>✓</span> Select All
+                <h3><span>🔗</span> Connect to Peer</h3>
+                <div class="input-group">
+                    <label>Peer ID to Connect:</label>
+                    <input type="text" id="connectPeerId" placeholder="Enter peer ID or paste connection data">
+                    <button class="btn" onclick="connectToPeer()" style="background: #4facfe; color: white; margin-top: 10px;">
+                        <span>🔗</span> Connect to Peer
                     </button>
-                    <button class="btn" onclick="deselectAllUsers()" style="background: #6c757d; color: white; margin-top: 10px;">
-                        <span>✗</span> Deselect All
+                </div>
+                
+                <div class="input-group">
+                    <label>Or Scan QR Code:</label>
+                    <div id="qrCodeContainer"></div>
+                    <button class="btn" onclick="scanQR()" style="background: #6c757d; color: white; margin-top: 10px;">
+                        <span>📷</span> Scan QR Code
                     </button>
                 </div>
             </div>
         </div>
         
-        <!-- STATUS TAB -->
-        <div class="tab-content" id="statusTab">
+        <!-- PEERS TAB -->
+        <div class="tab-content" id="peersTab">
             <div class="card">
-                <h3><span>📊</span> System Status</h3>
-                <div id="systemStatus">
-                    <p>Loading system status...</p>
+                <h3><span>🔗</span> Connected Peers</h3>
+                <div id="connectedPeers">
+                    <p>No peers connected yet</p>
+                </div>
+                
+                <div class="input-group">
+                    <label>Your Connection Data:</label>
+                    <div class="token-display" id="connectionData">Loading...</div>
+                    <button class="btn copy-btn" onclick="copyConnectionData()" style="width: auto; padding: 8px 15px; margin-top: 10px;">Copy Connection Data</button>
                 </div>
             </div>
             
             <div class="card">
-                <h3><span>🔄</span> Test Tools</h3>
-                <button class="btn btn-primary" onclick="testBroadcast()">
-                    <span>🧪</span> Test Broadcast
-                </button>
-                <button class="btn" onclick="clearNotifications()" style="background: #6c757d; color: white; margin-top: 10px;">
-                    <span>🗑️</span> Clear All Notifications
-                </button>
-                <button class="btn btn-danger" onclick="resetAll()" style="margin-top: 10px;">
-                    <span>🔄</span> Reset Everything
+                <h3><span>⚙️</span> P2P Settings</h3>
+                <div class="input-group">
+                    <label>Network Discovery:</label>
+                    <select id="discoveryMode" onchange="changeDiscoveryMode()">
+                        <option value="manual">Manual Connection</option>
+                        <option value="webrtc">WebRTC Discovery</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label>Auto-reconnect:</label>
+                    <input type="checkbox" id="autoReconnect" checked> Enable auto-reconnect
+                </div>
+                
+                <button class="btn btn-danger" onclick="disconnectAll()">
+                    <span>🔌</span> Disconnect All Peers
                 </button>
             </div>
         </div>
     </div>
 
+    <!-- QR Code library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
     <script>
-        // WebSocket server - Using a free public WebSocket server with broadcast capability
-        // For production, deploy your own server (see instructions below)
-        const WS_SERVER = "wss://ws.broadcast-server.freewebhost.com"; // Free broadcast server
-        // Alternative: "wss://your-broadcast-server.herokuapp.com" (deploy your own)
+        // P2P Notification System - No Server Required!
+        // This uses BroadcastChannel, localStorage, and IndexedDB for peer-to-peer communication
         
         // Global variables
-        let ws = null;
-        let deviceId = null;
-        let deviceName = null;
+        let peerId = null;
+        let peerName = null;
         let isConnected = false;
         let notifications = [];
-        let onlineUsers = new Map(); // deviceId -> {name, joined}
-        let selectedUsers = new Set();
+        let connectedPeers = new Map(); // peerId -> {name, connectedAt, channel}
+        let broadcastChannel = null;
+        let dataChannel = null;
+        let peerDiscoveryInterval = null;
         
-        // Generate unique device ID
-        function generateDeviceId() {
-            const prefix = "device";
+        // Generate unique peer ID
+        function generatePeerId() {
+            const prefix = "peer";
             const timestamp = Date.now();
             const random = Math.random().toString(36).substr(2, 9);
             return `${prefix}_${timestamp}_${random}`;
         }
         
-        // Generate device name
-        function generateDeviceName() {
+        // Generate peer name
+        function generatePeerName() {
             const names = ["Mobile", "Tablet", "Desktop", "Laptop", "Phone", "Browser"];
+            const adjectives = ["Quick", "Smart", "Fast", "Cool", "Awesome", "Super"];
+            const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
             const randomName = names[Math.floor(Math.random() * names.length)];
             const randomNum = Math.floor(Math.random() * 1000);
-            return `${randomName}_${randomNum}`;
+            return `${randomAdj}_${randomName}_${randomNum}`;
         }
         
-        // Connect to WebSocket server
-        function connectToServer() {
-            const connectBtn = document.getElementById("connectBtn");
-            connectBtn.disabled = true;
-            connectBtn.innerHTML = '<span>⏳</span> Connecting...';
+        // Start P2P network
+        function startP2P() {
+            const startBtn = document.getElementById("startBtn");
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<span>⏳</span> Starting...';
+            
+            updateStatus("Initializing P2P network...", "warning");
             
             try {
-                // Close existing connection if any
-                if (ws) {
-                    ws.close();
+                // Generate peer ID if not exists
+                if (!peerId) {
+                    peerId = localStorage.getItem("peerId") || generatePeerId();
+                    peerName = localStorage.getItem("peerName") || generatePeerName();
+                    localStorage.setItem("peerId", peerId);
+                    localStorage.setItem("peerName", peerName);
                 }
                 
-                updateStatus("Connecting to broadcast server...", "warning");
+                // Update UI
+                document.getElementById("peerId").textContent = peerId;
+                document.getElementById("connectionData").textContent = JSON.stringify({
+                    peerId: peerId,
+                    peerName: peerName,
+                    timestamp: Date.now()
+                });
                 
-                // Create WebSocket connection
-                ws = new WebSocket(WS_SERVER);
+                // Initialize BroadcastChannel for same-origin communication
+                try {
+                    broadcastChannel = new BroadcastChannel('p2p-notifications');
+                    setupBroadcastChannel();
+                } catch (e) {
+                    console.log("BroadcastChannel not supported, using fallback");
+                    setupLocalStorageFallback();
+                }
                 
-                ws.onopen = function() {
-                    console.log("✅ Connected to broadcast server");
-                    isConnected = true;
-                    
-                    document.getElementById("connectionBadge").textContent = "Connected";
-                    document.getElementById("connectionBadge").className = "status-badge status-success";
-                    
-                    connectBtn.innerHTML = '<span>✅</span> Connected';
-                    connectBtn.className = "btn btn-success";
-                    
-                    updateStatus("✅ Connected to broadcast server! You can send/receive notifications.", "success");
-                    
-                    // Send registration message
-                    const registerMsg = {
-                        type: "register",
-                        deviceId: deviceId,
-                        deviceName: deviceName,
-                        timestamp: Date.now()
-                    };
-                    ws.send(JSON.stringify(registerMsg));
-                    
-                    playSound("success");
-                };
+                // Setup IndexedDB for cross-tab communication
+                setupIndexedDB();
                 
-                ws.onmessage = function(event) {
-                    console.log("📨 Received:", event.data);
-                    try {
-                        const data = JSON.parse(event.data);
-                        handleServerMessage(data);
-                    } catch (e) {
-                        console.log("Received non-JSON message:", event.data);
-                    }
-                };
+                // Setup service worker for background notifications
+                setupServiceWorker();
                 
-                ws.onerror = function(error) {
-                    console.error("❌ WebSocket error:", error);
-                    updateStatus("Server connection error. Trying fallback...", "danger");
-                    tryFallbackServer();
-                };
+                // Start peer discovery
+                startPeerDiscovery();
                 
-                ws.onclose = function() {
-                    console.log("🔌 Disconnected from server");
-                    isConnected = false;
-                    
-                    document.getElementById("connectionBadge").textContent = "Disconnected";
-                    document.getElementById("connectionBadge").className = "status-badge status-danger";
-                    
-                    connectBtn.disabled = false;
-                    connectBtn.innerHTML = '<span>🔗</span> Reconnect';
-                    connectBtn.className = "btn btn-primary";
-                    
-                    updateStatus("Disconnected. Click 'Reconnect' to try again.", "warning");
-                    
-                    // Clear online users
-                    onlineUsers.clear();
-                    updateOnlineUsers();
-                    
-                    // Auto-reconnect after 3 seconds
-                    setTimeout(() => {
-                        if (!isConnected) {
-                            connectToServer();
-                        }
-                    }, 3000);
-                };
+                // Update status
+                isConnected = true;
+                document.getElementById("connectionBadge").textContent = "Connected";
+                document.getElementById("connectionBadge").className = "status-badge status-success";
+                
+                startBtn.innerHTML = '<span>✅</span> P2P Network Active';
+                startBtn.className = "btn btn-success";
+                
+                updateStatus("✅ P2P network active! You can now send/receive notifications.", "success");
+                playSound("success");
+                
+                // Load existing notifications
+                loadNotifications();
+                
+                // Try to discover peers
+                discoverPeers();
                 
             } catch (error) {
-                console.error("❌ Connection error:", error);
-                updateStatus(`Connection error: ${error.message}`, "danger");
-                connectBtn.disabled = false;
-                connectBtn.innerHTML = '<span>🔗</span> Connect to Server';
+                console.error("❌ P2P init error:", error);
+                updateStatus(`P2P error: ${error.message}`, "danger");
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<span>🔗</span> Start P2P Network';
                 playSound("error");
             }
         }
         
-        // Try fallback server
-        function tryFallbackServer() {
-            // For now, we'll just try to reconnect to the same server
-            setTimeout(() => {
-                if (!isConnected) {
-                    connectToServer();
-                }
-            }, 2000);
+        // Setup BroadcastChannel
+        function setupBroadcastChannel() {
+            broadcastChannel.onmessage = (event) => {
+                handleP2PMessage(event.data);
+            };
+            
+            // Send hello message
+            broadcastChannel.postMessage({
+                type: 'hello',
+                peerId: peerId,
+                peerName: peerName,
+                timestamp: Date.now()
+            });
         }
         
-        // Handle messages from server
-        function handleServerMessage(data) {
+        // Fallback using localStorage events
+        function setupLocalStorageFallback() {
+            window.addEventListener('storage', (event) => {
+                if (event.key === 'p2p_message') {
+                    try {
+                        const message = JSON.parse(event.newValue);
+                        if (message && message.peerId !== peerId) {
+                            handleP2PMessage(message);
+                        }
+                    } catch (e) {
+                        console.error("Error parsing localStorage message:", e);
+                    }
+                }
+            });
+        }
+        
+        // Setup IndexedDB for reliable messaging
+        function setupIndexedDB() {
+            const request = indexedDB.open('P2PNotifications', 1);
+            
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains('messages')) {
+                    db.createObjectStore('messages', { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains('peers')) {
+                    db.createObjectStore('peers', { keyPath: 'peerId' });
+                }
+            };
+            
+            request.onsuccess = (event) => {
+                const db = event.target.result;
+                setInterval(() => checkForMessages(db), 2000);
+            };
+        }
+        
+        // Check for new messages in IndexedDB
+        function checkForMessages(db) {
+            const transaction = db.transaction(['messages'], 'readonly');
+            const store = transaction.objectStore('messages');
+            const request = store.getAll();
+            
+            request.onsuccess = (event) => {
+                const messages = event.target.result;
+                messages.forEach(message => {
+                    if (message.to === peerId || message.type === 'broadcast') {
+                        handleP2PMessage(message);
+                        // Remove processed message
+                        const deleteTransaction = db.transaction(['messages'], 'readwrite');
+                        const deleteStore = deleteTransaction.objectStore('messages');
+                        deleteStore.delete(message.id);
+                    }
+                });
+            };
+        }
+        
+        // Setup service worker for background notifications
+        function setupServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/p2p-sw.js').catch(console.error);
+                
+                // Listen for messages from service worker
+                navigator.serviceWorker.addEventListener('message', (event) => {
+                    if (event.data && event.data.type === 'NOTIFICATION_CLICKED') {
+                        // Handle notification click
+                        switchTab('receive');
+                    }
+                });
+            }
+        }
+        
+        // Start peer discovery
+        function startPeerDiscovery() {
+            if (peerDiscoveryInterval) {
+                clearInterval(peerDiscoveryInterval);
+            }
+            
+            peerDiscoveryInterval = setInterval(() => {
+                discoverPeers();
+                pingPeers();
+            }, 5000); // Discover every 5 seconds
+        }
+        
+        // Discover peers
+        function discoverPeers() {
+            // Send discovery message
+            sendP2PMessage({
+                type: 'discovery',
+                peerId: peerId,
+                peerName: peerName,
+                timestamp: Date.now()
+            }, 'broadcast');
+            
+            // Check for existing peers in localStorage
+            const storedPeers = JSON.parse(localStorage.getItem('knownPeers') || '{}');
+            Object.keys(storedPeers).forEach(storedPeerId => {
+                if (storedPeerId !== peerId && !connectedPeers.has(storedPeerId)) {
+                    connectToPeer(storedPeerId);
+                }
+            });
+        }
+        
+        // Ping connected peers
+        function pingPeers() {
+            connectedPeers.forEach((peer, peerId) => {
+                sendP2PMessage({
+                    type: 'ping',
+                    peerId: peerId,
+                    timestamp: Date.now()
+                }, peerId);
+                
+                // Check if peer is still alive (last seen > 30 seconds ago)
+                if (Date.now() - peer.lastSeen > 30000) {
+                    connectedPeers.delete(peerId);
+                    updatePeerList();
+                    addNotification("Peer Disconnected", `${peer.name} disconnected due to timeout`, "warning");
+                }
+            });
+        }
+        
+        // Handle P2P messages
+        function handleP2PMessage(data) {
+            console.log("📨 Received P2P message:", data);
+            
             switch(data.type) {
-                case 'welcome':
-                    updateStatus(`✅ ${data.message}`, "success");
-                    break;
-                    
-                case 'user_joined':
-                    onlineUsers.set(data.deviceId, {
-                        name: data.deviceName,
-                        joined: data.timestamp
-                    });
-                    updateOnlineUsers();
-                    addNotification("User Joined", `${data.deviceName} connected`, "info");
-                    break;
-                    
-                case 'user_left':
-                    onlineUsers.delete(data.deviceId);
-                    updateOnlineUsers();
-                    addNotification("User Left", `${data.deviceName} disconnected`, "info");
-                    break;
-                    
-                case 'user_list':
-                    onlineUsers.clear();
-                    data.users.forEach(user => {
-                        onlineUsers.set(user.deviceId, {
-                            name: user.deviceName,
-                            joined: user.joined
+                case 'hello':
+                case 'discovery':
+                    if (data.peerId !== peerId && !connectedPeers.has(data.peerId)) {
+                        // New peer discovered
+                        connectedPeers.set(data.peerId, {
+                            name: data.peerName,
+                            connectedAt: Date.now(),
+                            lastSeen: Date.now()
                         });
-                    });
-                    updateOnlineUsers();
+                        
+                        updatePeerList();
+                        
+                        // Send welcome response
+                        sendP2PMessage({
+                            type: 'welcome',
+                            peerId: peerId,
+                            peerName: peerName,
+                            timestamp: Date.now()
+                        }, data.peerId);
+                        
+                        addNotification("Peer Connected", `${data.peerName} connected`, "info");
+                    }
+                    break;
+                    
+                case 'welcome':
+                    if (data.peerId !== peerId && !connectedPeers.has(data.peerId)) {
+                        connectedPeers.set(data.peerId, {
+                            name: data.peerName,
+                            connectedAt: Date.now(),
+                            lastSeen: Date.now()
+                        });
+                        updatePeerList();
+                    }
                     break;
                     
                 case 'notification':
-                    showNotification(data);
-                    break;
-                    
                 case 'broadcast':
                     showNotification(data);
                     break;
                     
-                case 'private_message':
-                    if (data.to === deviceId) {
-                        showNotification(data);
-                    }
+                case 'ping':
+                    sendP2PMessage({
+                        type: 'pong',
+                        peerId: peerId,
+                        timestamp: Date.now()
+                    }, data.peerId);
                     break;
                     
-                default:
-                    console.log("Unknown message type:", data.type);
+                case 'pong':
+                    const peer = connectedPeers.get(data.peerId);
+                    if (peer) {
+                        peer.lastSeen = Date.now();
+                    }
+                    break;
             }
         }
         
-        // Send broadcast to ALL devices
+        // Send P2P message
+        function sendP2PMessage(message, to = 'broadcast') {
+            message.from = peerId;
+            message.fromName = peerName;
+            message.timestamp = Date.now();
+            
+            if (to === 'broadcast') {
+                // Broadcast to all connected peers
+                connectedPeers.forEach((peer, peerId) => {
+                    sendToPeer(peerId, message);
+                });
+                
+                // Also broadcast via BroadcastChannel
+                if (broadcastChannel) {
+                    broadcastChannel.postMessage(message);
+                }
+                
+                // Store in localStorage for cross-tab
+                localStorage.setItem('p2p_message', JSON.stringify(message));
+                setTimeout(() => {
+                    localStorage.removeItem('p2p_message');
+                }, 100);
+                
+            } else {
+                // Send to specific peer
+                sendToPeer(to, message);
+            }
+        }
+        
+        // Send to specific peer
+        function sendToPeer(peerId, message) {
+            // Store message in IndexedDB for the peer to pick up
+            const dbRequest = indexedDB.open('P2PNotifications', 1);
+            
+            dbRequest.onsuccess = (event) => {
+                const db = event.target.result;
+                const transaction = db.transaction(['messages'], 'readwrite');
+                const store = transaction.objectStore('messages');
+                
+                const messageWithId = {
+                    ...message,
+                    id: `${peerId}_${Date.now()}_${Math.random()}`,
+                    to: peerId
+                };
+                
+                store.add(messageWithId);
+            };
+        }
+        
+        // Send broadcast to ALL peers
         function sendBroadcast() {
             const broadcastBtn = document.getElementById("broadcastBtn");
             const sendResult = document.getElementById("sendResult");
@@ -371,52 +564,54 @@
             sendResult.innerHTML = "";
             
             try {
-                if (!isConnected || !ws) {
-                    throw new Error("Not connected to server. Please connect first.");
+                if (!isConnected) {
+                    throw new Error("P2P network not active. Start network first.");
                 }
                 
                 const title = document.getElementById("sendTitle").value.trim();
                 const message = document.getElementById("sendMessage").value.trim();
                 const type = document.getElementById("notificationType").value;
                 
-                if (!title) {
-                    throw new Error("Please enter a title");
-                }
-                
-                if (!message) {
-                    throw new Error("Please enter a message");
-                }
+                if (!title) throw new Error("Please enter a title");
+                if (!message) throw new Error("Please enter a message");
                 
                 // Create broadcast message
                 const broadcast = {
-                    type: "broadcast",
-                    from: deviceId,
-                    fromName: deviceName,
+                    type: 'broadcast',
                     title: title,
                     message: message,
-                    notificationType: type,
-                    timestamp: Date.now()
+                    notificationType: type
                 };
                 
                 console.log("Sending broadcast:", broadcast);
                 
-                // Send via WebSocket
-                ws.send(JSON.stringify(broadcast));
+                // Send to all peers
+                sendP2PMessage(broadcast, 'broadcast');
                 
                 // Show success
                 sendResult.innerHTML = `
                     <div class="notification-item" style="background: #d4edda; border-left-color: #28a745;">
-                        <div class="notification-title">📢 Broadcast Sent to All Devices!</div>
+                        <div class="notification-title">📢 Broadcast Sent!</div>
                         <div class="notification-body">${title}: ${message}</div>
+                        <div class="notification-body">Sent to ${connectedPeers.size} connected peers</div>
                         <div class="notification-time">${new Date().toLocaleTimeString()}</div>
                     </div>
                 `;
                 
-                updateStatus(`📢 Broadcast sent to ${onlineUsers.size} devices`, "success");
+                updateStatus(`📢 Broadcast sent to ${connectedPeers.size} peers`, "success");
                 playSound("success");
                 
                 // Also show locally
                 addNotification(`[Broadcast] ${title}`, message, type);
+                
+                // Show browser notification
+                if (Notification.permission === "granted") {
+                    new Notification(`📢 ${title}`, {
+                        body: message,
+                        icon: getNotificationIcon(type),
+                        vibrate: [200, 100, 200]
+                    });
+                }
                 
             } catch (error) {
                 console.error("❌ Broadcast error:", error);
@@ -433,148 +628,81 @@
                 playSound("error");
             } finally {
                 broadcastBtn.disabled = false;
-                broadcastBtn.innerHTML = '<span>📢</span> Broadcast to All Devices';
+                broadcastBtn.innerHTML = '<span>📢</span> Broadcast to All Peers';
             }
         }
         
-        // Send to selected users
-        function sendToSelected() {
-            if (selectedUsers.size === 0) {
-                alert("Please select at least one user to send to");
+        // Connect to specific peer
+        function connectToPeer() {
+            const peerInput = document.getElementById("connectPeerId").value.trim();
+            if (!peerInput) {
+                alert("Please enter a peer ID");
                 return;
             }
             
-            const selectiveBtn = document.getElementById("selectiveBtn");
-            const sendResult = document.getElementById("sendResult");
-            
-            selectiveBtn.disabled = true;
-            selectiveBtn.innerHTML = '<span>⏳</span> Sending...';
-            sendResult.innerHTML = "";
-            
             try {
-                if (!isConnected || !ws) {
-                    throw new Error("Not connected to server");
+                let peerData;
+                try {
+                    peerData = JSON.parse(peerInput);
+                } catch (e) {
+                    peerData = { peerId: peerInput };
                 }
                 
-                const title = document.getElementById("sendTitle").value.trim();
-                const message = document.getElementById("sendMessage").value.trim();
-                const type = document.getElementById("notificationType").value;
+                if (!peerData.peerId) {
+                    throw new Error("Invalid peer data");
+                }
                 
-                // Send to each selected user
-                selectedUsers.forEach(userId => {
-                    const privateMsg = {
-                        type: "private_message",
-                        from: deviceId,
-                        fromName: deviceName,
-                        to: userId,
-                        title: title,
-                        message: message,
-                        notificationType: type,
-                        timestamp: Date.now()
-                    };
-                    
-                    ws.send(JSON.stringify(privateMsg));
-                });
+                // Add to known peers
+                const knownPeers = JSON.parse(localStorage.getItem('knownPeers') || '{}');
+                knownPeers[peerData.peerId] = {
+                    name: peerData.peerName || 'Unknown',
+                    lastConnected: Date.now()
+                };
+                localStorage.setItem('knownPeers', JSON.stringify(knownPeers));
                 
-                // Show success
-                sendResult.innerHTML = `
-                    <div class="notification-item" style="background: #d4edda; border-left-color: #28a745;">
-                        <div class="notification-title">✅ Sent to ${selectedUsers.size} Users</div>
-                        <div class="notification-body">${title}: ${message}</div>
-                        <div class="notification-time">${new Date().toLocaleTimeString()}</div>
-                    </div>
-                `;
+                // Send discovery message
+                sendP2PMessage({
+                    type: 'discovery',
+                    peerId: peerId,
+                    peerName: peerName
+                }, peerData.peerId);
                 
-                updateStatus(`✅ Sent to ${selectedUsers.size} selected users`, "success");
-                playSound("success");
+                updateStatus(`Attempting to connect to ${peerData.peerId}`, "warning");
+                
+                // Clear input
+                document.getElementById("connectPeerId").value = "";
                 
             } catch (error) {
-                console.error("❌ Send error:", error);
-                sendResult.innerHTML = `
-                    <div class="notification-item" style="background: #f8d7da; border-left-color: #dc3545;">
-                        <div class="notification-title">❌ Send Failed</div>
-                        <div class="notification-body">${error.message}</div>
-                        <div class="notification-time">${new Date().toLocaleTimeString()}</div>
-                    </div>
-                `;
-                updateStatus(`❌ Send failed: ${error.message}`, "danger");
-                playSound("error");
-            } finally {
-                selectiveBtn.disabled = false;
-                selectiveBtn.innerHTML = '<span>👥</span> Send to Selected Users';
+                alert(`Connection error: ${error.message}`);
             }
         }
         
-        // Update online users display
-        function updateOnlineUsers() {
-            const onlineCount = document.getElementById("onlineCount");
-            const onlineUsersDiv = document.getElementById("onlineUsers");
-            const currentUsers = document.getElementById("currentUsers");
+        // Update peer list
+        function updatePeerList() {
+            const peerCount = document.getElementById("peerCount");
+            const currentPeers = document.getElementById("currentPeers");
+            const connectedPeersDiv = document.getElementById("connectedPeers");
             
-            onlineCount.textContent = `${onlineUsers.size} user${onlineUsers.size !== 1 ? 's' : ''} online`;
-            currentUsers.textContent = onlineUsers.size;
+            peerCount.textContent = `${connectedPeers.size} peer${connectedPeers.size !== 1 ? 's' : ''} connected`;
+            currentPeers.textContent = connectedPeers.size;
             
-            onlineUsersDiv.innerHTML = "";
+            connectedPeersDiv.innerHTML = "";
             
-            onlineUsers.forEach((user, userId) => {
-                const userBadge = document.createElement("div");
-                userBadge.className = "user-badge";
-                userBadge.innerHTML = `
-                    <span>👤 ${user.name}</span>
-                    <small style="color: #666; margin-left: 5px;">(${userId.substring(0, 8)})</small>
-                `;
-                onlineUsersDiv.appendChild(userBadge);
-            });
-            
-            // Update user checkboxes
-            updateUserCheckboxes();
-        }
-        
-        // Update user checkboxes for selection
-        function updateUserCheckboxes() {
-            const userCheckboxes = document.getElementById("userCheckboxes");
-            userCheckboxes.innerHTML = "";
-            
-            onlineUsers.forEach((user, userId) => {
-                if (userId === deviceId) return; // Don't show self
-                
-                const checkboxDiv = document.createElement("div");
-                checkboxDiv.style.marginBottom = "8px";
-                checkboxDiv.innerHTML = `
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" value="${userId}" ${selectedUsers.has(userId) ? 'checked' : ''} 
-                               onchange="toggleUserSelection('${userId}')" style="margin-right: 8px;">
-                        👤 ${user.name} <small style="color: #666; margin-left: 5px;">(${userId.substring(0, 8)})</small>
-                    </label>
-                `;
-                userCheckboxes.appendChild(checkboxDiv);
-            });
-        }
-        
-        // Toggle user selection
-        function toggleUserSelection(userId) {
-            if (selectedUsers.has(userId)) {
-                selectedUsers.delete(userId);
-            } else {
-                selectedUsers.add(userId);
+            if (connectedPeers.size === 0) {
+                connectedPeersDiv.innerHTML = "<p>No peers connected yet</p>";
+                return;
             }
-        }
-        
-        // Select all users
-        function selectAllUsers() {
-            selectedUsers.clear();
-            onlineUsers.forEach((user, userId) => {
-                if (userId !== deviceId) {
-                    selectedUsers.add(userId);
-                }
+            
+            connectedPeers.forEach((peer, peerId) => {
+                const peerDiv = document.createElement("div");
+                peerDiv.className = "notification-item";
+                peerDiv.innerHTML = `
+                    <div class="notification-title">👤 ${peer.name}</div>
+                    <div class="notification-body">ID: ${peerId.substring(0, 12)}...</div>
+                    <div class="notification-time">Connected: ${new Date(peer.connectedAt).toLocaleTimeString()}</div>
+                `;
+                connectedPeersDiv.appendChild(peerDiv);
             });
-            updateUserCheckboxes();
-        }
-        
-        // Deselect all users
-        function deselectAllUsers() {
-            selectedUsers.clear();
-            updateUserCheckboxes();
         }
         
         // Show received notification
@@ -599,10 +727,10 @@
             }
             
             playSound("notification");
-            updateStatus(`📨 ${isBroadcast ? 'Broadcast' : 'Notification'} received`, "success");
+            updateStatus(`${isBroadcast ? '📢 Broadcast' : '📨 Notification'} received`, "success");
         }
         
-        // Get notification icon based on type
+        // Get notification icon
         function getNotificationIcon(type) {
             const icons = {
                 announcement: "📢",
@@ -612,7 +740,7 @@
                 info: "ℹ️",
                 test: "🧪"
             };
-            return `https://cdn.jsdelivr.net/npm/twemoji@latest/2/svg/${icons[type] ? icons[type].codePointAt(0).toString(16) : '1f4ac'}.svg`;
+            return icons[type] || "📢";
         }
         
         // Add notification to list
@@ -631,7 +759,7 @@
             updateNotificationList();
         }
         
-        // Update notification list UI
+        // Update notification list
         function updateNotificationList() {
             const list = document.getElementById("notificationList");
             
@@ -658,26 +786,76 @@
             });
         }
         
-        // Update status message
+        // Load notifications
+        function loadNotifications() {
+            notifications = JSON.parse(localStorage.getItem("notifications") || "[]");
+            updateNotificationList();
+        }
+        
+        // Generate QR code for connection
+        function generateQR() {
+            const qrContainer = document.getElementById("qrCodeContainer");
+            qrContainer.innerHTML = "";
+            
+            const connectionData = {
+                peerId: peerId,
+                peerName: peerName,
+                type: "p2p_connection",
+                timestamp: Date.now(),
+                url: window.location.href
+            };
+            
+            const qr = new QRCode(qrContainer, {
+                text: JSON.stringify(connectionData),
+                width: 200,
+                height: 200,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+        
+        // Scan QR code (simulated)
+        function scanQR() {
+            alert("On a real device, this would open the camera to scan a QR code.\n\nFor now, you can manually enter the peer ID or connection data.");
+        }
+        
+        // Update status
         function updateStatus(message, type = "info") {
             const statusEl = document.getElementById("statusMessage");
             statusEl.innerHTML = `<div class="status-badge status-${type}">${message}</div>`;
         }
         
-        // Update system status
-        function updateSystemStatus() {
-            const systemStatus = document.getElementById("systemStatus");
-            
-            systemStatus.innerHTML = `
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <div><strong>Device ID:</strong> ${deviceId || "Not set"}</div>
-                    <div><strong>Device Name:</strong> ${deviceName || "Not set"}</div>
-                    <div><strong>Connection:</strong> ${isConnected ? "✅ Connected" : "❌ Disconnected"}</div>
-                    <div><strong>Online Users:</strong> ${onlineUsers.size}</div>
-                    <div><strong>Notifications:</strong> ${notifications.length} received</div>
-                    <div><strong>Server:</strong> ${WS_SERVER}</div>
-                </div>
-            `;
+        // Disconnect all peers
+        function disconnectAll() {
+            if (confirm("Disconnect from all peers?")) {
+                connectedPeers.clear();
+                updatePeerList();
+                
+                if (broadcastChannel) {
+                    broadcastChannel.close();
+                    broadcastChannel = null;
+                }
+                
+                if (peerDiscoveryInterval) {
+                    clearInterval(peerDiscoveryInterval);
+                    peerDiscoveryInterval = null;
+                }
+                
+                isConnected = false;
+                document.getElementById("connectionBadge").textContent = "Disconnected";
+                document.getElementById("connectionBadge").className = "status-badge status-danger";
+                
+                document.getElementById("startBtn").innerHTML = '<span>🔗</span> Start P2P Network';
+                document.getElementById("startBtn").className = "btn btn-primary";
+                document.getElementById("startBtn").disabled = false;
+                
+                updateStatus("Disconnected from all peers", "warning");
+                playSound("error");
+                
+                // Remove known peers
+                localStorage.removeItem('knownPeers');
+            }
         }
         
         // Utility functions
@@ -688,9 +866,19 @@
             document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add("active");
         }
         
-        function copyDeviceId() {
-            navigator.clipboard.writeText(deviceId);
-            updateStatus("Device ID copied to clipboard!", "success");
+        function copyPeerId() {
+            navigator.clipboard.writeText(peerId);
+            updateStatus("Peer ID copied to clipboard!", "success");
+        }
+        
+        function copyConnectionData() {
+            const connectionData = JSON.stringify({
+                peerId: peerId,
+                peerName: peerName,
+                timestamp: Date.now()
+            });
+            navigator.clipboard.writeText(connectionData);
+            updateStatus("Connection data copied!", "success");
         }
         
         function playSound(type) {
@@ -721,7 +909,7 @@
         // Test functions
         function testBroadcast() {
             document.getElementById("sendTitle").value = "Test Broadcast";
-            document.getElementById("sendMessage").value = "This is a test broadcast to all connected devices!";
+            document.getElementById("sendMessage").value = "This is a test broadcast from P2P Notification System! Current time: " + new Date().toLocaleTimeString();
             document.getElementById("notificationType").value = "test";
             
             switchTab("send");
@@ -740,40 +928,56 @@
             }
         }
         
-        function resetAll() {
-            if (confirm("Reset everything? This will clear all data and restart.")) {
-                localStorage.clear();
-                location.reload();
-            }
+        function changeDiscoveryMode() {
+            const mode = document.getElementById("discoveryMode").value;
+            updateStatus(`Discovery mode changed to: ${mode}`, "info");
         }
         
-        // Initialize on load
+        // Initialize on page load
         window.onload = function() {
-            console.log("🚀 Broadcast Notification Tester Loaded");
-            
             // Request notification permission
             if ("Notification" in window && Notification.permission === "default") {
                 Notification.requestPermission();
             }
             
-            // Generate or load device ID and name
-            deviceId = localStorage.getItem("deviceId") || generateDeviceId();
-            deviceName = localStorage.getItem("deviceName") || generateDeviceName();
-            localStorage.setItem("deviceId", deviceId);
-            localStorage.setItem("deviceName", deviceName);
+            // Load existing peer ID if exists
+            const savedPeerId = localStorage.getItem("peerId");
+            const savedPeerName = localStorage.getItem("peerName");
             
-            // Load saved notifications
-            notifications = JSON.parse(localStorage.getItem("notifications") || "[]");
+            if (savedPeerId) {
+                peerId = savedPeerId;
+                peerName = savedPeerName;
+                document.getElementById("peerId").textContent = peerId;
+                document.getElementById("connectionData").textContent = JSON.stringify({
+                    peerId: peerId,
+                    peerName: peerName,
+                    timestamp: Date.now()
+                });
+                updateStatus("Ready to connect. Click 'Start P2P Network' to begin.", "info");
+            } else {
+                // Generate new peer ID
+                peerId = generatePeerId();
+                peerName = generatePeerName();
+                localStorage.setItem("peerId", peerId);
+                localStorage.setItem("peerName", peerName);
+                document.getElementById("peerId").textContent = peerId;
+                document.getElementById("connectionData").textContent = JSON.stringify({
+                    peerId: peerId,
+                    peerName: peerName,
+                    timestamp: Date.now()
+                });
+                updateStatus("New peer generated. Click 'Start P2P Network' to begin.", "info");
+            }
             
-            // Update UI
-            document.getElementById("deviceId").textContent = deviceId;
+            // Load notifications
+            loadNotifications();
             
-            updateNotificationList();
-            updateSystemStatus();
-            
-            // Auto-connect after 1 second
-            setTimeout(() => {
-                connectToServer();
+            // Set up periodic status updates
+            setInterval(() => {
+                if (isConnected) {
+                    document.getElementById("peerCount").textContent = 
+                        `${connectedPeers.size} peer${connectedPeers.size !== 1 ? 's' : ''} connected`;
+                }
             }, 1000);
         };
     </script>
