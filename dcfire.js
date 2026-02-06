@@ -1,4 +1,4 @@
-// dcfire.js - Non-Module Version (Global Variables)
+// dcfire.js - Fixed Version
 (function() {
     // Your Firebase configuration
     const firebaseConfig = {
@@ -11,18 +11,21 @@
         measurementId: "G-3KD6ZYS599"
     };
     
-    // Initialize Firebase (using compatibility version)
+    // Check if Firebase is already initialized
     if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
+        // Initialize Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        window.firebaseApp = app;
+        console.log('Firebase initialized successfully');
+    } else {
+        // Use existing app
+        window.firebaseApp = firebase.app();
+        console.log('Using existing Firebase app');
     }
     
     // Initialize Firestore
-    const db = firebase.firestore();
-    
-    // Make variables globally available
+    window.db = firebase.firestore();
     window.firebaseConfig = firebaseConfig;
-    window.db = db;
-    window.firebaseApp = firebase.app();
     
-    console.log('Firebase initialized successfully');
+    console.log('Firebase services initialized');
 })();
