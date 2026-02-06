@@ -1,60 +1,67 @@
-// firebase-messaging-sw.js
+// firebase-messaging-sw.js - SIMPLE WORKING VERSION
 importScripts('https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js');
 importScripts('https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js');
-// Default Firebase config (will be updated from main thread)
-const defaultFirebaseConfig = {
+
+// Your Firebase config - MUST be complete
+const firebaseConfig = {
     apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
     authDomain: "leelidc-1f753.firebaseapp.com",
-    projectId: "leelidc-1f753",
+    projectId: "leelidc-1f753",  // REQUIRED
     storageBucket: "leelidc-1f753.firebasestorage.app",
     messagingSenderId: "43622932335",
-    appId: "1:43622932335:web:a7529bce1f19714687129a"
+    appId: "1:43622932335:web:a7529bce1f19714687129a",
+    measurementId: "G-3KD6ZYS599"
 };
 
+console.log('[SW] Initializing Firebase with config:', firebaseConfig);
+
 // Initialize Firebase
-if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
+try {
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+        console.log('[SW] Firebase initialized');
+    } else {
+        console.log('[SW] Using existing Firebase app');
+    }
+} catch (error) {
+    console.error('[SW] Firebase init error:', error);
 }
 
+// Get messaging instance
 const messaging = firebase.messaging();
 
-// Background message handler - THIS IS CRITICAL!
+// Background message handler - USE setBackgroundMessageHandler (not onBackgroundMessage)
 messaging.setBackgroundMessageHandler(function(payload) {
-    console.log('[Service Worker] Received background message:', payload);
+    console.log('[SW] Received background message:', payload);
     
-    // Customize notification here
-    const notificationTitle = payload.data.title || 'Duty Manager';
+    // Extract notification data
+    const notificationTitle = payload.data?.title || 'Duty Manager';
+    const notificationBody = payload.data?.body || 'New notification';
+    
+    // Notification options
     const notificationOptions = {
-        body: payload.data.body || 'You have a new notification',
-        icon: '/icon-192x192.png', // Use absolute path
+        body: notificationBody,
+        icon: '/icon-192x192.png',  // Use absolute path
         badge: '/icon-192x192.png',
-        data: payload.data,
-        tag: payload.data.type || 'general',
-        requireInteraction: payload.data.priority === 'high',
+        data: payload.data || {},
+        tag: 'duty-manager-notification',
+        requireInteraction: false,
         vibrate: [200, 100, 200]
     };
     
-    // Add actions based on notification type
-    if (payload.data.type === 'duty_change_request') {
-        notificationOptions.actions = [
-            { action: 'accept', title: 'Accept' },
-            { action: 'reject', title: 'Reject' }
-        ];
-    }
+    console.log('[SW] Showing notification:', notificationTitle);
     
+    // Show notification
     return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
 // Handle notification click
 self.addEventListener('notificationclick', function(event) {
-    console.log('Notification clicked:', event.notification.data);
+    console.log('[SW] Notification clicked:', event.notification);
     
     event.notification.close();
     
-    const data = event.notification.data || {};
-    const action = event.action || 'open';
-    
-    // Open the app
+    // Focus or open the app
     event.waitUntil(
         clients.matchAll({
             type: 'window',
@@ -66,7 +73,7 @@ self.addEventListener('notificationclick', function(event) {
                     return client.focus();
                 }
             }
-            // If not open, open new window
+            // Open new window
             if (clients.openWindow) {
                 return clients.openWindow('/');
             }
@@ -74,28 +81,13 @@ self.addEventListener('notificationclick', function(event) {
     );
 });
 
-// Listen for messages from main thread
-self.addEventListener('message', function(event) {
-    if (event.data && event.data.type === 'UPDATE_FIREBASE_CONFIG') {
-        console.log('Updating Firebase config in service worker');
-        // Reinitialize with new config
-        const app = firebase.app();
-        if (app) {
-            app.delete().then(() => {
-                firebase.initializeApp(event.data.config);
-                console.log('Firebase reinitialized in service worker');
-            });
-        }
-    }
-});
-
-// Service Worker Installation
+// Service Worker Lifecycle
 self.addEventListener('install', function(event) {
-    console.log('Service Worker installing...');
+    console.log('[SW] Installing...');
     self.skipWaiting(); // Activate immediately
 });
 
 self.addEventListener('activate', function(event) {
-    console.log('Service Worker activating...');
+    console.log('[SW] Activating...');
     event.waitUntil(clients.claim()); // Take control immediately
 });
