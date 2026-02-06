@@ -17,7 +17,7 @@ const messaging = firebase.messaging();
 
 // Background message handler
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message:', payload);
+  console.log('[Service Worker] Received background message:', payload);
   
   const notificationTitle = payload.notification?.title || 'New Notification';
   const notificationOptions = {
@@ -54,14 +54,12 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(windowClients => {
-        // Check if there is already a window/tab open with the target URL
         for (let i = 0; i < windowClients.length; i++) {
           const client = windowClients[i];
           if (client.url === urlToOpen && 'focus' in client) {
             return client.focus();
           }
         }
-        // If not, open a new window/tab
         if (clients.openWindow) {
           return clients.openWindow(urlToOpen);
         }
