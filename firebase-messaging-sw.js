@@ -1,93 +1,70 @@
-// firebase-messaging-sw.js - SIMPLE WORKING VERSION
+// Firebase Messaging Service Worker
 importScripts('https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js');
 importScripts('https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js');
 
-// Your Firebase config - MUST be complete
-const firebaseConfig = {
-    apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
-    authDomain: "leelidc-1f753.firebaseapp.com",
-    projectId: "leelidc-1f753",  // REQUIRED
-    storageBucket: "leelidc-1f753.firebasestorage.app",
-    messagingSenderId: "43622932335",
-    appId: "1:43622932335:web:a7529bce1f19714687129a",
-    measurementId: "G-3KD6ZYS599"
-};
-
-console.log('[SW] Initializing Firebase with config:', firebaseConfig);
-
 // Initialize Firebase
-try {
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-        console.log('[SW] Firebase initialized');
-    } else {
-        console.log('[SW] Using existing Firebase app');
-    }
-} catch (error) {
-    console.error('[SW] Firebase init error:', error);
-}
+firebase.initializeApp({
+  apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+  authDomain: "leelidc-1f753.firebaseapp.com",
+  projectId: "leelidc-1f753",
+  storageBucket: "leelidc-1f753.firebasestorage.app",
+  messagingSenderId: "43622932335",
+  appId: "1:43622932335:web:a7529bce1f19714687129a",
+  measurementId: "G-3KD6ZYS599"
+});
 
-// Get messaging instance
 const messaging = firebase.messaging();
 
-// Background message handler - USE setBackgroundMessageHandler (not onBackgroundMessage)
-messaging.setBackgroundMessageHandler(function(payload) {
-    console.log('[SW] Received background message:', payload);
-    
-    // Extract notification data
-    const notificationTitle = payload.data?.title || 'Duty Manager';
-    const notificationBody = payload.data?.body || 'New notification';
-    
-    // Notification options
-    const notificationOptions = {
-        body: notificationBody,
-        icon: '/icon-192x192.png',  // Use absolute path
-        badge: '/icon-192x192.png',
-        data: payload.data || {},
-        tag: 'duty-manager-notification',
-        requireInteraction: false,
-        vibrate: [200, 100, 200]
-    };
-    
-    console.log('[SW] Showing notification:', notificationTitle);
-    
-    // Show notification
-    return self.registration.showNotification(notificationTitle, notificationOptions);
+// Background message handler
+messaging.onBackgroundMessage((payload) => {
+  console.log('[firebase-messaging-sw.js] Received background message:', payload);
+  
+  const notificationTitle = payload.notification?.title || 'New Notification';
+  const notificationOptions = {
+    body: payload.notification?.body || 'You have a new message',
+    icon: payload.notification?.icon || 'https://leelidc-1f753.firebaseapp.com/icon-192x192.png',
+    badge: 'https://leelidc-1f753.firebaseapp.com/icon-192x192.png',
+    tag: 'push-notification',
+    data: payload.data || {},
+    vibrate: [200, 100, 200],
+    requireInteraction: true
+  };
+  
+  // Show notification
+  self.registration.showNotification(notificationTitle, notificationOptions);
+  
+  // Send message to all clients
+  self.clients.matchAll().then(clients => {
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'NOTIFICATION_RECEIVED',
+        payload: payload
+      });
+    });
+  });
 });
 
-// Handle notification click
-self.addEventListener('notificationclick', function(event) {
-    console.log('[SW] Notification clicked:', event.notification);
-    
-    event.notification.close();
-    
-    // Focus or open the app
-    event.waitUntil(
-        clients.matchAll({
-            type: 'window',
-            includeUncontrolled: true
-        }).then(function(clientList) {
-            // Check if app is already open
-            for (const client of clientList) {
-                if (client.url.includes('/') && 'focus' in client) {
-                    return client.focus();
-                }
-            }
-            // Open new window
-            if (clients.openWindow) {
-                return clients.openWindow('/');
-            }
-        })
-    );
-});
-
-// Service Worker Lifecycle
-self.addEventListener('install', function(event) {
-    console.log('[SW] Installing...');
-    self.skipWaiting(); // Activate immediately
-});
-
-self.addEventListener('activate', function(event) {
-    console.log('[SW] Activating...');
-    event.waitUntil(clients.claim()); // Take control immediately
+// Notification click handler
+self.addEventListener('notificationclick', (event) => {
+  console.log('Notification clicked:', event.notification);
+  event.notification.close();
+  
+  const urlToOpen = event.notification.data?.url || '/';
+  
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then(windowClients => {
+        // Check if there is already a window/tab open with the target URL
+        for (let i = 0; i < windowClients.length; i++) {
+          const client = windowClients[i];
+          if (client.url === urlToOpen && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        // If not, open a new window/tab
+        if (clients.openWindow) {
+          return clients.openWindow(urlToOpen);
+        }
+      })
+  );
 });
