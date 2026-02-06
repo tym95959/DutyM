@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Test</title>
+</head>
+<body>
+    <h1>Firebase Push Notification Test</h1>
+    <button id="initBtn">Initialize Firebase</button>
+    <button id="tokenBtn">Get Token</button>
+    <button id="testBtn">Test Notification</button>
+    
+    <div id="output" style="margin-top: 20px; padding: 10px; border: 1px solid #ccc;"></div>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+            authDomain: "leelidc-1f753.firebaseapp.com",
+            projectId: "leelidc-1f753",
+            storageBucket: "leelidc-1f753.firebasestorage.app",
+            messagingSenderId: "43622932335",
+            appId: "1:43622932335:web:a7529bce1f19714687129a",
+            measurementId: "G-3KD6ZYS599"
+        };
+        
+        let messaging = null;
+        
+        document.getElementById('initBtn').onclick = function() {
+            try {
+                log('Initializing Firebase...');
+                const app = firebase.initializeApp(firebaseConfig);
+                log('Firebase initialized');
+                
+                if (firebase.messaging.isSupported()) {
+                    messaging = firebase.messaging();
+                    log('Messaging initialized');
+                } else {
+                    log('Messaging not supported');
+                }
+            } catch (error) {
+                log('Error: ' + error.message);
+                console.error(error);
+            }
+        };
+        
+        document.getElementById('tokenBtn').onclick = async function() {
+            if (!messaging) {
+                log('Messaging not initialized');
+                return;
+            }
+            
+            try {
+                const permission = await Notification.requestPermission();
+                log('Permission: ' + permission);
+                
+                if (permission === 'granted') {
+                    const token = await messaging.getToken();
+                    log('Token: ' + token.substring(0, 50) + '...');
+                    localStorage.setItem('testToken', token);
+                    
+                    // Copy to clipboard
+                    navigator.clipboard.writeText(token);
+                    log('Token copied to clipboard!');
+                }
+            } catch (error) {
+                log('Error: ' + error.message);
+            }
+        };
+        
+        document.getElementById('testBtn').onclick = function() {
+            const token = localStorage.getItem('testToken');
+            if (!token) {
+                log('No token available');
+                return;
+            }
+            
+            const command = `curl -X POST \\
+  -H "Authorization: key=YOUR_SERVER_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "to": "${token}",
+    "notification": {
+      "title": "Test",
+      "body": "Works!",
+      "icon": "https://your-domain.com/icon.png"
+    }
+  }' \\
+  "https://fcm.googleapis.com/fcm/send"`;
+            
+            log('<pre>' + command + '</pre>');
+        };
+        
+        function log(message) {
+            output.innerHTML += `<div>${new Date().toLocaleTimeString()}: ${message}</div>`;
+        }
+        
+        // Auto-initialize
+        setTimeout(() => {
+            document.getElementById('initBtn').click();
+        }, 1000);
+    </script>
+</body>
+</html>
