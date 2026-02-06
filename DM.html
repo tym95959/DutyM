@@ -100,6 +100,7 @@
     <!-- External Firebase and User files -->
     <script src="dcfire.js" defer></script>
     <script src="user.js" defer></script>
+    <script src="push-notifications.js" defer></script>
     
     <style>
         /* Mobile-First CSS */
@@ -1635,6 +1636,16 @@
                 el.style.display = isAdmin ? 'flex' : 'none';
             });
             
+            // Initialize push notifications after login
+            setTimeout(async () => {
+                const initialized = await pushManager.initialize();
+                if (initialized) {
+                    showToast('Push notifications enabled', 'success');
+                } else {
+                    showToast('Push notifications not available', 'info');
+                }
+            }, 1000);
+            
             // Load data
             await initializeData();
             
@@ -2113,10 +2124,29 @@
             if (success) {
                 updateRequestCounts();
                 showToast('Duty change request submitted!', 'success');
+                
+                // Send notification to the requested staff
+                if (pushManager.isInitialized) {
+                    const notificationTitle = 'Duty Change Request';
+                    const notificationBody = `${currentUser.name} has requested to swap duty with you on ${date}`;
+                    
+                    await pushManager.sendNotificationToUser(
+                        toStaff,
+                        notificationTitle,
+                        notificationBody,
+                        {
+                            requestId: request.id,
+                            type: 'duty_change_request',
+                            date: date,
+                            fromUser: currentUser.name
+                        }
+                    );
+                }
+                
                 showSection('home');
                 document.getElementById('dutyChangeForm').reset();
             }
-        }
+        }                                                   
 
         // Leave Application Functions
         function loadLeaveForm() {
@@ -2449,10 +2479,29 @@
             const success = await saveAllRequests();
             if (success) {
                 showToast(`Request ${response} successfully!`, 'success');
+                
+                // Send notification to requester
+                if (pushManager.isInitialized) {
+                    const notificationTitle = 'Duty Change Response';
+                    const notificationBody = `${currentUser.name} has ${response} your duty change request`;
+                    
+                    await pushManager.sendNotificationToUser(
+                        request.fromUsername,
+                        notificationTitle,
+                        notificationBody,
+                        {
+                            requestId: requestId,
+                            type: 'duty_change_response',
+                            response: response,
+                            date: request.date
+                        }
+                    );
+                }
+                
                 showSection('home');
                 updateRequestCounts();
             }
-        }
+        }   
 
         // All Roster Functions
         function loadAllRoster() {
@@ -2619,6 +2668,20 @@
             const success = await saveAnnouncements();
             if (success) {
                 showToast('Announcement created!', 'success');
+                
+                // Send notification to all users
+                if (pushManager.isInitialized) {
+                    await pushManager.sendNotificationToAll(
+                        title,
+                        content,
+                        {
+                            announcementId: announcement.id,
+                            type: 'announcement',
+                            priority: priority
+                        }
+                    );
+                }
+                
                 document.getElementById('announcementForm').reset();
                 loadAnnouncementsAdmin();
                 loadHomeAnnouncements();
