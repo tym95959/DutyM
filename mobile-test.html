@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mobile Push Test</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
+</head>
+<body>
+    <h2>📱 Mobile Push Test</h2>
+    
+    <div id="steps">
+        <h3>Steps:</h3>
+        <ol>
+            <li>Open this page on your phone</li>
+            <li>Add to Home Screen (for PWA)</li>
+            <li>Click "Enable Notifications"</li>
+            <li>Minimize/close the app</li>
+            <li>Send test from computer</li>
+        </ol>
+    </div>
+    
+    <button onclick="enableNotifications()">🔔 Enable Notifications</button>
+    <button onclick="sendTest()">📤 Send Test</button>
+    
+    <div id="status"></div>
+    
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+            authDomain: "leelidc-1f753.firebaseapp.com",
+            projectId: "leelidc-1f753",
+            storageBucket: "leelidc-1f753.firebasestorage.app",
+            messagingSenderId: "43622932335",
+            appId: "1:43622932335:web:a7529bce1f19714687129a",
+            measurementId: "G-3KD6ZYS599"
+        };
+        
+        let messaging = null;
+        let fcmToken = null;
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        messaging = firebase.messaging();
+        
+        log('Firebase initialized');
+        
+        // Request notification permission
+        async function enableNotifications() {
+            try {
+                log('Requesting permission...');
+                const permission = await Notification.requestPermission();
+                log(`Permission: ${permission}`);
+                
+                if (permission === 'granted') {
+                    // Register service worker first
+                    if ('serviceWorker' in navigator) {
+                        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+                            scope: '/'
+                        });
+                        log('Service Worker registered');
+                        
+                        // Use service worker
+                        messaging.useServiceWorker(registration);
+                    }
+                    
+                    // Get FCM token
+                    fcmToken = await messaging.getToken();
+                    log(`Token: ${fcmToken.substring(0, 30)}...`);
+                    localStorage.setItem('mobileFCMToken', fcmToken);
+                    
+                    // Listen for messages
+                    messaging.onMessage((payload) => {
+                        log(`Foreground: ${payload.notification?.title}`);
+                        alert(`📱 ${payload.notification?.title}: ${payload.notification?.body}`);
+                    });
+                    
+                    log('✅ Notifications enabled! Close app to test background.');
+                }
+            } catch (error) {
+                log(`Error: ${error.message}`);
+            }
+        }
+        
+        function sendTest() {
+            if (!fcmToken) {
+                fcmToken = localStorage.getItem('mobileFCMToken');
+                if (!fcmToken) {
+                    log('No token available');
+                    return;
+                }
+            }
+            
+            const curlCommand = `curl -X POST \\
+  -H "Authorization: key=YOUR_SERVER_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "to": "${fcmToken}",
+    "notification": {
+      "title": "📱 Mobile Test",
+      "body": "App should be closed!",
+      "icon": "https://leelidc-1f753.firebaseapp.com/icon-192x192.png",
+      "click_action": "https://leelidc-1f753.firebaseapp.com/"
+    },
+    "data": {
+      "type": "mobile_test",
+      "timestamp": "${new Date().toISOString()}"
+    }
+  }' \\
+  "https://fcm.googleapis.com/fcm/send"`;
+            
+            log('<h4>Send this from computer:</h4>');
+            log('<textarea style="width:100%;height:150px;">' + curlCommand + '</textarea>');
+            log('<p>Replace YOUR_SERVER_KEY with Firebase Server Key</p>');
+        }
+        
+        function log(message) {
+            document.getElementById('status').innerHTML += `<div>${message}</div>`;
+        }
+        
+        // Check if on mobile
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+            log('📱 Mobile device detected');
+        } else {
+            log('💻 Desktop device - test on phone for background notifications');
+        }
+    </script>
+</body>
+</html>
