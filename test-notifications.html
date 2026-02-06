@@ -6,38 +6,135 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
 </head>
 <body>
+    <h2>Push Notification Test</h2>
     <button onclick="requestPermission()">Enable Notifications</button>
-    <button onclick="sendTest()">Send Test</button>
+    <button onclick="sendTest()">Send Test Notification</button>
+    <button onclick="checkStatus()">Check Status</button>
+    
+    <div id="status" style="margin-top: 20px; padding: 10px; background: #f0f0f0;"></div>
     
     <script>
+        // Your Firebase configuration - MUST INCLUDE projectId
         const firebaseConfig = {
-            // Your config here
+            apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+            authDomain: "leelidc-1f753.firebaseapp.com",
+            projectId: "leelidc-1f753",  // REQUIRED
+            storageBucket: "leelidc-1f753.firebasestorage.app",
+            messagingSenderId: "43622932335",
+            appId: "1:43622932335:web:a7529bce1f19714687129a",
+            measurementId: "G-3KD6ZYS599"
         };
         
-        firebase.initializeApp(firebaseConfig);
-        const messaging = firebase.messaging();
+        console.log('Config loaded:', firebaseConfig);
+        
+        // Initialize Firebase
+        let app;
+        let messaging;
+        
+        try {
+            if (!firebase.apps.length) {
+                app = firebase.initializeApp(firebaseConfig);
+                console.log('Firebase initialized');
+            } else {
+                app = firebase.app();
+                console.log('Using existing Firebase app');
+            }
+            
+            // Initialize messaging
+            if (firebase.messaging.isSupported()) {
+                messaging = firebase.messaging();
+                console.log('Messaging initialized');
+            } else {
+                console.log('Messaging not supported');
+            }
+            
+            updateStatus('Firebase initialized successfully');
+        } catch (error) {
+            console.error('Initialization error:', error);
+            updateStatus('Error: ' + error.message);
+        }
+        
+        function updateStatus(message) {
+            document.getElementById('status').innerHTML += `<div>${new Date().toLocaleTimeString()}: ${message}</div>`;
+        }
         
         async function requestPermission() {
-            const permission = await Notification.requestPermission();
-            console.log('Permission:', permission);
+            updateStatus('Requesting notification permission...');
             
-            if (permission === 'granted') {
-                const token = await messaging.getToken();
-                console.log('Token:', token);
-                localStorage.setItem('fcmToken', token);
+            try {
+                // Check if messaging is initialized
+                if (!messaging) {
+                    updateStatus('Messaging not initialized');
+                    return;
+                }
+                
+                const permission = await Notification.requestPermission();
+                updateStatus(`Permission: ${permission}`);
+                
+                if (permission === 'granted') {
+                    const token = await messaging.getToken();
+                    updateStatus(`Token obtained: ${token.substring(0, 50)}...`);
+                    localStorage.setItem('fcmToken', token);
+                    
+                    // Also log to console for copying
+                    console.log('FULL TOKEN:', token);
+                    alert('Token saved! Check console for full token.');
+                }
+            } catch (error) {
+                updateStatus('Error: ' + error.message);
+                console.error('Permission error:', error);
             }
         }
         
         async function sendTest() {
             const token = localStorage.getItem('fcmToken');
             if (!token) {
-                alert('No token');
+                updateStatus('No token available. Request permission first.');
                 return;
             }
             
-            // Send test notification via curl or Postman
-            console.log('Use this token:', token);
+            updateStatus(`Using token: ${token.substring(0, 30)}...`);
+            
+            // Show how to send using curl
+            const curlCommand = `curl -X POST \\
+  -H "Authorization: key=YOUR_SERVER_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "to": "${token}",
+    "notification": {
+      "title": "Test Notification",
+      "body": "This is a test from curl",
+      "icon": "/icon.png"
+    },
+    "data": {
+      "type": "test",
+      "click_action": "FLUTTER_NOTIFICATION_CLICK"
+    }
+  }' \\
+  "https://fcm.googleapis.com/fcm/send"`;
+            
+            updateStatus('<strong>Use this curl command:</strong>');
+            updateStatus('<pre style="background: white; padding: 10px;">' + curlCommand + '</pre>');
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(curlCommand);
+            updateStatus('Curl command copied to clipboard!');
         }
+        
+        function checkStatus() {
+            updateStatus('=== STATUS CHECK ===');
+            updateStatus('Firebase loaded: ' + (typeof firebase !== 'undefined'));
+            updateStatus('Firebase apps: ' + (firebase ? firebase.apps.length : 0));
+            updateStatus('Messaging supported: ' + (firebase && firebase.messaging ? firebase.messaging.isSupported() : false));
+            updateStatus('Service Worker: ' + ('serviceWorker' in navigator));
+            updateStatus('Push Manager: ' + ('PushManager' in window));
+            updateStatus('Notification Permission: ' + Notification.permission);
+            updateStatus('Token in localStorage: ' + (!!localStorage.getItem('fcmToken')));
+            updateStatus('=== END CHECK ===');
+        }
+        
+        // Auto-check on load
+        setTimeout(checkStatus, 1000);
     </script>
 </body>
 </html>
