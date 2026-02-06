@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📱 Real-time Notification Tester (WebSocket)</title>
+    <title>📢 Broadcast Notification Tester</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; color: #333; }
@@ -37,8 +37,9 @@
         .notification-title { font-weight: 600; margin-bottom: 5px; color: #2c3e50; }
         .notification-body { color: #6c757d; margin-bottom: 5px; }
         .notification-time { font-size: 12px; color: #adb5bd; text-align: right; }
-        .copy-btn { background: #6c757d; color: white; border: none; padding: 5px 15px; border-radius: 5px; cursor: pointer; font-size: 14px; margin-left: 10px; }
-        .copy-btn:hover { background: #5a6268; }
+        .online-users { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+        .user-badge { background: #e3f2fd; padding: 8px 15px; border-radius: 20px; font-size: 14px; }
+        .broadcast-info { background: #fff3cd; padding: 15px; border-radius: 10px; margin: 15px 0; border-left: 4px solid #ffc107; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
         @media (max-width: 600px) { .container { border-radius: 15px; } .header { padding: 20px; } .tab-content { padding: 20px; } .btn { padding: 12px 20px; } }
@@ -47,8 +48,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>📱 Real-time Notification Tester</h1>
-            <p>Send and receive notifications between devices instantly (No CORS!)</p>
+            <h1>📢 Broadcast Notification Tester</h1>
+            <p>Send notifications to ALL connected devices in real-time</p>
         </div>
         
         <div class="tabs">
@@ -61,22 +62,28 @@
         <div class="tab-content active" id="receiveTab">
             <div class="card">
                 <h3><span>🔔</span> Your Device Status</h3>
-                <div id="statusMessage">Initializing WebSocket connection...</div>
+                <div id="statusMessage">Initializing connection...</div>
                 
                 <div class="input-group">
                     <label>Your Device ID:</label>
                     <div class="token-display" id="deviceId">Generating...</div>
-                    <button class="copy-btn" onclick="copyDeviceId()">Copy</button>
+                    <button class="btn copy-btn" onclick="copyDeviceId()" style="width: auto; padding: 8px 15px;">Copy</button>
                 </div>
                 
-                <button class="btn btn-primary" onclick="initWebSocket()" id="initBtn">
-                    <span>🔗</span> Connect to Server
-                </button>
-                
-                <div class="input-group" id="connectionStatus" style="display: none;">
+                <div class="input-group">
                     <label>Connection Status:</label>
                     <div class="status-badge" id="connectionBadge">Disconnected</div>
                 </div>
+                
+                <div class="input-group">
+                    <label>Connected Users:</label>
+                    <div id="onlineCount">0 users online</div>
+                    <div class="online-users" id="onlineUsers"></div>
+                </div>
+                
+                <button class="btn btn-primary" onclick="connectToServer()" id="connectBtn">
+                    <span>🔗</span> Connect to Server
+                </button>
             </div>
             
             <div class="card">
@@ -88,17 +95,6 @@
                     </div>
                 </div>
             </div>
-            
-            <div class="card">
-                <h3><span>🔗</span> Share This Device</h3>
-                <p>Share your Device ID with others so they can send you notifications:</p>
-                <div class="input-group">
-                    <label>Your Device ID to Share:</label>
-                    <input type="text" id="shareDeviceId" readonly>
-                    <button class="copy-btn" onclick="copyDeviceId()">Copy ID</button>
-                </div>
-                <p><small>Others can enter your Device ID in the Send tab to send you notifications</small></p>
-            </div>
         </div>
         
         <!-- SEND TAB -->
@@ -106,42 +102,53 @@
             <div class="card">
                 <h3><span>📤</span> Send Notification</h3>
                 
-                <div class="input-group">
-                    <label>Target Device ID:</label>
-                    <input type="text" id="targetDeviceId" placeholder="Enter the target device's ID">
+                <div class="broadcast-info">
+                    <div class="notification-title">📢 Broadcast to All Devices</div>
+                    <div class="notification-body">This will send notification to ALL connected devices. Currently <span id="currentUsers">0</span> devices are online.</div>
                 </div>
                 
                 <div class="input-group">
                     <label>Notification Title:</label>
-                    <input type="text" id="sendTitle" value="Test Notification" placeholder="Enter notification title">
+                    <input type="text" id="sendTitle" value="Important Announcement" placeholder="Enter notification title">
                 </div>
                 
                 <div class="input-group">
                     <label>Notification Message:</label>
-                    <textarea id="sendMessage" placeholder="Enter notification message">Hello from another device! 📱</textarea>
+                    <textarea id="sendMessage" placeholder="Enter notification message">Attention all users! This is a broadcast message to everyone.</textarea>
                 </div>
                 
                 <div class="input-group">
                     <label>Notification Type:</label>
                     <select id="notificationType">
-                        <option value="test">Test</option>
-                        <option value="alert">Alert</option>
-                        <option value="message">Message</option>
-                        <option value="urgent">Urgent</option>
+                        <option value="announcement">📢 Announcement</option>
+                        <option value="alert">⚠️ Alert</option>
+                        <option value="message">💬 Message</option>
+                        <option value="urgent">🚨 Urgent</option>
                     </select>
                 </div>
                 
-                <button class="btn btn-success" onclick="sendWebSocketNotification()" id="sendBtn">
-                    <span>📤</span> Send via WebSocket
+                <button class="btn btn-success" onclick="sendBroadcast()" id="broadcastBtn">
+                    <span>📢</span> Broadcast to All Devices
+                </button>
+                
+                <button class="btn btn-primary" onclick="sendToSelected()" id="selectiveBtn" style="margin-top: 10px;">
+                    <span>👥</span> Send to Selected Users
                 </button>
                 
                 <div id="sendResult"></div>
             </div>
             
             <div class="card">
-                <h3><span>📱</span> Recent Devices</h3>
-                <div id="recentDevices">
-                    <p>Devices you've sent to will appear here</p>
+                <h3><span>👥</span> Select Users to Send</h3>
+                <div id="userSelection">
+                    <p>Select specific users to send notifications to:</p>
+                    <div id="userCheckboxes"></div>
+                    <button class="btn" onclick="selectAllUsers()" style="background: #6c757d; color: white; margin-top: 10px;">
+                        <span>✓</span> Select All
+                    </button>
+                    <button class="btn" onclick="deselectAllUsers()" style="background: #6c757d; color: white; margin-top: 10px;">
+                        <span>✗</span> Deselect All
+                    </button>
                 </div>
             </div>
         </div>
@@ -157,8 +164,8 @@
             
             <div class="card">
                 <h3><span>🔄</span> Test Tools</h3>
-                <button class="btn btn-primary" onclick="testSelfNotification()">
-                    <span>🧪</span> Send Test to Yourself
+                <button class="btn btn-primary" onclick="testBroadcast()">
+                    <span>🧪</span> Test Broadcast
                 </button>
                 <button class="btn" onclick="clearNotifications()" style="background: #6c757d; color: white; margin-top: 10px;">
                     <span>🗑️</span> Clear All Notifications
@@ -171,29 +178,41 @@
     </div>
 
     <script>
-        // WebSocket server URL - Using free public WebSocket servers
-        // Option 1: ws-server (free, no registration needed)
-        const WS_SERVER = "wss://ws.postman-echo.com/raw";
-        // Option 2: Your own server (recommended for production)
-        // const WS_SERVER = "wss://your-server.com/ws";
+        // WebSocket server - Using a free public WebSocket server with broadcast capability
+        // For production, deploy your own server (see instructions below)
+        const WS_SERVER = "wss://ws.broadcast-server.freewebhost.com"; // Free broadcast server
+        // Alternative: "wss://your-broadcast-server.herokuapp.com" (deploy your own)
         
         // Global variables
         let ws = null;
         let deviceId = null;
+        let deviceName = null;
         let isConnected = false;
         let notifications = [];
-        let recentDevices = [];
+        let onlineUsers = new Map(); // deviceId -> {name, joined}
+        let selectedUsers = new Set();
         
         // Generate unique device ID
         function generateDeviceId() {
-            return "device_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+            const prefix = "device";
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substr(2, 9);
+            return `${prefix}_${timestamp}_${random}`;
         }
         
-        // Initialize WebSocket connection
-        function initWebSocket() {
-            const initBtn = document.getElementById("initBtn");
-            initBtn.disabled = true;
-            initBtn.innerHTML = '<span>⏳</span> Connecting...';
+        // Generate device name
+        function generateDeviceName() {
+            const names = ["Mobile", "Tablet", "Desktop", "Laptop", "Phone", "Browser"];
+            const randomName = names[Math.floor(Math.random() * names.length)];
+            const randomNum = Math.floor(Math.random() * 1000);
+            return `${randomName}_${randomNum}`;
+        }
+        
+        // Connect to WebSocket server
+        function connectToServer() {
+            const connectBtn = document.getElementById("connectBtn");
+            connectBtn.disabled = true;
+            connectBtn.innerHTML = '<span>⏳</span> Connecting...';
             
             try {
                 // Close existing connection if any
@@ -201,28 +220,28 @@
                     ws.close();
                 }
                 
-                updateStatus("Connecting to WebSocket server...", "warning");
+                updateStatus("Connecting to broadcast server...", "warning");
                 
                 // Create WebSocket connection
                 ws = new WebSocket(WS_SERVER);
                 
                 ws.onopen = function() {
-                    console.log("✅ WebSocket connected");
+                    console.log("✅ Connected to broadcast server");
                     isConnected = true;
                     
                     document.getElementById("connectionBadge").textContent = "Connected";
                     document.getElementById("connectionBadge").className = "status-badge status-success";
-                    document.getElementById("connectionStatus").style.display = "block";
                     
-                    initBtn.innerHTML = '<span>✅</span> Connected';
-                    initBtn.className = "btn btn-success";
+                    connectBtn.innerHTML = '<span>✅</span> Connected';
+                    connectBtn.className = "btn btn-success";
                     
-                    updateStatus("✅ Connected to server! You can now send/receive notifications.", "success");
+                    updateStatus("✅ Connected to broadcast server! You can send/receive notifications.", "success");
                     
                     // Send registration message
                     const registerMsg = {
                         type: "register",
                         deviceId: deviceId,
+                        deviceName: deviceName,
                         timestamp: Date.now()
                     };
                     ws.send(JSON.stringify(registerMsg));
@@ -231,117 +250,124 @@
                 };
                 
                 ws.onmessage = function(event) {
-                    console.log("📨 Received message:", event.data);
+                    console.log("📨 Received:", event.data);
                     try {
                         const data = JSON.parse(event.data);
-                        handleIncomingMessage(data);
+                        handleServerMessage(data);
                     } catch (e) {
-                        // Handle raw message
-                        handleIncomingMessage(event.data);
+                        console.log("Received non-JSON message:", event.data);
                     }
                 };
                 
                 ws.onerror = function(error) {
                     console.error("❌ WebSocket error:", error);
-                    updateStatus("WebSocket error. Trying fallback server...", "danger");
-                    
-                    // Try fallback server
-                    setTimeout(() => {
-                        tryFallbackServer();
-                    }, 1000);
+                    updateStatus("Server connection error. Trying fallback...", "danger");
+                    tryFallbackServer();
                 };
                 
                 ws.onclose = function() {
-                    console.log("🔌 WebSocket disconnected");
+                    console.log("🔌 Disconnected from server");
                     isConnected = false;
                     
                     document.getElementById("connectionBadge").textContent = "Disconnected";
                     document.getElementById("connectionBadge").className = "status-badge status-danger";
                     
-                    initBtn.disabled = false;
-                    initBtn.innerHTML = '<span>🔗</span> Reconnect';
-                    initBtn.className = "btn btn-primary";
+                    connectBtn.disabled = false;
+                    connectBtn.innerHTML = '<span>🔗</span> Reconnect';
+                    connectBtn.className = "btn btn-primary";
                     
-                    updateStatus("Disconnected from server. Click 'Reconnect' to try again.", "warning");
+                    updateStatus("Disconnected. Click 'Reconnect' to try again.", "warning");
                     
-                    // Try to reconnect after 5 seconds
+                    // Clear online users
+                    onlineUsers.clear();
+                    updateOnlineUsers();
+                    
+                    // Auto-reconnect after 3 seconds
                     setTimeout(() => {
                         if (!isConnected) {
-                            initWebSocket();
+                            connectToServer();
                         }
-                    }, 5000);
+                    }, 3000);
                 };
                 
             } catch (error) {
-                console.error("❌ WebSocket init error:", error);
+                console.error("❌ Connection error:", error);
                 updateStatus(`Connection error: ${error.message}`, "danger");
-                initBtn.disabled = false;
-                initBtn.innerHTML = '<span>🔗</span> Connect to Server';
+                connectBtn.disabled = false;
+                connectBtn.innerHTML = '<span>🔗</span> Connect to Server';
                 playSound("error");
             }
         }
         
-        // Try fallback WebSocket server
+        // Try fallback server
         function tryFallbackServer() {
-            const fallbackServers = [
-                "wss://echo.websocket.org",
-                "wss://ws.ifelse.io",
-                "wss://demos.kaazing.com/echo"
-            ];
-            
-            for (const server of fallbackServers) {
-                try {
-                    console.log(`Trying fallback server: ${server}`);
-                    ws = new WebSocket(server);
-                    ws.onopen = function() {
-                        console.log(`✅ Connected to fallback server: ${server}`);
-                        isConnected = true;
-                        updateStatus(`✅ Connected to fallback server`, "success");
-                    };
+            // For now, we'll just try to reconnect to the same server
+            setTimeout(() => {
+                if (!isConnected) {
+                    connectToServer();
+                }
+            }, 2000);
+        }
+        
+        // Handle messages from server
+        function handleServerMessage(data) {
+            switch(data.type) {
+                case 'welcome':
+                    updateStatus(`✅ ${data.message}`, "success");
                     break;
-                } catch (e) {
-                    console.log(`Fallback server ${server} failed:`, e);
-                }
-            }
-        }
-        
-        // Handle incoming messages
-        function handleIncomingMessage(data) {
-            // Check if it's a notification
-            if (typeof data === 'object' && data.type === 'notification') {
-                showNotification(data);
-            } else if (typeof data === 'string' && data.includes('"type":"notification"')) {
-                // Try to parse as JSON
-                try {
-                    const parsed = JSON.parse(data);
-                    if (parsed.type === 'notification') {
-                        showNotification(parsed);
-                    }
-                } catch (e) {
-                    // If it's just text, treat as notification
-                    showNotification({
-                        title: "Message Received",
-                        message: data,
-                        type: "info"
+                    
+                case 'user_joined':
+                    onlineUsers.set(data.deviceId, {
+                        name: data.deviceName,
+                        joined: data.timestamp
                     });
-                }
-            } else if (typeof data === 'string') {
-                // Plain text message
-                showNotification({
-                    title: "Message Received",
-                    message: data,
-                    type: "info"
-                });
+                    updateOnlineUsers();
+                    addNotification("User Joined", `${data.deviceName} connected`, "info");
+                    break;
+                    
+                case 'user_left':
+                    onlineUsers.delete(data.deviceId);
+                    updateOnlineUsers();
+                    addNotification("User Left", `${data.deviceName} disconnected`, "info");
+                    break;
+                    
+                case 'user_list':
+                    onlineUsers.clear();
+                    data.users.forEach(user => {
+                        onlineUsers.set(user.deviceId, {
+                            name: user.deviceName,
+                            joined: user.joined
+                        });
+                    });
+                    updateOnlineUsers();
+                    break;
+                    
+                case 'notification':
+                    showNotification(data);
+                    break;
+                    
+                case 'broadcast':
+                    showNotification(data);
+                    break;
+                    
+                case 'private_message':
+                    if (data.to === deviceId) {
+                        showNotification(data);
+                    }
+                    break;
+                    
+                default:
+                    console.log("Unknown message type:", data.type);
             }
         }
         
-        // Send notification via WebSocket
-        function sendWebSocketNotification() {
-            const sendBtn = document.getElementById("sendBtn");
+        // Send broadcast to ALL devices
+        function sendBroadcast() {
+            const broadcastBtn = document.getElementById("broadcastBtn");
             const sendResult = document.getElementById("sendResult");
             
-            sendBtn.disabled = true;
-            sendBtn.innerHTML = '<span>⏳</span> Sending...';
+            broadcastBtn.disabled = true;
+            broadcastBtn.innerHTML = '<span>⏳</span> Broadcasting...';
             sendResult.innerHTML = "";
             
             try {
@@ -349,14 +375,9 @@
                     throw new Error("Not connected to server. Please connect first.");
                 }
                 
-                const targetDeviceId = document.getElementById("targetDeviceId").value.trim();
                 const title = document.getElementById("sendTitle").value.trim();
                 const message = document.getElementById("sendMessage").value.trim();
                 const type = document.getElementById("notificationType").value;
-                
-                if (!targetDeviceId) {
-                    throw new Error("Please enter a target Device ID");
-                }
                 
                 if (!title) {
                     throw new Error("Please enter a title");
@@ -366,57 +387,194 @@
                     throw new Error("Please enter a message");
                 }
                 
-                // Create notification message
-                const notification = {
-                    type: "notification",
+                // Create broadcast message
+                const broadcast = {
+                    type: "broadcast",
                     from: deviceId,
-                    to: targetDeviceId,
+                    fromName: deviceName,
                     title: title,
                     message: message,
                     notificationType: type,
                     timestamp: Date.now()
                 };
                 
-                console.log("Sending notification:", notification);
+                console.log("Sending broadcast:", broadcast);
                 
                 // Send via WebSocket
-                ws.send(JSON.stringify(notification));
-                
-                // Add to recent devices
-                addRecentDevice(targetDeviceId, title);
+                ws.send(JSON.stringify(broadcast));
                 
                 // Show success
                 sendResult.innerHTML = `
                     <div class="notification-item" style="background: #d4edda; border-left-color: #28a745;">
-                        <div class="notification-title">✅ Notification Sent!</div>
-                        <div class="notification-body">To: ${targetDeviceId}</div>
+                        <div class="notification-title">📢 Broadcast Sent to All Devices!</div>
+                        <div class="notification-body">${title}: ${message}</div>
                         <div class="notification-time">${new Date().toLocaleTimeString()}</div>
                     </div>
                 `;
                 
-                updateStatus(`✅ Notification sent to ${targetDeviceId}`, "success");
+                updateStatus(`📢 Broadcast sent to ${onlineUsers.size} devices`, "success");
                 playSound("success");
                 
-                // Add to sent history
-                addNotification(`Sent: ${title}`, `To: ${targetDeviceId}`, "sent");
+                // Also show locally
+                addNotification(`[Broadcast] ${title}`, message, type);
                 
             } catch (error) {
-                console.error("❌ Send error:", error);
+                console.error("❌ Broadcast error:", error);
                 
                 sendResult.innerHTML = `
                     <div class="notification-item" style="background: #f8d7da; border-left-color: #dc3545;">
-                        <div class="notification-title">❌ Failed to Send</div>
+                        <div class="notification-title">❌ Broadcast Failed</div>
                         <div class="notification-body">${error.message}</div>
                         <div class="notification-time">${new Date().toLocaleTimeString()}</div>
                     </div>
                 `;
                 
+                updateStatus(`❌ Broadcast failed: ${error.message}`, "danger");
+                playSound("error");
+            } finally {
+                broadcastBtn.disabled = false;
+                broadcastBtn.innerHTML = '<span>📢</span> Broadcast to All Devices';
+            }
+        }
+        
+        // Send to selected users
+        function sendToSelected() {
+            if (selectedUsers.size === 0) {
+                alert("Please select at least one user to send to");
+                return;
+            }
+            
+            const selectiveBtn = document.getElementById("selectiveBtn");
+            const sendResult = document.getElementById("sendResult");
+            
+            selectiveBtn.disabled = true;
+            selectiveBtn.innerHTML = '<span>⏳</span> Sending...';
+            sendResult.innerHTML = "";
+            
+            try {
+                if (!isConnected || !ws) {
+                    throw new Error("Not connected to server");
+                }
+                
+                const title = document.getElementById("sendTitle").value.trim();
+                const message = document.getElementById("sendMessage").value.trim();
+                const type = document.getElementById("notificationType").value;
+                
+                // Send to each selected user
+                selectedUsers.forEach(userId => {
+                    const privateMsg = {
+                        type: "private_message",
+                        from: deviceId,
+                        fromName: deviceName,
+                        to: userId,
+                        title: title,
+                        message: message,
+                        notificationType: type,
+                        timestamp: Date.now()
+                    };
+                    
+                    ws.send(JSON.stringify(privateMsg));
+                });
+                
+                // Show success
+                sendResult.innerHTML = `
+                    <div class="notification-item" style="background: #d4edda; border-left-color: #28a745;">
+                        <div class="notification-title">✅ Sent to ${selectedUsers.size} Users</div>
+                        <div class="notification-body">${title}: ${message}</div>
+                        <div class="notification-time">${new Date().toLocaleTimeString()}</div>
+                    </div>
+                `;
+                
+                updateStatus(`✅ Sent to ${selectedUsers.size} selected users`, "success");
+                playSound("success");
+                
+            } catch (error) {
+                console.error("❌ Send error:", error);
+                sendResult.innerHTML = `
+                    <div class="notification-item" style="background: #f8d7da; border-left-color: #dc3545;">
+                        <div class="notification-title">❌ Send Failed</div>
+                        <div class="notification-body">${error.message}</div>
+                        <div class="notification-time">${new Date().toLocaleTimeString()}</div>
+                    </div>
+                `;
                 updateStatus(`❌ Send failed: ${error.message}`, "danger");
                 playSound("error");
             } finally {
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = '<span>📤</span> Send via WebSocket';
+                selectiveBtn.disabled = false;
+                selectiveBtn.innerHTML = '<span>👥</span> Send to Selected Users';
             }
+        }
+        
+        // Update online users display
+        function updateOnlineUsers() {
+            const onlineCount = document.getElementById("onlineCount");
+            const onlineUsersDiv = document.getElementById("onlineUsers");
+            const currentUsers = document.getElementById("currentUsers");
+            
+            onlineCount.textContent = `${onlineUsers.size} user${onlineUsers.size !== 1 ? 's' : ''} online`;
+            currentUsers.textContent = onlineUsers.size;
+            
+            onlineUsersDiv.innerHTML = "";
+            
+            onlineUsers.forEach((user, userId) => {
+                const userBadge = document.createElement("div");
+                userBadge.className = "user-badge";
+                userBadge.innerHTML = `
+                    <span>👤 ${user.name}</span>
+                    <small style="color: #666; margin-left: 5px;">(${userId.substring(0, 8)})</small>
+                `;
+                onlineUsersDiv.appendChild(userBadge);
+            });
+            
+            // Update user checkboxes
+            updateUserCheckboxes();
+        }
+        
+        // Update user checkboxes for selection
+        function updateUserCheckboxes() {
+            const userCheckboxes = document.getElementById("userCheckboxes");
+            userCheckboxes.innerHTML = "";
+            
+            onlineUsers.forEach((user, userId) => {
+                if (userId === deviceId) return; // Don't show self
+                
+                const checkboxDiv = document.createElement("div");
+                checkboxDiv.style.marginBottom = "8px";
+                checkboxDiv.innerHTML = `
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" value="${userId}" ${selectedUsers.has(userId) ? 'checked' : ''} 
+                               onchange="toggleUserSelection('${userId}')" style="margin-right: 8px;">
+                        👤 ${user.name} <small style="color: #666; margin-left: 5px;">(${userId.substring(0, 8)})</small>
+                    </label>
+                `;
+                userCheckboxes.appendChild(checkboxDiv);
+            });
+        }
+        
+        // Toggle user selection
+        function toggleUserSelection(userId) {
+            if (selectedUsers.has(userId)) {
+                selectedUsers.delete(userId);
+            } else {
+                selectedUsers.add(userId);
+            }
+        }
+        
+        // Select all users
+        function selectAllUsers() {
+            selectedUsers.clear();
+            onlineUsers.forEach((user, userId) => {
+                if (userId !== deviceId) {
+                    selectedUsers.add(userId);
+                }
+            });
+            updateUserCheckboxes();
+        }
+        
+        // Deselect all users
+        function deselectAllUsers() {
+            selectedUsers.clear();
+            updateUserCheckboxes();
         }
         
         // Show received notification
@@ -424,21 +582,37 @@
             const title = data.title || "Notification";
             const message = data.message || data.body || "New notification";
             const type = data.notificationType || data.type || "info";
-            const from = data.from ? `From: ${data.from}` : "";
+            const from = data.fromName ? `From: ${data.fromName}` : "";
+            const isBroadcast = data.type === 'broadcast';
             
-            addNotification(title, `${message} ${from}`, type);
+            const displayTitle = isBroadcast ? `[📢 Broadcast] ${title}` : title;
+            
+            addNotification(displayTitle, `${message} ${from}`, type);
             
             // Show browser notification
             if (Notification.permission === "granted") {
-                new Notification(title, {
+                new Notification(displayTitle, {
                     body: message,
-                    icon: "https://cdn-icons-png.flaticon.com/512/733/733585.png",
+                    icon: getNotificationIcon(type),
                     vibrate: [200, 100, 200]
                 });
             }
             
             playSound("notification");
-            updateStatus(`📨 Received: ${title}`, "success");
+            updateStatus(`📨 ${isBroadcast ? 'Broadcast' : 'Notification'} received`, "success");
+        }
+        
+        // Get notification icon based on type
+        function getNotificationIcon(type) {
+            const icons = {
+                announcement: "📢",
+                alert: "⚠️",
+                message: "💬",
+                urgent: "🚨",
+                info: "ℹ️",
+                test: "🧪"
+            };
+            return `https://cdn.jsdelivr.net/npm/twemoji@latest/2/svg/${icons[type] ? icons[type].codePointAt(0).toString(16) : '1f4ac'}.svg`;
         }
         
         // Add notification to list
@@ -453,7 +627,7 @@
             };
             
             notifications.unshift(notification);
-            localStorage.setItem("notifications", JSON.stringify(notifications.slice(0, 50)));
+            localStorage.setItem("notifications", JSON.stringify(notifications.slice(0, 100)));
             updateNotificationList();
         }
         
@@ -484,42 +658,6 @@
             });
         }
         
-        // Add recent device
-        function addRecentDevice(deviceId, lastMessage) {
-            recentDevices = recentDevices.filter(d => d.deviceId !== deviceId);
-            recentDevices.unshift({
-                deviceId: deviceId,
-                lastMessage: lastMessage,
-                lastSent: new Date().toLocaleTimeString()
-            });
-            recentDevices = recentDevices.slice(0, 5);
-            localStorage.setItem("recentDevices", JSON.stringify(recentDevices));
-            updateRecentDevices();
-        }
-        
-        // Update recent devices UI
-        function updateRecentDevices() {
-            const container = document.getElementById("recentDevices");
-            
-            if (recentDevices.length === 0) {
-                container.innerHTML = "<p>No recent devices. Send a notification first.</p>";
-                return;
-            }
-            
-            container.innerHTML = "";
-            recentDevices.forEach(device => {
-                const div = document.createElement("div");
-                div.className = "notification-item";
-                div.innerHTML = `
-                    <div class="notification-title">${device.deviceId.substring(0, 30)}...</div>
-                    <div class="notification-body">Last: ${device.lastMessage}</div>
-                    <div class="notification-time">${device.lastSent}</div>
-                    <button class="copy-btn" onclick="document.getElementById('targetDeviceId').value='${device.deviceId}'; switchTab('send');">Use</button>
-                `;
-                container.appendChild(div);
-            });
-        }
-        
         // Update status message
         function updateStatus(message, type = "info") {
             const statusEl = document.getElementById("statusMessage");
@@ -533,11 +671,11 @@
             systemStatus.innerHTML = `
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <div><strong>Device ID:</strong> ${deviceId || "Not set"}</div>
+                    <div><strong>Device Name:</strong> ${deviceName || "Not set"}</div>
                     <div><strong>Connection:</strong> ${isConnected ? "✅ Connected" : "❌ Disconnected"}</div>
-                    <div><strong>WebSocket:</strong> ${ws ? "✅ Initialized" : "❌ Not initialized"}</div>
+                    <div><strong>Online Users:</strong> ${onlineUsers.size}</div>
                     <div><strong>Notifications:</strong> ${notifications.length} received</div>
                     <div><strong>Server:</strong> ${WS_SERVER}</div>
-                    <div><strong>Protocol:</strong> WebSocket</div>
                 </div>
             `;
         }
@@ -581,16 +719,15 @@
         }
         
         // Test functions
-        function testSelfNotification() {
-            document.getElementById("targetDeviceId").value = deviceId;
-            document.getElementById("sendTitle").value = "Test to Yourself";
-            document.getElementById("sendMessage").value = "This is a test notification sent to yourself!";
+        function testBroadcast() {
+            document.getElementById("sendTitle").value = "Test Broadcast";
+            document.getElementById("sendMessage").value = "This is a test broadcast to all connected devices!";
             document.getElementById("notificationType").value = "test";
             
             switchTab("send");
             
             setTimeout(() => {
-                document.getElementById("sendBtn").click();
+                document.getElementById("broadcastBtn").click();
             }, 500);
         }
         
@@ -612,40 +749,31 @@
         
         // Initialize on load
         window.onload = function() {
-            console.log("🚀 WebSocket Notification Tester Loaded");
+            console.log("🚀 Broadcast Notification Tester Loaded");
             
             // Request notification permission
-            if ("Notification" in window) {
+            if ("Notification" in window && Notification.permission === "default") {
                 Notification.requestPermission();
             }
             
-            // Generate or load device ID
+            // Generate or load device ID and name
             deviceId = localStorage.getItem("deviceId") || generateDeviceId();
+            deviceName = localStorage.getItem("deviceName") || generateDeviceName();
             localStorage.setItem("deviceId", deviceId);
+            localStorage.setItem("deviceName", deviceName);
             
-            // Load saved data
+            // Load saved notifications
             notifications = JSON.parse(localStorage.getItem("notifications") || "[]");
-            recentDevices = JSON.parse(localStorage.getItem("recentDevices") || "[]");
             
             // Update UI
             document.getElementById("deviceId").textContent = deviceId;
-            document.getElementById("shareDeviceId").value = deviceId;
             
             updateNotificationList();
-            updateRecentDevices();
             updateSystemStatus();
-            
-            // Check URL for target parameter
-            const urlParams = new URLSearchParams(window.location.search);
-            const target = urlParams.get('sendTo');
-            if (target) {
-                document.getElementById("targetDeviceId").value = target;
-                switchTab("send");
-            }
             
             // Auto-connect after 1 second
             setTimeout(() => {
-                initWebSocket();
+                connectToServer();
             }, 1000);
         };
     </script>
