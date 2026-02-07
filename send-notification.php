@@ -12,7 +12,7 @@ $message = $data['message'] ?? 'Default Message';
 $specificToken = $data['deviceToken'] ?? null;
 
 // Firebase Server Key (Get from Firebase Console > Project Settings > Cloud Messaging)
-$serverKey = 'YOUR_SERVER_KEY';
+$serverKey = 'BCS5MgDiA9DOzT_CI12agRMwNRtU6wehijEVEkjY77LMRnv6Fh9mlGocJ87k_5w862iwomMSx1xRGJFRH9W3s_8';
 
 // Read stored tokens
 $tokensFile = 'tokens.txt';
@@ -32,7 +32,7 @@ $notification = [
     'title' => $title,
     'body' => $message,
     'icon' => 'firebase-logo.png',
-    'click_action' => 'http://localhost' // Change to your URL
+    'click_action' => https://duty-m.vercel.app/' // Change to your URL
 ];
 
 // Send to specific token or all tokens
