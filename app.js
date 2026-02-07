@@ -1,249 +1,239 @@
-// Load saved configuration
-let firebaseConfig = JSON.parse(localStorage.getItem('firebaseConfig')) || {};
-let fcmToken = null;
-
-// Populate form with saved config
-window.onload = function() {
-    if (firebaseConfig.apiKey) {
-        document.getElementById('apiKey').value = firebaseConfig.apiKey || '';
-        document.getElementById('authDomain').value = firebaseConfig.authDomain || '';
-        document.getElementById('projectId').value = firebaseConfig.projectId || '';
-        document.getElementById('storageBucket').value = firebaseConfig.storageBucket || '';
-        document.getElementById('messagingSenderId').value = firebaseConfig.messagingSenderId || '';
-        document.getElementById('appId').value = firebaseConfig.appId || '';
-        document.getElementById('vapidKey').value = firebaseConfig.vapidKey || '';
-    }
-    
-    checkNotificationPermission();
-};
-
-// Save configuration
-function saveConfig() {
-    firebaseConfig = {
-        apiKey: document.getElementById('apiKey').value,
-        authDomain: document.getElementById('authDomain').value,
-        projectId: document.getElementById('projectId').value,
-        storageBucket: document.getElementById('storageBucket').value,
-        messagingSenderId: document.getElementById('messagingSenderId').value,
-        appId: document.getElementById('appId').value,
-        vapidKey: document.getElementById('vapidKey').value
-    };
-    
-    localStorage.setItem('firebaseConfig', JSON.stringify(firebaseConfig));
-    logDebug('Configuration saved!');
-    alert('Configuration saved successfully!');
-}
+let currentToken = null;
 
 // Check notification permission
 function checkNotificationPermission() {
+    const statusDiv = document.getElementById('notification-status');
+    
     if (!('Notification' in window)) {
-        updatePermissionStatus('Notifications not supported', 'error');
+        statusDiv.innerHTML = '<p class="error">This browser does not support notifications</p>';
         return;
     }
     
     if (Notification.permission === 'granted') {
-        updatePermissionStatus('Notification permission: Granted', 'success');
-        document.getElementById('permissionBtn').disabled = true;
-    } else if (Notification.permission === 'denied') {
-        updatePermissionStatus('Notification permission: Denied', 'error');
-        document.getElementById('permissionBtn').disabled = false;
-    } else {
-        updatePermissionStatus('Notification permission: Default (Ask)', 'info');
-        document.getElementById('permissionBtn').disabled = false;
-    }
-}
-
-// Request notification permission
-function requestPermission() {
-    if (!('Notification' in window)) {
-        logDebug('This browser does not support notifications');
+        statusDiv.innerHTML = '<p class="success">Notifications are enabled!</p>';
+        initializeFirebaseMessaging();
         return;
     }
     
-    Notification.requestPermission().then((permission) => {
-        updatePermissionStatus(`Notification permission: ${permission}`, 
-            permission === 'granted' ? 'success' : 
-            permission === 'denied' ? 'error' : 'info');
+    if (Notification.permission === 'denied') {
+        statusDiv.innerHTML = '<p class="error">Notifications are blocked. Please enable them in browser settings.</p>';
+        return;
+    }
+    
+    statusDiv.innerHTML = '<p>Notifications are not yet enabled. Click the button below.</p>';
+}
+
+// Request notification permission
+async function requestPermission() {
+    try {
+        const permission = await Notification.requestPermission();
+        const statusDiv = document.getElementById('notification-status');
         
         if (permission === 'granted') {
-            document.getElementById('permissionBtn').disabled = true;
-            logDebug('Notification permission granted!');
+            statusDiv.innerHTML = '<p class="success">Permission granted! Setting up notifications...</p>';
+            await initializeFirebaseMessaging();
+        } else {
+            statusDiv.innerHTML = '<p class="error">Permission denied.</p>';
+        }
+    } catch (error) {
+        console.error('Error requesting permission:', error);
+        document.getElementById('notification-status').innerHTML = 
+            `<p class="error">Error: ${error.message}</p>`;
+    }
+}
+
+// Initialize Firebase Messaging
+async function initializeFirebaseMessaging() {
+    try {
+        // Request notification permission
+        await messaging.requestPermission();
+        
+        // Get FCM token
+        currentToken = await messaging.getToken({
+            vapidKey: 'YOUR_VAPID_KEY' // Get this from Firebase Console
+        });
+        
+        if (currentToken) {
+            // Display token
+            document.getElementById('fcm-token').textContent = currentToken;
+            document.getElementById('fcm-token-container').style.display = 'block';
+            document.getElementById('send-test').disabled = false;
+            
+            // Generate cURL command
+            const webhookUrl = document.getElementById('webhook-url').value || 
+                              'https://your-api.vercel.app/api/send-notification';
+            document.getElementById('curl-command').textContent = 
+`curl -X POST ${webhookUrl} \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "token": "${currentToken}",
+    "title": "Test Notification",
+    "body": "Hello from cURL!",
+    "url": "https://example.com"
+  }'`;
+            
+            // Update status
+            document.getElementById('notification-status').innerHTML = 
+                '<p class="success">Firebase Messaging initialized successfully!</p>';
+            
+            // Listen for incoming messages
+            setupMessageHandlers();
+        } else {
+            document.getElementById('notification-status').innerHTML = 
+                '<p class="error">No registration token available.</p>';
+        }
+    } catch (error) {
+        console.error('Error initializing Firebase:', error);
+        document.getElementById('notification-status').innerHTML = 
+            `<p class="error">Error: ${error.message}</p>`;
+    }
+}
+
+// Setup message handlers
+function setupMessageHandlers() {
+    // Handle foreground messages
+    messaging.onMessage((payload) => {
+        console.log('Message received:', payload);
+        
+        const notificationTitle = payload.notification.title;
+        const notificationOptions = {
+            body: payload.notification.body,
+            icon: '/icon.png',
+            data: payload.data || {}
+        };
+        
+        // Show notification
+        if (Notification.permission === 'granted') {
+            const notification = new Notification(notificationTitle, notificationOptions);
+            
+            // Handle notification click
+            notification.onclick = function(event) {
+                event.preventDefault();
+                if (payload.data.url) {
+                    window.open(payload.data.url, '_blank');
+                }
+                notification.close();
+            };
+        }
+    });
+    
+    // Handle token refresh
+    messaging.onTokenRefresh(async () => {
+        try {
+            const newToken = await messaging.getToken();
+            currentToken = newToken;
+            document.getElementById('fcm-token').textContent = newToken;
+            console.log('Token refreshed:', newToken);
+        } catch (error) {
+            console.error('Error refreshing token:', error);
         }
     });
 }
 
-// Initialize Firebase
-function initializeFirebase() {
-    if (!firebaseConfig.apiKey) {
-        logDebug('Please configure Firebase first!', 'error');
+// Send test notification
+async function sendTestNotification() {
+    if (!currentToken) {
+        alert('No token available. Please enable notifications first.');
         return;
     }
     
     try {
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        
-        // Initialize Firebase Cloud Messaging
-        const messaging = firebase.messaging();
-        
-        // Register service worker
-        navigator.serviceWorker.register('firebase-messaging-sw.js')
-            .then((registration) => {
-                logDebug('Service Worker registered:', registration);
-                
-                // Use the service worker registration
-                messaging.useServiceWorker(registration);
-                
-                // Request permission and get token
-                messaging.requestPermission()
-                    .then(() => {
-                        updateFirebaseStatus('Firebase Messaging: Initialized successfully', 'success');
-                        logDebug('Firebase Messaging initialized');
-                    })
-                    .catch((error) => {
-                        updateFirebaseStatus('Firebase Messaging: Permission denied', 'error');
-                        logDebug('Permission error:', error);
-                    });
-                
-                // Handle background messages
-                messaging.onBackgroundMessage((payload) => {
-                    logDebug('Background message received:', payload);
-                    
-                    // Customize notification here
-                    const notificationTitle = payload.notification.title;
-                    const notificationOptions = {
-                        body: payload.notification.body,
-                        icon: 'icon.png'
-                    };
-                    
-                    self.registration.showNotification(notificationTitle, notificationOptions);
-                });
-                
-                // Handle foreground messages
-                messaging.onMessage((payload) => {
-                    logDebug('Foreground message received:', payload);
-                    
-                    // Show notification when app is in foreground
-                    if (Notification.permission === 'granted') {
-                        new Notification(payload.notification.title, {
-                            body: payload.notification.body,
-                            icon: 'icon.png'
-                        });
-                    }
-                });
+        const response = await fetch('/api/send-notification', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                token: currentToken,
+                title: 'Test Notification',
+                body: 'This is a test notification from the web app!',
+                url: window.location.href
             })
-            .catch((error) => {
-                updateFirebaseStatus('Service Worker registration failed', 'error');
-                logDebug('Service Worker registration failed:', error);
-            });
-            
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert('Test notification sent successfully!');
+        } else {
+            alert('Error: ' + (result.error || 'Failed to send notification'));
+        }
     } catch (error) {
-        updateFirebaseStatus('Firebase initialization failed', 'error');
-        logDebug('Firebase initialization error:', error);
+        alert('Error sending notification: ' + error.message);
     }
 }
 
-// Get FCM Token
-function getToken() {
-    if (!firebase.apps.length) {
-        logDebug('Firebase not initialized. Please initialize first.', 'error');
+// Send notification via webhook
+async function sendViaWebhook() {
+    const webhookUrl = document.getElementById('webhook-url').value;
+    const title = document.getElementById('notification-title').value;
+    const body = document.getElementById('notification-body').value;
+    const url = document.getElementById('notification-url').value;
+    
+    if (!webhookUrl) {
+        alert('Please enter a webhook URL');
         return;
     }
     
-    const messaging = firebase.messaging();
+    if (!currentToken) {
+        alert('No token available. Please enable notifications first.');
+        return;
+    }
     
-    messaging.getToken({ vapidKey: firebaseConfig.vapidKey })
-        .then((currentToken) => {
-            if (currentToken) {
-                fcmToken = currentToken;
-                updateTokenStatus('FCM Token: Retrieved successfully', 'success');
-                logDebug('FCM Token:', currentToken);
-                
-                // Display token (first 50 chars)
-                const displayToken = currentToken.length > 50 ? 
-                    currentToken.substring(0, 50) + '...' : currentToken;
-                document.getElementById('tokenStatus').innerHTML = 
-                    `FCM Token: <br><small>${displayToken}</small>`;
-            } else {
-                updateTokenStatus('No registration token available', 'error');
-                logDebug('No registration token available');
-            }
-        })
-        .catch((error) => {
-            updateTokenStatus('Token retrieval failed', 'error');
-            logDebug('Error retrieving token:', error);
+    const statusDiv = document.getElementById('webhook-status');
+    statusDiv.style.display = 'block';
+    statusDiv.className = 'status info';
+    statusDiv.innerHTML = '<p>Sending notification...</p>';
+    
+    try {
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                token: currentToken,
+                title: title,
+                body: body,
+                url: url || null,
+                timestamp: new Date().toISOString()
+            })
         });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            statusDiv.className = 'status success';
+            statusDiv.innerHTML = `<p>Notification sent successfully!</p>
+                                  <pre>${JSON.stringify(result, null, 2)}</pre>`;
+        } else {
+            statusDiv.className = 'status error';
+            statusDiv.innerHTML = `<p>Error: ${result.error || 'Failed to send'}</p>
+                                  <pre>${JSON.stringify(result, null, 2)}</pre>`;
+        }
+    } catch (error) {
+        statusDiv.className = 'status error';
+        statusDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+    }
 }
 
 // Copy token to clipboard
 function copyToken() {
-    if (!fcmToken) {
-        alert('No token to copy. Please get token first.');
-        return;
+    const token = document.getElementById('fcm-token').textContent;
+    navigator.clipboard.writeText(token).then(() => {
+        alert('Token copied to clipboard!');
+    }).catch(err => {
+        console.error('Could not copy text: ', err);
+    });
+}
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    checkNotificationPermission();
+    
+    // Auto-generate webhook URL if on Vercel
+    if (window.location.hostname.includes('vercel.app')) {
+        const baseUrl = window.location.origin;
+        document.getElementById('webhook-url').value = `${baseUrl}/api/send-notification`;
     }
-    
-    navigator.clipboard.writeText(fcmToken)
-        .then(() => {
-            alert('Token copied to clipboard!');
-            logDebug('Token copied to clipboard');
-        })
-        .catch((error) => {
-            logDebug('Failed to copy token:', error);
-        });
-}
-
-// Send test notification
-function sendTestNotification() {
-    if (!fcmToken) {
-        alert('Please get FCM token first.');
-        return;
-    }
-    
-    const title = document.getElementById('notificationTitle').value;
-    const body = document.getElementById('notificationBody').value;
-    
-    // This would typically be sent from your server
-    // For testing, we'll simulate it with a local notification
-    if (Notification.permission === 'granted') {
-        new Notification(title, {
-            body: body,
-            icon: 'icon.png'
-        });
-        logDebug('Test notification sent locally');
-    } else {
-        alert('Notification permission not granted');
-    }
-}
-
-// Utility functions
-function updatePermissionStatus(message, type) {
-    const element = document.getElementById('permissionStatus');
-    element.textContent = message;
-    element.className = `status-box ${type}`;
-}
-
-function updateFirebaseStatus(message, type) {
-    const element = document.getElementById('firebaseStatus');
-    element.textContent = message;
-    element.className = `status-box ${type}`;
-}
-
-function updateTokenStatus(message, type) {
-    const element = document.getElementById('tokenStatus');
-    element.textContent = message;
-    element.className = `status-box ${type}`;
-}
-
-function logDebug(message, type = 'info') {
-    const debugDiv = document.getElementById('debugInfo');
-    const timestamp = new Date().toLocaleTimeString();
-    const messageStr = typeof message === 'object' ? JSON.stringify(message, null, 2) : message;
-    
-    debugDiv.innerHTML += `<div class="debug-entry ${type}">
-        <strong>[${timestamp}]</strong> ${messageStr}
-    </div><br>`;
-}
-
-function clearDebug() {
-    document.getElementById('debugInfo').innerHTML = '';
-}
+});
