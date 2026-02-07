@@ -1,107 +1,210 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>FCM Push Test</title>
-    <!-- Firebase SDK -->
+    <title>PWA Push App</title>
+    <link rel="manifest" href="manifest.json">
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
-    
     <style>
         body { font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; }
         button { background: #4285f4; color: white; border: none; padding: 12px 24px; 
                  border-radius: 5px; font-size: 16px; cursor: pointer; margin: 10px; }
-        button:hover { background: #3367d6; }
-        .status { padding: 15px; margin: 15px 0; border-radius: 5px; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .token-box { background: #f8f9fa; padding: 10px; border-radius: 5px; 
-                     font-family: monospace; word-break: break-all; margin: 10px 0; }
+        .card { background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0; }
+        .success { color: green; }
+        .error { color: red; }
     </style>
 </head>
 <body>
-    <h1>🔥 Firebase Push Notification Test</h1>
+    <h1>📱 My PWA App</h1>
     
-    <div id="status" class="status">
-        Waiting for your action...
+    <div class="card">
+        <h3>Step 1: Enable Notifications</h3>
+        <button onclick="enableNotifications()">🔔 Enable Push Notifications</button>
+        <div id="status1"></div>
     </div>
     
-    <button onclick="requestPermission()">🔔 Enable Notifications</button>
-    <button onclick="copyToken()" id="copyBtn" disabled>📋 Copy Token</button>
+    <div class="card">
+        <h3>Step 2: Subscribe to All Users Topic</h3>
+        <button onclick="subscribeToTopic()">📢 Subscribe to All Users</button>
+        <div id="status2"></div>
+    </div>
     
-    <div id="tokenContainer" style="display: none;">
+    <div class="card">
+        <h3>Step 3: Install as PWA</h3>
+        <p>Click "Add to Home Screen" in browser menu</p>
+        <div id="installBtn"></div>
+    </div>
+    
+    <div id="tokenDisplay" style="display:none;">
         <h3>Your FCM Token:</h3>
-        <div id="token" class="token-box"></div>
-        <p><small>Send this token via Firebase Console to test notifications</small></p>
+        <textarea id="tokenArea" style="width:100%; height:60px;"></textarea>
     </div>
-    
+
     <script>
-        // PASTE YOUR FIREBASE CONFIG HERE
+        // Your Firebase config
         const firebaseConfig = {
-            apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",  // REPLACE WITH YOURS
-            authDomain: "leelidc-1f753.firebaseapp.com",  // REPLACE
-            projectId: "leelidc-1f753",  // REPLACE
-            storageBucket: "leelidc-1f753.firebasestorage.app",  // REPLACE
-            messagingSenderId: "43622932335",  // REPLACE
-            appId: "1:43622932335:web:a7529bce1f19714687129a"  // REPLACE
+            apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",
+            authDomain: "leelidc-1f753.firebaseapp.com",
+            projectId: "leelidc-1f753",
+            storageBucket: "leelidc-1f753.firebasestorage.app",
+            messagingSenderId: "43622932335",
+            appId: "1:43622932335:web:a7529bce1f19714687129a"
         };
         
-        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const messaging = firebase.messaging();
         
-        async function requestPermission() {
-            const statusDiv = document.getElementById('status');
-            
+        let currentToken = null;
+        
+        async function enableNotifications() {
             try {
-                // Request notification permission
                 const permission = await Notification.requestPermission();
                 
                 if (permission === 'granted') {
-                    statusDiv.className = 'status success';
-                    statusDiv.innerHTML = '✅ Permission granted! Getting FCM token...';
+                    document.getElementById('status1').innerHTML = 
+                        '<p class="success">✅ Notifications enabled</p>';
                     
                     // Get FCM token
-                    const token = await messaging.getToken({
-                        vapidKey: "BCS5MgDiA9DOzT_CI12agRMwNRtU6wehijEVEkjY77LMRnv6Fh9mlGocJ87k_5w862iwomMSx1xRGJFRH9W3s_8"  // REPLACE WITH YOUR VAPID KEY
+                    currentToken = await messaging.getToken({
+                        vapidKey: "BCS5MgDiA9DOzT_CI12agRMwNRtU6wehijEVEkjY77LMRnv6Fh9mlGocJ87k_5w862iwomMSx1xRGJFRH9W3s_8"
                     });
                     
-                    if (token) {
-                        // Display token
-                        document.getElementById('token').textContent = token;
-                        document.getElementById('tokenContainer').style.display = 'block';
-                        document.getElementById('copyBtn').disabled = false;
+                    if (currentToken) {
+                        document.getElementById('tokenArea').value = currentToken;
+                        document.getElementById('tokenDisplay').style.display = 'block';
+                        console.log('Token:', currentToken);
                         
-                        statusDiv.innerHTML = '✅ Ready! Token generated. Copy it below.';
-                        
-                        // Log token to console
-                        console.log('FCM Token:', token);
-                    } else {
-                        statusDiv.className = 'status error';
-                        statusDiv.innerHTML = '❌ No token received.';
+                        // Automatically subscribe to topic after getting token
+                        await subscribeToTopic();
                     }
                 } else {
-                    statusDiv.className = 'status error';
-                    statusDiv.innerHTML = '❌ Permission denied. Enable in browser settings.';
+                    document.getElementById('status1').innerHTML = 
+                        '<p class="error">❌ Notifications blocked</p>';
                 }
             } catch (error) {
-                statusDiv.className = 'status error';
-                statusDiv.innerHTML = `❌ Error: ${error.message}`;
                 console.error('Error:', error);
+                document.getElementById('status1').innerHTML = 
+                    `<p class="error">❌ ${error.message}</p>`;
             }
         }
         
-        function copyToken() {
-            const token = document.getElementById('token').textContent;
-            navigator.clipboard.writeText(token).then(() => {
-                alert('Token copied to clipboard!');
+        async function subscribeToTopic() {
+            if (!currentToken) {
+                alert('Please enable notifications first');
+                return;
+            }
+            
+            try {
+                document.getElementById('status2').innerHTML = 
+                    '<p>⏳ Subscribing to "all_users" topic...</p>';
+                
+                // Subscribe to topic using Firebase Functions
+                const response = await fetch('https://us-central1-YOUR-PROJECT-ID.cloudfunctions.net/subscribeToTopic', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        token: currentToken,
+                        topic: 'all_users'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('status2').innerHTML = 
+                        '<p class="success">✅ Subscribed to "all_users" topic!</p>' +
+                        '<p><small>You will now receive broadcasts to all users</small></p>';
+                } else {
+                    document.getElementById('status2').innerHTML = 
+                        `<p class="error">❌ ${result.error || 'Subscription failed'}</p>`;
+                }
+            } catch (error) {
+                console.error('Subscription error:', error);
+                
+                // Fallback: Use REST API directly
+                await subscribeViaRestAPI();
+            }
+        }
+        
+        async function subscribeViaRestAPI() {
+            // Direct REST API call (no server needed)
+            const projectId = firebaseConfig.projectId;
+            const url = `https://iid.googleapis.com/iid/v1/${currentToken}/rel/topics/all_users`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `key=YOUR_SERVER_KEY`,
+                    'Content-Type': 'application/json'
+                }
             });
+            
+            if (response.ok) {
+                document.getElementById('status2').innerHTML = 
+                    '<p class="success">✅ Subscribed via REST API!</p>';
+            } else {
+                document.getElementById('status2').innerHTML = 
+                    '<p class="error">❌ REST subscription failed</p>';
+            }
         }
         
         // Handle incoming messages
         messaging.onMessage((payload) => {
             console.log('Message received:', payload);
-            alert(`New notification: ${payload.notification.title}\n${payload.notification.body}`);
+            
+            // Show notification
+            if (Notification.permission === 'granted') {
+                const notification = new Notification(payload.notification.title, {
+                    body: payload.notification.body,
+                    icon: payload.notification.icon || '/icon.png',
+                    data: payload.data
+                });
+                
+                notification.onclick = function() {
+                    if (payload.data && payload.data.url) {
+                        window.open(payload.data.url, '_blank');
+                    }
+                };
+            }
         });
+        
+        // Check if app is installed as PWA
+        window.addEventListener('appinstalled', (event) => {
+            console.log('App installed as PWA');
+            document.getElementById('installBtn').innerHTML = 
+                '<p class="success">✅ Installed as PWA!</p>';
+        });
+        
+        // Show install button for PWA
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            document.getElementById('installBtn').innerHTML = 
+                '<button onclick="installPWA()">📱 Install as PWA</button>';
+        });
+        
+        function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted install');
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        }
+        
+        // Check on load
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('firebase-messaging-sw.js')
+                .then(() => console.log('Service Worker registered'))
+                .catch(err => console.error('SW error:', err));
+        }
     </script>
 </body>
 </html>
