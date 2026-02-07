@@ -1,130 +1,107 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WPA Push Notification Test</title>
-    <link rel="manifest" href="manifest.json">
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        button {
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 10px 5px;
-        }
-        button:hover {
-            background: #0056b3;
-        }
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .status {
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 5px;
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-        }
-        .success { color: #155724; background: #d4edda; border-color: #c3e6cb; }
-        .error { color: #721c24; background: #f8d7da; border-color: #f5c6cb; }
-        .info { color: #0c5460; background: #d1ecf1; border-color: #bee5eb; }
-        textarea {
-            width: 100%;
-            height: 100px;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        label {
-            display: block;
-            margin: 15px 0 5px;
-            font-weight: bold;
-        }
-        input {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>WPA Push Notification Test</h1>
-        
-        <div id="notification-status" class="status">
-            <p>Requesting notification permission...</p>
-        </div>
-
-        <div id="fcm-token-container" class="status info" style="display: none;">
-            <p><strong>FCM Token:</strong></p>
-            <pre id="fcm-token"></pre>
-            <button onclick="copyToken()">Copy Token</button>
-        </div>
-
-        <button id="request-permission" onclick="requestPermission()">
-            Enable Notifications
-        </button>
-
-        <button id="send-test" onclick="sendTestNotification()" disabled>
-            Send Test Notification
-        </button>
-
-        <hr>
-
-        <h2>Send Custom Notification via Webhook</h2>
-        
-        <label for="webhook-url">Webhook URL:</label>
-        <input type="text" id="webhook-url" placeholder="https://your-api.vercel.app/api/send-notification">
-        
-        <label for="notification-title">Title:</label>
-        <input type="text" id="notification-title" value="New Alert!">
-        
-        <label for="notification-body">Body:</label>
-        <textarea id="notification-body">This is a test notification sent via webhook.</textarea>
-        
-        <label for="notification-url">URL (optional):</label>
-        <input type="text" id="notification-url" placeholder="https://example.com">
-        
-        <button onclick="sendViaWebhook()">Send via Webhook</button>
-        
-        <div id="webhook-status" class="status" style="display: none;"></div>
-
-        <hr>
-        
-        <h2>Webhook Testing</h2>
-        <p>Use this cURL command to test your webhook:</p>
-        <pre id="curl-command"></pre>
-    </div>
-
-    <!-- Firebase SDKs -->
+    <title>FCM Push Test</title>
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
     
-    <!-- Your Firebase config -->
-    <script src="firebase-config.js"></script>
+    <style>
+        body { font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; }
+        button { background: #4285f4; color: white; border: none; padding: 12px 24px; 
+                 border-radius: 5px; font-size: 16px; cursor: pointer; margin: 10px; }
+        button:hover { background: #3367d6; }
+        .status { padding: 15px; margin: 15px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .token-box { background: #f8f9fa; padding: 10px; border-radius: 5px; 
+                     font-family: monospace; word-break: break-all; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔥 Firebase Push Notification Test</h1>
     
-    <!-- Main app script -->
-    <script src="app.js"></script>
+    <div id="status" class="status">
+        Waiting for your action...
+    </div>
+    
+    <button onclick="requestPermission()">🔔 Enable Notifications</button>
+    <button onclick="copyToken()" id="copyBtn" disabled>📋 Copy Token</button>
+    
+    <div id="tokenContainer" style="display: none;">
+        <h3>Your FCM Token:</h3>
+        <div id="token" class="token-box"></div>
+        <p><small>Send this token via Firebase Console to test notifications</small></p>
+    </div>
+    
+    <script>
+        // PASTE YOUR FIREBASE CONFIG HERE
+        const firebaseConfig = {
+            apiKey: "AIzaSyAf_sjwVHG65vKhezpS_L7KC2j0WHIDaWc",  // REPLACE WITH YOURS
+            authDomain: "leelidc-1f753.firebaseapp.com",  // REPLACE
+            projectId: "leelidc-1f753",  // REPLACE
+            storageBucket: "leelidc-1f753.firebasestorage.app",  // REPLACE
+            messagingSenderId: "43622932335",  // REPLACE
+            appId: "1:43622932335:web:a7529bce1f19714687129a"  // REPLACE
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const messaging = firebase.messaging();
+        
+        async function requestPermission() {
+            const statusDiv = document.getElementById('status');
+            
+            try {
+                // Request notification permission
+                const permission = await Notification.requestPermission();
+                
+                if (permission === 'granted') {
+                    statusDiv.className = 'status success';
+                    statusDiv.innerHTML = '✅ Permission granted! Getting FCM token...';
+                    
+                    // Get FCM token
+                    const token = await messaging.getToken({
+                        vapidKey: "BCS5MgDiA9DOzT_CI12agRMwNRtU6wehijEVEkjY77LMRnv6Fh9mlGocJ87k_5w862iwomMSx1xRGJFRH9W3s_8"  // REPLACE WITH YOUR VAPID KEY
+                    });
+                    
+                    if (token) {
+                        // Display token
+                        document.getElementById('token').textContent = token;
+                        document.getElementById('tokenContainer').style.display = 'block';
+                        document.getElementById('copyBtn').disabled = false;
+                        
+                        statusDiv.innerHTML = '✅ Ready! Token generated. Copy it below.';
+                        
+                        // Log token to console
+                        console.log('FCM Token:', token);
+                    } else {
+                        statusDiv.className = 'status error';
+                        statusDiv.innerHTML = '❌ No token received.';
+                    }
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.innerHTML = '❌ Permission denied. Enable in browser settings.';
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Error: ${error.message}`;
+                console.error('Error:', error);
+            }
+        }
+        
+        function copyToken() {
+            const token = document.getElementById('token').textContent;
+            navigator.clipboard.writeText(token).then(() => {
+                alert('Token copied to clipboard!');
+            });
+        }
+        
+        // Handle incoming messages
+        messaging.onMessage((payload) => {
+            console.log('Message received:', payload);
+            alert(`New notification: ${payload.notification.title}\n${payload.notification.body}`);
+        });
+    </script>
 </body>
 </html>
