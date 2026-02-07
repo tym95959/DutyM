@@ -36,7 +36,7 @@ async function getToken() {
         
         // Get registration token
         const token = await messaging.getToken({
-            vapidKey: 'YOUR_VAPID_KEY' // Get this from Firebase Console > Cloud Messaging
+            vapidKey: 'BCS5MgDiA9DOzT_CI12agRMwNRtU6wehijEVEkjY77LMRnv6Fh9mlGocJ87k_5w862iwomMSx1xRGJFRH9W3s_8' // Get this from Firebase Console > Cloud Messaging
         });
         
         console.log('Device token:', token);
