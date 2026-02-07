@@ -23,6 +23,7 @@ messaging.onBackgroundMessage((payload) => {
     const notificationOptions = {
         body: payload.notification.body,
         icon: '/firebase-logo.png',
+        badge: '/firebase-badge.png', // Optional badge icon
         data: payload.data || {}
     };
 
@@ -36,7 +37,7 @@ self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     
     // Handle click action
-    const urlToOpen = event.notification.data.click_action || 'http://localhost';
+    const urlToOpen = 'http://localhost'; // Change to your URL
     
     event.waitUntil(
         clients.matchAll({type: 'window'}).then((windowClients) => {
