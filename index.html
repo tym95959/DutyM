@@ -53,14 +53,101 @@
         </div>
     </div>
 
-    <script src="firebase-config.js"></script>
     <script>
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        // Initialize Firebase Cloud Messaging
+        const messaging = firebase.messaging();
+
+        // Request permission and get token
+        async function getToken() {
+            try {
+                // Get registration token
+                const token = await messaging.getToken({
+                    vapidKey: 'YOUR_VAPID_KEY' // Get this from Firebase Console > Cloud Messaging
+                });
+                
+                console.log('Device token:', token);
+                return token;
+            } catch (error) {
+                console.error('Error getting token:', error);
+                return null;
+            }
+        }
+
+        // Handle token refresh
+        messaging.onTokenRefresh(async () => {
+            try {
+                const refreshedToken = await messaging.getToken();
+                console.log('Token refreshed:', refreshedToken);
+                
+                // Send the new token to your server
+                await fetch('save-token.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ token: refreshedToken })
+                });
+            } catch (error) {
+                console.error('Unable to retrieve refreshed token ', error);
+            }
+        });
+
+        // Handle incoming messages when app is in foreground
+        messaging.onMessage((payload) => {
+            console.log('Message received in foreground: ', payload);
+            
+            // Show notification
+            if (payload.notification) {
+                const { title, body } = payload.notification;
+                
+                // Check if browser supports notifications
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification(title, { body: body });
+                }
+            }
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
             const requestPermissionBtn = document.getElementById('request-permission-btn');
             const tokenSection = document.getElementById('token-section');
             const deviceTokenElement = document.getElementById('device-token');
             const notificationForm = document.getElementById('notification-form');
             const resultDiv = document.getElementById('result');
+
+            // Check current notification permission
+            if (Notification.permission === 'granted') {
+                requestPermissionBtn.textContent = 'Notifications Already Enabled';
+                requestPermissionBtn.disabled = true;
+                requestPermissionBtn.classList.remove('btn-primary');
+                requestPermissionBtn.classList.add('btn-success');
+                
+                // Automatically get token if permission already granted
+                getToken().then(token => {
+                    if (token) {
+                        deviceTokenElement.textContent = token;
+                        tokenSection.style.display = 'block';
+                        saveTokenToServer(token);
+                    }
+                });
+            } else if (Notification.permission === 'denied') {
+                requestPermissionBtn.textContent = 'Notifications Blocked';
+                requestPermissionBtn.disabled = true;
+                requestPermissionBtn.classList.remove('btn-primary');
+                requestPermissionBtn.classList.add('btn-danger');
+            }
 
             // Request permission for notifications
             requestPermissionBtn.addEventListener('click', async () => {
@@ -69,6 +156,10 @@
                     
                     if (permission === 'granted') {
                         console.log('Notification permission granted.');
+                        requestPermissionBtn.textContent = 'Notifications Enabled';
+                        requestPermissionBtn.disabled = true;
+                        requestPermissionBtn.classList.remove('btn-primary');
+                        requestPermissionBtn.classList.add('btn-success');
                         
                         // Get the registration token
                         const token = await getToken();
@@ -80,11 +171,16 @@
                             // Save token to server
                             await saveTokenToServer(token);
                         }
-                    } else {
-                        alert('Permission denied for notifications');
+                    } else if (permission === 'denied') {
+                        alert('Permission denied for notifications. Please enable notifications in your browser settings.');
+                        requestPermissionBtn.textContent = 'Notifications Blocked';
+                        requestPermissionBtn.disabled = true;
+                        requestPermissionBtn.classList.remove('btn-primary');
+                        requestPermissionBtn.classList.add('btn-danger');
                     }
                 } catch (error) {
                     console.error('Error requesting permission:', error);
+                    alert('Error requesting notification permission: ' + error.message);
                 }
             });
 
@@ -95,6 +191,12 @@
                 const title = document.getElementById('title').value;
                 const message = document.getElementById('message').value;
                 const deviceToken = document.getElementById('deviceToken').value;
+                
+                // Show loading state
+                const submitBtn = notificationForm.querySelector('button[type="submit"]');
+                const originalText = submitBtn.textContent;
+                submitBtn.textContent = 'Sending...';
+                submitBtn.disabled = true;
                 
                 try {
                     const response = await fetch('send-notification.php', {
@@ -112,25 +214,37 @@
                     const result = await response.json();
                     
                     if (result.success) {
-                        resultDiv.innerHTML = `<div class="alert alert-success">Notification sent successfully!</div>`;
+                        resultDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
                     } else {
                         resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${result.error}</div>`;
                     }
                 } catch (error) {
                     resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                } finally {
+                    // Reset button state
+                    submitBtn.textContent = originalText;
+                    submitBtn.disabled = false;
+                    
+                    // Clear result after 5 seconds
+                    setTimeout(() => {
+                        resultDiv.innerHTML = '';
+                    }, 5000);
                 }
             });
 
             // Function to save token to server
             async function saveTokenToServer(token) {
                 try {
-                    await fetch('save-token.php', {
+                    const response = await fetch('save-token.php', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({ token: token })
                     });
+                    
+                    const result = await response.json();
+                    console.log('Token saved:', result);
                 } catch (error) {
                     console.error('Error saving token:', error);
                 }
