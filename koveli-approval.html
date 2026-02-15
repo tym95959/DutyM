@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koveli Lounge - Pending Approvals</title>
+    <!-- Firebase SDK (must come first) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- Your combined firebase config file -->
+    <script src="fireshift.js"></script>
+    
+    <!-- External Co.js file with company header -->
+    <script src="Co.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(120deg, #faf3e0, #fff5e6);
+            min-height: 100vh;
+            padding: 30px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 5px 20px rgba(230, 184, 0, 0.15);
+            border: 1px solid rgba(230, 184, 0, 0.2);
+            overflow: hidden;
+            backdrop-filter: blur(5px);
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background: linear-gradient(90deg, #fff9e6, #ffffff);
+            border-bottom: 2px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .header h2 {
+            color: #8b6913;
+            font-size: 26px;
+            font-weight: 600;
+        }
+        
+        .nav-menu {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .nav-btn {
+            background: linear-gradient(135deg, #e6b800, #d4a900);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+        
+        .nav-btn:hover {
+            background: linear-gradient(135deg, #d4a900, #c29800);
+            transform: translateY(-2px);
+        }
+        
+        .nav-btn.secondary {
+            background: linear-gradient(135deg, #6b8e23, #556b2f);
+        }
+        
+        .shift-info {
+            display: flex;
+            gap: 25px;
+            align-items: center;
+            background: linear-gradient(135deg, #fff2d7, #fff9e6);
+            padding: 10px 25px;
+            border-radius: 40px;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .main-content {
+            padding: 30px;
+        }
+        
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(145deg, #fff9e6, #fff2d7);
+            border: 2px solid #e6b800;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .stat-card .label {
+            color: #8b6913;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .stat-card .value {
+            color: #6b8e23;
+            font-size: 32px;
+            font-weight: 700;
+        }
+        
+        .filter-section {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .filter-section input,
+        .filter-section select {
+            padding: 12px 20px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 12px;
+            font-size: 14px;
+            background: white;
+        }
+        
+        .filter-section input {
+            flex: 1;
+            min-width: 250px;
+        }
+        
+        .filter-section input:focus,
+        .filter-section select:focus {
+            outline: none;
+            border-color: #e6b800;
+        }
+        
+        .refresh-btn {
+            background: #f0f0f0;
+            border: 1px solid #e6b800;
+            color: #8b6913;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .refresh-btn:hover {
+            background: #e6b800;
+            color: white;
+            transform: rotate(180deg);
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 600px;
+            border-radius: 16px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(230, 184, 0, 0.1);
+            border: 1px solid rgba(230, 184, 0, 0.2);
+        }
+        
+        .table-container::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+        
+        .table-container::-webkit-scrollbar-track {
+            background: #faf3e0;
+            border-radius: 10px;
+        }
+        
+        .table-container::-webkit-scrollbar-thumb {
+            background: #e6b800;
+            border-radius: 10px;
+            border: 3px solid #faf3e0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1200px;
+        }
+        
+        th {
+            background: linear-gradient(135deg, #faf3e0, #fff5e6);
+            color: #8b6913;
+            padding: 15px 12px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 600;
+            border-bottom: 2px solid #e6b800;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        td {
+            padding: 15px 12px;
+            border-bottom: 1px solid rgba(230, 184, 0, 0.1);
+            color: #5e4a1a;
+            font-size: 13px;
+        }
+        
+        tr:hover td {
+            background: rgba(230, 184, 0, 0.05);
+        }
+        
+        tr.pending-row {
+            background: rgba(198, 139, 94, 0.05);
+        }
+        
+        tr.completed-row {
+            background: rgba(107, 142, 35, 0.05);
+        }
+        
+        .status-badge-pending {
+            background: #c68b5e;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 30px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .status-badge-completed {
+            background: #6b8e23;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 30px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .approval-input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        
+        .approval-input:focus {
+            outline: none;
+            border-color: #e6b800;
+        }
+        
+        .action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 2px;
+        }
+        
+        .update-btn {
+            background: #6b8e23;
+            color: white;
+        }
+        
+        .update-btn:hover {
+            background: #556b2f;
+            transform: translateY(-2px);
+        }
+        
+        .update-btn:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .view-btn {
+            background: #8b6913;
+            color: white;
+        }
+        
+        .view-btn:hover {
+            background: #6b4f0f;
+        }
+        
+        .print-btn-small {
+            background: #e6b800;
+            color: white;
+        }
+        
+        .print-btn-small:hover {
+            background: #d4a900;
+        }
+        
+        .loading {
+            color: #e6b800;
+            font-style: italic;
+            text-align: center;
+            padding: 50px;
+        }
+        
+        .error {
+            color: #c68b5e;
+            font-style: italic;
+            text-align: center;
+            padding: 50px;
+        }
+        
+        .footer-note {
+            text-align: center;
+            margin-top: 20px;
+            color: #8b6913;
+            font-size: 14px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h2>KOVELI LOUNGE - PENDING APPROVALS</h2>
+            <div class="nav-menu">
+                <a href="koveli-parser.html" class="nav-btn secondary">← BACK TO PARSER</a>
+                <button id="refreshDataBtn" class="refresh-btn">↻</button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Stats Bar -->
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="label">TOTAL PENDING</div>
+                    <div class="value" id="totalPending">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">TOTAL COMPLETED</div>
+                    <div class="value" id="totalCompleted">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">CARD PAYMENTS</div>
+                    <div class="value" id="totalCard">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">BANK TRANSFERS</div>
+                    <div class="value" id="totalBank">0</div>
+                </div>
+            </div>
+
+            <!-- Filter Section -->
+            <div class="filter-section">
+                <input type="text" id="searchInput" placeholder="Search by Receipt No, Passenger Name, Flight No...">
+                <select id="statusFilter">
+                    <option value="ALL">All Status</option>
+                    <option value="PENDING_APPROVAL">Pending Approval</option>
+                    <option value="COMPLETED">Completed</option>
+                </select>
+                <select id="paymentFilter">
+                    <option value="ALL">All Payment Methods</option>
+                    <option value="CARD">Card</option>
+                    <option value="BANK TRANSFER">Bank Transfer</option>
+                    <option value="MOBILE PAYMENT">Mobile Payment</option>
+                    <option value="VOUCHER">Voucher</option>
+                    <option value="OTHER">Other</option>
+                </select>
+            </div>
+
+            <!-- Table -->
+            <div class="table-container">
+                <table id="approvalsTable">
+                    <thead>
+                        <tr>
+                            <th>Receipt No</th>
+                            <th>Date/Time</th>
+                            <th>Passenger</th>
+                            <th>Flight</th>
+                            <th>Seat</th>
+                            <th>Payment Method</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Approval Code</th>
+                            <th>Batch No</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="11" class="loading">Loading data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="footer-note">
+                Update approval codes and batch numbers for non-cash payments
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Receipt Template for Printing -->
+    <div style="display: none;" id="receiptTemplate"></div>
+
+<script>
+let allReceipts = [];
+let filteredReceipts = [];
+
+// ========== LOAD DATA FROM FIREBASE ==========
+
+async function loadPendingApprovals() {
+    try {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">Loading data...</td></tr>';
+        
+        if (typeof passengerDb === 'undefined') {
+            throw new Error('passengerDb not initialized');
+        }
+        
+        console.log('Loading data from passengerDb (atten-14f76) Kovelipay collection');
+        
+        const kovelipayRef = passengerDb.collection('Kovelipay');
+        const snapshot = await kovelipayRef.orderBy('submissionDateTime', 'desc').get();
+        
+        allReceipts = [];
+        snapshot.forEach(doc => {
+            allReceipts.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+        
+        console.log(`Loaded ${allReceipts.length} receipts`);
+        
+        applyFilters();
+        updateStats();
+        
+    } catch (error) {
+        console.error('Error loading data:', error);
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = `<tr><td colspan="11" class="error">Error loading data: ${error.message}</td></tr>`;
+    }
+}
+
+// ========== UPDATE STATISTICS ==========
+
+function updateStats() {
+    const pending = allReceipts.filter(r => r.paymentStatus === 'PENDING_APPROVAL').length;
+    const completed = allReceipts.filter(r => r.paymentStatus === 'COMPLETED').length;
+    const card = allReceipts.filter(r => r.paymentMethod === 'CARD').length;
+    const bank = allReceipts.filter(r => r.paymentMethod === 'BANK TRANSFER').length;
+    
+    document.getElementById('totalPending').textContent = pending;
+    document.getElementById('totalCompleted').textContent = completed;
+    document.getElementById('totalCard').textContent = card;
+    document.getElementById('totalBank').textContent = bank;
+}
+
+// ========== FILTER FUNCTIONS ==========
+
+function applyFilters() {
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const statusFilter = document.getElementById('statusFilter').value;
+    const paymentFilter = document.getElementById('paymentFilter').value;
+    
+    filteredReceipts = allReceipts.filter(receipt => {
+        // Search filter
+        const matchesSearch = searchTerm === '' || 
+            receipt.receiptNo?.toLowerCase().includes(searchTerm) ||
+            receipt.passengerName?.toLowerCase().includes(searchTerm) ||
+            receipt.flightNo?.toLowerCase().includes(searchTerm);
+        
+        // Status filter
+        const matchesStatus = statusFilter === 'ALL' || receipt.paymentStatus === statusFilter;
+        
+        // Payment method filter (only show non-cash payments)
+        const matchesPayment = paymentFilter === 'ALL' || receipt.paymentMethod === paymentFilter;
+        
+        return matchesSearch && matchesStatus && matchesPayment;
+    });
+    
+    renderTable();
+}
+
+// ========== RENDER TABLE ==========
+
+function renderTable() {
+    const tbody = document.getElementById('tableBody');
+    
+    if (filteredReceipts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="loading">No receipts found</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    filteredReceipts.forEach(receipt => {
+        const rowClass = receipt.paymentStatus === 'PENDING_APPROVAL' ? 'pending-row' : 'completed-row';
+        const statusBadge = receipt.paymentStatus === 'PENDING_APPROVAL' ? 
+            '<span class="status-badge-pending">PENDING</span>' : 
+            '<span class="status-badge-completed">COMPLETED</span>';
+        
+        // Only show approval inputs for pending non-cash payments
+        const isPending = receipt.paymentStatus === 'PENDING_APPROVAL';
+        
+        html += `
+            <tr class="${rowClass}" data-id="${receipt.receiptNo}">
+                <td><strong>${receipt.receiptNo || 'N/A'}</strong></td>
+                <td>${receipt.submissionDateTime || 'N/A'}</td>
+                <td>${receipt.passengerName || 'N/A'}</td>
+                <td>${receipt.flightNo || 'N/A'}</td>
+                <td>${receipt.seatNo || 'N/A'}</td>
+                <td>${receipt.paymentMethod || 'N/A'}</td>
+                <td>${receipt.currency || ''} ${receipt.totalAmount?.toFixed(2) || '0.00'}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <input type="text" class="approval-input" id="approval-${receipt.receiptNo}" 
+                        value="${receipt.approvalCode || ''}" 
+                        ${!isPending ? 'readonly style="background:#f5f5f5;"' : ''}
+                        placeholder="Approval Code">
+                </td>
+                <td>
+                    <input type="text" class="approval-input" id="batch-${receipt.receiptNo}" 
+                        value="${receipt.batchNo || ''}" 
+                        ${!isPending ? 'readonly style="background:#f5f5f5;"' : ''}
+                        placeholder="Batch No">
+                </td>
+                <td>
+                    ${isPending ? 
+                        `<button class="action-btn update-btn" onclick="updateApproval('${receipt.receiptNo}')">✓ UPDATE</button>` : 
+                        ''}
+                    <button class="action-btn print-btn-small" onclick="printReceipt('${receipt.receiptNo}')">🖨️ PRINT</button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// ========== UPDATE APPROVAL ==========
+
+async function updateApproval(receiptNo) {
+    const approvalCode = document.getElementById(`approval-${receiptNo}`).value.trim();
+    const batchNo = document.getElementById(`batch-${receiptNo}`).value.trim();
+    
+    if (!approvalCode || !batchNo) {
+        alert('Please enter both Approval Code and Batch No.');
+        return;
+    }
+    
+    if (!confirm(`Update receipt ${receiptNo} with Approval Code: ${approvalCode} and Batch No: ${batchNo}?`)) {
+        return;
+    }
+    
+    try {
+        const updateBtn = document.querySelector(`button[onclick="updateApproval('${receiptNo}')"]`);
+        updateBtn.disabled = true;
+        updateBtn.textContent = 'UPDATING...';
+        
+        const kovelipayRef = passengerDb.collection('Kovelipay').doc(receiptNo);
+        
+        await kovelipayRef.update({
+            approvalCode: approvalCode,
+            batchNo: batchNo,
+            paymentStatus: 'COMPLETED',
+            approvalUpdatedAt: new Date().toISOString(),
+            approvalUpdatedBy: 'user' // You can add user info here
+        });
+        
+        alert(`Receipt ${receiptNo} updated successfully!`);
+        
+        // Reload data
+        await loadPendingApprovals();
+        
+    } catch (error) {
+        console.error('Error updating approval:', error);
+        alert('Error updating: ' + error.message);
+        
+        const updateBtn = document.querySelector(`button[onclick="updateApproval('${receiptNo}')"]`);
+        updateBtn.disabled = false;
+        updateBtn.textContent = '✓ UPDATE';
+    }
+}
+
+// ========== PRINT RECEIPT ==========
+
+async function printReceipt(receiptNo) {
+    try {
+        const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
+        if (!receipt) return;
+        
+        // Get company header
+        let companyHeader = '';
+        if (typeof companyInfo !== 'undefined') {
+            companyHeader = `
+                <div style="text-align: center; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 10px;">
+                    <h1 style="margin: 0; font-size: 18px; font-weight: bold;">${companyInfo.name || 'Koveli Lounge'}</h1>
+                    <p style="margin: 3px 0; font-size: 11px;">${companyInfo.address || 'Velana International Airport'}</p>
+                    <p style="margin: 3px 0; font-size: 11px;">Tel: ${companyInfo.phone || '+960 304 6677'}</p>
+                </div>
+            `;
+        }
+        
+        // Create receipt HTML
+        const receiptHTML = `
+            <div style="width: 80mm; font-family: 'Courier New', monospace; font-size: 11px; padding: 10px;">
+                ${companyHeader}
+                
+                <div style="margin-bottom: 10px;">
+                    <p><strong>Receipt #:</strong> ${receipt.receiptNo}</p>
+                    <p><strong>Date/Time:</strong> ${receipt.submissionDateTime}</p>
+                    <p><strong>Shift:</strong> ${receipt.shift} - ${receipt.date}</p>
+                </div>
+                
+                <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 8px 0;">
+                    <p><strong>Passenger:</strong> ${receipt.passengerName}</p>
+                    <p><strong>Flight:</strong> ${receipt.flightNo} | Seat: ${receipt.seatNo}</p>
+                </div>
+                
+                <div style="margin: 10px 0;">
+                    <p><strong>Adult x${receipt.adult}:</strong> ${receipt.currency} ${receipt.adultSubtotal?.toFixed(2)}</p>
+                    <p><strong>Children x${receipt.children}:</strong> ${receipt.currency} ${receipt.childrenSubtotal?.toFixed(2)}</p>
+                </div>
+                
+                <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 8px 0;">
+                    <p><strong>Subtotal:</strong> ${receipt.currency} ${receipt.subtotal?.toFixed(2)}</p>
+                    <p><strong>GST (${receipt.gstRate}%):</strong> ${receipt.currency} ${receipt.gstAmount?.toFixed(2)}</p>
+                    <p><strong>TOTAL:</strong> ${receipt.currency} ${receipt.totalAmount?.toFixed(2)}</p>
+                </div>
+                
+                <div style="margin: 10px 0;">
+                    <p><strong>Payment:</strong> ${receipt.paymentMethod}</p>
+                    ${receipt.approvalCode ? `<p><strong>Approval:</strong> ${receipt.approvalCode}</p>` : ''}
+                    ${receipt.batchNo ? `<p><strong>Batch:</strong> ${receipt.batchNo}</p>` : ''}
+                    <p><strong>Valid Until:</strong> ${receipt.expiryDateTime}</p>
+                </div>
+                
+                <div style="border-top: 1px dashed #000; padding-top: 10px; text-align: center;">
+                    <p>Thank you for choosing Koveli Lounge!</p>
+                    <p>${new Date().toLocaleDateString()}</p>
+                </div>
+            </div>
+        `;
+        
+        // Create a hidden iframe for printing
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Receipt ${receiptNo}</title>
+                    <style>
+                        @media print {
+                            body { margin: 0; padding: 10px; }
+                        }
+                    </style>
+                </head>
+                <body>${receiptHTML}</body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        
+    } catch (error) {
+        console.error('Error printing receipt:', error);
+        alert('Error printing receipt');
+    }
+}
+
+// ========== INITIALIZATION ==========
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Approval page loaded');
+    console.log('Loading from passengerDb (atten-14f76)');
+    
+    // Load data
+    loadPendingApprovals();
+    
+    // Event listeners
+    document.getElementById('searchInput').addEventListener('input', applyFilters);
+    document.getElementById('statusFilter').addEventListener('change', applyFilters);
+    document.getElementById('paymentFilter').addEventListener('change', applyFilters);
+    document.getElementById('refreshDataBtn').addEventListener('click', loadPendingApprovals);
+    
+    // Refresh every 30 seconds
+    setInterval(loadPendingApprovals, 30000);
+});
+</script>
+</body>
+</html>
