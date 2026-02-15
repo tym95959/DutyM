@@ -418,7 +418,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 800px;
+            min-width: 900px;
         }
         
         th {
@@ -484,64 +484,79 @@
             to { transform: rotate(360deg); }
         }
         
-        /* Editable Fields */
-        .editable-field {
-            background-color: #fff9e6;
-            border: 1px dashed #e6b800;
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            min-width: 80px;
-            display: inline-block;
-        }
-        
-        .editable-field:hover {
-            background-color: #fff2d7;
-            border: 1px solid #e6b800;
-        }
-        
-        .edit-mode input {
-            width: 100%;
-            padding: 4px 8px;
-            border: 2px solid #e6b800;
-            border-radius: 4px;
-            font-size: 13px;
-        }
-        
-        .save-row-btn {
-            background: #6b8e23;
-            color: white;
+        /* Action Buttons in Table */
+        .table-action-btn {
+            padding: 5px 12px;
             border: none;
-            padding: 4px 12px;
             border-radius: 20px;
             font-size: 11px;
             font-weight: 600;
             cursor: pointer;
-            margin-left: 5px;
+            margin: 0 3px;
+            transition: all 0.2s;
         }
         
-        .save-row-btn:hover {
+        .edit-table-btn {
+            background: #e6b800;
+            color: white;
+        }
+        
+        .edit-table-btn:hover {
+            background: #d4a900;
+        }
+        
+        .delete-table-btn {
+            background: #c68b5e;
+            color: white;
+        }
+        
+        .delete-table-btn:hover {
+            background: #a67244;
+        }
+        
+        .save-table-btn {
+            background: #6b8e23;
+            color: white;
+        }
+        
+        .save-table-btn:hover {
             background: #556b2f;
         }
         
-        .cancel-row-btn {
-            background: #c68b5e;
+        .cancel-table-btn {
+            background: #7f8c8d;
             color: white;
-            border: none;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-left: 5px;
         }
         
-        .cancel-row-btn:hover {
-            background: #a67244;
+        .cancel-table-btn:hover {
+            background: #5e6a6b;
         }
         
         .action-cell {
             white-space: nowrap;
+        }
+        
+        /* Edit Mode Inputs */
+        .edit-mode-input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 2px solid #e6b800;
+            border-radius: 6px;
+            font-size: 12px;
+            background: white;
+        }
+        
+        .edit-mode-input:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(230, 184, 0, 0.2);
+        }
+        
+        /* Warning Message */
+        .pax-warning {
+            color: #c68b5e;
+            font-size: 11px;
+            margin-top: 2px;
+            font-style: italic;
         }
     </style>
 </head>
@@ -659,7 +674,7 @@
         <!-- Passenger Table -->
         <div id="tableContainer" class="table-container" style="display: none;">
             <div class="table-header">
-                <h3>✈ PASSENGER LIST <span style="font-size: 12px; margin-left: 15px; color: #8b6913;">(Click on any value to edit)</span></h3>
+                <h3>✈ PASSENGER LIST</h3>
                 <span class="passenger-count" id="passengerCount">0</span>
             </div>
             <div class="table-wrapper">
@@ -693,10 +708,75 @@
         let allDates = [];
         let currentFlightData = null;
         let flightReports = {};
-        let editingRow = null;
+        let editingRowId = null; // Track which row is being edited
 
         // ========== FUNCTION DECLARATIONS ==========
         
+        // Calculate PAX from seat number (count alphabetical letters)
+        function calculatePaxFromSeat(seatNo) {
+            if (!seatNo) return 1;
+            
+            // Convert to string and count only letters (A-Z)
+            const letters = seatNo.toString().match(/[A-Za-z]/g);
+            return letters ? letters.length : 1;
+        }
+
+        // Handle seat number change in edit mode
+        function onSeatChange(docId) {
+            const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+            const paxInput = document.getElementById(`edit-pax-${docId}`);
+            const warningDiv = document.getElementById(`pax-warning-${docId}`);
+            
+            if (seatInput && paxInput) {
+                const calculatedPax = calculatePaxFromSeat(seatInput.value);
+                paxInput.value = calculatedPax;
+                
+                // Show warning that PAX was auto-updated
+                if (warningDiv) {
+                    warningDiv.textContent = '✓ PAX auto-updated from seat number';
+                    warningDiv.style.color = '#6b8e23';
+                    setTimeout(() => {
+                        if (warningDiv) warningDiv.textContent = '';
+                    }, 3000);
+                }
+            }
+        }
+
+        // Handle PAX change in edit mode
+        function onPaxChange(docId) {
+            const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+            const paxInput = document.getElementById(`edit-pax-${docId}`);
+            const warningDiv = document.getElementById(`pax-warning-${docId}`);
+            
+            if (seatInput && paxInput) {
+                const calculatedPax = calculatePaxFromSeat(seatInput.value);
+                const enteredPax = parseInt(paxInput.value) || 0;
+                
+                if (enteredPax !== calculatedPax) {
+                    // Show warning
+                    if (warningDiv) {
+                        warningDiv.innerHTML = `⚠ PAX (${enteredPax}) doesn't match seat number which indicates ${calculatedPax} PAX. <button onclick="updatePaxFromSeat('${docId}')" style="background:none; border:1px solid #c68b5e; color:#c68b5e; padding:2px 8px; border-radius:12px; margin-left:5px; cursor:pointer;">Update from seat</button>`;
+                        warningDiv.style.color = '#c68b5e';
+                    }
+                } else {
+                    if (warningDiv) warningDiv.textContent = '';
+                }
+            }
+        }
+
+        // Update PAX from seat number when user clicks the button
+        function updatePaxFromSeat(docId) {
+            const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+            const paxInput = document.getElementById(`edit-pax-${docId}`);
+            const warningDiv = document.getElementById(`pax-warning-${docId}`);
+            
+            if (seatInput && paxInput) {
+                const calculatedPax = calculatePaxFromSeat(seatInput.value);
+                paxInput.value = calculatedPax;
+                if (warningDiv) warningDiv.textContent = '';
+            }
+        }
+
         // Show notification function
         function showNotification(message, type) {
             console.log(message);
@@ -788,6 +868,7 @@
                 snapshot.forEach(doc => {
                     const data = doc.data();
                     const date = data.date;
+                    const docId = doc.id;
                     
                     if (date) {
                         dates.add(date);
@@ -800,7 +881,6 @@
                         
                         if (!flightsByDate[date].has(flightKey)) {
                             flightsByDate[date].set(flightKey, {
-                                docId: doc.id,
                                 flightNo: data.flightNo,
                                 shift: data.shift || 'UNKNOWN',
                                 airline: data.airline || '',
@@ -814,7 +894,7 @@
                         
                         const flightData = flightsByDate[date].get(flightKey);
                         flightData.passengers.push({
-                            docId: doc.id,
+                            docId: docId,
                             pName: data.pName || '',
                             seatNo: data.seatNo || '',
                             pax: data.pax || '1',
@@ -865,6 +945,7 @@
             
             document.getElementById('flightPanel').style.display = 'none';
             document.getElementById('tableContainer').style.display = 'none';
+            editingRowId = null; // Reset editing mode
             
             if (!selectedDate) {
                 return;
@@ -907,6 +988,7 @@
             if (!flightData) return;
             
             currentFlightData = flightData;
+            editingRowId = null; // Reset editing mode
             
             document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
             document.getElementById('flightNoDisplay').textContent = flightNo;
@@ -946,35 +1028,43 @@
                 const serialNo = String(index + 1).padStart(3, '0');
                 const fbSerialNo = p.serialNo || '';
                 
-                if (editingRow === p.docId) {
-                    // Edit mode
-                    html += `<tr id="row-${p.docId}">
+                if (editingRowId === p.docId) {
+                    // Edit Mode
+                    html += `<tr id="edit-row-${p.docId}">
                         <td class="serial-no">${serialNo}</td>
-                        <td><input type="text" id="edit-pName-${p.docId}" value="${p.pName || ''}" class="edit-input" style="width:100%;"></td>
-                        <td><input type="text" id="edit-seatNo-${p.docId}" value="${p.seatNo || ''}" class="edit-input" style="width:100%;"></td>
-                        <td><input type="text" id="edit-pax-${p.docId}" value="${p.pax || '1'}" class="edit-input" style="width:60px; text-align:center;"></td>
-                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${p.FQTV || ''}" class="edit-input" style="width:100%;"></td>
-                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${p.serialNo || ''}" class="edit-input" style="width:100%;"></td>
+                        <td><input type="text" id="edit-pName-${p.docId}" value="${p.pName || ''}" class="edit-mode-input"></td>
+                        <td>
+                            <input type="text" id="edit-seatNo-${p.docId}" value="${p.seatNo || ''}" class="edit-mode-input" 
+                                oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
+                            <div id="pax-warning-${p.docId}" class="pax-warning"></div>
+                        </td>
+                        <td>
+                            <input type="number" id="edit-pax-${p.docId}" value="${p.pax || '1'}" class="edit-mode-input" 
+                                style="width:60px; text-align:center;" min="1" onchange="onPaxChange('${p.docId}')">
+                        </td>
+                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${p.FQTV || ''}" class="edit-mode-input"></td>
+                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${p.serialNo || ''}" class="edit-mode-input"></td>
                         <td>${p.entryTime || '-'}</td>
-                        <td><input type="text" id="edit-remarks-${p.docId}" value="${p.remarks || ''}" class="edit-input" style="width:100%;"></td>
+                        <td><input type="text" id="edit-remarks-${p.docId}" value="${p.remarks || ''}" class="edit-mode-input"></td>
                         <td class="action-cell">
-                            <button class="save-row-btn" onclick="savePassengerEdit('${p.docId}')">Save</button>
-                            <button class="cancel-row-btn" onclick="cancelPassengerEdit()">Cancel</button>
+                            <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
+                            <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
                         </td>
                     </tr>`;
                 } else {
-                    // View mode
+                    // View Mode
                     html += `<tr>
                         <td class="serial-no">${serialNo}</td>
-                        <td><span class="editable-field" onclick="startEditing('${p.docId}', 'pName')">${p.pName || '-'}</span></td>
-                        <td><span class="editable-field" onclick="startEditing('${p.docId}', 'seatNo')">${p.seatNo || '-'}</span></td>
-                        <td style="text-align: center;"><span class="editable-field" onclick="startEditing('${p.docId}', 'pax')">${p.pax || '1'}</span></td>
-                        <td><span class="editable-field" onclick="startEditing('${p.docId}', 'FQTV')">${p.FQTV || '-'}</span></td>
-                        <td><span class="editable-field ${fbSerialNo ? 'serial-no' : 'serial-blank'}" onclick="startEditing('${p.docId}', 'serialNo')">${fbSerialNo || '—'}</span></td>
+                        <td>${p.pName || '-'}</td>
+                        <td>${p.seatNo || '-'}</td>
+                        <td style="text-align: center;">${p.pax || '1'}</td>
+                        <td>${p.FQTV || '-'}</td>
+                        <td class="${fbSerialNo ? 'serial-no' : 'serial-blank'}">${fbSerialNo || '—'}</td>
                         <td>${p.entryTime || '-'}</td>
-                        <td><span class="editable-field" onclick="startEditing('${p.docId}', 'remarks')">${p.remarks || '-'}</span></td>
+                        <td>${p.remarks || '-'}</td>
                         <td class="action-cell">
-                            <button class="save-row-btn" onclick="editFullRow('${p.docId}')">Edit Row</button>
+                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}', '${p.pName}')">Delete</button>
                         </td>
                     </tr>`;
                 }
@@ -984,26 +1074,20 @@
             document.getElementById('tableContainer').style.display = 'block';
         }
 
-        // Start editing a specific field
-        function startEditing(docId, field) {
-            // For simplicity, we'll just edit the full row
-            editFullRow(docId);
-        }
-
-        // Edit full row
-        function editFullRow(docId) {
-            editingRow = docId;
+        // Start editing a row
+        function startEdit(docId) {
+            editingRowId = docId;
             displayPassengerTable(currentFlightData.passengers);
         }
 
         // Cancel editing
-        function cancelPassengerEdit() {
-            editingRow = null;
+        function cancelEdit() {
+            editingRowId = null;
             displayPassengerTable(currentFlightData.passengers);
         }
 
         // Save passenger edits
-        async function savePassengerEdit(docId) {
+        async function savePassenger(docId) {
             try {
                 // Get edited values
                 const pName = document.getElementById(`edit-pName-${docId}`).value;
@@ -1012,6 +1096,14 @@
                 const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
                 const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
                 const remarks = document.getElementById(`edit-remarks-${docId}`).value;
+
+                // Validate PAX vs Seat
+                const calculatedPax = calculatePaxFromSeat(seatNo);
+                if (parseInt(pax) !== calculatedPax) {
+                    if (!confirm(`WARNING: PAX (${pax}) doesn't match seat number which indicates ${calculatedPax} PAX. Save anyway?`)) {
+                        return;
+                    }
+                }
 
                 // Update in Firebase
                 await db.collection('KoveliPass').doc(docId).update({
@@ -1036,10 +1128,10 @@
                 }
 
                 // Exit edit mode
-                editingRow = null;
+                editingRowId = null;
                 displayPassengerTable(currentFlightData.passengers);
                 
-                showNotification('Passenger data updated successfully', 'success');
+                alert('Passenger data updated successfully');
                 
             } catch (error) {
                 console.error('Error updating passenger:', error);
@@ -1047,11 +1139,44 @@
             }
         }
 
+        // Confirm and delete passenger
+        function confirmDelete(docId, passengerName) {
+            if (confirm(`Are you sure you want to delete passenger "${passengerName}"? This action cannot be undone.`)) {
+                deletePassenger(docId);
+            }
+        }
+
+        // Delete passenger from Firebase
+        async function deletePassenger(docId) {
+            try {
+                // Delete from Firebase
+                await db.collection('KoveliPass').doc(docId).delete();
+
+                // Remove from local data
+                const passengerIndex = currentFlightData.passengers.findIndex(p => p.docId === docId);
+                if (passengerIndex !== -1) {
+                    currentFlightData.passengers.splice(passengerIndex, 1);
+                }
+
+                // Update statistics
+                document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
+                document.getElementById('passengerCount').textContent = currentFlightData.passengers.length + ' PASSENGERS';
+
+                // Refresh table
+                displayPassengerTable(currentFlightData.passengers);
+                
+                alert('Passenger deleted successfully');
+                
+            } catch (error) {
+                console.error('Error deleting passenger:', error);
+                alert('Error deleting passenger: ' + error.message);
+            }
+        }
+
         function updateSTD() {
             const stdValue = document.getElementById('stdInput').value;
             if (stdValue && currentFlightData) {
                 currentFlightData.std = stdValue;
-                document.getElementById('stdTimeDisplay').textContent = stdValue;
                 showNotification('STD updated', 'success');
             }
         }
@@ -1268,10 +1393,13 @@
         window.saveFlightData = saveFlightData;
         window.printReport = printReport;
         window.fetchOpenShift = fetchOpenShift;
-        window.startEditing = startEditing;
-        window.editFullRow = editFullRow;
-        window.savePassengerEdit = savePassengerEdit;
-        window.cancelPassengerEdit = cancelPassengerEdit;
+        window.startEdit = startEdit;
+        window.cancelEdit = cancelEdit;
+        window.savePassenger = savePassenger;
+        window.confirmDelete = confirmDelete;
+        window.onSeatChange = onSeatChange;
+        window.onPaxChange = onPaxChange;
+        window.updatePaxFromSeat = updatePaxFromSeat;
     </script>
 </body>
 </html>
