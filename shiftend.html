@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shift End Report</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- Your config files -->
+    <script src="fireshift.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f0e1, #fff5e6);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        /* Top Ribbon */
+        .shift-ribbon {
+            background: linear-gradient(135deg, #8b6913, #e6b800);
+            color: white;
+            padding: 12px 25px;
+            border-radius: 50px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 20px rgba(230, 184, 0, 0.3);
+        }
+        
+        .shift-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .shift-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 18px;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .date-value {
+            font-weight: 600;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .refresh-shift {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 4px 15px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .refresh-shift:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        /* Main Card */
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(230, 184, 0, 0.2);
+            border: 2px solid #e6b800;
+            margin-bottom: 25px;
+        }
+        
+        h2 {
+            color: #8b6913;
+            margin-bottom: 20px;
+            font-size: 24px;
+            border-bottom: 2px solid #e6b800;
+            padding-bottom: 10px;
+        }
+        
+        /* Filter Section */
+        .filter-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 20px;
+            margin-bottom: 30px;
+            align-items: end;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .filter-group label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .filter-control {
+            padding: 12px 15px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 12px;
+            font-size: 15px;
+            background: white;
+            transition: all 0.3s;
+        }
+        
+        .filter-control:focus {
+            outline: none;
+            border-color: #e6b800;
+            box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.1);
+        }
+        
+        .fetch-btn {
+            background: #e6b800;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 40px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        
+        .fetch-btn:hover {
+            background: #d4a900;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(230, 184, 0, 0.3);
+        }
+        
+        /* Summary Cards */
+        .summary-section {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-card {
+            background: #fff9e6;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .summary-label {
+            color: #8b6913;
+            font-size: 14px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        
+        .summary-value {
+            color: #2c3e50;
+            font-size: 32px;
+            font-weight: 600;
+        }
+        
+        .summary-unit {
+            color: #8b6913;
+            font-size: 14px;
+            margin-left: 5px;
+        }
+        
+        /* Table Styles */
+        .table-container {
+            background: white;
+            border-radius: 16px;
+            border: 2px solid #e6b800;
+            overflow: hidden;
+        }
+        
+        .table-header {
+            background: linear-gradient(135deg, #faf3e0, #fff5e6);
+            padding: 15px 20px;
+            border-bottom: 2px solid #e6b800;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .table-header h3 {
+            color: #8b6913;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .filter-badge {
+            background: #e6b800;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 600px;
+        }
+        
+        th {
+            background: #e6b800;
+            color: white;
+            padding: 12px 15px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(230, 184, 0, 0.2);
+            color: #2c3e50;
+            font-size: 14px;
+        }
+        
+        tr:hover td {
+            background: rgba(230, 184, 0, 0.05);
+        }
+        
+        .flight-no {
+            font-weight: 600;
+            color: #8b6913;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .total-row {
+            background: #f5f0e1 !important;
+            font-weight: 600;
+        }
+        
+        .total-row td {
+            border-top: 2px solid #e6b800;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #c68b5e;
+            font-style: italic;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #e6b800;
+            font-style: italic;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 50%;
+            border-top-color: #e6b800;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Date Info */
+        .date-info {
+            background: #f5f0e1;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .date-info-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .date-info-label {
+            color: #8b6913;
+            font-weight: 600;
+        }
+        
+        .date-info-value {
+            color: #2c3e50;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Top Ribbon -->
+        <div class="shift-ribbon" id="shiftRibbon">
+            <div class="shift-info">
+                <span class="shift-badge" id="shiftBadge">LOADING...</span>
+                <span class="date-value" id="ribbonDate">--</span>
+            </div>
+            <button class="refresh-shift" onclick="fetchOpenShift()">↻ REFRESH</button>
+        </div>
+
+        <!-- Main Card -->
+        <div class="card">
+            <h2>📊 SHIFT END REPORT</h2>
+            
+            <!-- Filter Section -->
+            <div class="filter-section">
+                <div class="filter-group">
+                    <label>📅 SELECT DATE</label>
+                    <input type="date" id="reportDate" class="filter-control" value="">
+                </div>
+                
+                <div class="filter-group">
+                    <label>🕒 SELECT SHIFT</label>
+                    <select id="shiftSelect" class="filter-control">
+                        <option value="ALL">ALL SHIFTS</option>
+                        <option value="MORNING">MORNING</option>
+                        <option value="EVENING">EVENING</option>
+                    </select>
+                </div>
+                
+                <button class="fetch-btn" onclick="generateReport()">
+                    🔍 GENERATE REPORT
+                </button>
+            </div>
+
+            <!-- Date Info (hidden until report generated) -->
+            <div id="dateInfo" class="date-info" style="display: none;">
+                <div class="date-info-item">
+                    <span class="date-info-label">Report Date:</span>
+                    <span class="date-info-value" id="reportDateDisplay">-</span>
+                </div>
+                <div class="date-info-item">
+                    <span class="date-info-label">Selected Shift:</span>
+                    <span class="date-info-value" id="reportShiftDisplay">-</span>
+                </div>
+                <div class="date-info-item">
+                    <span class="date-info-label">Generated:</span>
+                    <span class="date-info-value" id="reportTimeDisplay">-</span>
+                </div>
+            </div>
+            
+            <!-- Summary Cards (hidden until report generated) -->
+            <div id="summarySection" class="summary-section" style="display: none;">
+                <div class="summary-card">
+                    <div class="summary-label">Total Flights</div>
+                    <div class="summary-value" id="totalFlights">0</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Morning Flights</div>
+                    <div class="summary-value" id="morningFlights">0</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Evening Flights</div>
+                    <div class="summary-value" id="eveningFlights">0</div>
+                </div>
+            </div>
+
+            <!-- Results Table (hidden until report generated) -->
+            <div id="resultsContainer" class="table-container" style="display: none;">
+                <div class="table-header">
+                    <h3>✈ FLIGHT SUMMARY</h3>
+                    <span class="filter-badge" id="filterDisplay">ALL SHIFTS</span>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Flight No</th>
+                                <th>Shift</th>
+                                <th class="text-right">No of Transactions</th>
+                                <th class="text-right">Total Pax</th>
+                                <th>Airline</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportTableBody">
+                            <tr>
+                                <td colspan="5" class="no-data">Select date and shift to generate report</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== GLOBAL VARIABLES ==========
+        let allFlightData = [];
+        let currentReportData = [];
+
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set today's date as default
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('reportDate').value = today;
+            
+            // Load shift info
+            fetchOpenShift();
+            setInterval(fetchOpenShift, 30000);
+        });
+
+        // ========== TOP RIBBON - SHIFT INFO ==========
+        async function fetchOpenShift() {
+            try {
+                const shiftBadge = document.getElementById('shiftBadge');
+                const ribbonDate = document.getElementById('ribbonDate');
+                const ribbon = document.getElementById('shiftRibbon');
+                
+                shiftBadge.textContent = 'LOADING...';
+                ribbonDate.textContent = '--';
+                
+                if (typeof passengerDb === 'undefined') {
+                    throw new Error('Database not initialized');
+                }
+                
+                const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+                
+                if (shiftDoc.exists) {
+                    const data = shiftDoc.data();
+                    const date = data.date || 'No date';
+                    const morning = data.morning || 'closed';
+                    const evening = data.evening || 'closed';
+                    
+                    if (morning === 'open') {
+                        shiftBadge.textContent = 'MORNING SHIFT';
+                        ribbonDate.textContent = date;
+                        ribbon.style.background = 'linear-gradient(135deg, #6b8e23, #8b6913)';
+                    } 
+                    else if (evening === 'open') {
+                        shiftBadge.textContent = 'EVENING SHIFT';
+                        ribbonDate.textContent = date;
+                        ribbon.style.background = 'linear-gradient(135deg, #c68b5e, #8b6913)';
+                    } 
+                    else {
+                        shiftBadge.textContent = 'NO OPEN SHIFT';
+                        ribbonDate.textContent = date;
+                        ribbon.style.background = 'linear-gradient(135deg, #7f8c8d, #5e4a1a)';
+                    }
+                } else {
+                    throw new Error('Shift document not found');
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('shiftBadge').textContent = 'ERROR';
+                document.getElementById('ribbonDate').textContent = '--';
+            }
+        }
+
+        // ========== GENERATE REPORT ==========
+        async function generateReport() {
+            const selectedDate = document.getElementById('reportDate').value;
+            const selectedShift = document.getElementById('shiftSelect').value;
+            
+            if (!selectedDate) {
+                alert('Please select a date');
+                return;
+            }
+            
+            // Show loading
+            document.getElementById('reportTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Loading report data...</td></tr>';
+            
+            try {
+                if (typeof db === 'undefined') {
+                    throw new Error('Database psysko-8d035 not initialized');
+                }
+                
+                // Format date for query
+                const formattedDate = selectedDate;
+                
+                // Build query
+                let query = db.collection('KoveliPass').where('date', '==', formattedDate);
+                
+                // Add shift filter if not ALL
+                if (selectedShift !== 'ALL') {
+                    query = query.where('shift', '==', selectedShift);
+                }
+                
+                const snapshot = await query.get();
+                
+                if (snapshot.empty) {
+                    document.getElementById('reportTableBody').innerHTML = '<tr><td colspan="5" class="no-data">No data found for selected date and shift</td></tr>';
+                    document.getElementById('dateInfo').style.display = 'none';
+                    document.getElementById('summarySection').style.display = 'none';
+                    document.getElementById('resultsContainer').style.display = 'block';
+                    return;
+                }
+                
+                // Process data to group by flight
+                const flightMap = new Map();
+                
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const flightNo = data.flightNo;
+                    const shift = data.shift || 'UNKNOWN';
+                    const key = `${flightNo}_${shift}`;
+                    const pax = parseInt(data.pax) || 1;
+                    
+                    if (!flightMap.has(key)) {
+                        flightMap.set(key, {
+                            flightNo: flightNo,
+                            shift: shift,
+                            airline: data.airline || getAirlineFromFlight(flightNo),
+                            transactions: 1,
+                            totalPax: pax
+                        });
+                    } else {
+                        const existing = flightMap.get(key);
+                        existing.transactions++;
+                        existing.totalPax += pax;
+                    }
+                });
+                
+                // Convert to array and sort
+                currentReportData = Array.from(flightMap.values()).sort((a, b) => 
+                    a.flightNo.localeCompare(b.flightNo)
+                );
+                
+                // Calculate totals
+                const totalFlights = currentReportData.length;
+                const morningFlights = currentReportData.filter(f => f.shift === 'MORNING').length;
+                const eveningFlights = currentReportData.filter(f => f.shift === 'EVENING').length;
+                
+                // Update date info
+                document.getElementById('reportDateDisplay').textContent = formatDate(selectedDate);
+                document.getElementById('reportShiftDisplay').textContent = selectedShift;
+                document.getElementById('reportTimeDisplay').textContent = new Date().toLocaleTimeString();
+                document.getElementById('dateInfo').style.display = 'flex';
+                
+                // Update summary cards
+                document.getElementById('totalFlights').textContent = totalFlights;
+                document.getElementById('morningFlights').textContent = morningFlights;
+                document.getElementById('eveningFlights').textContent = eveningFlights;
+                document.getElementById('summarySection').style.display = 'grid';
+                
+                // Update filter display
+                document.getElementById('filterDisplay').textContent = selectedShift;
+                
+                // Display results
+                displayReportTable(currentReportData);
+                
+                // Show results container
+                document.getElementById('resultsContainer').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error generating report:', error);
+                document.getElementById('reportTableBody').innerHTML = `<tr><td colspan="5" class="error">Error: ${error.message}</td></tr>`;
+            }
+        }
+        
+        // ========== DISPLAY REPORT TABLE ==========
+        function displayReportTable(data) {
+            const tbody = document.getElementById('reportTableBody');
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="no-data">No data available</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            let totalTransactions = 0;
+            let totalPaxAll = 0;
+            
+            data.forEach(flight => {
+                totalTransactions += flight.transactions;
+                totalPaxAll += flight.totalPax;
+                
+                const shiftClass = flight.shift === 'MORNING' ? 'morning' : (flight.shift === 'EVENING' ? 'evening' : '');
+                
+                html += `<tr>
+                    <td class="flight-no">${flight.flightNo}</td>
+                    <td>${flight.shift}</td>
+                    <td class="text-right">${flight.transactions}</td>
+                    <td class="text-right">${flight.totalPax}</td>
+                    <td>${flight.airline || '-'}</td>
+                </tr>`;
+            });
+            
+            // Add total row
+            html += `<tr class="total-row">
+                <td colspan="2"><strong>TOTAL</strong></td>
+                <td class="text-right"><strong>${totalTransactions}</strong></td>
+                <td class="text-right"><strong>${totalPaxAll}</strong></td>
+                <td></td>
+            </tr>`;
+            
+            tbody.innerHTML = html;
+        }
+        
+        // ========== UTILITY FUNCTIONS ==========
+        function getAirlineFromFlight(flightNo) {
+            if (!flightNo) return '';
+            const iataCode = flightNo.substring(0, 2);
+            
+            if (window.airlineData?.airlines_flying_to_maldives) {
+                const airline = window.airlineData.airlines_flying_to_maldives.find(a => a.iata === iataCode);
+                return airline ? airline.airline : iataCode;
+            }
+            return iataCode;
+        }
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const parts = dateStr.split('-');
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+
+        // Make functions globally available
+        window.generateReport = generateReport;
+        window.fetchOpenShift = fetchOpenShift;
+    </script>
+</body>
+</html>
