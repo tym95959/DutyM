@@ -483,6 +483,66 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        
+        /* Editable Fields */
+        .editable-field {
+            background-color: #fff9e6;
+            border: 1px dashed #e6b800;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            min-width: 80px;
+            display: inline-block;
+        }
+        
+        .editable-field:hover {
+            background-color: #fff2d7;
+            border: 1px solid #e6b800;
+        }
+        
+        .edit-mode input {
+            width: 100%;
+            padding: 4px 8px;
+            border: 2px solid #e6b800;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        .save-row-btn {
+            background: #6b8e23;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        
+        .save-row-btn:hover {
+            background: #556b2f;
+        }
+        
+        .cancel-row-btn {
+            background: #c68b5e;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        
+        .cancel-row-btn:hover {
+            background: #a67244;
+        }
+        
+        .action-cell {
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -590,7 +650,7 @@
                         🖨️ PRINT REPORT
                     </button>
                     <button class="save-btn" onclick="saveFlightData()">
-                        💾 SAVE
+                        💾 SAVE ALL
                     </button>
                 </div>
             </div>
@@ -599,7 +659,7 @@
         <!-- Passenger Table -->
         <div id="tableContainer" class="table-container" style="display: none;">
             <div class="table-header">
-                <h3>✈ PASSENGER LIST</h3>
+                <h3>✈ PASSENGER LIST <span style="font-size: 12px; margin-left: 15px; color: #8b6913;">(Click on any value to edit)</span></h3>
                 <span class="passenger-count" id="passengerCount">0</span>
             </div>
             <div class="table-wrapper">
@@ -614,11 +674,12 @@
                             <th>Serial No</th>
                             <th>Time Added</th>
                             <th>Remarks</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="passengerTableBody">
                         <tr>
-                            <td colspan="8" class="no-data">Select a flight to view passengers</td>
+                            <td colspan="9" class="no-data">Select a flight to view passengers</td>
                         </tr>
                     </tbody>
                 </table>
@@ -632,12 +693,14 @@
         let allDates = [];
         let currentFlightData = null;
         let flightReports = {};
+        let editingRow = null;
 
         // ========== FUNCTION DECLARATIONS ==========
         
         // Show notification function
         function showNotification(message, type) {
             console.log(message);
+            // You can add a toast notification here if needed
         }
 
         // Fetch open shift from passengerDb
@@ -737,6 +800,7 @@
                         
                         if (!flightsByDate[date].has(flightKey)) {
                             flightsByDate[date].set(flightKey, {
+                                docId: doc.id,
                                 flightNo: data.flightNo,
                                 shift: data.shift || 'UNKNOWN',
                                 airline: data.airline || '',
@@ -750,6 +814,7 @@
                         
                         const flightData = flightsByDate[date].get(flightKey);
                         flightData.passengers.push({
+                            docId: doc.id,
                             pName: data.pName || '',
                             seatNo: data.seatNo || '',
                             pax: data.pax || '1',
@@ -864,7 +929,7 @@
             const tbody = document.getElementById('passengerTableBody');
             
             if (!passengers || passengers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="no-data">No passengers found for this flight</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="no-data">No passengers found for this flight</td></tr>';
                 document.getElementById('tableContainer').style.display = 'block';
                 return;
             }
@@ -881,26 +946,112 @@
                 const serialNo = String(index + 1).padStart(3, '0');
                 const fbSerialNo = p.serialNo || '';
                 
-                html += `<tr>
-                    <td class="serial-no">${serialNo}</td>
-                    <td>${p.pName || '-'}</td>
-                    <td>${p.seatNo || '-'}</td>
-                    <td style="text-align: center;">${p.pax || '1'}</td>
-                    <td>${p.FQTV || '-'}</td>
-                    <td class="${fbSerialNo ? 'serial-no' : 'serial-blank'}">${fbSerialNo || '—'}</td>
-                    <td>${p.entryTime || '-'}</td>
-                    <td>${p.remarks || '-'}</td>
-                </tr>`;
+                if (editingRow === p.docId) {
+                    // Edit mode
+                    html += `<tr id="row-${p.docId}">
+                        <td class="serial-no">${serialNo}</td>
+                        <td><input type="text" id="edit-pName-${p.docId}" value="${p.pName || ''}" class="edit-input" style="width:100%;"></td>
+                        <td><input type="text" id="edit-seatNo-${p.docId}" value="${p.seatNo || ''}" class="edit-input" style="width:100%;"></td>
+                        <td><input type="text" id="edit-pax-${p.docId}" value="${p.pax || '1'}" class="edit-input" style="width:60px; text-align:center;"></td>
+                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${p.FQTV || ''}" class="edit-input" style="width:100%;"></td>
+                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${p.serialNo || ''}" class="edit-input" style="width:100%;"></td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td><input type="text" id="edit-remarks-${p.docId}" value="${p.remarks || ''}" class="edit-input" style="width:100%;"></td>
+                        <td class="action-cell">
+                            <button class="save-row-btn" onclick="savePassengerEdit('${p.docId}')">Save</button>
+                            <button class="cancel-row-btn" onclick="cancelPassengerEdit()">Cancel</button>
+                        </td>
+                    </tr>`;
+                } else {
+                    // View mode
+                    html += `<tr>
+                        <td class="serial-no">${serialNo}</td>
+                        <td><span class="editable-field" onclick="startEditing('${p.docId}', 'pName')">${p.pName || '-'}</span></td>
+                        <td><span class="editable-field" onclick="startEditing('${p.docId}', 'seatNo')">${p.seatNo || '-'}</span></td>
+                        <td style="text-align: center;"><span class="editable-field" onclick="startEditing('${p.docId}', 'pax')">${p.pax || '1'}</span></td>
+                        <td><span class="editable-field" onclick="startEditing('${p.docId}', 'FQTV')">${p.FQTV || '-'}</span></td>
+                        <td><span class="editable-field ${fbSerialNo ? 'serial-no' : 'serial-blank'}" onclick="startEditing('${p.docId}', 'serialNo')">${fbSerialNo || '—'}</span></td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td><span class="editable-field" onclick="startEditing('${p.docId}', 'remarks')">${p.remarks || '-'}</span></td>
+                        <td class="action-cell">
+                            <button class="save-row-btn" onclick="editFullRow('${p.docId}')">Edit Row</button>
+                        </td>
+                    </tr>`;
+                }
             });
             
             tbody.innerHTML = html;
             document.getElementById('tableContainer').style.display = 'block';
         }
 
+        // Start editing a specific field
+        function startEditing(docId, field) {
+            // For simplicity, we'll just edit the full row
+            editFullRow(docId);
+        }
+
+        // Edit full row
+        function editFullRow(docId) {
+            editingRow = docId;
+            displayPassengerTable(currentFlightData.passengers);
+        }
+
+        // Cancel editing
+        function cancelPassengerEdit() {
+            editingRow = null;
+            displayPassengerTable(currentFlightData.passengers);
+        }
+
+        // Save passenger edits
+        async function savePassengerEdit(docId) {
+            try {
+                // Get edited values
+                const pName = document.getElementById(`edit-pName-${docId}`).value;
+                const seatNo = document.getElementById(`edit-seatNo-${docId}`).value;
+                const pax = document.getElementById(`edit-pax-${docId}`).value;
+                const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
+                const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
+                const remarks = document.getElementById(`edit-remarks-${docId}`).value;
+
+                // Update in Firebase
+                await db.collection('KoveliPass').doc(docId).update({
+                    pName: pName,
+                    seatNo: seatNo,
+                    pax: pax,
+                    FQTV: FQTV,
+                    serialNo: serialNo,
+                    remarks: remarks,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                // Update local data
+                const passenger = currentFlightData.passengers.find(p => p.docId === docId);
+                if (passenger) {
+                    passenger.pName = pName;
+                    passenger.seatNo = seatNo;
+                    passenger.pax = pax;
+                    passenger.FQTV = FQTV;
+                    passenger.serialNo = serialNo;
+                    passenger.remarks = remarks;
+                }
+
+                // Exit edit mode
+                editingRow = null;
+                displayPassengerTable(currentFlightData.passengers);
+                
+                showNotification('Passenger data updated successfully', 'success');
+                
+            } catch (error) {
+                console.error('Error updating passenger:', error);
+                alert('Error updating passenger: ' + error.message);
+            }
+        }
+
         function updateSTD() {
             const stdValue = document.getElementById('stdInput').value;
             if (stdValue && currentFlightData) {
                 currentFlightData.std = stdValue;
+                document.getElementById('stdTimeDisplay').textContent = stdValue;
                 showNotification('STD updated', 'success');
             }
         }
@@ -1117,6 +1268,10 @@
         window.saveFlightData = saveFlightData;
         window.printReport = printReport;
         window.fetchOpenShift = fetchOpenShift;
+        window.startEditing = startEditing;
+        window.editFullRow = editFullRow;
+        window.savePassengerEdit = savePassengerEdit;
+        window.cancelPassengerEdit = cancelPassengerEdit;
     </script>
 </body>
 </html>
