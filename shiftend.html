@@ -153,6 +153,65 @@
             box-shadow: 0 4px 12px rgba(230, 184, 0, 0.3);
         }
         
+        /* Report Header */
+        .report-header {
+            background: linear-gradient(145deg, #fff9e6, #fff2d7);
+            border-radius: 16px;
+            padding: 20px 25px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .report-title {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .report-title h3 {
+            color: #8b6913;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .report-meta {
+            display: flex;
+            gap: 30px;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .meta-label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 14px;
+            background: rgba(230, 184, 0, 0.1);
+            padding: 4px 12px;
+            border-radius: 30px;
+        }
+        
+        .meta-value {
+            color: #2c3e50;
+            font-weight: 500;
+            font-size: 16px;
+        }
+        
+        .shift-badge-report {
+            background: #e6b800;
+            color: white;
+            padding: 8px 25px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
         /* Summary Cards */
         .summary-section {
             display: grid;
@@ -182,12 +241,6 @@
             font-weight: 600;
         }
         
-        .summary-unit {
-            color: #8b6913;
-            font-size: 14px;
-            margin-left: 5px;
-        }
-        
         /* Table Styles */
         .table-container {
             background: white;
@@ -200,23 +253,11 @@
             background: linear-gradient(135deg, #faf3e0, #fff5e6);
             padding: 15px 20px;
             border-bottom: 2px solid #e6b800;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
         }
         
         .table-header h3 {
             color: #8b6913;
             font-size: 18px;
-            font-weight: 600;
-        }
-        
-        .filter-badge {
-            background: #e6b800;
-            color: white;
-            padding: 5px 15px;
-            border-radius: 30px;
-            font-size: 14px;
             font-weight: 600;
         }
         
@@ -301,33 +342,6 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        
-        /* Date Info */
-        .date-info {
-            background: #f5f0e1;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .date-info-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .date-info-label {
-            color: #8b6913;
-            font-weight: 600;
-        }
-        
-        .date-info-value {
-            color: #2c3e50;
-            font-weight: 500;
-        }
     </style>
 </head>
 <body>
@@ -366,20 +380,26 @@
                 </button>
             </div>
 
-            <!-- Date Info (hidden until report generated) -->
-            <div id="dateInfo" class="date-info" style="display: none;">
-                <div class="date-info-item">
-                    <span class="date-info-label">Report Date:</span>
-                    <span class="date-info-value" id="reportDateDisplay">-</span>
+            <!-- Report Header - Shows Date and Shift (hidden until report generated) -->
+            <div id="reportHeader" class="report-header" style="display: none;">
+                <div class="report-title">
+                    <h3>✈ FLIGHT SUMMARY REPORT</h3>
+                    <div class="report-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">DATE</span>
+                            <span class="meta-value" id="headerDate">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">SHIFT</span>
+                            <span class="meta-value" id="headerShift">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">GENERATED</span>
+                            <span class="meta-value" id="headerTime">-</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="date-info-item">
-                    <span class="date-info-label">Selected Shift:</span>
-                    <span class="date-info-value" id="reportShiftDisplay">-</span>
-                </div>
-                <div class="date-info-item">
-                    <span class="date-info-label">Generated:</span>
-                    <span class="date-info-value" id="reportTimeDisplay">-</span>
-                </div>
+                <div class="shift-badge-report" id="headerShiftBadge">ALL SHIFTS</div>
             </div>
             
             <!-- Summary Cards (hidden until report generated) -->
@@ -401,8 +421,7 @@
             <!-- Results Table (hidden until report generated) -->
             <div id="resultsContainer" class="table-container" style="display: none;">
                 <div class="table-header">
-                    <h3>✈ FLIGHT SUMMARY</h3>
-                    <span class="filter-badge" id="filterDisplay">ALL SHIFTS</span>
+                    <h3>FLIGHT DETAILS</h3>
                 </div>
                 <div class="table-wrapper">
                     <table>
@@ -523,7 +542,7 @@
                 
                 if (snapshot.empty) {
                     document.getElementById('reportTableBody').innerHTML = '<tr><td colspan="5" class="no-data">No data found for selected date and shift</td></tr>';
-                    document.getElementById('dateInfo').style.display = 'none';
+                    document.getElementById('reportHeader').style.display = 'none';
                     document.getElementById('summarySection').style.display = 'none';
                     document.getElementById('resultsContainer').style.display = 'block';
                     return;
@@ -564,20 +583,18 @@
                 const morningFlights = currentReportData.filter(f => f.shift === 'MORNING').length;
                 const eveningFlights = currentReportData.filter(f => f.shift === 'EVENING').length;
                 
-                // Update date info
-                document.getElementById('reportDateDisplay').textContent = formatDate(selectedDate);
-                document.getElementById('reportShiftDisplay').textContent = selectedShift;
-                document.getElementById('reportTimeDisplay').textContent = new Date().toLocaleTimeString();
-                document.getElementById('dateInfo').style.display = 'flex';
+                // Update Report Header (Date and Shift prominently displayed)
+                document.getElementById('headerDate').textContent = formatDate(selectedDate);
+                document.getElementById('headerShift').textContent = selectedShift;
+                document.getElementById('headerTime').textContent = new Date().toLocaleTimeString();
+                document.getElementById('headerShiftBadge').textContent = selectedShift;
+                document.getElementById('reportHeader').style.display = 'flex';
                 
                 // Update summary cards
                 document.getElementById('totalFlights').textContent = totalFlights;
                 document.getElementById('morningFlights').textContent = morningFlights;
                 document.getElementById('eveningFlights').textContent = eveningFlights;
                 document.getElementById('summarySection').style.display = 'grid';
-                
-                // Update filter display
-                document.getElementById('filterDisplay').textContent = selectedShift;
                 
                 // Display results
                 displayReportTable(currentReportData);
@@ -607,8 +624,6 @@
             data.forEach(flight => {
                 totalTransactions += flight.transactions;
                 totalPaxAll += flight.totalPax;
-                
-                const shiftClass = flight.shift === 'MORNING' ? 'morning' : (flight.shift === 'EVENING' ? 'evening' : '');
                 
                 html += `<tr>
                     <td class="flight-no">${flight.flightNo}</td>
