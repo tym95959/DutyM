@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flight Report – Passenger List (print ready)</title>
+    <title>Flight Report – Passenger List (logo left, close with STD/Last Pax)</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -260,7 +260,7 @@
             white-space: nowrap;
         }
         
-        /* action buttons – now placed under the ops grid (last pax area) */
+        /* action buttons – now only CLOSE / REOPEN / PRINT (SAVE ALL removed) */
         .action-buttons-vertical {
             display: flex;
             flex-direction: row;
@@ -271,7 +271,7 @@
             padding-top: 12px;
         }
         
-        .close-btn, .reopen-btn, .print-btn, .save-all-btn {
+        .close-btn, .reopen-btn, .print-btn {
             padding: 8px 12px;
             border-radius: 30px;
             font-size: 12px;
@@ -284,9 +284,10 @@
         }
         
         .close-btn { background: #c68b5e; color: white; }
+        .close-btn:disabled { background: #e0c0a8; cursor: not-allowed; opacity: 0.6; }
         .reopen-btn { background: #6b8e23; color: white; }
         .print-btn { background: #4a6fa5; color: white; }
-        .save-all-btn { background: #e6b800; color: white; }
+        .print-btn:disabled { background: #a0b8d0; cursor: not-allowed; }
         
         /* passenger table unchanged */
         .table-container {
@@ -484,23 +485,22 @@
                             <span class="ops-label">Shift:</span><span class="ops-value" id="shiftDisplay">-</span>
                             <span class="ops-label">STD:</span>
                             <div class="edit-field">
-                                <input type="time" id="stdInput" class="edit-input">
+                                <input type="time" id="stdInput" class="edit-input" onchange="validateCloseButton()">
                                 <button class="edit-btn" onclick="updateSTD()">Update</button>
                             </div>
                             <span class="ops-label">First Pax:</span><span class="ops-value first-pax" id="firstPaxDisplay">-</span>
                             <span class="ops-label">Last Pax:</span>
                             <div class="edit-field">
-                                <input type="time" id="lastPaxInput" class="edit-input">
+                                <input type="time" id="lastPaxInput" class="edit-input" onchange="validateCloseButton()">
                                 <button class="edit-btn" onclick="updateLastPax()">Update</button>
                             </div>
                         </div>
                         
-                        <!-- BUTTONS placed directly under Last Pax row (left side of right block) -->
+                        <!-- BUTTONS: SAVE ALL removed; only CLOSE / REOPEN / PRINT -->
                         <div class="action-buttons-vertical">
-                            <button id="closeFlightBtn" class="close-btn" onclick="closeFlight()">🔒 CLOSE</button>
+                            <button id="closeFlightBtn" class="close-btn" onclick="closeFlight()" disabled>🔒 CLOSE</button>
                             <button id="reopenFlightBtn" class="reopen-btn" onclick="reopenFlight()" style="display: none;">🔓 REOPEN</button>
                             <button id="printReportBtn" class="print-btn" onclick="printReport()" disabled>🖨️ PRINT</button>
-                            <button class="save-all-btn" onclick="saveFlightData()">💾 SAVE ALL</button>
                         </div>
                     </div>
                 </div>
@@ -740,7 +740,7 @@
             document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
             document.getElementById('quickShiftText').innerText = `${flightNo} | ${shift}`;
             
-            // set status UI based on isClosed (default false)
+            // set status UI based on isClosed
             if (flightData.isClosed) {
                 document.getElementById('flightStatus').textContent = 'CLOSED';
                 document.getElementById('flightStatus').className = 'flight-status status-closed';
@@ -753,10 +753,25 @@
                 document.getElementById('closeFlightBtn').style.display = 'block';
                 document.getElementById('reopenFlightBtn').style.display = 'none';
                 document.getElementById('printReportBtn').disabled = true;
+                // Validate close button based on STD and Last Pax
+                validateCloseButton();
             }
             
             document.getElementById('flightPanel').style.display = 'block';
             displayPassengerTable(flightData.passengers);
+        }
+
+        // Enable/disable close button based on STD and Last Pax values
+        function validateCloseButton() {
+            if (!currentFlightData || currentFlightData.isClosed) return;
+            const std = document.getElementById('stdInput').value;
+            const lastPax = document.getElementById('lastPaxInput').value;
+            const closeBtn = document.getElementById('closeFlightBtn');
+            if (std && lastPax) {
+                closeBtn.disabled = false;
+            } else {
+                closeBtn.disabled = true;
+            }
         }
 
         function displayPassengerTable(passengers) {
@@ -844,20 +859,76 @@
             } catch (error) { alert('Error: '+error.message); }
         }
 
-        function updateSTD() { const v = document.getElementById('stdInput').value; if(v && currentFlightData) { currentFlightData.std = v; showNotification('STD updated'); } }
-        function updateLastPax() { const v = document.getElementById('lastPaxInput').value; if(v && currentFlightData) { currentFlightData.lastPax = v; document.getElementById('lastPaxStat').textContent = v; document.getElementById('lastPaxDisplay').textContent = v; } }
+        function updateSTD() { 
+            const v = document.getElementById('stdInput').value; 
+            if(v && currentFlightData) { 
+                currentFlightData.std = v; 
+                showNotification('STD updated'); 
+                validateCloseButton();
+                // Auto-save STD to Firebase (optional, but we also save on close)
+            } 
+        }
+        function updateLastPax() { 
+            const v = document.getElementById('lastPaxInput').value; 
+            if(v && currentFlightData) { 
+                currentFlightData.lastPax = v; 
+                document.getElementById('lastPaxStat').textContent = v; 
+                document.getElementById('lastPaxDisplay').textContent = v;
+                validateCloseButton();
+            } 
+        }
 
+        // CLOSE FLIGHT: now saves all flight data to Firebase before closing
         async function closeFlight() {
-            if (!currentFlightData || !confirm('Close flight?')) return;
+            if (!currentFlightData) return;
+            
+            // Double-check STD and Last Pax are present
+            const std = document.getElementById('stdInput').value;
+            const lastPax = document.getElementById('lastPaxInput').value;
+            if (!std || !lastPax) {
+                alert('STD and Last Pax must be entered before closing the flight.');
+                return;
+            }
+            
+            // Save flight data to Firebase (including STD, LastPax, etc.)
+            await saveFlightDataToFirebase();
+            
+            // Then mark as closed
             currentFlightData.isClosed = true;
             document.getElementById('flightStatus').textContent = 'CLOSED';
             document.getElementById('flightStatus').className = 'flight-status status-closed';
             document.getElementById('closeFlightBtn').style.display = 'none';
             document.getElementById('reopenFlightBtn').style.display = 'block';
             document.getElementById('printReportBtn').disabled = false;
-            await saveFlightData();
-            alert('Flight closed');
+            
+            alert('Flight closed and data saved.');
         }
+
+        // New function to save flight data to Firebase (extracted from old saveFlightData)
+        async function saveFlightDataToFirebase() {
+            if (!currentFlightData) return;
+            try {
+                const date = document.getElementById('dateDisplay').textContent;
+                const reportId = `${currentFlightData.flightNo}_${date}`;
+                await db.collection('FlightReports').doc(reportId).set({
+                    flightNo: currentFlightData.flightNo, 
+                    date, 
+                    shift: currentFlightData.shift,
+                    airline: currentFlightData.airline, 
+                    std: currentFlightData.std || document.getElementById('stdInput').value || '',
+                    firstPax: currentFlightData.firstPax || '', 
+                    lastPax: currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '',
+                    totalPax: currentFlightData.passengers.length, 
+                    isClosed: currentFlightData.isClosed || false,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                console.log('Flight data auto-saved');
+            } catch (error) { 
+                console.error('Error saving flight data:', error); 
+                throw error;
+            }
+        }
+
         async function reopenFlight() {
             if (!currentFlightData || !confirm('Reopen flight?')) return;
             currentFlightData.isClosed = false;
@@ -866,50 +937,33 @@
             document.getElementById('closeFlightBtn').style.display = 'block';
             document.getElementById('reopenFlightBtn').style.display = 'none';
             document.getElementById('printReportBtn').disabled = true;
-            await saveFlightData();
+            validateCloseButton(); // re-evaluate close button state
+            
+            // Update Firebase with reopened status
+            await saveFlightDataToFirebase();
             alert('Flight reopened');
         }
-        async function saveFlightData() {
-            if (!currentFlightData) return;
-            try {
-                const date = document.getElementById('dateDisplay').textContent;
-                const reportId = `${currentFlightData.flightNo}_${date}`;
-                await db.collection('FlightReports').doc(reportId).set({
-                    flightNo: currentFlightData.flightNo, date, shift: currentFlightData.shift,
-                    airline: currentFlightData.airline, std: currentFlightData.std||'',
-                    firstPax: currentFlightData.firstPax||'', lastPax: currentFlightData.lastPax||'',
-                    totalPax: currentFlightData.passengers.length, isClosed: currentFlightData.isClosed||false,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-                alert('Flight data saved');
-            } catch (error) { alert('Error: '+error.message); }
-        }
 
-        // ========== REVISED PRINT FUNCTION ==========
+        // Print function (unchanged, but uses companyInfo from Co.js, logo left in print)
         function printReport() {
             if (!currentFlightData || !currentFlightData.isClosed) { alert('Flight must be closed'); return; }
 
-            // Get company info from Co.js (expected to be window.companyInfo)
             const company = window.companyInfo || { name: 'Airline Name', address: '123 Aviation Road', phone: '+123 456 7890' };
             
-            // Format date nicely (assuming YYYY-MM-DD)
             const dateStr = document.getElementById('dateDisplay').textContent; 
             const dateParts = dateStr.split('-');
             const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
 
-            // Get flight values
             const airline = currentFlightData.airline || '—';
             const flightNo = currentFlightData.flightNo || '—';
-            const std = currentFlightData.std || '—';
+            const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
             const firstPax = currentFlightData.firstPax || '—';
-            const lastPax = currentFlightData.lastPax || '—';
+            const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
             const shift = currentFlightData.shift || '—';
             
-            // Calculate total PAX (sum of pax field)
             const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
             const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
 
-            // Begin print HTML
             let html = `<!DOCTYPE html>
 <html>
 <head>
@@ -925,7 +979,7 @@
             margin-bottom: 20px;
         }
         .logo-section {
-            text-align: right;
+            text-align: left;
         }
         .logo-img {
             max-height: 70px;
@@ -947,41 +1001,22 @@
             border-radius: 8px;
             background: #fefaf2;
         }
-        .left-flight {
+        .left-flight, .right-flight {
             display: flex;
             flex-direction: column;
             gap: 8px;
         }
-        .left-flight div {
+        .left-flight div, .right-flight div {
             display: flex;
             align-items: baseline;
         }
-        .left-flight .label {
-            font-weight: 600;
-            color: #8b6913;
-            width: 70px;
-            font-size: 12px;
-        }
-        .left-flight .value {
-            font-weight: 500;
-            color: #2c3e50;
-        }
-        .right-flight {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .right-flight div {
-            display: flex;
-            align-items: baseline;
-        }
-        .right-flight .label {
+        .left-flight .label, .right-flight .label {
             font-weight: 600;
             color: #8b6913;
             width: 80px;
             font-size: 12px;
         }
-        .right-flight .value {
+        .left-flight .value, .right-flight .value {
             font-weight: 500;
             color: #2c3e50;
         }
@@ -1025,9 +1060,7 @@
     </style>
 </head>
 <body>
-    <!-- header with logo on right and company address under logo -->
     <div class="report-header">
-        <div></div> <!-- empty left for spacing -->
         <div class="logo-section">
             <img src="macl.png" alt="MACL Logo" class="logo-img" onerror="this.style.display='none'">
             <div class="company-details">
@@ -1035,9 +1068,9 @@
                 ${company.phone || ''}
             </div>
         </div>
+        <div></div> <!-- empty right for spacing -->
     </div>
     
-    <!-- flight info grid: left side Airline / FlightNo / Date ; right side STD / First Pax / Last Pax / Shift -->
     <div class="flight-info-grid">
         <div class="left-flight">
             <div><span class="label">Airline:</span><span class="value"> ${airline}</span></div>
@@ -1052,12 +1085,10 @@
         </div>
     </div>
     
-    <!-- total pax line (under the grid, on the right) -->
     <div class="total-pax-row">
         TOTAL PASSENGERS: <strong>${totalPaxSum}</strong>
     </div>
     
-    <!-- passenger list table -->
     <table>
         <thead>
             <tr><th>#</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th></tr>
@@ -1104,10 +1135,10 @@
         // global functions
         window.loadDates = loadDates; window.onDateSelected = onDateSelected; window.onFlightSelected = onFlightSelected;
         window.updateSTD = updateSTD; window.updateLastPax = updateLastPax; window.closeFlight = closeFlight;
-        window.reopenFlight = reopenFlight; window.saveFlightData = saveFlightData; window.printReport = printReport;
+        window.reopenFlight = reopenFlight; window.printReport = printReport;
         window.fetchOpenShift = fetchOpenShift; window.startEdit = startEdit; window.cancelEdit = cancelEdit;
         window.savePassenger = savePassenger; window.confirmDelete = confirmDelete; window.onSeatChange = onSeatChange;
-        window.onPaxChange = onPaxChange; window.updatePaxFromSeat = updatePaxFromSeat;
+        window.onPaxChange = onPaxChange; window.updatePaxFromSeat = updatePaxFromSeat; window.validateCloseButton = validateCloseButton;
     </script>
 </body>
 </html>
