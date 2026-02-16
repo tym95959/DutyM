@@ -879,7 +879,42 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// ========== INLINE EDITING FUNCTIONS WITH IMPROVED PAX LOGIC ==========
+// ========== IMPROVED PAX CALCULATION FUNCTION - COUNTS ALPHABETICAL LETTERS ==========
+
+function calculatePaxFromSeat(seatNo) {
+    if (!seatNo || seatNo.trim() === '') {
+        return 0; // No seat = 0 PAX
+    }
+    
+    // Remove all spaces and convert to uppercase
+    const cleanSeat = seatNo.replace(/\s/g, '').toUpperCase();
+    
+    console.log('Calculating PAX from seat:', cleanSeat);
+    
+    // Count all alphabetical letters (A-Z) in the string
+    // This handles formats like:
+    // "1A" -> 1 letter -> 1 PAX
+    // "1AB" -> 2 letters -> 2 PAX
+    // "1AB/2A" -> 3 letters (A,B,A) -> 3 PAX
+    // "1AB3BC" -> 4 letters (A,B,B,C) -> 4 PAX
+    // "12A/34B/56C" -> 3 letters -> 3 PAX
+    // "1A,2B,3C" -> 3 letters -> 3 PAX
+    
+    const letters = cleanSeat.match(/[A-Z]/g);
+    const letterCount = letters ? letters.length : 0;
+    
+    console.log(`Found ${letterCount} letters in seat string`);
+    
+    // If no letters found but there are numbers, assume 1 passenger
+    if (letterCount === 0 && cleanSeat.match(/\d/)) {
+        console.log('No letters found but numbers present - assuming 1 passenger');
+        return 1;
+    }
+    
+    return letterCount;
+}
+
+// ========== INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE ==========
 
 function makeEditable(cell, entryId, field, isSaved = false) {
     // Don't allow editing if already editing another cell
@@ -935,15 +970,15 @@ function makeEditable(cell, entryId, field, isSaved = false) {
         }, 200);
     });
     
-    // Special handling for seat field - auto-calculate PAX in real-time with preview
+    // Special handling for seat field - auto-calculate PAX in real-time
     if (field === 'seatNo') {
         input.addEventListener('input', function() {
             this.value = this.value.toUpperCase();
             
-            // Find the PAX cell in the same row and update preview
+            // Find the PAX cell in the same row
             const row = this.closest('tr');
             if (row) {
-                // Find the PAX cell (7th cell for pending table with guest checkbox, 6th for without)
+                // Find the PAX cell (7th cell for pending table with guest checkbox, 6th for saved)
                 const isPendingWithGuest = row.querySelector('.guest-checkbox') !== null;
                 const paxCellIndex = isPendingWithGuest ? 7 : 6;
                 const paxCell = row.cells[paxCellIndex];
@@ -955,7 +990,7 @@ function makeEditable(cell, entryId, field, isSaved = false) {
                     paxCell.setAttribute('data-preview', calculatedPax);
                     paxCell.style.backgroundColor = '#fff3cd';
                     
-                    // Add preview indicator
+                    // Add or update preview indicator
                     let previewSpan = paxCell.querySelector('.pax-preview');
                     if (!previewSpan) {
                         previewSpan = document.createElement('span');
@@ -1016,39 +1051,28 @@ function saveInlineEdit(input) {
         return;
     }
     
-    // Get the row for additional context
-    const row = input.closest('tr');
-    
     // Handle different field types
     if (field === 'seatNo') {
-        // Calculate PAX from new seat
+        // Calculate PAX from new seat (counts alphabetical letters)
         const calculatedPax = calculatePaxFromSeat(newValue);
         
-        // If seat is empty/deleted, set PAX to 0
+        // Update seat
+        entry.seatNo = newValue;
+        
+        // Auto-update PAX based on seat
         if (newValue === '') {
-            entry.seatNo = '';
+            // If seat is empty, set PAX to 0
             entry.pax = '0';
             showTemporaryNotification('✓ Seat removed - PAX set to 0', 'info');
         } 
-        // If seat has value and PAX is empty or 0, auto-update
-        else if (calculatedPax > 0 && (!entry.pax || parseInt(entry.pax) === 0)) {
-            entry.seatNo = newValue;
+        else if (calculatedPax > 0) {
+            // Always update PAX to match the seat count
+            const oldPax = entry.pax || '0';
             entry.pax = calculatedPax.toString();
-            showTemporaryNotification(`✓ PAX auto-updated to ${calculatedPax}`, 'success');
-        }
-        // If both have values but don't match
-        else if (calculatedPax > 0 && entry.pax && parseInt(entry.pax) !== calculatedPax) {
-            const confirmUpdate = confirm(`Seat ${newValue} indicates ${calculatedPax} PAX, but current PAX is ${entry.pax}. Update PAX to match seat?`);
-            if (confirmUpdate) {
-                entry.seatNo = newValue;
-                entry.pax = calculatedPax.toString();
-                showTemporaryNotification(`✓ PAX updated to ${calculatedPax}`, 'success');
-            } else {
-                entry.seatNo = newValue;
-                showTemporaryNotification(`⚠ PAX (${entry.pax}) does not match seat (${calculatedPax})`, 'warning');
+            
+            if (oldPax !== calculatedPax.toString()) {
+                showTemporaryNotification(`✓ PAX auto-updated from ${oldPax} to ${calculatedPax} based on seat`, 'success');
             }
-        } else {
-            entry.seatNo = newValue;
         }
     }
     else if (field === 'pax') {
@@ -1108,48 +1132,6 @@ function cancelEditing() {
         cell.textContent = originalValue || '—';
         editingCell = null;
     }
-}
-
-// ========== IMPROVED PAX CALCULATION FUNCTION ==========
-
-function calculatePaxFromSeat(seatNo) {
-    if (!seatNo || seatNo.trim() === '') {
-        return 0; // No seat = 0 PAX
-    }
-    
-    // Remove any spaces and convert to uppercase
-    const cleanSeat = seatNo.replace(/\s/g, '').toUpperCase();
-    
-    // Pattern 1: Standard format like "12A", "34B", "56C" - count letters at the end
-    const letters = cleanSeat.match(/[A-Z]+$/);
-    if (letters) {
-        return letters[0].length;
-    }
-    
-    // Pattern 2: Range format like "1-5" or "10-15"
-    const rangeMatch = cleanSeat.match(/^(\d+)[-\s](\d+)$/);
-    if (rangeMatch) {
-        const start = parseInt(rangeMatch[1]);
-        const end = parseInt(rangeMatch[2]);
-        if (!isNaN(start) && !isNaN(end) && end >= start) {
-            return (end - start) + 1;
-        }
-    }
-    
-    // Pattern 3: Multiple seats like "12A,12B" or "12A 12B"
-    const multipleMatch = cleanSeat.split(/[,\s]+/);
-    if (multipleMatch.length > 1) {
-        return multipleMatch.length;
-    }
-    
-    // Pattern 4: Just a number (like "12") - assume 1 passenger
-    if (/^\d+$/.test(cleanSeat)) {
-        return 1;
-    }
-    
-    // Default: count any letters in the string
-    const allLetters = cleanSeat.match(/[A-Z]/g);
-    return allLetters ? allLetters.length : 1; // Default to 1 if we can't determine
 }
 
 // ========== HIDDEN CODE SAVING ==========
@@ -1259,6 +1241,9 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         
         const mainPassenger = pendingPasses[mainPassengerIndex];
         
+        // Calculate PAX for guest based on their seat
+        const guestPax = calculatePaxFromSeat(guestData.seatNo) || 1;
+        
         const guestEntry = {
             ...guestData,
             id: generateId(),
@@ -1273,7 +1258,7 @@ function addGuestToPassenger(mainPassengerId, guestData) {
             seatNo: guestData.seatNo || '',
             class: guestData.class || '',
             airline: guestData.airline || '',
-            pax: '1', // Guest always starts with 1 PAX
+            pax: guestPax.toString(), // Set PAX based on guest's seat
             remarks: guestData.remarks || '',
             date: guestData.date || '',
             shift: guestData.shift || '',
@@ -1283,9 +1268,9 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         
         pendingPasses.push(guestEntry);
         
-        // Update main passenger's PAX count
+        // Update main passenger's PAX count by adding guest's PAX
         const currentPax = parseInt(mainPassenger.pax) || 0;
-        mainPassenger.pax = (currentPax + 1).toString();
+        mainPassenger.pax = (currentPax + guestPax).toString();
         
         savePendingToLocalStorage();
         
@@ -1639,13 +1624,13 @@ async function approveEntry(id) {
         
         const entry = pendingPasses[entryIndex];
         
-        // Validate PAX against seat
+        // Validate PAX against seat (count letters)
         const calculatedPax = calculatePaxFromSeat(entry.seatNo);
         const currentPax = parseInt(entry.pax) || 0;
         
-        // If there's a seat but PAX doesn't match
+        // If there's a seat but PAX doesn't match, offer to update
         if (entry.seatNo && entry.seatNo.trim() !== '' && calculatedPax > 0 && currentPax !== calculatedPax) {
-            const confirmUpdate = confirm(`Seat ${entry.seatNo} indicates ${calculatedPax} PAX, but current PAX is ${currentPax}. Update PAX to ${calculatedPax}?`);
+            const confirmUpdate = confirm(`Seat "${entry.seatNo}" contains ${calculatedPax} letters = ${calculatedPax} PAX, but current PAX is ${currentPax}. Update PAX to ${calculatedPax}?`);
             if (confirmUpdate) {
                 entry.pax = calculatedPax.toString();
             } else {
@@ -2145,9 +2130,8 @@ function addToTable(data) {
         }
     }
     
-    // Ensure PAX has a default value if not set
+    // Ensure PAX is calculated from seat if not set
     if (!upperData.pax || upperData.pax === '') {
-        // If there's a seat, calculate PAX, otherwise default to 0
         if (upperData.seatNo && upperData.seatNo.trim() !== '') {
             upperData.pax = calculatePaxFromSeat(upperData.seatNo).toString();
         } else {
@@ -2281,8 +2265,8 @@ function parseAndAddToList() {
                 }
             }
             
-            // Calculate PAX from seat (default to 0 if no seat)
-            const paxCount = seatNo ? calculatePaxFromSeat(seatNo) : 0;
+            // Calculate PAX by counting letters in seat
+            const paxCount = calculatePaxFromSeat(seatNo);
             
             parsedEntry = {
                 pName: namePart || '',
@@ -2378,8 +2362,8 @@ function parseAndAddToList() {
                 }
             }
             
-            // Calculate PAX from seat (default to 0 if no seat)
-            const paxCount = seatNo ? calculatePaxFromSeat(seatNo) : 0;
+            // Calculate PAX by counting letters in seat
+            const paxCount = calculatePaxFromSeat(seatNo);
             
             // Parse FQTV for M1/M2 codes
             let fqtvValue = '';
@@ -2402,7 +2386,7 @@ function parseAndAddToList() {
                     let shouldProcess = false;
                     
                     if (flightNoPrefix) {
-                        // EK special case
+                        // Airline-specific parsing (kept from original)
                         if (flightNoPrefix === 'EK') {
                             if (fourthLastWord === 'EK') {
                                 fqtvNumber = fourthLastWord + '-' + thirdLastWord;
@@ -2411,17 +2395,14 @@ function parseAndAddToList() {
                             }
                             shouldProcess = true;
                         }
-                        // AZ special case
                         else if (flightNoPrefix === 'AZ' && thirdLastWord === 'AZ') {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // AI special case
                         else if (flightNoPrefix === 'AI' && fourthLastWord && fourthLastWord.length === 2) {
                             fqtvNumber = fourthLastWord + '-' + thirdLastWord;
                             shouldProcess = true;
                         }
-                        // OS special case
                         else if (flightNoPrefix === 'OS' && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
@@ -2430,83 +2411,67 @@ function parseAndAddToList() {
                             fqtvNumber = fourthLastWord + '-' + thirdLastWord;
                             shouldProcess = true;
                         }
-                        // SV special case
                         else if (flightNoPrefix === 'SV' && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // MH special case
                         else if (flightNoPrefix === 'MH' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // WK special case
                         else if (flightNoPrefix === 'WK' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // FZ special case
                         else if (flightNoPrefix === 'FZ' && secondLastWord && secondLastWord.length === 2) {
                             fqtvNumber = secondLastWord + '-' + lastWord;
                             shouldProcess = true;
                         }
-                        // QR special case
                         else if (flightNoPrefix === 'QR' && thirdLastWord && thirdLastWord.length === 2 && 
                                 ['N1', 'N2', 'N3'].includes(lastWord)) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // EY special case
                         else if (flightNoPrefix === 'EY' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // SQ special case
                         else if (flightNoPrefix === 'SQ' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // TG special case
                         else if (flightNoPrefix === 'TG' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // BA special case
                         else if (flightNoPrefix === 'BA' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // AF special case
                         else if (flightNoPrefix === 'AF' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // LH special case
                         else if (flightNoPrefix === 'LH' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // UL special case
                         else if (flightNoPrefix === 'UL' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // 3K special case
                         else if (flightNoPrefix === '3K' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // AK special case
                         else if (flightNoPrefix === 'AK' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // FD special case
                         else if (flightNoPrefix === 'FD' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        // QZ special case
                         else if (flightNoPrefix === 'QZ' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
