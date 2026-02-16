@@ -2017,7 +2017,7 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
     }
 }
 
-// ========== FLIGHT STATUS CHECK FUNCTION ==========
+// ========== FLIGHT STATUS CHECK FUNCTION - ONLY BLOCK IF EXPLICITLY CLOSED ==========
 async function isFlightOpen(flightNo, date) {
     try {
         if (typeof db === 'undefined') {
@@ -2034,12 +2034,13 @@ async function isFlightOpen(flightNo, date) {
         const snapshot = await query.get();
         
         if (snapshot.empty) {
-            console.log(`Flight ${flightNo} on ${date} not found in flights collection`);
+            console.log(`Flight ${flightNo} on ${date} not found in flights collection - ALLOWING SAVE (not explicitly closed)`);
+            // Flight not found = not closed = allow saving
             return { 
-                isOpen: false, 
-                error: 'FLIGHT_NOT_FOUND', 
+                isOpen: true, 
+                error: null, 
                 status: 'NOT_FOUND',
-                message: `Flight ${flightNo} on ${date} is not registered in the system`
+                message: `Flight ${flightNo} on ${date} not registered - allowing save`
             };
         }
         
@@ -2050,43 +2051,45 @@ async function isFlightOpen(flightNo, date) {
         });
         
         if (!flightData) {
+            // No data but document exists? Allow save
             return { 
-                isOpen: false, 
-                error: 'FLIGHT_DATA_ERROR', 
-                status: 'ERROR',
-                message: `Unable to retrieve flight data for ${flightNo} on ${date}`
+                isOpen: true, 
+                error: null, 
+                status: 'UNKNOWN',
+                message: `Flight data error but allowing save`
             };
         }
         
-        // Check flight status - looking for 'OPEN' status
-        const status = flightData.status || flightData.flightStatus || '';
-        const isOpen = status.toUpperCase() === 'OPEN';
+        // Check flight status - ONLY block if explicitly CLOSED
+        const status = (flightData.status || flightData.flightStatus || '').toUpperCase();
         
-        if (!isOpen) {
-            console.log(`Flight ${flightNo} on ${date} is ${status}`);
+        if (status === 'CLOSED') {
+            console.log(`Flight ${flightNo} on ${date} is explicitly CLOSED - blocking save`);
             return { 
                 isOpen: false, 
                 error: 'FLIGHT_CLOSED', 
                 status: status,
-                message: `Flight ${flightNo} on ${date} is ${status || 'CLOSED'}`
+                message: `Flight ${flightNo} on ${date} is CLOSED`
             };
         }
         
-        console.log(`Flight ${flightNo} on ${date} is OPEN - OK to save`);
+        // Any other status (OPEN, SCHEDULED, DELAYED, NOT_FOUND, etc.) - allow save
+        console.log(`Flight ${flightNo} on ${date} status: ${status || 'UNKNOWN'} - allowing save`);
         return { 
             isOpen: true, 
             error: null, 
-            status: 'OPEN',
-            message: 'Flight is open'
+            status: status || 'UNKNOWN',
+            message: `Flight is ${status || 'not closed'} - allowing save`
         };
         
     } catch (error) {
         console.error('Error checking flight status:', error);
+        // On database error, allow save but log error
         return { 
-            isOpen: false, 
+            isOpen: true, 
             error: 'DATABASE_ERROR', 
             status: 'ERROR',
-            message: `Database error: ${error.message}`
+            message: `Database error but allowing save: ${error.message}`
         };
     }
 }
