@@ -1570,12 +1570,79 @@ function calculatePaxFromSeat(seatNo, flightNo = '') {
     return letterCount;
 }
 
+// ========== ENHANCED CHECK PASSENGER EXISTS - PROPER DUPLICATE DETECTION ==========
+async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = false, excludeId = null) {
+    try {
+        if (typeof db === 'undefined') {
+            console.error('db not initialized');
+            return { exists: false, matches: [], error: 'Database not initialized' };
+        }
+        
+        const collectionRef = db.collection('KoveliPass');
+        
+        // Query for same flight and date
+        let query = collectionRef
+            .where('flightNo', '==', flightNo)
+            .where('date', '==', date);
+        
+        const snapshot = await query.get();
+        
+        if (snapshot.empty) {
+            return { exists: false, matches: [] };
+        }
+        
+        const matches = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            
+            // Skip if this is the same entry we're updating (for edit cases)
+            if (excludeId && doc.id === excludeId) {
+                return;
+            }
+            
+            // For non-guest entries: Check for SAME NAME AND SAME SEAT (strict duplicate)
+            if (!isGuest) {
+                // Both name AND seat must match to be considered a duplicate
+                const nameMatch = data.pName && data.pName.toUpperCase() === pName.toUpperCase();
+                const seatMatch = data.seatNo && data.seatNo.toUpperCase() === seatNo.toUpperCase();
+                
+                if (nameMatch && seatMatch) {
+                    matches.push({
+                        id: doc.id,
+                        ...data
+                    });
+                }
+            } else {
+                // For guests: only check if they're trying to be a guest of the same main passenger
+                // This is less strict - we only care about preventing exact duplicates
+                if (data.pName && data.pName.toUpperCase() === pName.toUpperCase() && 
+                    data.seatNo && data.seatNo.toUpperCase() === seatNo.toUpperCase()) {
+                    matches.push({
+                        id: doc.id,
+                        ...data
+                    });
+                }
+            }
+        });
+        
+        if (matches.length > 0) {
+            return { exists: true, matches };
+        }
+        
+        return { exists: false, matches: [] };
+        
+    } catch (error) {
+        console.error('Error checking passenger existence:', error);
+        return { exists: false, matches: [], error: error.message };
+    }
+}
+
 // ========== FLIGHT STATUS CHECK FUNCTION ==========
 async function isFlightOpen(flightNo, date) {
     try {
         if (typeof db === 'undefined') {
             console.error('db not initialized');
-            return { isOpen: false, error: 'Database not initialized', status: null };
+            return { isOpen: false, error: 'Database not initialized', status: null, message: 'Database not initialized' };
         }
         
         // Query the flights collection for this flight number and date
@@ -1590,9 +1657,9 @@ async function isFlightOpen(flightNo, date) {
             console.log(`Flight ${flightNo} on ${date} not found in flights collection`);
             return { 
                 isOpen: false, 
-                error: 'FLIGHT NOT FOUND IN SYSTEM', 
+                error: 'FLIGHT_NOT_FOUND', 
                 status: 'NOT_FOUND',
-                message: `Flight ${flightNo} on ${date} is not registered in the system. Please check flight number and date.`
+                message: `Flight ${flightNo} on ${date} is not registered in the system`
             };
         }
         
@@ -1605,13 +1672,13 @@ async function isFlightOpen(flightNo, date) {
         if (!flightData) {
             return { 
                 isOpen: false, 
-                error: 'FLIGHT DATA ERROR', 
+                error: 'FLIGHT_DATA_ERROR', 
                 status: 'ERROR',
                 message: `Unable to retrieve flight data for ${flightNo} on ${date}`
             };
         }
         
-        // Check flight status - assuming flight has a 'status' field that can be 'OPEN', 'CLOSED', etc.
+        // Check flight status - looking for 'OPEN' status
         const status = flightData.status || flightData.flightStatus || '';
         const isOpen = status.toUpperCase() === 'OPEN';
         
@@ -1619,9 +1686,9 @@ async function isFlightOpen(flightNo, date) {
             console.log(`Flight ${flightNo} on ${date} is ${status}`);
             return { 
                 isOpen: false, 
-                error: 'FLIGHT CLOSED', 
+                error: 'FLIGHT_CLOSED', 
                 status: status,
-                message: `Flight ${flightNo} on ${date} is ${status || 'CLOSED'}. Cannot save boarding passes for closed flights.`
+                message: `Flight ${flightNo} on ${date} is ${status || 'CLOSED'}`
             };
         }
         
@@ -1637,75 +1704,10 @@ async function isFlightOpen(flightNo, date) {
         console.error('Error checking flight status:', error);
         return { 
             isOpen: false, 
-            error: 'DATABASE ERROR', 
+            error: 'DATABASE_ERROR', 
             status: 'ERROR',
-            message: `Error checking flight status: ${error.message}`
+            message: `Database error: ${error.message}`
         };
-    }
-}
-
-// ========== MODIFIED CHECK PASSENGER EXISTS - ALLOW GUESTS WITH SAME SEAT/NAME ==========
-
-async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = false) {
-    try {
-        if (typeof db === 'undefined') {
-            console.error('db not initialized');
-            return { exists: false, matches: [], error: 'Database not initialized' };
-        }
-        
-        const collectionRef = db.collection('KoveliPass');
-        
-        let query = collectionRef
-            .where('flightNo', '==', flightNo)
-            .where('date', '==', date);
-        
-        const snapshot = await query.get();
-        
-        if (snapshot.empty) {
-            return { exists: false, matches: [] };
-        }
-        
-        const matches = [];
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            
-            // Check if this is a match based on seatNo OR pName
-            let isMatch = false;
-            
-            // For seat matching - only if seatNo is not null, empty, or '-'
-            if (seatNo && seatNo.trim() !== '' && seatNo !== '-') {
-                if (data.seatNo === seatNo) {
-                    isMatch = true;
-                }
-            }
-            
-            // Always check name match regardless of seat
-            if (data.pName === pName) {
-                isMatch = true;
-            }
-            
-            if (isMatch) {
-                matches.push({
-                    id: doc.id,
-                    ...data
-                });
-            }
-        });
-        
-        if (matches.length > 0) {
-            // If this is a guest entry, we don't care about duplicates - allow saving
-            if (isGuest) {
-                console.log('⚠️ Guest entry with potential duplicate found, but allowing save');
-                return { exists: false, matches: [], isGuest: true }; // Return false to allow save
-            }
-            return { exists: true, matches };
-        }
-        
-        return { exists: false, matches: [] };
-        
-    } catch (error) {
-        console.error('Error checking passenger existence:', error);
-        return { exists: false, matches: [], error: error.message };
     }
 }
 
@@ -2308,7 +2310,7 @@ function updateShiftDisplay() {
     }
 }
 
-// ========== MODIFIED FIREBASE SAVE FUNCTIONS WITH AUTO-REMOVE AFTER SUCCESS ==========
+// ========== FIREBASE SAVE FUNCTIONS WITH PROPER ERROR HANDLING ==========
 
 async function saveEntryToFirebase(entry) {
     try {
@@ -2317,6 +2319,28 @@ async function saveEntryToFirebase(entry) {
         if (typeof db === 'undefined') {
             console.error('db not initialized');
             return { success: false, error: 'Database not initialized', reason: 'DB_NOT_INITIALIZED' };
+        }
+        
+        // CRITICAL: Check for duplicates first (for non-guest entries)
+        if (!entry.isGuest) {
+            const checkResult = await checkPassengerExists(
+                entry.flightNo,
+                entry.date,
+                entry.seatNo || '',
+                entry.pName || '',
+                false // isGuest = false
+            );
+            
+            if (checkResult.exists) {
+                const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
+                console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
+                return { 
+                    success: false, 
+                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists for flight ${entry.flightNo} on ${entry.date}`,
+                    reason: 'DUPLICATE',
+                    duplicates: checkResult.matches
+                };
+            }
         }
         
         // Check if flight is open before saving
@@ -2334,31 +2358,10 @@ async function saveEntryToFirebase(entry) {
             }
         } else {
             console.warn('⚠️ Cannot check flight status: Missing flight number or date');
-            // Allow save but warn
+            // Still allow save but warn
         }
         
-        // Check for duplicates (unless it's a guest)
-        if (!entry.isGuest) {
-            const checkResult = await checkPassengerExists(
-                entry.flightNo,
-                entry.date,
-                entry.seatNo || '',
-                entry.pName || '',
-                entry.isGuest || false
-            );
-            
-            if (checkResult.exists) {
-                const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
-                console.warn('⚠️ Duplicate passenger found:', duplicateInfo);
-                return { 
-                    success: false, 
-                    error: `Duplicate entry found: This passenger (${entry.pName}) with seat ${entry.seatNo || 'unknown'} already exists for flight ${entry.flightNo} on ${entry.date}`,
-                    reason: 'DUPLICATE',
-                    duplicates: checkResult.matches
-                };
-            }
-        }
-        
+        // Clean the entry for Firebase
         const cleanEntry = {};
         
         Object.keys(entry).forEach(key => {
@@ -2369,12 +2372,6 @@ async function saveEntryToFirebase(entry) {
                     cleanEntry.isGuest = false;
                 } else if (key === 'approved') {
                     cleanEntry.approved = false;
-                } else if (key === 'firebaseStatus') {
-                    cleanEntry.firebaseStatus = 'pending';
-                } else if (key === 'firebaseSaved') {
-                    cleanEntry.firebaseSaved = false;
-                } else if (key === 'firebaseRetry') {
-                    cleanEntry.firebaseRetry = false;
                 } else {
                     cleanEntry[key] = '';
                 }
@@ -2385,7 +2382,8 @@ async function saveEntryToFirebase(entry) {
             }
         });
         
-        const requiredFields = [ 'pName', 'flightNo', 'seatNo', 'class', 'airline', 'FQTV', 'pax','serialNo', 'remarks', 'date', 'shift', 'entryTime'];
+        // Ensure required fields exist
+        const requiredFields = ['pName', 'flightNo', 'seatNo', 'class', 'airline', 'FQTV', 'pax', 'serialNo', 'remarks', 'date', 'shift', 'entryTime'];
         requiredFields.forEach(field => {
             if (cleanEntry[field] === undefined) {
                 cleanEntry[field] = '';
@@ -2401,15 +2399,17 @@ async function saveEntryToFirebase(entry) {
         
         cleanEntry.isGuest = cleanEntry.isGuest === true ? true : false;
         cleanEntry.approved = cleanEntry.approved === true ? true : false;
-        cleanEntry.firebaseSaved = cleanEntry.firebaseSaved === true ? true : false;
-        cleanEntry.firebaseRetry = cleanEntry.firebaseRetry === true ? true : false;
-        cleanEntry.firebaseStatus = cleanEntry.firebaseStatus || 'pending';
         
+        // Remove local-only fields
         delete cleanEntry.firebaseId;
         delete cleanEntry.id;
+        delete cleanEntry.firebaseStatus;
+        delete cleanEntry.firebaseError;
+        delete cleanEntry.firebaseReason;
         
         const collectionRef = db.collection('KoveliPass');
         
+        // Create a unique document ID
         const seatForId = cleanEntry.seatNo ? cleanEntry.seatNo.replace(/[^A-Z0-9]/g, '') : 'noseat';
         const serialForId = cleanEntry.serialNo ? cleanEntry.serialNo.replace(/[^A-Z0-9]/g, '') : 'noserial';
         const docId = `${cleanEntry.date}_${cleanEntry.flightNo}_${seatForId}_${serialForId}_${Date.now()}`;
@@ -2435,14 +2435,10 @@ async function saveEntryToFirebase(entry) {
     }
 }
 
-// Modified backgroundSaveToFirebase - NOW REMOVES FROM LOCAL STORAGE ON SUCCESS
+// Background save to Firebase - REMOVES FROM LOCAL STORAGE ON SUCCESS
 async function backgroundSaveToFirebase(entry) {
     try {
         console.log('Starting background save for entry:', entry.id);
-        
-        if (entry.firebaseSaved || entry.firebaseStatus === 'success') {
-            return { success: true, skipped: true };
-        }
         
         // Update status to saving
         const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
@@ -2485,12 +2481,12 @@ async function backgroundSaveToFirebase(entry) {
             // Show specific error message based on reason
             if (saveResult.reason === 'DUPLICATE') {
                 showTemporaryNotification(`❌ DUPLICATE: ${saveResult.error}`, 'error');
-            } else if (saveResult.reason === 'FLIGHT CLOSED') {
+            } else if (saveResult.reason === 'FLIGHT_CLOSED') {
                 showTemporaryNotification(`❌ FLIGHT CLOSED: ${saveResult.error}`, 'error');
-            } else if (saveResult.reason === 'FLIGHT NOT FOUND IN SYSTEM') {
+            } else if (saveResult.reason === 'FLIGHT_NOT_FOUND') {
                 showTemporaryNotification(`❌ FLIGHT NOT FOUND: ${saveResult.error}`, 'error');
             } else {
-                showTemporaryNotification(`❌ Firebase save failed: ${saveResult.error}`, 'error');
+                showTemporaryNotification(`❌ Save failed: ${saveResult.error}`, 'error');
             }
         }
         
@@ -2508,11 +2504,11 @@ async function backgroundSaveToFirebase(entry) {
             renderTables();
         }
         
-        showTemporaryNotification(`❌ Firebase save error: ${error.message}`, 'error');
+        showTemporaryNotification(`❌ Save error: ${error.message}`, 'error');
     }
 }
 
-// ========== MODIFIED APPROVE ENTRY FUNCTION - MOVES TO SAVED TAB FIRST, THEN SAVES TO FIREBASE ==========
+// ========== APPROVE ENTRY FUNCTION - MOVES TO SAVED TAB FIRST, THEN SAVES TO FIREBASE ==========
 
 async function approveEntry(id) {
     try {
@@ -2521,7 +2517,7 @@ async function approveEntry(id) {
         
         const entry = pendingPasses[entryIndex];
         
-        // PAX validation checks (keep these)
+        // PAX validation checks
         const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
         
@@ -2587,7 +2583,7 @@ async function approveEntry(id) {
             date: dateToUse,
             shift: shiftToUse,
             approved: true, 
-            firebaseStatus: 'pending', // Will try to save to Firebase
+            firebaseStatus: 'pending',
             firebaseSaved: false,
             firebaseRetry: false,
             firebaseError: null,
@@ -2597,7 +2593,7 @@ async function approveEntry(id) {
             mainPassengerId: entry.mainPassengerId || '',
             mainPassengerName: entry.mainPassengerName || '',
             mainPassengerSeat: entry.mainPassengerSeat || '',
-            // Ensure user tracking is present in approved entry
+            // Ensure user tracking is present
             enteredBy: entry.enteredBy || currentUser.name || currentUser.username || 'UNKNOWN',
             enteredByUsername: entry.enteredByUsername || currentUser.username || 'UNKNOWN',
             enteredByRCNo: entry.enteredByRCNo || currentUser.rcno || 'N/A',
@@ -2925,7 +2921,7 @@ function renderSavedTable() {
         
         // Add warning class based on error type
         if (entry.firebaseError) {
-            if (entry.firebaseReason === 'FLIGHT CLOSED' || entry.firebaseReason === 'FLIGHT NOT FOUND IN SYSTEM') {
+            if (entry.firebaseReason === 'FLIGHT_CLOSED' || entry.firebaseReason === 'FLIGHT_NOT_FOUND') {
                 row.classList.add('flight-closed-warning');
             } else if (entry.firebaseReason === 'DUPLICATE') {
                 row.classList.add('duplicate-warning');
@@ -3192,7 +3188,7 @@ function showTemporaryNotification(message, type = 'info') {
         setTimeout(() => {
             statusMsg.textContent = '';
             statusMsg.style.color = '#6b8e23';
-        }, 5000); // Increased to 5 seconds for error messages
+        }, 5000);
     }
 }
 
