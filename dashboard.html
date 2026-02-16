@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Koveli Lounge</title>
+    <title>Aviation Dashboard - Golden Line</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -348,54 +348,6 @@
             font-weight: 600;
         }
 
-        /* Quick Stats */
-        .quick-stats {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-bottom: 25px;
-        }
-
-        .stat-card {
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            box-shadow: 0 3px 15px rgba(230, 184, 0, 0.1);
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            border: 1px solid rgba(230, 184, 0, 0.2);
-        }
-
-        .stat-icon {
-            width: 50px;
-            height: 50px;
-            background: linear-gradient(135deg, #fff9e6, #fff2d7);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            color: #e6b800;
-            border: 2px solid #e6b80030;
-        }
-
-        .stat-content {
-            flex: 1;
-        }
-
-        .stat-value {
-            font-size: 24px;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 3px;
-        }
-
-        .stat-label {
-            color: #8b6913;
-            font-size: 12px;
-        }
-
         /* Flight Stats Grid */
         .flight-stats {
             display: grid;
@@ -530,18 +482,10 @@
             .dashboard-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
-            
-            .quick-stats {
-                grid-template-columns: repeat(2, 1fr);
-            }
         }
 
         @media (max-width: 768px) {
             .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .quick-stats {
                 grid-template-columns: 1fr;
             }
             
@@ -575,7 +519,7 @@
     <!-- Top Navigation -->
     <div class="top-nav">
         <div class="nav-left">
-            <div class="logo">✈ Koveli Lounge</div>
+            <div class="logo">✈ GOLDEN LINE AVIATION</div>
             <div class="shift-indicator">
                 <span class="shift-badge" id="shiftType">LOADING...</span>
                 <span class="shift-date" id="shiftDate">--</span>
@@ -592,10 +536,10 @@
                 </div>
                 <!-- Dropdown Menu -->
                 <div class="user-dropdown">
-                    <div class="dropdown-item">
+                    <div class="dropdown-item" onclick="showProfile()">
                         <span>👤</span> My Profile
                     </div>
-                    <div class="dropdown-item">
+                    <div class="dropdown-item" onclick="showSettings()">
                         <span>⚙️</span> Settings
                     </div>
                     <div class="dropdown-divider"></div>
@@ -724,47 +668,100 @@
         let currentShift = null;
         let refreshInterval;
         let currentUser = null;
+        let sessionCheckInterval;
+        let lastActivity = Date.now();
 
-        // ========== INITIALIZATION ==========
-        document.addEventListener('DOMContentLoaded', function() {
-            // Load user data from localStorage first
-            loadUserFromStorage();
+        // ========== SESSION MANAGEMENT ==========
+        function checkSession() {
+            const username = localStorage.getItem('username');
+            const level = localStorage.getItem('level');
+            const rcno = localStorage.getItem('rcno');
             
-            // Then fetch other data
-            fetchShiftData();
-            loadDashboardStats();
-            loadRecentActivity();
+            console.log('Session check:', { username, level, rcno });
             
-            // Refresh data every 30 seconds
-            refreshInterval = setInterval(() => {
-                fetchShiftData();
-                loadDashboardStats();
-            }, 30000);
-        });
+            // If any required data is missing, redirect to login
+            if (!username) {
+                console.warn('Session invalid - no username');
+                redirectToLogin('Session expired');
+                return false;
+            }
+            
+            return true;
+        }
+
+        function redirectToLogin(reason) {
+            console.log('Redirecting to login:', reason);
+            
+            // Clear intervals
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+            
+            if (sessionCheckInterval) {
+                clearInterval(sessionCheckInterval);
+                sessionCheckInterval = null;
+            }
+            
+            // Redirect to login
+            window.location.href = 'login.html';
+        }
+
+        // Update last activity timestamp
+        function updateActivity() {
+            lastActivity = Date.now();
+            sessionStorage.setItem('lastActivity', lastActivity);
+        }
 
         // ========== USER FUNCTIONS ==========
         function loadUserFromStorage() {
             try {
-                // Get user data from localStorage (set from login page)
-                const userData = {
-                    username: localStorage.getItem('username') || 'Admin',
-                    level: localStorage.getItem('level') || 'operator',
-                    rcno: localStorage.getItem('rcno') || 'N/A'
+                console.log('Loading user from localStorage...');
+                
+                // Get user data from localStorage
+                const username = localStorage.getItem('username');
+                const level = localStorage.getItem('level');
+                const rcno = localStorage.getItem('rcno');
+                
+                console.log('Retrieved from storage:', { username, level, rcno });
+                
+                // Validate all required fields exist
+                if (!username) {
+                    console.error('No username found in localStorage');
+                    redirectToLogin('No user session found');
+                    return false;
+                }
+                
+                // Set default values if missing
+                const userLevel = level || 'operator';
+                const userRcno = rcno || 'N/A';
+                
+                // Store back any defaults
+                if (!level) {
+                    localStorage.setItem('level', 'operator');
+                }
+                if (!rcno) {
+                    localStorage.setItem('rcno', 'N/A');
+                }
+                
+                // Set current user
+                currentUser = {
+                    username: username,
+                    level: userLevel,
+                    rcno: userRcno
                 };
                 
-                currentUser = userData;
+                console.log('Current user set:', currentUser);
                 
-                // Update UI with user data
-                updateUserUI(userData);
+                // Update UI
+                updateUserUI(currentUser);
                 
-                // If no user data found, redirect to login
-                if (!localStorage.getItem('username')) {
-                    console.warn('No user data found, redirecting to login...');
-                    window.location.href = 'login.html';
-                }
+                return true;
                 
             } catch (error) {
                 console.error('Error loading user from storage:', error);
+                redirectToLogin('Error loading user data');
+                return false;
             }
         }
 
@@ -788,6 +785,8 @@
         // ========== SHIFT FUNCTIONS ==========
         async function fetchShiftData() {
             try {
+                if (!checkSession()) return;
+                
                 if (typeof passengerDb === 'undefined') {
                     console.error('passengerDb not initialized');
                     return;
@@ -847,6 +846,8 @@
         // ========== DASHBOARD STATS ==========
         async function loadDashboardStats() {
             try {
+                if (!checkSession()) return;
+                
                 // Get today's date in YYYY-MM-DD format
                 const today = new Date().toISOString().split('T')[0];
                 
@@ -943,6 +944,8 @@
         // ========== RECENT ACTIVITY ==========
         async function loadRecentActivity() {
             try {
+                if (!checkSession()) return;
+                
                 const today = new Date().toISOString().split('T')[0];
                 
                 const recentSnapshot = await db.collection('KoveliPass')
@@ -988,6 +991,8 @@
 
         // ========== NAVIGATION ==========
         function navigateTo(page) {
+            if (!checkSession()) return;
+            
             // You can add confirmation or validation here if needed
             if (page === 'Shiftend.html' && currentShift) {
                 const confirmEnd = confirm('Are you sure you want to end the shift?');
@@ -1003,8 +1008,19 @@
         }
 
         function viewAllActivity() {
+            if (!checkSession()) return;
             // Navigate to a page showing all activity
             window.location.href = 'report.html?view=activity';
+        }
+
+        function showProfile() {
+            if (!checkSession()) return;
+            alert(`Profile\nUsername: ${currentUser.username}\nLevel: ${currentUser.level}\nRC No: ${currentUser.rcno}`);
+        }
+
+        function showSettings() {
+            if (!checkSession()) return;
+            alert('Settings panel would open here');
         }
 
         // ========== LOGOUT FUNCTION ==========
@@ -1016,14 +1032,19 @@
                     // Clear any intervals
                     if (refreshInterval) {
                         clearInterval(refreshInterval);
+                        refreshInterval = null;
+                    }
+                    
+                    if (sessionCheckInterval) {
+                        clearInterval(sessionCheckInterval);
+                        sessionCheckInterval = null;
                     }
                     
                     // Clear ALL localStorage items
                     localStorage.removeItem('username');
                     localStorage.removeItem('level');
                     localStorage.removeItem('rcno');
-                    localStorage.removeItem('userId');
-                    localStorage.removeItem('userEmail');
+                    localStorage.removeItem('loggedInUser');
                     
                     // Clear session storage
                     sessionStorage.clear();
@@ -1032,6 +1053,8 @@
                     if (typeof firebase !== 'undefined' && firebase.auth) {
                         await firebase.auth().signOut();
                     }
+                    
+                    console.log('Logged out, redirecting to login...');
                     
                     // Redirect to login page
                     window.location.href = 'login.html';
@@ -1043,6 +1066,62 @@
                 }
             }
         }
+
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Dashboard loading...');
+            
+            // Load user data from localStorage first
+            const userLoaded = loadUserFromStorage();
+            
+            if (!userLoaded) {
+                // loadUserFromStorage will redirect if no user found
+                return;
+            }
+            
+            // Track user activity
+            ['click', 'keypress', 'scroll', 'mousemove'].forEach(event => {
+                document.addEventListener(event, updateActivity);
+            });
+            
+            // Set up session check interval (every 5 seconds)
+            sessionCheckInterval = setInterval(() => {
+                checkSession();
+                
+                // Optional: Auto logout after 30 minutes of inactivity
+                const inactiveTime = Date.now() - lastActivity;
+                const thirtyMinutes = 30 * 60 * 1000;
+                
+                if (inactiveTime > thirtyMinutes) {
+                    console.log('User inactive for 30 minutes, logging out');
+                    logout();
+                }
+            }, 5000);
+            
+            // Monitor localStorage changes from other tabs
+            window.addEventListener('storage', function(e) {
+                console.log('localStorage changed in another tab:', e.key);
+                
+                if (e.key === 'username' && e.newValue === null) {
+                    // User was logged out in another tab
+                    console.warn('Logged out in another tab');
+                    redirectToLogin('Logged out in another tab');
+                }
+            });
+            
+            // Then fetch other data
+            fetchShiftData();
+            loadDashboardStats();
+            loadRecentActivity();
+            
+            // Refresh data every 30 seconds
+            refreshInterval = setInterval(() => {
+                if (checkSession()) {
+                    fetchShiftData();
+                    loadDashboardStats();
+                }
+            }, 30000);
+        });
 
         // ========== HELPER FUNCTIONS ==========
         function formatTime(date) {
@@ -1057,6 +1136,8 @@
         window.navigateTo = navigateTo;
         window.logout = logout;
         window.viewAllActivity = viewAllActivity;
+        window.showProfile = showProfile;
+        window.showSettings = showSettings;
     </script>
 </body>
 </html>
