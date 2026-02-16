@@ -235,8 +235,8 @@
     <script>
         (function() {
             // =================================================
-            // KOVELI LOGIN – stores username, RCNo, Level in localStorage
-            // redirects to dashboard.html after successful login
+            // KOVELI LOGIN – stores username, level, rcno in localStorage
+            // for dashboard.html to consume
             // =================================================
             const form = document.getElementById('loginForm');
             const statusEl = document.getElementById('statusMessage');
@@ -259,14 +259,23 @@
                 return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
             }
 
-            // optional: show session hint, but never auto‑fill
-            try {
-                const existingUser = localStorage.getItem('loggedInUser');
+            // Clear any existing session data on page load
+            window.addEventListener('load', function() {
+                // Clear any existing login data
+                localStorage.removeItem('username');
+                localStorage.removeItem('level');
+                localStorage.removeItem('rcno');
+                localStorage.removeItem('loggedInUser');
+                
+                passwordInput.value = '';
+                
+                // Check if there's an existing session message
+                const existingUser = localStorage.getItem('username');
                 if (existingUser) {
                     statusEl.textContent = '⚡ session exists · please log in again';
                     statusEl.className = 'message';
                 }
-            } catch (e) { /* ignore */ }
+            });
 
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
@@ -286,7 +295,7 @@
                     return;
                 }
 
-                // find user (case‑insensitive)
+                // Find user (case‑insensitive)
                 const matchedUser = users.find(u => u.username.toLowerCase() === username.toLowerCase());
 
                 if (!matchedUser) {
@@ -299,7 +308,7 @@
                 try {
                     const hashedInput = await hashPassword(password);
 
-                    // compare with stored hash (users.js contains passwordHash)
+                    // Compare with stored hash (users.js contains passwordHash)
                     if (hashedInput !== matchedUser.passwordHash) {
                         statusEl.textContent = '❌ invalid username or password';
                         statusEl.className = 'message error';
@@ -307,32 +316,55 @@
                         return;
                     }
 
-                    // ✅ SUCCESS — store required fields in localStorage
-                    // we save username, RCNo, Level exactly as requested
+                    // ✅ SUCCESS — store the EXACT fields that dashboard.html expects:
+                    // username, level, rcno
+                    
+                    // First, clear any old data
+                    localStorage.removeItem('username');
+                    localStorage.removeItem('level');
+                    localStorage.removeItem('rcno');
+                    localStorage.removeItem('loggedInUser');
+                    
+                    // Store individual items for dashboard.html
+                    localStorage.setItem('username', matchedUser.username);
+                    
+                    // Handle level - convert to string if needed, ensure it's stored
+                    const level = matchedUser.Level || matchedUser.level || 'operator';
+                    localStorage.setItem('level', level.toString());
+                    
+                    // Handle rcno - ensure it's stored
+                    const rcno = matchedUser.RCNo || matchedUser.rcno || matchedUser.RCno || 'N/A';
+                    localStorage.setItem('rcno', rcno.toString());
+                    
+                    // Also store complete user object as backup (optional)
                     const userToStore = {
-                        username: matchedUser.username,      // original casing (from users.js)
-                        RCNo: matchedUser.RCNo,              // as provided in users.js
-                        Level: matchedUser.Level,            // numeric/string level
-                        // optional: include name if needed, but not mandatory
+                        username: matchedUser.username,
+                        level: level,
+                        rcno: rcno,
                         name: matchedUser.name || '',
                         loginTime: new Date().toISOString()
                     };
-
                     localStorage.setItem('loggedInUser', JSON.stringify(userToStore));
 
-                    // show success message
+                    // Show success message
                     statusEl.textContent = '✅ login successful · redirecting to dashboard...';
                     statusEl.className = 'message success';
 
-                    // clear sensitive fields
+                    // Clear sensitive fields
                     usernameInput.value = '';
                     passwordInput.value = '';
 
-                    // 👑 REDIRECT TO DASHBOARD (you already have dashboard.html)
-                    // slight delay to show success message, then redirect
+                    // Verify data was stored correctly
+                    console.log('Stored in localStorage:', {
+                        username: localStorage.getItem('username'),
+                        level: localStorage.getItem('level'),
+                        rcno: localStorage.getItem('rcno')
+                    });
+
+                    // 👑 REDIRECT TO DASHBOARD
                     setTimeout(() => {
                         window.location.href = 'dashboard.html';
-                    }, 1200);  // 1.2 sec gives user feedback, adjust as needed
+                    }, 1200);
 
                 } catch (cryptoError) {
                     console.error('crypto error:', cryptoError);
@@ -351,20 +383,7 @@
                     statusEl.className = 'message';
                 }
             }
-
-            // clear password field on load (security)
-            window.addEventListener('load', function() {
-                passwordInput.value = '';
-            });
-
-            // (Optional) also clear if users.js is missing – already handled
         })();
     </script>
-
-    <!-- ==========  dashboard.html counterpart example (not executed here) ========== 
-         On dashboard.html you would retrieve data with:
-         const userData = JSON.parse(localStorage.getItem('loggedInUser'));
-         console.log(userData.username, userData.RCNo, userData.Level);
-    -->
 </body>
 </html>
