@@ -390,6 +390,14 @@
             font-size: 11px;
         }
         
+        .time-edit-input {
+            width: 90px;
+            padding: 4px 6px;
+            border: 2px solid #e6b800;
+            border-radius: 6px;
+            font-size: 11px;
+        }
+        
         .pax-warning {
             font-size: 10px;
             color: #c68b5e;
@@ -411,17 +419,47 @@
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(230,184,0,0.3); border-radius: 50%; border-top-color: #e6b800; animation: spin 1s infinite; margin-right: 6px; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* print-specific styles */
+        /* print-specific styles - header only on first page */
         @media print {
-            body { background: white; padding: 0.5in; }
+            body { background: white; padding: 0; margin: 0.5in; }
             .shift-ribbon, .card .selection-flight-row, .action-buttons-vertical, .edit-btn, .table-action-btn, .refresh-shift, .quick-shift-box { display: none; }
             .card { border: none; box-shadow: none; padding: 0; background: transparent; }
             .flight-panel-revised { display: block; }
             .left-details-block, .right-ops-block { background: transparent; border: none; padding: 0; }
             .stats-mini { border: 1px solid #ccc; }
-            .table-container { border: 1px solid #000; }
+            .table-container { border: 1px solid #000; margin-top: 20px; }
             th { background: #e6b800 !important; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .flight-status { border: 1px solid #000; background: #eee; }
+            
+            /* Header only on first page */
+            .report-header-print {
+                display: block !important;
+            }
+            
+            /* Page break handling */
+            tr, td, th {
+                page-break-inside: avoid;
+            }
+            
+            thead {
+                display: table-header-group;
+            }
+            
+            tfoot {
+                display: table-footer-group;
+            }
+        }
+        
+        /* Print header - hidden normally, shown only in print */
+        .report-header-print {
+            display: none;
+        }
+        
+        @media print {
+            .report-header-print {
+                display: block;
+                margin-bottom: 20px;
+            }
         }
     </style>
 </head>
@@ -819,7 +857,7 @@
                     <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
                     <td><input type="text" id="edit-FQTV-${p.docId}" value="${p.FQTV||''}" class="edit-mode-input"></td>
                     <td><input type="text" id="edit-serialNo-${p.docId}" value="${p.serialNo||''}" class="edit-mode-input"></td>
-                    <td>${p.entryTime||'-'}</td>
+                    <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
                     <td><input type="text" id="edit-remarks-${p.docId}" value="${p.remarks||''}" class="edit-mode-input"></td>
                     <td class="action-cell">
                         <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
@@ -857,18 +895,22 @@
             const pax = document.getElementById(`edit-pax-${docId}`).value;
             const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
             const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
+            const entryTime = document.getElementById(`edit-entryTime-${docId}`).value;
             const remarks = document.getElementById(`edit-remarks-${docId}`).value;
             const calculated = calculatePaxFromSeat(seatNo);
             if (parseInt(pax) !== calculated && !confirm(`PAX mismatch (seat->${calculated}). Save anyway?`)) return;
+            
             await db.collection('KoveliPass').doc(docId).update({ 
                 pName, 
                 seatNo, 
                 pax, 
                 FQTV, 
                 serialNo, 
+                entryTime,
                 remarks, 
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
             });
+            
             const passenger = currentFlightData.passengers.find(p => p.docId === docId);
             if (passenger) { 
                 passenger.pName = pName; 
@@ -876,8 +918,22 @@
                 passenger.pax = pax; 
                 passenger.FQTV = FQTV; 
                 passenger.serialNo = serialNo; 
+                passenger.entryTime = entryTime;
                 passenger.remarks = remarks; 
             }
+            
+            // Update first and last pax times if entryTime changed
+            if (entryTime) {
+                const times = currentFlightData.passengers.map(p => p.entryTime).filter(t => t);
+                if (times.length > 0) {
+                    currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
+                    currentFlightData.lastPax = times.reduce((a, b) => a > b ? a : b);
+                    document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
+                    document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
+                    document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
+                }
+            }
+            
             editingRowId = null;
             displayPassengerTable(currentFlightData.passengers);
             alert('Updated');
@@ -1037,7 +1093,7 @@
         }
     }
 
-    // Print function with logo on left
+    // Print function with logo on left - header only on first page
     function printReport() {
         if (!currentFlightData || !currentFlightData.isClosed) { 
             alert('Flight must be closed'); 
@@ -1065,7 +1121,9 @@
 <head>
     <title>Flight Report – ${flightNo}</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0.5in; font-size: 12px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0.5in; font-size: 12px; }
+        
+        /* Header styling - will appear only on first page */
         .report-header {
             display: flex;
             justify-content: space-between;
@@ -1149,13 +1207,34 @@
             padding-top: 20px;
             font-size: 11px;
         }
+        
+        /* Print-specific styles - header only on first page */
         @media print {
-            body { margin: 0.3in; }
+            body { margin: 0; padding: 0.3in; }
             th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            
+            /* Ensure header appears only on first page */
+            .report-header {
+                display: block;
+            }
+            
+            /* Page break handling */
+            tr, td, th {
+                page-break-inside: avoid;
+            }
+            
+            thead {
+                display: table-header-group;
+            }
+            
+            tfoot {
+                display: table-footer-group;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- Header section - will appear on first page only -->
     <div class="report-header">
         <div class="logo-section">
             <img src="macl.png" alt="MACL Logo" class="logo-img" onerror="this.style.display='none'">
