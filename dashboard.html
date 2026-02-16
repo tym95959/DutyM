@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aviation Dashboard - Golden Line</title>
+    <title>Koveli Lounge</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -91,6 +91,12 @@
             padding: 4px 12px;
             background: #f8f9fa;
             border-radius: 30px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .user-info:hover {
+            background: #fff2d7;
         }
 
         .user-avatar {
@@ -106,10 +112,62 @@
             font-size: 14px;
         }
 
+        .user-details {
+            display: flex;
+            flex-direction: column;
+        }
+
         .user-name {
             color: #2c3e50;
-            font-weight: 500;
+            font-weight: 600;
             font-size: 13px;
+        }
+
+        .user-badge {
+            color: #8b6913;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .user-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+            padding: 8px 0;
+            min-width: 200px;
+            display: none;
+            z-index: 1001;
+            margin-top: 5px;
+            border: 1px solid #e6b80030;
+        }
+
+        .user-info:hover .user-dropdown {
+            display: block;
+        }
+
+        .dropdown-item {
+            padding: 10px 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #2c3e50;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        .dropdown-item:hover {
+            background: #fff9e6;
+        }
+
+        .dropdown-divider {
+            height: 1px;
+            background: #e6b80030;
+            margin: 5px 0;
         }
 
         .logout-btn {
@@ -517,7 +575,7 @@
     <!-- Top Navigation -->
     <div class="top-nav">
         <div class="nav-left">
-            <div class="logo">✈ GOLDEN LINE AVIATION</div>
+            <div class="logo">✈ Koveli Lounge</div>
             <div class="shift-indicator">
                 <span class="shift-badge" id="shiftType">LOADING...</span>
                 <span class="shift-date" id="shiftDate">--</span>
@@ -525,8 +583,26 @@
         </div>
         <div class="nav-right">
             <div class="user-info">
-                <div class="user-avatar">A</div>
-                <span class="user-name" id="userName">Admin</span>
+                <div class="user-avatar" id="userAvatar">A</div>
+                <div class="user-details">
+                    <span class="user-name" id="userName">Loading...</span>
+                    <span class="user-badge" id="userBadge">
+                        <span id="userLevel">-</span> • <span id="userRcno">---</span>
+                    </span>
+                </div>
+                <!-- Dropdown Menu -->
+                <div class="user-dropdown">
+                    <div class="dropdown-item">
+                        <span>👤</span> My Profile
+                    </div>
+                    <div class="dropdown-item">
+                        <span>⚙️</span> Settings
+                    </div>
+                    <div class="dropdown-divider"></div>
+                    <div class="dropdown-item" onclick="logout()">
+                        <span>🚪</span> Logout
+                    </div>
+                </div>
             </div>
             <button class="logout-btn" onclick="logout()">
                 <span>🚪</span> LOGOUT
@@ -538,7 +614,7 @@
     <div class="main-container">
         <!-- Welcome Section -->
         <div class="welcome-section">
-            <h1 class="welcome-title" id="welcomeMessage">Welcome back, Admin!</h1>
+            <h1 class="welcome-title" id="welcomeMessage">Welcome back, <span id="welcomeName">User</span>!</h1>
             <p class="welcome-subtitle" id="shiftMessage">No active shift</p>
             
             <div class="shift-details" id="shiftDetails" style="display: none;">
@@ -647,9 +723,14 @@
         // ========== GLOBAL VARIABLES ==========
         let currentShift = null;
         let refreshInterval;
+        let currentUser = null;
 
         // ========== INITIALIZATION ==========
         document.addEventListener('DOMContentLoaded', function() {
+            // Load user data from localStorage first
+            loadUserFromStorage();
+            
+            // Then fetch other data
             fetchShiftData();
             loadDashboardStats();
             loadRecentActivity();
@@ -660,6 +741,49 @@
                 loadDashboardStats();
             }, 30000);
         });
+
+        // ========== USER FUNCTIONS ==========
+        function loadUserFromStorage() {
+            try {
+                // Get user data from localStorage (set from login page)
+                const userData = {
+                    username: localStorage.getItem('username') || 'Admin',
+                    level: localStorage.getItem('level') || 'operator',
+                    rcno: localStorage.getItem('rcno') || 'N/A'
+                };
+                
+                currentUser = userData;
+                
+                // Update UI with user data
+                updateUserUI(userData);
+                
+                // If no user data found, redirect to login
+                if (!localStorage.getItem('username')) {
+                    console.warn('No user data found, redirecting to login...');
+                    window.location.href = 'login.html';
+                }
+                
+            } catch (error) {
+                console.error('Error loading user from storage:', error);
+            }
+        }
+
+        function updateUserUI(user) {
+            // Update user name
+            document.getElementById('userName').textContent = user.username;
+            document.getElementById('welcomeName').textContent = user.username;
+            
+            // Update user level and RC number
+            document.getElementById('userLevel').textContent = user.level.charAt(0).toUpperCase() + user.level.slice(1);
+            document.getElementById('userRcno').textContent = user.rcno;
+            
+            // Update avatar with first letter of username
+            const avatar = document.getElementById('userAvatar');
+            avatar.textContent = user.username.charAt(0).toUpperCase();
+            
+            // Update welcome message
+            document.getElementById('welcomeMessage').innerHTML = `Welcome back, <span id="welcomeName">${user.username}</span>!`;
+        }
 
         // ========== SHIFT FUNCTIONS ==========
         async function fetchShiftData() {
@@ -711,11 +835,6 @@
                         shiftDetails.style.display = 'flex';
                         detailShiftDate.textContent = date;
                         detailShiftType.textContent = shiftTypeText;
-                        
-                        // Update welcome message
-                        const userName = document.getElementById('userName').textContent;
-                        document.getElementById('welcomeMessage').textContent = 
-                            `Welcome back, ${userName}!`;
                     }
                 }
             } catch (error) {
@@ -898,6 +1017,13 @@
                     if (refreshInterval) {
                         clearInterval(refreshInterval);
                     }
+                    
+                    // Clear ALL localStorage items
+                    localStorage.removeItem('username');
+                    localStorage.removeItem('level');
+                    localStorage.removeItem('rcno');
+                    localStorage.removeItem('userId');
+                    localStorage.removeItem('userEmail');
                     
                     // Clear session storage
                     sessionStorage.clear();
