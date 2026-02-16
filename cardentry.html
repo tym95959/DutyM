@@ -216,7 +216,7 @@
         }
         
         .filter-section input {
-            flex: 2;
+            flex: 3;
             padding: 14px 20px;
             border: 2px solid rgba(230, 184, 0, 0.3);
             border-radius: 50px;
@@ -233,50 +233,49 @@
             box-shadow: 0 5px 15px rgba(230, 184, 0, 0.1);
         }
         
-        .guest-section {
+        .guest-mode-indicator {
             flex: 1;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .guest-section select {
-            flex: 1;
-            padding: 14px 20px;
-            border: 2px solid rgba(230, 184, 0, 0.3);
-            border-radius: 50px;
-            font-size: 14px;
-            background: white;
-            color: #5e4a1a;
-            cursor: pointer;
-        }
-        
-        .guest-section select:focus {
-            outline: none;
-            border-color: #e6b800;
-        }
-        
-        .guest-section button {
-            padding: 14px 25px;
             background: linear-gradient(135deg, #6b8e23, #556b2f);
             color: white;
-            border: none;
+            padding: 10px 20px;
             border-radius: 50px;
-            cursor: pointer;
             font-size: 14px;
             font-weight: 600;
+            display: none;
+            align-items: center;
+            gap: 10px;
             white-space: nowrap;
+            animation: pulse 2s infinite;
+        }
+        
+        .guest-mode-indicator.visible {
+            display: flex;
+        }
+        
+        .guest-mode-indicator i {
+            font-size: 16px;
+        }
+        
+        .cancel-guest-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 10px;
             transition: all 0.3s;
         }
         
-        .guest-section button:hover:not(:disabled) {
-            background: linear-gradient(135deg, #7cb342, #6b8e23);
-            transform: translateY(-2px);
+        .cancel-guest-btn:hover {
+            background: rgba(255,255,255,0.3);
         }
         
-        .guest-section button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { opacity: 1; }
         }
         
         .toggle-current-btn {
@@ -472,7 +471,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 1100px;
+            min-width: 1150px;
         }
         
         th {
@@ -514,13 +513,24 @@
             border-left: 3px solid #6b8e23;
         }
         
+        .guest-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #6b8e23;
+        }
+        
+        .guest-checkbox:checked {
+            transform: scale(1.1);
+        }
+        
         .action-buttons {
             display: flex;
             gap: 6px;
             flex-wrap: wrap;
         }
         
-        .edit-btn, .delete-btn, .approve-btn, .save-btn, .cancel-btn, .guest-btn {
+        .edit-btn, .delete-btn, .approve-btn, .save-btn, .cancel-btn {
             padding: 6px 14px;
             border: none;
             border-radius: 30px;
@@ -561,17 +571,6 @@
         
         .approve-btn:hover {
             background: #6b8e23;
-            color: white;
-        }
-        
-        .guest-btn {
-            background: #e6e0c0;
-            color: #8b6913;
-            border-color: #8b6913;
-        }
-        
-        .guest-btn:hover {
-            background: #8b6913;
             color: white;
         }
         
@@ -678,16 +677,15 @@
 
         <!-- Main Content -->
         <div class="main-content">
-            <!-- Input section with Guest selection -->
+            <!-- Input section with Guest mode indicator -->
             <div class="filter-section">
                 <input type="text" id="code" placeholder="ENTER CODE OR READ BARCODE (AUTO-ADDS TO LIST)">
                 
-                <!-- Guest selection dropdown -->
-                <div class="guest-section">
-                    <select id="guestSelect">
-                        <option value="">-- SELECT MAIN PASSENGER FOR GUEST --</option>
-                    </select>
-                    <button id="addGuestBtn" disabled>ADD AS GUEST</button>
+                <!-- Guest mode indicator -->
+                <div id="guestModeIndicator" class="guest-mode-indicator">
+                    <i class="fas fa-user-plus"></i>
+                    <span id="guestModeText">GUEST MODE ACTIVE</span>
+                    <button id="cancelGuestModeBtn" class="cancel-guest-btn">CANCEL</button>
                 </div>
                 
                 <button id="toggleCurrentBtn" class="toggle-current-btn">SHOW CURRENT ENTRY</button>
@@ -730,6 +728,7 @@
                     <table id="pendingTable">
                         <thead>
                             <tr>
+                                <th>GUEST</th>
                                 <th>NAME</th>
                                 <th>FLIGHT NO</th>
                                 <th>SEAT NO</th>
@@ -782,7 +781,8 @@
 let pendingPasses = [];
 let savedPasses = [];
 let editingId = null;
-let currentGuestMainPassenger = null; // Store selected main passenger for guest
+let guestModeActive = false; // Track if guest mode is active
+let selectedGuestPassengerId = null; // Track which passenger is selected for guest
 
 // Firebase shift data
 let currentShiftData = {
@@ -871,7 +871,62 @@ async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
     }
 }
 
-// ========== ADD GUEST FUNCTION ==========
+// ========== GUEST MODE FUNCTIONS ==========
+
+/**
+ * Toggle guest mode for a specific passenger
+ * @param {string} passengerId - ID of the passenger to add guest for
+ * @param {boolean} checked - Whether the checkbox is checked
+ */
+function toggleGuestMode(passengerId, checked) {
+    const guestIndicator = document.getElementById('guestModeIndicator');
+    const guestModeText = document.getElementById('guestModeText');
+    
+    if (checked) {
+        // Uncheck all other checkboxes first
+        document.querySelectorAll('.guest-checkbox').forEach(cb => {
+            if (cb.dataset.passengerId !== passengerId) {
+                cb.checked = false;
+            }
+        });
+        
+        // Find the passenger
+        const passenger = pendingPasses.find(p => p.id === passengerId);
+        if (passenger) {
+            guestModeActive = true;
+            selectedGuestPassengerId = passengerId;
+            guestIndicator.classList.add('visible');
+            guestModeText.textContent = `ADDING GUEST FOR: ${passenger.pName} (${passenger.seatNo})`;
+            showTemporaryNotification(`✓ Guest mode activated for ${passenger.pName}. Scan guest's boarding pass.`, 'success');
+        }
+    } else {
+        // If this was the active guest mode passenger, deactivate guest mode
+        if (selectedGuestPassengerId === passengerId) {
+            guestModeActive = false;
+            selectedGuestPassengerId = null;
+            guestIndicator.classList.remove('visible');
+            showTemporaryNotification('Guest mode deactivated', 'info');
+        }
+    }
+}
+
+/**
+ * Cancel guest mode
+ */
+function cancelGuestMode() {
+    guestModeActive = false;
+    selectedGuestPassengerId = null;
+    
+    // Uncheck all checkboxes
+    document.querySelectorAll('.guest-checkbox').forEach(cb => {
+        cb.checked = false;
+    });
+    
+    const guestIndicator = document.getElementById('guestModeIndicator');
+    guestIndicator.classList.remove('visible');
+    
+    showTemporaryNotification('Guest mode cancelled', 'info');
+}
 
 /**
  * Add a guest to an existing main passenger
@@ -913,11 +968,6 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         // Save to local storage
         savePendingToLocalStorage();
         
-        // Clear guest selection
-        currentGuestMainPassenger = null;
-        document.getElementById('guestSelect').value = '';
-        document.getElementById('addGuestBtn').disabled = true;
-        
         // Clear code field
         document.getElementById('code').value = '';
         
@@ -941,51 +991,12 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         // Refresh tables
         renderTables();
         
-        // Update guest dropdown
-        updateGuestDropdown();
-        
         return true;
         
     } catch (error) {
         console.error('Error adding guest:', error);
         showTemporaryNotification('❌ Error adding guest', 'error');
         return false;
-    }
-}
-
-// ========== UPDATE GUEST DROPDOWN ==========
-
-/**
- * Update the guest selection dropdown with available main passengers
- */
-function updateGuestDropdown() {
-    const guestSelect = document.getElementById('guestSelect');
-    const addGuestBtn = document.getElementById('addGuestBtn');
-    
-    if (!guestSelect || !addGuestBtn) return;
-    
-    // Clear existing options except the first one
-    while (guestSelect.options.length > 1) {
-        guestSelect.remove(1);
-    }
-    
-    // Get potential main passengers (not guests themselves)
-    const mainPassengers = pendingPasses.filter(p => !p.isGuest);
-    
-    // Add options for each main passenger
-    mainPassengers.forEach(passenger => {
-        const option = document.createElement('option');
-        option.value = passenger.id;
-        option.textContent = `${passenger.pName} - ${passenger.flightNo} - Seat: ${passenger.seatNo} (PAX: ${passenger.pax})`;
-        guestSelect.appendChild(option);
-    });
-    
-    // If no main passengers, disable the add guest button
-    if (mainPassengers.length === 0) {
-        addGuestBtn.disabled = true;
-        guestSelect.disabled = true;
-    } else {
-        guestSelect.disabled = false;
     }
 }
 
@@ -1359,10 +1370,14 @@ function parseAndAddToList() {
             };
         }
         
-        // Check if we're in guest mode (a main passenger is selected)
-        if (currentGuestMainPassenger) {
-            // Add as guest to the selected main passenger
-            const result = addGuestToPassenger(currentGuestMainPassenger, parsedEntry);
+        // Check if guest mode is active
+        if (guestModeActive && selectedGuestPassengerId) {
+            // Add as guest to the selected passenger
+            const result = addGuestToPassenger(selectedGuestPassengerId, parsedEntry);
+            
+            // Auto-uncheck the checkbox and deactivate guest mode
+            cancelGuestMode();
+            
             if (result) {
                 return true;
             }
@@ -1811,9 +1826,6 @@ async function approveEntry(id) {
         // Refresh tables immediately
         renderTables();
         
-        // Update guest dropdown
-        updateGuestDropdown();
-        
         // START BACKGROUND SAVE TO FIREBASE (KoveliPass) - non-blocking
         setTimeout(() => {
             backgroundSaveToFirebase(approvedEntry);
@@ -1930,9 +1942,6 @@ async function saveEdit(id, isSaved = false) {
             entry.id === id ? updatedEntry : entry
         );
         savePendingToLocalStorage();
-        
-        // Update guest dropdown
-        updateGuestDropdown();
     }
     
     editingId = null;
@@ -1965,7 +1974,6 @@ function loadFromLocalStorage() {
     }
     
     updateTabCounts();
-    updateGuestDropdown();
     renderTables();
 }
 
@@ -1973,7 +1981,6 @@ function loadFromLocalStorage() {
 function savePendingToLocalStorage() {
     localStorage.setItem('pendingPasses', JSON.stringify(pendingPasses));
     updateTabCounts();
-    updateGuestDropdown();
 }
 
 // Save saved passes to local storage
@@ -2097,9 +2104,6 @@ function addToTable(data) {
     savePendingToLocalStorage();
     renderTables();
     
-    // Update guest dropdown
-    updateGuestDropdown();
-    
     // Show status message
     showTemporaryNotification('✓ BOARDING PASS ADDED TO LIST', 'success');
 }
@@ -2111,8 +2115,6 @@ function deleteEntry(id, isSaved = false) {
     } else {
         pendingPasses = pendingPasses.filter(entry => entry.id !== id);
         savePendingToLocalStorage();
-        // Update guest dropdown
-        updateGuestDropdown();
     }
     
     if (editingId === id) {
@@ -2250,13 +2252,11 @@ function renderPendingTable() {
     tbody.innerHTML = '';
     
     pendingPasses.forEach(entry => {
+        // Don't show guests in the list for guest checkbox (they can't have guests)
+        if (entry.isGuest) return;
+        
         const row = document.createElement('tr');
         row.setAttribute('data-id', entry.id);
-        
-        // Add special class for guest rows
-        if (entry.isGuest) {
-            row.classList.add('guest-row');
-        }
         
         // Check if class is Y and FQTV is empty for display
         let displayFQTV = entry.FQTV;
@@ -2266,14 +2266,10 @@ function renderPendingTable() {
             fqtvClass = 'fqtv-field-warning';
         }
         
-        // Add guest indicator if applicable
-        if (entry.isGuest) {
-            displayFQTV = entry.FQTV || ''; // Already set in addGuestToPassenger
-        }
-        
         if (editingId === entry.id) {
             // Edit mode - hide date and shift fields
             row.innerHTML = `
+                <td><input type="checkbox" class="guest-checkbox" data-passenger-id="${entry.id}" ${guestModeActive && selectedGuestPassengerId === entry.id ? 'checked' : ''} onchange="toggleGuestMode('${entry.id}', this.checked)"></td>
                 <td><input type="text" class="edit-input edit-pName" value="${entry.pName || ''}" style="text-transform: uppercase;"></td>
                 <td><input type="text" class="edit-input edit-flightNo" value="${entry.flightNo || ''}" style="text-transform: uppercase;"></td>
                 <td><input type="text" class="edit-input edit-seatNo" value="${entry.seatNo || ''}" style="text-transform: uppercase;" oninput="updatePaxFromSeatInEdit(this.closest('tr'))"></td>
@@ -2292,20 +2288,75 @@ function renderPendingTable() {
             `;
             
             // Add warning div container
-            const paxCell = row.cells[6];
+            const paxCell = row.cells[7];
             const warningDiv = document.createElement('div');
             warningDiv.className = 'pax-warning';
             paxCell.appendChild(warningDiv);
             
         } else {
-            // View mode - hide date and shift columns (they are at indexes 8 and 9)
+            // View mode - hide date and shift columns (they are at indexes 9 and 10)
             row.innerHTML = `
+                <td><input type="checkbox" class="guest-checkbox" data-passenger-id="${entry.id}" ${guestModeActive && selectedGuestPassengerId === entry.id ? 'checked' : ''} onchange="toggleGuestMode('${entry.id}', this.checked)"></td>
                 <td>${entry.pName || ''}</td>
                 <td>${entry.flightNo || ''}</td>
                 <td>${entry.seatNo || ''}</td>
                 <td>${entry.class || ''}</td>
                 <td>${entry.airline || ''}</td>
-                <td><span class="${fqtvClass} ${entry.isGuest ? 'guest-indicator' : ''}">${displayFQTV}</span></td>
+                <td><span class="${fqtvClass}">${displayFQTV}</span></td>
+                <td>${entry.pax || ''}</td>
+                <td>${entry.remarks || ''}</td>
+                <td style="display: none;">${entry.date || ''}</td>
+                <td style="display: none;">${entry.shift || ''}</td>
+                <td>${entry.entryTime || ''}</td>
+                <td class="action-buttons">
+                    <button class="edit-btn" onclick="startEdit('${entry.id}', false)">EDIT</button>
+                    <button class="delete-btn" onclick="deleteEntry('${entry.id}', false)">DELETE</button>
+                    <button class="approve-btn" onclick="approveEntry('${entry.id}')">APPROVE</button>
+                </td>
+            `;
+        }
+        
+        tbody.appendChild(row);
+    });
+    
+    // Render guests separately
+    const guests = pendingPasses.filter(entry => entry.isGuest);
+    guests.forEach(entry => {
+        const row = document.createElement('tr');
+        row.setAttribute('data-id', entry.id);
+        row.classList.add('guest-row');
+        
+        let displayFQTV = entry.FQTV;
+        
+        if (editingId === entry.id) {
+            // Edit mode for guests (similar to above but with empty checkbox cell)
+            row.innerHTML = `
+                <td></td>
+                <td><input type="text" class="edit-input edit-pName" value="${entry.pName || ''}" style="text-transform: uppercase;"></td>
+                <td><input type="text" class="edit-input edit-flightNo" value="${entry.flightNo || ''}" style="text-transform: uppercase;"></td>
+                <td><input type="text" class="edit-input edit-seatNo" value="${entry.seatNo || ''}" style="text-transform: uppercase;" oninput="updatePaxFromSeatInEdit(this.closest('tr'))"></td>
+                <td><input type="text" class="edit-input edit-class" value="${entry.class || ''}" style="text-transform: uppercase;" onchange="checkClassFQTVInEdit(this.closest('tr'))"></td>
+                <td><input type="text" class="edit-input edit-airline" value="${entry.airline || ''}" style="text-transform: uppercase;"></td>
+                <td><input type="text" class="edit-input edit-FQTV" value="${entry.FQTV || ''}" style="text-transform: uppercase;" oninput="checkClassFQTVInEdit(this.closest('tr'))"></td>
+                <td><input type="text" class="edit-input edit-pax" value="${entry.pax || ''}" oninput="validatePaxInEdit(this.closest('tr'))"></td>
+                <td><input type="text" class="edit-input edit-remarks" value="${entry.remarks || ''}" style="text-transform: uppercase;"></td>
+                <td style="display: none;"><input type="text" class="edit-input edit-date" value="${entry.date || ''}" style="text-transform: uppercase;"></td>
+                <td style="display: none;"><input type="text" class="edit-input edit-shift" value="${entry.shift || ''}" style="text-transform: uppercase;"></td>
+                <td><input type="text" class="edit-input edit-entryTime" value="${entry.entryTime || ''}" readonly style="background-color: #f5f5f5;"></td>
+                <td class="action-buttons">
+                    <button class="save-btn" onclick="saveEdit('${entry.id}', false)">SAVE</button>
+                    <button class="cancel-btn" onclick="cancelEdit()">CANCEL</button>
+                </td>
+            `;
+        } else {
+            row.innerHTML = `
+                <td></td>
+                <td>${entry.pName || ''}</td>
+                <td>${entry.flightNo || ''}</td>
+                <td>${entry.seatNo || ''}</td>
+                <td>${entry.class || ''}</td>
+                <td>${entry.airline || ''}</td>
+                <td><span class="guest-indicator">${displayFQTV}</span></td>
                 <td>${entry.pax || ''}</td>
                 <td>${entry.remarks || ''}</td>
                 <td style="display: none;">${entry.date || ''}</td>
@@ -2349,6 +2400,7 @@ function renderSavedTable() {
         // Add guest indicator if applicable
         if (entry.isGuest) {
             displayFQTV = entry.FQTV || ''; // Already set in addGuestToPassenger
+            fqtvClass = 'guest-indicator';
         }
         
         // Add status indicator
@@ -2442,7 +2494,7 @@ function renderSavedTable() {
                 <td>${entry.seatNo || ''}</td>
                 <td>${entry.class || ''}</td>
                 <td>${entry.airline || ''}</td>
-                <td><span class="${fqtvClass} ${entry.isGuest ? 'guest-indicator' : ''}">${displayFQTV}</span></td>
+                <td><span class="${fqtvClass}">${displayFQTV}</span></td>
                 <td>${entry.pax || ''}</td>
                 <td>${entry.remarks || ''}</td>
                 <td style="display: none;">${entry.date || ''}</td>
@@ -2492,8 +2544,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const updateCurrentBtn = document.getElementById('updateCurrentBtn');
     const clearCurrentBtn = document.getElementById('clearCurrentBtn');
     const refreshShiftBtn = document.getElementById('refreshShiftBtn');
-    const guestSelect = document.getElementById('guestSelect');
-    const addGuestBtn = document.getElementById('addGuestBtn');
+    const cancelGuestModeBtn = document.getElementById('cancelGuestModeBtn');
     
     // Load data from local storage
     loadFromLocalStorage();
@@ -2522,25 +2573,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Guest selection
-    if (guestSelect) {
-        guestSelect.addEventListener('change', function() {
-            const selectedValue = this.value;
-            addGuestBtn.disabled = !selectedValue;
-            currentGuestMainPassenger = selectedValue || null;
-        });
-    }
-    
-    if (addGuestBtn) {
-        addGuestBtn.addEventListener('click', function() {
-            if (!currentGuestMainPassenger) {
-                showTemporaryNotification('Please select a main passenger first', 'warning');
-                return;
-            }
-            
-            // Focus on code field for scanning
-            codeField.focus();
-            showTemporaryNotification(`Scan boarding pass for guest of selected passenger`, 'info');
+    // Cancel guest mode button
+    if (cancelGuestModeBtn) {
+        cancelGuestModeBtn.addEventListener('click', function() {
+            cancelGuestMode();
         });
     }
     
@@ -2582,8 +2618,9 @@ window.saveEdit = saveEdit;
 window.updatePaxFromSeatInEdit = updatePaxFromSeatInEdit;
 window.validatePaxInEdit = validatePaxInEdit;
 window.checkClassFQTVInEdit = checkClassFQTVInEdit;
+window.toggleGuestMode = toggleGuestMode;
+window.cancelGuestMode = cancelGuestMode;
 window.addGuestToPassenger = addGuestToPassenger;
-window.updateGuestDropdown = updateGuestDropdown;
 // Add card DB function to window
 window.saveHiddenCodeToCardDB = saveHiddenCodeToCardDB;
 </script>
