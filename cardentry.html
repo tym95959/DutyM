@@ -1041,6 +1041,21 @@
             white-space: nowrap;
             z-index: 1000;
         }
+
+        .sync-btn {
+            background: #e6b800 !important;
+            color: white !important;
+            border-color: #d4a900 !important;
+        }
+
+        .sync-btn:hover {
+            background: #d4a900 !important;
+        }
+
+        .success-message {
+            color: #6b8e23;
+            font-weight: bold;
+        }
     </style>
     <!-- Font Awesome for icons (optional but makes buttons nicer) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -1183,7 +1198,7 @@
                                 <th style="display: none;">DATE</th>
                                 <th style="display: none;">SHIFT</th>
                                 <th style="display: none;">TIME</th>
-                                <th>ACTIONS</th>
+                                <th>STATUS / ACTIONS</th>
                             </tr>
                         </thead>
                         <tbody id="savedTableBody"></tbody>
@@ -2293,7 +2308,7 @@ function updateShiftDisplay() {
     }
 }
 
-// ========== MODIFIED FIREBASE SAVE FUNCTIONS WITH FLIGHT STATUS CHECK AND ERROR MESSAGES ==========
+// ========== MODIFIED FIREBASE SAVE FUNCTIONS WITH AUTO-REMOVE AFTER SUCCESS ==========
 
 async function saveEntryToFirebase(entry) {
     try {
@@ -2420,6 +2435,7 @@ async function saveEntryToFirebase(entry) {
     }
 }
 
+// Modified backgroundSaveToFirebase - NOW REMOVES FROM LOCAL STORAGE ON SUCCESS
 async function backgroundSaveToFirebase(entry) {
     try {
         console.log('Starting background save for entry:', entry.id);
@@ -2428,30 +2444,40 @@ async function backgroundSaveToFirebase(entry) {
             return { success: true, skipped: true };
         }
         
+        // Update status to saving
+        const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+        if (savedIndex !== -1) {
+            savedPasses[savedIndex].firebaseStatus = 'saving';
+            savedPasses[savedIndex].firebaseError = null;
+            savedPasses[savedIndex].firebaseReason = null;
+            saveSavedToLocalStorage();
+            renderTables();
+        }
+        
         const saveResult = await saveEntryToFirebase(entry);
         
         if (saveResult.success) {
             console.log('✅ Background save successful');
             
-            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            // REMOVE FROM LOCAL STORAGE COMPLETELY on success
             if (savedIndex !== -1) {
                 savedPasses.splice(savedIndex, 1);
                 saveSavedToLocalStorage();
                 renderTables();
             }
             
-            showTemporaryNotification(`✅ Entry saved to Firebase`, 'success');
+            showTemporaryNotification(`✅ Entry saved to Firebase and removed from local storage`, 'success');
             
         } else {
             console.error('❌ Background save failed:', saveResult.error);
             
-            // Store detailed error information
-            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            // Store detailed error information (keep in local storage for retry)
             if (savedIndex !== -1) {
                 savedPasses[savedIndex].firebaseError = saveResult.error;
                 savedPasses[savedIndex].firebaseReason = saveResult.reason || 'UNKNOWN';
                 savedPasses[savedIndex].firebaseStatus = 'error';
                 savedPasses[savedIndex].firebaseRetry = true;
+                savedPasses[savedIndex].firebaseSaved = false;
                 saveSavedToLocalStorage();
                 renderTables();
             }
@@ -2477,6 +2503,7 @@ async function backgroundSaveToFirebase(entry) {
             savedPasses[savedIndex].firebaseReason = 'EXCEPTION';
             savedPasses[savedIndex].firebaseStatus = 'error';
             savedPasses[savedIndex].firebaseRetry = true;
+            savedPasses[savedIndex].firebaseSaved = false;
             saveSavedToLocalStorage();
             renderTables();
         }
@@ -2485,7 +2512,7 @@ async function backgroundSaveToFirebase(entry) {
     }
 }
 
-// ========== MODIFIED APPROVE ENTRY FUNCTION WITH FLIGHT STATUS CHECK AND ERROR HANDLING ==========
+// ========== MODIFIED APPROVE ENTRY FUNCTION - MOVES TO SAVED TAB FIRST, THEN SAVES TO FIREBASE ==========
 
 async function approveEntry(id) {
     try {
@@ -2494,43 +2521,7 @@ async function approveEntry(id) {
         
         const entry = pendingPasses[entryIndex];
         
-        // Check if flight is open before approving
-        if (entry.flightNo && entry.date) {
-            const flightStatus = await isFlightOpen(entry.flightNo, entry.date);
-            
-            if (!flightStatus.isOpen) {
-                // Show detailed error message
-                let errorMessage = flightStatus.message;
-                
-                if (flightStatus.error === 'FLIGHT CLOSED') {
-                    errorMessage = `❌ Cannot approve: Flight ${entry.flightNo} on ${entry.date} is ${flightStatus.status || 'CLOSED'}. Only open flights can accept new boarding passes.`;
-                } else if (flightStatus.error === 'FLIGHT NOT FOUND IN SYSTEM') {
-                    errorMessage = `❌ Cannot approve: Flight ${entry.flightNo} on ${entry.date} is not registered in the system. Please check flight number and date.`;
-                }
-                
-                // Show error in status message
-                showTemporaryNotification(errorMessage, 'error');
-                
-                // Store error in entry for display
-                entry.firebaseError = errorMessage;
-                entry.firebaseReason = flightStatus.error;
-                entry.firebaseStatus = 'flight_closed';
-                savePendingToLocalStorage();
-                renderTables();
-                
-                return;
-            }
-        } else {
-            if (!entry.flightNo) {
-                showTemporaryNotification('❌ Cannot approve: Missing flight number', 'error');
-                return;
-            }
-            if (!entry.date) {
-                showTemporaryNotification('❌ Cannot approve: Missing date. Please ensure shift data is loaded.', 'error');
-                return;
-            }
-        }
-        
+        // PAX validation checks (keep these)
         const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
         
@@ -2590,14 +2581,17 @@ async function approveEntry(id) {
             entry.enteredAt = new Date().toISOString();
         }
         
+        // Create approved entry with pending Firebase status
         const approvedEntry = { 
             ...entry, 
             date: dateToUse,
             shift: shiftToUse,
             approved: true, 
-            firebaseStatus: 'pending',
+            firebaseStatus: 'pending', // Will try to save to Firebase
             firebaseSaved: false,
             firebaseRetry: false,
+            firebaseError: null,
+            firebaseReason: null,
             hiddenCode: hiddenCode,
             isGuest: entry.isGuest === true ? true : false,
             mainPassengerId: entry.mainPassengerId || '',
@@ -2611,21 +2605,23 @@ async function approveEntry(id) {
             enteredAt: entry.enteredAt || new Date().toISOString()
         };
         
+        // FIRST: Move to saved tab (always happens regardless of Firebase status)
         savedPasses.push(approvedEntry);
         pendingPasses.splice(entryIndex, 1);
         
         savePendingToLocalStorage();
         saveSavedToLocalStorage();
         
-        showTemporaryNotification('✓ Entry moved to saved tab', 'success');
+        showTemporaryNotification('✓ Entry moved to saved tab - attempting to save to Firebase...', 'info');
         
         renderTables();
         
-        // Try to save to Firebase immediately
+        // SECOND: Try to save to Firebase in the background
         setTimeout(() => {
             backgroundSaveToFirebase(approvedEntry);
         }, 100);
         
+        // Also save hidden code if present
         if (hiddenCode && flightNoToUse) {
             setTimeout(() => {
                 saveHiddenCodeToCardDB(hiddenCode, flightNoToUse, dateToUse);
@@ -2846,15 +2842,6 @@ function renderPendingTable() {
             row.classList.add('guest-row');
         }
         
-        // Add warning class if there's a Firebase error in pending (unusual but possible)
-        if (entry.firebaseError) {
-            if (entry.firebaseReason === 'FLIGHT CLOSED') {
-                row.classList.add('flight-closed-warning');
-            } else if (entry.firebaseReason === 'DUPLICATE') {
-                row.classList.add('duplicate-warning');
-            }
-        }
-        
         let displayFQTV = entry.FQTV || '—';
         
         const guestCell = document.createElement('td');
@@ -2898,14 +2885,7 @@ function renderPendingTable() {
         const actionsCell = document.createElement('td');
         actionsCell.className = 'action-buttons';
         
-        // Show error indicator if present
-        let errorIndicator = '';
-        if (entry.firebaseError) {
-            errorIndicator = `<span class="firebase-error-tooltip" data-error="${entry.firebaseError}" style="margin-right: 5px; color: #c68b5e;">⚠️</span>`;
-        }
-        
         actionsCell.innerHTML = `
-            ${errorIndicator}
             <button class="approve-btn" onclick="approveEntry('${entry.id}')">${entry.isGuest ? 'SAVE' : 'Approve'}</button>
             <button class="delete-btn" onclick="deleteEntry('${entry.id}', false)">DEL</button>
         `;
@@ -2961,15 +2941,26 @@ function renderSavedTable() {
         
         let statusIndicator = '';
         let statusColor = '';
+        let statusText = '';
         let errorTooltip = '';
         
         if (entry.firebaseError) {
             statusIndicator = '❌';
             statusColor = '#c68b5e';
+            statusText = 'Failed';
             errorTooltip = ` data-error="${entry.firebaseError.replace(/"/g, '&quot;')}"`;
+        } else if (entry.firebaseStatus === 'saving') {
+            statusIndicator = '⏳';
+            statusColor = '#e6b800';
+            statusText = 'Saving...';
         } else if (entry.firebaseStatus === 'pending') {
             statusIndicator = '⏳';
             statusColor = '#e6b800';
+            statusText = 'Pending';
+        } else {
+            statusIndicator = '✓';
+            statusColor = '#6b8e23';
+            statusText = 'Saved';
         }
         
         const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', true);
@@ -2997,14 +2988,24 @@ function renderSavedTable() {
         const actionsCell = document.createElement('td');
         actionsCell.className = 'action-buttons';
         
-        if (entry.firebaseError || entry.firebaseStatus === 'pending' || entry.firebaseStatus === 'duplicate') {
+        // Show different actions based on status
+        if (entry.firebaseError) {
+            // Error state - show retry button
             actionsCell.innerHTML = `
                 <span class="firebase-error-tooltip"${errorTooltip} style="margin-right: 5px; color: ${statusColor};">${statusIndicator}</span>
-                <button class="approve-btn" style="background-color: #e6b800;" onclick="syncEntry('${entry.id}')">SYNC</button>
+                <button class="approve-btn sync-btn" style="background-color: #e6b800;" onclick="retrySave('${entry.id}')">RETRY</button>
+                <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)">DEL</button>
+            `;
+        } else if (entry.firebaseStatus === 'saving' || entry.firebaseStatus === 'pending') {
+            // Saving or pending state
+            actionsCell.innerHTML = `
+                <span style="color: ${statusColor}; margin-right: 5px;">${statusIndicator}</span>
                 <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)">DEL</button>
             `;
         } else {
+            // Success state - should be removed from localStorage, but if still here, show delete only
             actionsCell.innerHTML = `
+                <span style="color: ${statusColor}; margin-right: 5px;">${statusIndicator}</span>
                 <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)">DEL</button>
             `;
         }
@@ -3025,6 +3026,31 @@ function renderSavedTable() {
         
         tbody.appendChild(row);
     });
+}
+
+// ========== RETRY SAVE FUNCTION ==========
+
+async function retrySave(id) {
+    const entryIndex = savedPasses.findIndex(e => e.id === id);
+    if (entryIndex === -1) return;
+    
+    const entry = savedPasses[entryIndex];
+    
+    // Reset error state
+    savedPasses[entryIndex].firebaseError = null;
+    savedPasses[entryIndex].firebaseReason = null;
+    savedPasses[entryIndex].firebaseStatus = 'pending';
+    savedPasses[entryIndex].firebaseRetry = false;
+    savedPasses[entryIndex].firebaseSaved = false;
+    saveSavedToLocalStorage();
+    renderTables();
+    
+    showTemporaryNotification('🔄 Retrying save to Firebase...', 'info');
+    
+    // Try to save again
+    setTimeout(() => {
+        backgroundSaveToFirebase(entry);
+    }, 100);
 }
 
 // ========== PRINT ROW FUNCTION ==========
@@ -3148,27 +3174,6 @@ function deleteEntry(id, isSaved = false) {
     }
     
     renderTables();
-}
-
-async function syncEntry(id) {
-    const entryIndex = savedPasses.findIndex(e => e.id === id);
-    if (entryIndex === -1) return;
-    
-    const entry = savedPasses[entryIndex];
-    
-    savedPasses[entryIndex].firebaseError = null;
-    savedPasses[entryIndex].firebaseReason = null;
-    savedPasses[entryIndex].firebaseRetry = false;
-    savedPasses[entryIndex].firebaseStatus = 'pending';
-    savedPasses[entryIndex].firebaseSaved = false;
-    saveSavedToLocalStorage();
-    renderTables();
-    
-    showTemporaryNotification('🔄 Syncing...', 'info');
-    
-    setTimeout(() => {
-        backgroundSaveToFirebase(entry);
-    }, 100);
 }
 
 function showTemporaryNotification(message, type = 'info') {
@@ -3566,7 +3571,7 @@ function parseAndAddToList() {
 window.switchTab = switchTab;
 window.deleteEntry = deleteEntry;
 window.approveEntry = approveEntry;
-window.syncEntry = syncEntry;
+window.retrySave = retrySave;
 window.toggleGuestMode = toggleGuestMode;
 window.cancelGuestMode = cancelGuestMode;
 window.makeEditable = makeEditable;
