@@ -794,7 +794,7 @@
             height: 18px;
         }
         
-        /* Print styles (kept for potential future use) */
+        /* Print styles */
         @media print {
             body {
                 padding: 0;
@@ -1008,7 +1008,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-    <!-- Floating Action Buttons - MOVED TO TOP (Print button removed) -->
+    <!-- Floating Action Buttons - MOVED TO TOP -->
     <div class="fab-container">
         <button class="fab-button" data-tooltip="Report" onclick="window.location.href='report.html'">
             <i class="fas fa-chart-bar"></i>
@@ -1155,7 +1155,7 @@
         </div>
     </div>
 
-    <!-- Print header template (hidden, kept for potential future use) -->
+    <!-- Print header template (hidden) -->
     <div id="printHeaderTemplate" style="display: none;">
         <div class="print-header">
             <h1>BOARDING PASS RECORDS</h1>
@@ -1173,11 +1173,12 @@ let editingCell = null; // Track currently editing cell
 let guestModeActive = false;
 let selectedGuestPassengerId = null;
 
-// User data from local storage
+// User data from local storage (from login page)
 let currentUser = {
     name: '',
     rcno: '',
-    level: ''
+    level: '',
+    username: ''
 };
 
 // Firebase shift data
@@ -1188,11 +1189,19 @@ let currentShiftData = {
     openTime: ''
 };
 
-// ========== INITIALIZATION ==========
+// ========== CHECK LOGIN AND INITIALIZATION ==========
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM fully loaded');
     
-    // Load user data from local storage
+    // Check if user is logged in
+    const isLoggedIn = checkLoginStatus();
+    if (!isLoggedIn) {
+        // Redirect to login page if not logged in
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    // Load user data from local storage (from login page)
     loadUserData();
     
     const codeField = document.getElementById('code');
@@ -1278,50 +1287,109 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// ========== LOGIN CHECK FUNCTION ==========
+
+function checkLoginStatus() {
+    try {
+        // Check for login data in localStorage
+        const username = localStorage.getItem('username');
+        const level = localStorage.getItem('level');
+        const rcno = localStorage.getItem('rcno');
+        
+        // Also check for loggedInUser object
+        const loggedInUser = localStorage.getItem('loggedInUser');
+        
+        // If we have at least username and one of level or rcno, consider logged in
+        if (username && (level || rcno)) {
+            return true;
+        }
+        
+        // Check if loggedInUser exists and has required fields
+        if (loggedInUser) {
+            try {
+                const userData = JSON.parse(loggedInUser);
+                if (userData && userData.username) {
+                    return true;
+                }
+            } catch (e) {
+                console.error('Error parsing loggedInUser:', e);
+            }
+        }
+        
+        // No valid login data found
+        return false;
+    } catch (error) {
+        console.error('Error checking login status:', error);
+        return false;
+    }
+}
+
 // ========== USER DATA FUNCTIONS ==========
 
 function loadUserData() {
     try {
-        // Try to get user data from local storage
-        const storedName = localStorage.getItem('userName');
-        const storedRcno = localStorage.getItem('userRCNo');
-        const storedLevel = localStorage.getItem('userLevel');
+        console.log('Loading user data from localStorage...');
         
-        // Also check for login data format
-        const loginData = localStorage.getItem('loginData');
-        if (loginData) {
+        // Get data from localStorage (set by login page)
+        const storedUsername = localStorage.getItem('username');
+        const storedLevel = localStorage.getItem('level');
+        const storedRcno = localStorage.getItem('rcno');
+        
+        console.log('Raw localStorage values:', {
+            username: storedUsername,
+            level: storedLevel,
+            rcno: storedRcno
+        });
+        
+        // Also check for loggedInUser object (backup)
+        const loggedInUser = localStorage.getItem('loggedInUser');
+        
+        if (loggedInUser) {
             try {
-                const parsedLogin = JSON.parse(loginData);
-                if (parsedLogin) {
-                    currentUser.name = parsedLogin.userName || parsedLogin.name || storedName || '';
-                    currentUser.rcno = parsedLogin.rcno || parsedLogin.RCNo || storedRcno || '';
-                    currentUser.level = parsedLogin.level || parsedLogin.Level || storedLevel || '';
-                }
+                const parsedUser = JSON.parse(loggedInUser);
+                console.log('Parsed loggedInUser:', parsedUser);
+                
+                // Use values from loggedInUser if individual items are missing
+                currentUser.username = parsedUser.username || storedUsername || '';
+                currentUser.name = parsedUser.name || parsedUser.username || storedUsername || '';
+                currentUser.rcno = parsedUser.rcno || storedRcno || '';
+                currentUser.level = parsedUser.level || storedLevel || '';
             } catch (e) {
-                console.error('Error parsing loginData:', e);
+                console.error('Error parsing loggedInUser:', e);
             }
         }
         
-        // Fallback to individual items
-        if (!currentUser.name) currentUser.name = storedName || '';
-        if (!currentUser.rcno) currentUser.rcno = storedRcno || '';
-        if (!currentUser.level) currentUser.level = storedLevel || '';
+        // Use individual items if available (they take precedence)
+        if (storedUsername) currentUser.username = storedUsername;
+        if (!currentUser.name && storedUsername) currentUser.name = storedUsername;
+        if (storedRcno) currentUser.rcno = storedRcno;
+        if (storedLevel) currentUser.level = storedLevel;
         
-        // If still empty, use default test values
-        if (!currentUser.name) currentUser.name = 'TEST USER';
-        if (!currentUser.rcno) currentUser.rcno = 'RC12345';
-        if (!currentUser.level) currentUser.level = 'OPERATOR';
+        // If still empty, set defaults (should not happen if login worked)
+        if (!currentUser.username) {
+            console.warn('No user data found in localStorage');
+            currentUser.username = 'UNKNOWN';
+            currentUser.name = 'UNKNOWN';
+            currentUser.rcno = 'N/A';
+            currentUser.level = 'OPERATOR';
+        }
+        
+        // Ensure name is set from username if needed
+        if (!currentUser.name) {
+            currentUser.name = currentUser.username;
+        }
+        
+        console.log('Final currentUser object:', currentUser);
         
         updateUserDisplay();
-        
-        console.log('User data loaded:', currentUser);
         
     } catch (error) {
         console.error('Error loading user data:', error);
         // Set default values on error
         currentUser = {
-            name: 'TEST USER',
-            rcno: 'RC12345',
+            username: 'UNKNOWN',
+            name: 'UNKNOWN',
+            rcno: 'N/A',
             level: 'OPERATOR'
         };
         updateUserDisplay();
@@ -1333,7 +1401,7 @@ function updateUserDisplay() {
     const userRcnoDisplay = document.getElementById('userRcnoDisplay');
     const userLevelDisplay = document.getElementById('userLevelDisplay');
     
-    if (userNameDisplay) userNameDisplay.textContent = currentUser.name || 'N/A';
+    if (userNameDisplay) userNameDisplay.textContent = currentUser.name || currentUser.username || 'N/A';
     if (userRcnoDisplay) userRcnoDisplay.textContent = currentUser.rcno || 'N/A';
     if (userLevelDisplay) userLevelDisplay.textContent = currentUser.level || 'N/A';
 }
@@ -1344,17 +1412,15 @@ function logout() {
         cancelGuestMode();
     }
     
-    // Clear user data from local storage if needed
-    // localStorage.removeItem('userName');
-    // localStorage.removeItem('userRCNo');
-    // localStorage.removeItem('userLevel');
-    // localStorage.removeItem('loginData');
+    // Clear user data from local storage
+    localStorage.removeItem('username');
+    localStorage.removeItem('level');
+    localStorage.removeItem('rcno');
+    localStorage.removeItem('loggedInUser');
     
     // Redirect to login page
     window.location.href = 'login.html';
 }
-
-// ========== PRINT FUNCTION - REMOVED ==========
 
 // ========== DUMMY ENTRY FUNCTION WITH USER TRACKING ==========
 
@@ -1381,9 +1447,10 @@ function createDummyEntry() {
         mainPassengerName: '',
         mainPassengerSeat: '',
         // User tracking fields
-        enteredBy: currentUser.name || 'UNKNOWN',
-        enteredByRCNo: currentUser.rcno || 'UNKNOWN',
-        enteredByLevel: currentUser.level || 'UNKNOWN',
+        enteredBy: currentUser.name || currentUser.username || 'UNKNOWN',
+        enteredByUsername: currentUser.username || 'UNKNOWN',
+        enteredByRCNo: currentUser.rcno || 'N/A',
+        enteredByLevel: currentUser.level || 'OPERATOR',
         enteredAt: new Date().toISOString()
     };
     
@@ -1957,9 +2024,10 @@ function addGuestToPassenger(mainPassengerId, guestData) {
             entryTime: guestData.entryTime || '',
             hiddenCode: guestData.hiddenCode || '',
             // Add user tracking for guest entry
-            enteredBy: currentUser.name || 'UNKNOWN',
-            enteredByRCNo: currentUser.rcno || 'UNKNOWN',
-            enteredByLevel: currentUser.level || 'UNKNOWN',
+            enteredBy: currentUser.name || currentUser.username || 'UNKNOWN',
+            enteredByUsername: currentUser.username || 'UNKNOWN',
+            enteredByRCNo: currentUser.rcno || 'N/A',
+            enteredByLevel: currentUser.level || 'OPERATOR',
             enteredAt: new Date().toISOString()
         };
         
@@ -2158,9 +2226,10 @@ async function saveEntryToFirebase(entry) {
         });
         
         // Ensure user tracking fields are present
-        if (!cleanEntry.enteredBy) cleanEntry.enteredBy = currentUser.name || 'UNKNOWN';
-        if (!cleanEntry.enteredByRCNo) cleanEntry.enteredByRCNo = currentUser.rcno || 'UNKNOWN';
-        if (!cleanEntry.enteredByLevel) cleanEntry.enteredByLevel = currentUser.level || 'UNKNOWN';
+        if (!cleanEntry.enteredBy) cleanEntry.enteredBy = currentUser.name || currentUser.username || 'UNKNOWN';
+        if (!cleanEntry.enteredByUsername) cleanEntry.enteredByUsername = currentUser.username || 'UNKNOWN';
+        if (!cleanEntry.enteredByRCNo) cleanEntry.enteredByRCNo = currentUser.rcno || 'N/A';
+        if (!cleanEntry.enteredByLevel) cleanEntry.enteredByLevel = currentUser.level || 'OPERATOR';
         if (!cleanEntry.enteredAt) cleanEntry.enteredAt = new Date().toISOString();
         
         cleanEntry.isGuest = cleanEntry.isGuest === true ? true : false;
@@ -2336,9 +2405,10 @@ async function approveEntry(id) {
         
         // Add user tracking information if not already present
         if (!entry.enteredBy) {
-            entry.enteredBy = currentUser.name || 'UNKNOWN';
-            entry.enteredByRCNo = currentUser.rcno || 'UNKNOWN';
-            entry.enteredByLevel = currentUser.level || 'UNKNOWN';
+            entry.enteredBy = currentUser.name || currentUser.username || 'UNKNOWN';
+            entry.enteredByUsername = currentUser.username || 'UNKNOWN';
+            entry.enteredByRCNo = currentUser.rcno || 'N/A';
+            entry.enteredByLevel = currentUser.level || 'OPERATOR';
             entry.enteredAt = new Date().toISOString();
         }
         
@@ -2356,9 +2426,10 @@ async function approveEntry(id) {
             mainPassengerName: entry.mainPassengerName || '',
             mainPassengerSeat: entry.mainPassengerSeat || '',
             // Ensure user tracking is present in approved entry
-            enteredBy: entry.enteredBy || currentUser.name || 'UNKNOWN',
-            enteredByRCNo: entry.enteredByRCNo || currentUser.rcno || 'UNKNOWN',
-            enteredByLevel: entry.enteredByLevel || currentUser.level || 'UNKNOWN',
+            enteredBy: entry.enteredBy || currentUser.name || currentUser.username || 'UNKNOWN',
+            enteredByUsername: entry.enteredByUsername || currentUser.username || 'UNKNOWN',
+            enteredByRCNo: entry.enteredByRCNo || currentUser.rcno || 'N/A',
+            enteredByLevel: entry.enteredByLevel || currentUser.level || 'OPERATOR',
             enteredAt: entry.enteredAt || new Date().toISOString()
         };
         
@@ -2751,7 +2822,7 @@ function renderSavedTable() {
     });
 }
 
-// ========== PRINT ROW FUNCTION (kept for potential future use) ==========
+// ========== PRINT ROW FUNCTION ==========
 
 function printRow(id, isSaved = false) {
     const entryArray = isSaved ? savedPasses : pendingPasses;
@@ -2778,7 +2849,8 @@ function printRow(id, isSaved = false) {
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Shift:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.shift || currentShiftData.shift || '—'}</td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Entry Time:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.entryTime || '—'}</td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Guest:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.isGuest ? 'YES' : 'NO'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Entered By:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.enteredBy || 'UNKNOWN'} (${entry.enteredByRCNo || ''}) - ${entry.enteredByLevel || ''}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Entered By:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.enteredBy || 'UNKNOWN'} (${entry.enteredByUsername || ''}) - ${entry.enteredByLevel || ''}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>RC No:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.enteredByRCNo || 'N/A'}</td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Entered At:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.enteredAt ? new Date(entry.enteredAt).toLocaleString() : '—'}</td></tr>
             </table>
             <hr>
@@ -2841,9 +2913,10 @@ function addToTable(data) {
     
     // Add user tracking information if not already present
     if (!upperData.enteredBy) {
-        upperData.enteredBy = currentUser.name || 'UNKNOWN';
-        upperData.enteredByRCNo = currentUser.rcno || 'UNKNOWN';
-        upperData.enteredByLevel = currentUser.level || 'UNKNOWN';
+        upperData.enteredBy = currentUser.name || currentUser.username || 'UNKNOWN';
+        upperData.enteredByUsername = currentUser.username || 'UNKNOWN';
+        upperData.enteredByRCNo = currentUser.rcno || 'N/A';
+        upperData.enteredByLevel = currentUser.level || 'OPERATOR';
         upperData.enteredAt = new Date().toISOString();
     }
     
@@ -2994,9 +3067,10 @@ function parseAndAddToList() {
                 mainPassengerName: '',
                 mainPassengerSeat: '',
                 // User tracking fields
-                enteredBy: currentUser.name || 'UNKNOWN',
-                enteredByRCNo: currentUser.rcno || 'UNKNOWN',
-                enteredByLevel: currentUser.level || 'UNKNOWN',
+                enteredBy: currentUser.name || currentUser.username || 'UNKNOWN',
+                enteredByUsername: currentUser.username || 'UNKNOWN',
+                enteredByRCNo: currentUser.rcno || 'N/A',
+                enteredByLevel: currentUser.level || 'OPERATOR',
                 enteredAt: new Date().toISOString()
             };
             
@@ -3240,9 +3314,10 @@ function parseAndAddToList() {
                 mainPassengerName: '',
                 mainPassengerSeat: '',
                 // User tracking fields
-                enteredBy: currentUser.name || 'UNKNOWN',
-                enteredByRCNo: currentUser.rcno || 'UNKNOWN',
-                enteredByLevel: currentUser.level || 'UNKNOWN',
+                enteredBy: currentUser.name || currentUser.username || 'UNKNOWN',
+                enteredByUsername: currentUser.username || 'UNKNOWN',
+                enteredByRCNo: currentUser.rcno || 'N/A',
+                enteredByLevel: currentUser.level || 'OPERATOR',
                 enteredAt: new Date().toISOString()
             };
         }
@@ -3293,7 +3368,7 @@ window.saveInlineEdit = saveInlineEdit;
 window.saveHiddenCodeToCardDB = saveHiddenCodeToCardDB;
 window.createDummyEntry = createDummyEntry;
 window.logout = logout;
-window.printRow = printRow; // Kept for potential future use
+window.printRow = printRow;
 </script>
 </body>   
 </html>
