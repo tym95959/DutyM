@@ -526,522 +526,541 @@
         </div>
     </div>
 
-    <script>
-        // ========== GLOBAL VARIABLES ==========
-        let flightsByDate = {};
-        let allDates = [];
-        let currentFlightData = null;
-        let flightReports = {};
-        let editingRowId = null;
+   <script>
+    // ========== GLOBAL VARIABLES ==========
+    let flightsByDate = {};
+    let allDates = [];
+    let currentFlightData = null;
+    let flightReports = {};
+    let editingRowId = null;
 
-        // ========== UTILS ==========
-        function calculatePaxFromSeat(seatNo) {
-            if (!seatNo) return 1;
-            const letters = seatNo.toString().match(/[A-Za-z]/g);
-            return letters ? letters.length : 1;
+    // ========== UTILS ==========
+    function calculatePaxFromSeat(seatNo) {
+        if (!seatNo) return 1;
+        const letters = seatNo.toString().match(/[A-Za-z]/g);
+        return letters ? letters.length : 1;
+    }
+
+    function onSeatChange(docId) {
+        const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+        const paxInput = document.getElementById(`edit-pax-${docId}`);
+        const warningDiv = document.getElementById(`pax-warning-${docId}`);
+        if (seatInput && paxInput) {
+            const calculated = calculatePaxFromSeat(seatInput.value);
+            paxInput.value = calculated;
+            if (warningDiv) {
+                warningDiv.textContent = '✓ auto-updated';
+                warningDiv.style.color = '#6b8e23';
+                setTimeout(() => { if(warningDiv) warningDiv.textContent = ''; }, 2000);
+            }
         }
+    }
 
-        function onSeatChange(docId) {
-            const seatInput = document.getElementById(`edit-seatNo-${docId}`);
-            const paxInput = document.getElementById(`edit-pax-${docId}`);
-            const warningDiv = document.getElementById(`pax-warning-${docId}`);
-            if (seatInput && paxInput) {
-                const calculated = calculatePaxFromSeat(seatInput.value);
-                paxInput.value = calculated;
+    function onPaxChange(docId) {
+        const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+        const paxInput = document.getElementById(`edit-pax-${docId}`);
+        const warningDiv = document.getElementById(`pax-warning-${docId}`);
+        if (seatInput && paxInput) {
+            const calculated = calculatePaxFromSeat(seatInput.value);
+            const entered = parseInt(paxInput.value) || 0;
+            if (entered !== calculated) {
                 if (warningDiv) {
-                    warningDiv.textContent = '✓ auto-updated';
-                    warningDiv.style.color = '#6b8e23';
-                    setTimeout(() => { if(warningDiv) warningDiv.textContent = ''; }, 2000);
+                    warningDiv.innerHTML = `⚠ mismatch (seat->${calculated}) <button onclick="updatePaxFromSeat('${docId}')" style="background:none; border:1px solid #c68b5e; border-radius:12px; padding:2px 6px; font-size:9px; cursor:pointer;">fix</button>`;
+                    warningDiv.style.color = '#c68b5e';
                 }
-            }
-        }
-
-        function onPaxChange(docId) {
-            const seatInput = document.getElementById(`edit-seatNo-${docId}`);
-            const paxInput = document.getElementById(`edit-pax-${docId}`);
-            const warningDiv = document.getElementById(`pax-warning-${docId}`);
-            if (seatInput && paxInput) {
-                const calculated = calculatePaxFromSeat(seatInput.value);
-                const entered = parseInt(paxInput.value) || 0;
-                if (entered !== calculated) {
-                    if (warningDiv) {
-                        warningDiv.innerHTML = `⚠ mismatch (seat->${calculated}) <button onclick="updatePaxFromSeat('${docId}')" style="background:none; border:1px solid #c68b5e; border-radius:12px; padding:2px 6px; font-size:9px; cursor:pointer;">fix</button>`;
-                        warningDiv.style.color = '#c68b5e';
-                    }
-                } else {
-                    if (warningDiv) warningDiv.textContent = '';
-                }
-            }
-        }
-
-        function updatePaxFromSeat(docId) {
-            const seatInput = document.getElementById(`edit-seatNo-${docId}`);
-            const paxInput = document.getElementById(`edit-pax-${docId}`);
-            const warningDiv = document.getElementById(`pax-warning-${docId}`);
-            if (seatInput && paxInput) {
-                paxInput.value = calculatePaxFromSeat(seatInput.value);
+            } else {
                 if (warningDiv) warningDiv.textContent = '';
             }
         }
+    }
 
-        function showNotification(msg) { console.log(msg); }
-
-        // ========== SHIFT ==========
-        async function fetchOpenShift() {
-            try {
-                const shiftBadge = document.getElementById('shiftBadge');
-                const ribbonDate = document.getElementById('ribbonDate');
-                const ribbon = document.getElementById('shiftRibbon');
-                shiftBadge.textContent = 'LOADING...';
-                ribbonDate.textContent = '--';
-                if (typeof passengerDb === 'undefined') throw new Error('no passengerDb');
-                const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
-                if (shiftDoc.exists) {
-                    const data = shiftDoc.data();
-                    const date = data.date || 'No date';
-                    const morning = data.morning || 'closed';
-                    const evening = data.evening || 'closed';
-                    if (morning === 'open') {
-                        shiftBadge.textContent = 'MORNING SHIFT';
-                        ribbonDate.textContent = date;
-                        ribbon.style.background = 'linear-gradient(135deg, #6b8e23, #8b6913)';
-                    } else if (evening === 'open') {
-                        shiftBadge.textContent = 'EVENING SHIFT';
-                        ribbonDate.textContent = date;
-                        ribbon.style.background = 'linear-gradient(135deg, #c68b5e, #8b6913)';
-                    } else {
-                        shiftBadge.textContent = 'NO OPEN SHIFT';
-                        ribbonDate.textContent = date;
-                        ribbon.style.background = 'linear-gradient(135deg, #7f8c8d, #5e4a1a)';
-                    }
-                } else throw new Error('shift missing');
-            } catch (error) {
-                document.getElementById('shiftBadge').textContent = 'ERROR';
-                document.getElementById('ribbonDate').textContent = '--';
-            }
+    function updatePaxFromSeat(docId) {
+        const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+        const paxInput = document.getElementById(`edit-pax-${docId}`);
+        const warningDiv = document.getElementById(`pax-warning-${docId}`);
+        if (seatInput && paxInput) {
+            paxInput.value = calculatePaxFromSeat(seatInput.value);
+            if (warningDiv) warningDiv.textContent = '';
         }
+    }
 
-        // ========== LOAD DATES ==========
-        let isLoadingDates = false;
-        async function loadDates() {
-            if (isLoadingDates) return;
-            const dateSelect = document.getElementById('dateSelect');
-            if (allDates.length > 0) return;
-            isLoadingDates = true;
-            dateSelect.innerHTML = '<option value="">Loading dates...</option>';
-            dateSelect.disabled = true;
-            try {
-                if (typeof db === 'undefined') throw new Error('db not initialized');
-                const snapshot = await db.collection('KoveliPass').get();
-                if (snapshot.empty) {
-                    dateSelect.innerHTML = '<option value="">No dates</option>';
-                    dateSelect.disabled = false;
-                    isLoadingDates = false;
-                    return;
-                }
-                const dates = new Set();
-                flightsByDate = {};
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const date = data.date;
-                    const docId = doc.id;
-                    if (date) {
-                        dates.add(date);
-                        if (!flightsByDate[date]) flightsByDate[date] = new Map();
-                        const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
-                        if (!flightsByDate[date].has(flightKey)) {
-                            flightsByDate[date].set(flightKey, {
-                                flightNo: data.flightNo,
-                                shift: data.shift || 'UNKNOWN',
-                                airline: data.airline || '',
-                                passengers: [],
-                                firstPax: null,
-                                lastPax: null,
-                                std: '',
-                                isClosed: false
-                            });
-                        }
-                        const flightData = flightsByDate[date].get(flightKey);
-                        flightData.passengers.push({
-                            docId: docId,
-                            pName: data.pName || '',
-                            seatNo: data.seatNo || '',
-                            pax: data.pax || '1',
-                            FQTV: data.FQTV || '',
-                            entryTime: data.entryTime || '',
-                            remarks: data.remarks || '',
-                            serialNo: data.serialNo || ''
-                        });
-                        if (data.entryTime) {
-                            if (!flightData.firstPax || data.entryTime < flightData.firstPax) flightData.firstPax = data.entryTime;
-                            if (!flightData.lastPax || data.entryTime > flightData.lastPax) flightData.lastPax = data.entryTime;
-                        }
-                    }
-                });
-                allDates = Array.from(dates).sort().reverse();
-                let options = '<option value="">-- Select a date --</option>';
-                allDates.forEach(d => { options += `<option value="${d}">${d}</option>`; });
-                dateSelect.innerHTML = options;
-                dateSelect.disabled = false;
-            } catch (error) {
-                console.error(error);
-                dateSelect.innerHTML = '<option value="">Error</option>';
-                dateSelect.disabled = false;
-            } finally { isLoadingDates = false; }
-        }
+    function showNotification(msg) { console.log(msg); }
 
-        function onDateSelected() {
-            const dateSelect = document.getElementById('dateSelect');
-            const flightSelect = document.getElementById('flightSelect');
-            const selectedDate = dateSelect.value;
-            flightSelect.innerHTML = '<option value="">-- Select flight --</option>';
-            flightSelect.disabled = true;
-            document.getElementById('flightPanel').style.display = 'none';
-            document.getElementById('tableContainer').style.display = 'none';
-            document.getElementById('quickShiftText').innerText = 'Select flight';
-            editingRowId = null;
-            if (!selectedDate) return;
-            const flights = flightsByDate[selectedDate];
-            if (!flights) return;
-            const flightsArray = Array.from(flights.values()).sort((a,b) => a.flightNo.localeCompare(b.flightNo));
-            let options = '<option value="">-- Select flight --</option>';
-            flightsArray.forEach(f => { options += `<option value="${f.flightNo}|${f.shift}">${f.flightNo}</option>`; });
-            flightSelect.innerHTML = options;
-            flightSelect.disabled = false;
-        }
-
-        function onFlightSelected() {
-            const dateSelect = document.getElementById('dateSelect');
-            const flightSelect = document.getElementById('flightSelect');
-            const selectedDate = dateSelect.value;
-            const selectedFlight = flightSelect.value;
-            if (!selectedDate || !selectedFlight) {
-                document.getElementById('flightPanel').style.display = 'none';
-                document.getElementById('tableContainer').style.display = 'none';
-                return;
-            }
-            const [flightNo, shift] = selectedFlight.split('|');
-            const flightKey = `${flightNo}_${shift}`;
-            const flightData = flightsByDate[selectedDate]?.get(flightKey);
-            if (!flightData) return;
-            currentFlightData = flightData;
-            editingRowId = null;
-            document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
-            document.getElementById('flightNoDisplay').textContent = flightNo;
-            document.getElementById('dateDisplay').textContent = selectedDate;
-            document.getElementById('shiftDisplay').textContent = shift;
-            document.getElementById('firstPaxDisplay').textContent = flightData.firstPax || '-';
-            document.getElementById('stdInput').value = flightData.std || '';
-            document.getElementById('lastPaxInput').value = flightData.lastPax || '';
-            document.getElementById('totalPaxStat').textContent = flightData.passengers.length;
-            document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
-            document.getElementById('lastPaxStat').textContent = flightData.lastPax || '--:--';
-            document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
-            document.getElementById('quickShiftText').innerText = `${flightNo} | ${shift}`;
-            
-            // set status UI based on isClosed
-            if (flightData.isClosed) {
-                document.getElementById('flightStatus').textContent = 'CLOSED';
-                document.getElementById('flightStatus').className = 'flight-status status-closed';
-                document.getElementById('closeFlightBtn').style.display = 'none';
-                document.getElementById('reopenFlightBtn').style.display = 'block';
-                document.getElementById('printReportBtn').disabled = false;
-            } else {
-                document.getElementById('flightStatus').textContent = 'OPEN';
-                document.getElementById('flightStatus').className = 'flight-status status-open';
-                document.getElementById('closeFlightBtn').style.display = 'block';
-                document.getElementById('reopenFlightBtn').style.display = 'none';
-                document.getElementById('printReportBtn').disabled = true;
-                // Validate close button based on STD and Last Pax
-                validateCloseButton();
-            }
-            
-            document.getElementById('flightPanel').style.display = 'block';
-            displayPassengerTable(flightData.passengers);
-        }
-
-        // Enable/disable close button based on STD and Last Pax values
-        function validateCloseButton() {
-            if (!currentFlightData || currentFlightData.isClosed) return;
-            const std = document.getElementById('stdInput').value;
-            const lastPax = document.getElementById('lastPaxInput').value;
-            const closeBtn = document.getElementById('closeFlightBtn');
-            if (std && lastPax) {
-                closeBtn.disabled = false;
-            } else {
-                closeBtn.disabled = true;
-            }
-        }
-
-        function displayPassengerTable(passengers) {
-            const tbody = document.getElementById('passengerTableBody');
-            if (!passengers || passengers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" class="no-data">No passengers</td></tr>';
-                document.getElementById('tableContainer').style.display = 'block';
-                return;
-            }
-            const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-            let html = '';
-            sorted.forEach((p, idx) => {
-                const serial = String(idx+1).padStart(3,'0');
-                if (editingRowId === p.docId) {
-                    html += `<tr id="edit-row-${p.docId}">
-                        <td class="serial-no">${serial}</td>
-                        <td><input type="text" id="edit-pName-${p.docId}" value="${p.pName||''}" class="edit-mode-input"></td>
-                        <td>
-                            <input type="text" id="edit-seatNo-${p.docId}" value="${p.seatNo||''}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
-                            <div id="pax-warning-${p.docId}" class="pax-warning"></div>
-                        </td>
-                        <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
-                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${p.FQTV||''}" class="edit-mode-input"></td>
-                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${p.serialNo||''}" class="edit-mode-input"></td>
-                        <td>${p.entryTime||'-'}</td>
-                        <td><input type="text" id="edit-remarks-${p.docId}" value="${p.remarks||''}" class="edit-mode-input"></td>
-                        <td class="action-cell">
-                            <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
-                            <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
-                        </td>
-                    </tr>`;
+    // ========== SHIFT ==========
+    async function fetchOpenShift() {
+        try {
+            const shiftBadge = document.getElementById('shiftBadge');
+            const ribbonDate = document.getElementById('ribbonDate');
+            const ribbon = document.getElementById('shiftRibbon');
+            shiftBadge.textContent = 'LOADING...';
+            ribbonDate.textContent = '--';
+            if (typeof passengerDb === 'undefined') throw new Error('no passengerDb');
+            const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+            if (shiftDoc.exists) {
+                const data = shiftDoc.data();
+                const date = data.date || 'No date';
+                const morning = data.morning || 'closed';
+                const evening = data.evening || 'closed';
+                if (morning === 'open') {
+                    shiftBadge.textContent = 'MORNING SHIFT';
+                    ribbonDate.textContent = date;
+                    ribbon.style.background = 'linear-gradient(135deg, #6b8e23, #8b6913)';
+                } else if (evening === 'open') {
+                    shiftBadge.textContent = 'EVENING SHIFT';
+                    ribbonDate.textContent = date;
+                    ribbon.style.background = 'linear-gradient(135deg, #c68b5e, #8b6913)';
                 } else {
-                    html += `<tr>
-                        <td class="serial-no">${serial}</td>
-                        <td>${p.pName||'-'}</td>
-                        <td>${p.seatNo||'-'}</td>
-                        <td style="text-align:center;">${p.pax||'1'}</td>
-                        <td>${p.FQTV||'-'}</td>
-                        <td class="${p.serialNo?'serial-no':'serial-blank'}">${p.serialNo||'—'}</td>
-                        <td>${p.entryTime||'-'}</td>
-                        <td>${p.remarks||'-'}</td>
-                        <td class="action-cell">
-                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${p.pName}')">Del</button>
-                        </td>
-                    </tr>`;
+                    shiftBadge.textContent = 'NO OPEN SHIFT';
+                    ribbonDate.textContent = date;
+                    ribbon.style.background = 'linear-gradient(135deg, #7f8c8d, #5e4a1a)';
+                }
+            } else throw new Error('shift missing');
+        } catch (error) {
+            document.getElementById('shiftBadge').textContent = 'ERROR';
+            document.getElementById('ribbonDate').textContent = '--';
+        }
+    }
+
+    // ========== LOAD DATES ==========
+    let isLoadingDates = false;
+    async function loadDates() {
+        if (isLoadingDates) return;
+        const dateSelect = document.getElementById('dateSelect');
+        if (allDates.length > 0) return;
+        isLoadingDates = true;
+        dateSelect.innerHTML = '<option value="">Loading dates...</option>';
+        dateSelect.disabled = true;
+        try {
+            if (typeof db === 'undefined') throw new Error('db not initialized');
+            const snapshot = await db.collection('KoveliPass').get();
+            if (snapshot.empty) {
+                dateSelect.innerHTML = '<option value="">No dates</option>';
+                dateSelect.disabled = false;
+                isLoadingDates = false;
+                return;
+            }
+            const dates = new Set();
+            flightsByDate = {};
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const date = data.date;
+                const docId = doc.id;
+                if (date) {
+                    dates.add(date);
+                    if (!flightsByDate[date]) flightsByDate[date] = new Map();
+                    const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
+                    if (!flightsByDate[date].has(flightKey)) {
+                        flightsByDate[date].set(flightKey, {
+                            flightNo: data.flightNo,
+                            shift: data.shift || 'UNKNOWN',
+                            airline: data.airline || '',
+                            passengers: [],
+                            firstPax: null,
+                            lastPax: null,
+                            std: '',
+                            isClosed: false
+                        });
+                    }
+                    const flightData = flightsByDate[date].get(flightKey);
+                    flightData.passengers.push({
+                        docId: docId,
+                        pName: data.pName || '',
+                        seatNo: data.seatNo || '',
+                        pax: data.pax || '1',
+                        FQTV: data.FQTV || '',
+                        entryTime: data.entryTime || '',
+                        remarks: data.remarks || '',
+                        serialNo: data.serialNo || ''
+                    });
+                    if (data.entryTime) {
+                        if (!flightData.firstPax || data.entryTime < flightData.firstPax) flightData.firstPax = data.entryTime;
+                        if (!flightData.lastPax || data.entryTime > flightData.lastPax) flightData.lastPax = data.entryTime;
+                    }
                 }
             });
-            tbody.innerHTML = html;
-            document.getElementById('tableContainer').style.display = 'block';
+            allDates = Array.from(dates).sort().reverse();
+            let options = '<option value="">-- Select a date --</option>';
+            allDates.forEach(d => { options += `<option value="${d}">${d}</option>`; });
+            dateSelect.innerHTML = options;
+            dateSelect.disabled = false;
+        } catch (error) {
+            console.error(error);
+            dateSelect.innerHTML = '<option value="">Error</option>';
+            dateSelect.disabled = false;
+        } finally { isLoadingDates = false; }
+    }
+
+    function onDateSelected() {
+        const dateSelect = document.getElementById('dateSelect');
+        const flightSelect = document.getElementById('flightSelect');
+        const selectedDate = dateSelect.value;
+        flightSelect.innerHTML = '<option value="">-- Select flight --</option>';
+        flightSelect.disabled = true;
+        document.getElementById('flightPanel').style.display = 'none';
+        document.getElementById('tableContainer').style.display = 'none';
+        document.getElementById('quickShiftText').innerText = 'Select flight';
+        editingRowId = null;
+        if (!selectedDate) return;
+        const flights = flightsByDate[selectedDate];
+        if (!flights) return;
+        const flightsArray = Array.from(flights.values()).sort((a,b) => a.flightNo.localeCompare(b.flightNo));
+        let options = '<option value="">-- Select flight --</option>';
+        flightsArray.forEach(f => { options += `<option value="${f.flightNo}|${f.shift}">${f.flightNo}</option>`; });
+        flightSelect.innerHTML = options;
+        flightSelect.disabled = false;
+    }
+
+    async function onFlightSelected() {
+        const dateSelect = document.getElementById('dateSelect');
+        const flightSelect = document.getElementById('flightSelect');
+        const selectedDate = dateSelect.value;
+        const selectedFlight = flightSelect.value;
+        if (!selectedDate || !selectedFlight) {
+            document.getElementById('flightPanel').style.display = 'none';
+            document.getElementById('tableContainer').style.display = 'none';
+            return;
         }
-
-        function startEdit(docId) { editingRowId = docId; displayPassengerTable(currentFlightData.passengers); }
-        function cancelEdit() { editingRowId = null; displayPassengerTable(currentFlightData.passengers); }
-
-        async function savePassenger(docId) {
-            try {
-                const pName = document.getElementById(`edit-pName-${docId}`).value;
-                const seatNo = document.getElementById(`edit-seatNo-${docId}`).value;
-                const pax = document.getElementById(`edit-pax-${docId}`).value;
-                const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
-                const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
-                const remarks = document.getElementById(`edit-remarks-${docId}`).value;
-                const calculated = calculatePaxFromSeat(seatNo);
-                if (parseInt(pax) !== calculated && !confirm(`PAX mismatch (seat->${calculated}). Save anyway?`)) return;
-                await db.collection('KoveliPass').doc(docId).update({ 
-                    pName, 
-                    seatNo, 
-                    pax, 
-                    FQTV, 
-                    serialNo, 
-                    remarks, 
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
-                });
-                const passenger = currentFlightData.passengers.find(p => p.docId === docId);
-                if (passenger) { 
-                    passenger.pName = pName; 
-                    passenger.seatNo = seatNo; 
-                    passenger.pax = pax; 
-                    passenger.FQTV = FQTV; 
-                    passenger.serialNo = serialNo; 
-                    passenger.remarks = remarks; 
-                }
-                editingRowId = null;
-                displayPassengerTable(currentFlightData.passengers);
-                alert('Updated');
-            } catch (error) { 
-                alert('Error: '+error.message); 
-                console.error(error);
+        const [flightNo, shift] = selectedFlight.split('|');
+        const flightKey = `${flightNo}_${shift}`;
+        const flightData = flightsByDate[selectedDate]?.get(flightKey);
+        if (!flightData) return;
+        
+        currentFlightData = flightData;
+        editingRowId = null;
+        
+        // Load flight status from FlightReports collection
+        try {
+            const reportId = `${flightNo}_${selectedDate}`;
+            const reportDoc = await db.collection('FlightReports').doc(reportId).get();
+            
+            if (reportDoc.exists) {
+                const reportData = reportDoc.data();
+                currentFlightData.isClosed = reportData.isClosed || false;
+                currentFlightData.std = reportData.std || '';
+                currentFlightData.lastPax = reportData.lastPax || '';
+                console.log('Loaded flight status:', { isClosed: currentFlightData.isClosed, std: currentFlightData.std, lastPax: currentFlightData.lastPax });
+            } else {
+                // If no report exists, flight is open by default
+                currentFlightData.isClosed = false;
+                console.log('No report found, flight is open by default');
             }
-        }
-
-        function confirmDelete(docId, name) { if (confirm(`Delete ${name}?`)) deletePassenger(docId); }
-        async function deletePassenger(docId) {
-            try {
-                await db.collection('KoveliPass').doc(docId).delete();
-                const idx = currentFlightData.passengers.findIndex(p => p.docId === docId);
-                if (idx !== -1) currentFlightData.passengers.splice(idx,1);
-                document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
-                document.getElementById('passengerCount').textContent = currentFlightData.passengers.length+' PAX';
-                displayPassengerTable(currentFlightData.passengers);
-                alert('Deleted');
-            } catch (error) { 
-                alert('Error: '+error.message);
-                console.error(error);
-            }
-        }
-
-        async function updateSTD() { 
-            const v = document.getElementById('stdInput').value; 
-            if(v && currentFlightData) { 
-                currentFlightData.std = v; 
-                showNotification('STD updated'); 
-                validateCloseButton();
-                // Save to Firebase immediately
-                try {
-                    await saveFlightDataToFirebase();
-                    console.log('STD auto-saved');
-                } catch (error) {
-                    console.error('Error saving STD:', error);
-                }
-            } 
+        } catch (error) {
+            console.error('Error loading flight status:', error);
+            currentFlightData.isClosed = false;
         }
         
-        async function updateLastPax() { 
-            const v = document.getElementById('lastPaxInput').value; 
-            if(v && currentFlightData) { 
-                currentFlightData.lastPax = v; 
-                document.getElementById('lastPaxStat').textContent = v; 
-                document.getElementById('lastPaxDisplay').textContent = v;
-                validateCloseButton();
-                // Save to Firebase immediately
-                try {
-                    await saveFlightDataToFirebase();
-                    console.log('Last Pax auto-saved');
-                } catch (error) {
-                    console.error('Error saving Last Pax:', error);
-                }
-            } 
+        // Update UI with loaded data
+        document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
+        document.getElementById('flightNoDisplay').textContent = flightNo;
+        document.getElementById('dateDisplay').textContent = selectedDate;
+        document.getElementById('shiftDisplay').textContent = shift;
+        document.getElementById('firstPaxDisplay').textContent = flightData.firstPax || '-';
+        document.getElementById('stdInput').value = currentFlightData.std || '';
+        document.getElementById('lastPaxInput').value = currentFlightData.lastPax || '';
+        document.getElementById('totalPaxStat').textContent = flightData.passengers.length;
+        document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
+        document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
+        document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
+        document.getElementById('quickShiftText').innerText = `${flightNo} | ${shift}`;
+        
+        // set status UI based on isClosed from Firebase
+        if (currentFlightData.isClosed) {
+            document.getElementById('flightStatus').textContent = 'CLOSED';
+            document.getElementById('flightStatus').className = 'flight-status status-closed';
+            document.getElementById('closeFlightBtn').style.display = 'none';
+            document.getElementById('reopenFlightBtn').style.display = 'block';
+            document.getElementById('printReportBtn').disabled = false;
+        } else {
+            document.getElementById('flightStatus').textContent = 'OPEN';
+            document.getElementById('flightStatus').className = 'flight-status status-open';
+            document.getElementById('closeFlightBtn').style.display = 'block';
+            document.getElementById('reopenFlightBtn').style.display = 'none';
+            document.getElementById('printReportBtn').disabled = true;
+            // Validate close button based on STD and Last Pax
+            validateCloseButton();
         }
+        
+        document.getElementById('flightPanel').style.display = 'block';
+        displayPassengerTable(flightData.passengers);
+    }
 
-        // Save flight data to Firebase
-        async function saveFlightDataToFirebase() {
-            if (!currentFlightData) return;
-            
-            try {
-                const date = document.getElementById('dateDisplay').textContent;
-                const flightNo = document.getElementById('flightNoDisplay').textContent;
-                const shift = document.getElementById('shiftDisplay').textContent;
-                const airline = document.getElementById('airlineDisplay').textContent;
-                const std = document.getElementById('stdInput').value || currentFlightData.std || '';
-                const lastPax = document.getElementById('lastPaxInput').value || currentFlightData.lastPax || '';
-                const firstPax = currentFlightData.firstPax || '';
-                const totalPax = currentFlightData.passengers.length;
-                const isClosed = currentFlightData.isClosed || false;
-                
-                // Create a report ID
-                const reportId = `${flightNo}_${date}`;
-                
-                console.log('Saving to Firebase:', { reportId, flightNo, date, shift, airline, std, lastPax, firstPax, totalPax, isClosed });
-                
-                // Save to FlightReports collection
-                await db.collection('FlightReports').doc(reportId).set({
-                    flightNo: flightNo,
-                    date: date,
-                    shift: shift,
-                    airline: airline,
-                    std: std,
-                    firstPax: firstPax,
-                    lastPax: lastPax,
-                    totalPax: totalPax,
-                    isClosed: isClosed,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-                
-                console.log('Flight data saved successfully');
-                return true;
-            } catch (error) { 
-                console.error('Error saving flight data:', error);
-                throw error;
-            }
+    // Enable/disable close button based on STD and Last Pax values
+    function validateCloseButton() {
+        if (!currentFlightData || currentFlightData.isClosed) return;
+        const std = document.getElementById('stdInput').value;
+        const lastPax = document.getElementById('lastPaxInput').value;
+        const closeBtn = document.getElementById('closeFlightBtn');
+        if (std && lastPax) {
+            closeBtn.disabled = false;
+        } else {
+            closeBtn.disabled = true;
         }
+    }
 
-        // CLOSE FLIGHT: saves to Firebase then closes
-        async function closeFlight() {
-            if (!currentFlightData) return;
-            
-            // Double-check STD and Last Pax are present
-            const std = document.getElementById('stdInput').value;
-            const lastPax = document.getElementById('lastPaxInput').value;
-            if (!std || !lastPax) {
-                alert('STD and Last Pax must be entered before closing the flight.');
-                return;
+    function displayPassengerTable(passengers) {
+        const tbody = document.getElementById('passengerTableBody');
+        if (!passengers || passengers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="no-data">No passengers</td></tr>';
+            document.getElementById('tableContainer').style.display = 'block';
+            return;
+        }
+        const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        let html = '';
+        sorted.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            if (editingRowId === p.docId) {
+                html += `<tr id="edit-row-${p.docId}">
+                    <td class="serial-no">${serial}</td>
+                    <td><input type="text" id="edit-pName-${p.docId}" value="${p.pName||''}" class="edit-mode-input"></td>
+                    <td>
+                        <input type="text" id="edit-seatNo-${p.docId}" value="${p.seatNo||''}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
+                        <div id="pax-warning-${p.docId}" class="pax-warning"></div>
+                    </td>
+                    <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
+                    <td><input type="text" id="edit-FQTV-${p.docId}" value="${p.FQTV||''}" class="edit-mode-input"></td>
+                    <td><input type="text" id="edit-serialNo-${p.docId}" value="${p.serialNo||''}" class="edit-mode-input"></td>
+                    <td>${p.entryTime||'-'}</td>
+                    <td><input type="text" id="edit-remarks-${p.docId}" value="${p.remarks||''}" class="edit-mode-input"></td>
+                    <td class="action-cell">
+                        <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
+                        <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                    </td>
+                </tr>`;
+            } else {
+                html += `<tr>
+                    <td class="serial-no">${serial}</td>
+                    <td>${p.pName||'-'}</td>
+                    <td>${p.seatNo||'-'}</td>
+                    <td style="text-align:center;">${p.pax||'1'}</td>
+                    <td>${p.FQTV||'-'}</td>
+                    <td class="${p.serialNo?'serial-no':'serial-blank'}">${p.serialNo||'—'}</td>
+                    <td>${p.entryTime||'-'}</td>
+                    <td>${p.remarks||'-'}</td>
+                    <td class="action-cell">
+                        <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                        <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${p.pName}')">Del</button>
+                    </td>
+                </tr>`;
             }
-            
-            // Update currentFlightData with latest values
-            currentFlightData.std = std;
-            currentFlightData.lastPax = lastPax;
-            
+        });
+        tbody.innerHTML = html;
+        document.getElementById('tableContainer').style.display = 'block';
+    }
+
+    function startEdit(docId) { editingRowId = docId; displayPassengerTable(currentFlightData.passengers); }
+    function cancelEdit() { editingRowId = null; displayPassengerTable(currentFlightData.passengers); }
+
+    async function savePassenger(docId) {
+        try {
+            const pName = document.getElementById(`edit-pName-${docId}`).value;
+            const seatNo = document.getElementById(`edit-seatNo-${docId}`).value;
+            const pax = document.getElementById(`edit-pax-${docId}`).value;
+            const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
+            const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
+            const remarks = document.getElementById(`edit-remarks-${docId}`).value;
+            const calculated = calculatePaxFromSeat(seatNo);
+            if (parseInt(pax) !== calculated && !confirm(`PAX mismatch (seat->${calculated}). Save anyway?`)) return;
+            await db.collection('KoveliPass').doc(docId).update({ 
+                pName, 
+                seatNo, 
+                pax, 
+                FQTV, 
+                serialNo, 
+                remarks, 
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
+            });
+            const passenger = currentFlightData.passengers.find(p => p.docId === docId);
+            if (passenger) { 
+                passenger.pName = pName; 
+                passenger.seatNo = seatNo; 
+                passenger.pax = pax; 
+                passenger.FQTV = FQTV; 
+                passenger.serialNo = serialNo; 
+                passenger.remarks = remarks; 
+            }
+            editingRowId = null;
+            displayPassengerTable(currentFlightData.passengers);
+            alert('Updated');
+        } catch (error) { 
+            alert('Error: '+error.message); 
+            console.error(error);
+        }
+    }
+
+    function confirmDelete(docId, name) { if (confirm(`Delete ${name}?`)) deletePassenger(docId); }
+    async function deletePassenger(docId) {
+        try {
+            await db.collection('KoveliPass').doc(docId).delete();
+            const idx = currentFlightData.passengers.findIndex(p => p.docId === docId);
+            if (idx !== -1) currentFlightData.passengers.splice(idx,1);
+            document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
+            document.getElementById('passengerCount').textContent = currentFlightData.passengers.length+' PAX';
+            displayPassengerTable(currentFlightData.passengers);
+            alert('Deleted');
+        } catch (error) { 
+            alert('Error: '+error.message);
+            console.error(error);
+        }
+    }
+
+    async function updateSTD() { 
+        const v = document.getElementById('stdInput').value; 
+        if(v && currentFlightData) { 
+            currentFlightData.std = v; 
+            showNotification('STD updated'); 
+            validateCloseButton();
+            // Save to Firebase immediately
             try {
-                // Save flight data to Firebase first
                 await saveFlightDataToFirebase();
-                
-                // Then mark as closed
-                currentFlightData.isClosed = true;
-                
-                // Save again with closed status
-                await saveFlightDataToFirebase();
-                
-                // Update UI
-                document.getElementById('flightStatus').textContent = 'CLOSED';
-                document.getElementById('flightStatus').className = 'flight-status status-closed';
-                document.getElementById('closeFlightBtn').style.display = 'none';
-                document.getElementById('reopenFlightBtn').style.display = 'block';
-                document.getElementById('printReportBtn').disabled = false;
-                
-                alert('Flight closed and data saved to Firebase.');
+                console.log('STD auto-saved');
             } catch (error) {
-                alert('Error saving to Firebase: ' + error.message);
-                console.error('Close flight error:', error);
+                console.error('Error saving STD:', error);
             }
-        }
-
-        async function reopenFlight() {
-            if (!currentFlightData || !confirm('Reopen flight?')) return;
-            
+        } 
+    }
+    
+    async function updateLastPax() { 
+        const v = document.getElementById('lastPaxInput').value; 
+        if(v && currentFlightData) { 
+            currentFlightData.lastPax = v; 
+            document.getElementById('lastPaxStat').textContent = v; 
+            document.getElementById('lastPaxDisplay').textContent = v;
+            validateCloseButton();
+            // Save to Firebase immediately
             try {
-                currentFlightData.isClosed = false;
-                
-                // Update Firebase with reopened status
                 await saveFlightDataToFirebase();
-                
-                // Update UI
-                document.getElementById('flightStatus').textContent = 'OPEN';
-                document.getElementById('flightStatus').className = 'flight-status status-open';
-                document.getElementById('closeFlightBtn').style.display = 'block';
-                document.getElementById('reopenFlightBtn').style.display = 'none';
-                document.getElementById('printReportBtn').disabled = true;
-                validateCloseButton(); // re-evaluate close button state
-                
-                alert('Flight reopened and data saved.');
+                console.log('Last Pax auto-saved');
             } catch (error) {
-                alert('Error saving to Firebase: ' + error.message);
-                console.error('Reopen flight error:', error);
+                console.error('Error saving Last Pax:', error);
             }
+        } 
+    }
+
+    // Save flight data to Firebase
+    async function saveFlightDataToFirebase() {
+        if (!currentFlightData) return;
+        
+        try {
+            const date = document.getElementById('dateDisplay').textContent;
+            const flightNo = document.getElementById('flightNoDisplay').textContent;
+            const shift = document.getElementById('shiftDisplay').textContent;
+            const airline = document.getElementById('airlineDisplay').textContent;
+            const std = document.getElementById('stdInput').value || currentFlightData.std || '';
+            const lastPax = document.getElementById('lastPaxInput').value || currentFlightData.lastPax || '';
+            const firstPax = currentFlightData.firstPax || '';
+            const totalPax = currentFlightData.passengers.length;
+            const isClosed = currentFlightData.isClosed || false; // Make sure this is explicitly saved
+            
+            // Create a report ID
+            const reportId = `${flightNo}_${date}`;
+            
+            console.log('Saving to Firebase:', { reportId, flightNo, date, shift, airline, std, lastPax, firstPax, totalPax, isClosed });
+            
+            // Save to FlightReports collection - explicitly include isClosed
+            await db.collection('FlightReports').doc(reportId).set({
+                flightNo: flightNo,
+                date: date,
+                shift: shift,
+                airline: airline,
+                std: std,
+                firstPax: firstPax,
+                lastPax: lastPax,
+                totalPax: totalPax,
+                isClosed: isClosed, // This is crucial
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            console.log('Flight data saved successfully with isClosed =', isClosed);
+            return true;
+        } catch (error) { 
+            console.error('Error saving flight data:', error);
+            throw error;
+        }
+    }
+
+    // CLOSE FLIGHT: saves to Firebase then closes
+    async function closeFlight() {
+        if (!currentFlightData) return;
+        
+        // Double-check STD and Last Pax are present
+        const std = document.getElementById('stdInput').value;
+        const lastPax = document.getElementById('lastPaxInput').value;
+        if (!std || !lastPax) {
+            alert('STD and Last Pax must be entered before closing the flight.');
+            return;
+        }
+        
+        // Update currentFlightData with latest values
+        currentFlightData.std = std;
+        currentFlightData.lastPax = lastPax;
+        currentFlightData.isClosed = true; // Set to true before saving
+        
+        try {
+            // Save flight data to Firebase with isClosed = true
+            await saveFlightDataToFirebase();
+            
+            // Update UI
+            document.getElementById('flightStatus').textContent = 'CLOSED';
+            document.getElementById('flightStatus').className = 'flight-status status-closed';
+            document.getElementById('closeFlightBtn').style.display = 'none';
+            document.getElementById('reopenFlightBtn').style.display = 'block';
+            document.getElementById('printReportBtn').disabled = false;
+            
+            alert('Flight closed and data saved to Firebase.');
+        } catch (error) {
+            alert('Error saving to Firebase: ' + error.message);
+            console.error('Close flight error:', error);
+        }
+    }
+
+    async function reopenFlight() {
+        if (!currentFlightData || !confirm('Reopen flight?')) return;
+        
+        try {
+            currentFlightData.isClosed = false;
+            
+            // Update Firebase with reopened status
+            await saveFlightDataToFirebase();
+            
+            // Update UI
+            document.getElementById('flightStatus').textContent = 'OPEN';
+            document.getElementById('flightStatus').className = 'flight-status status-open';
+            document.getElementById('closeFlightBtn').style.display = 'block';
+            document.getElementById('reopenFlightBtn').style.display = 'none';
+            document.getElementById('printReportBtn').disabled = true;
+            validateCloseButton(); // re-evaluate close button state
+            
+            alert('Flight reopened and data saved.');
+        } catch (error) {
+            alert('Error saving to Firebase: ' + error.message);
+            console.error('Reopen flight error:', error);
+        }
+    }
+
+    // Print function with logo on left
+    function printReport() {
+        if (!currentFlightData || !currentFlightData.isClosed) { 
+            alert('Flight must be closed'); 
+            return; 
         }
 
-        // Print function with logo on left
-        function printReport() {
-            if (!currentFlightData || !currentFlightData.isClosed) { 
-                alert('Flight must be closed'); 
-                return; 
-            }
+        const company = window.companyInfo || { name: 'Airline Name', address: '123 Aviation Road', phone: '+123 456 7890' };
+        
+        const dateStr = document.getElementById('dateDisplay').textContent; 
+        const dateParts = dateStr.split('-');
+        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
 
-            const company = window.companyInfo || { name: 'Airline Name', address: '123 Aviation Road', phone: '+123 456 7890' };
-            
-            const dateStr = document.getElementById('dateDisplay').textContent; 
-            const dateParts = dateStr.split('-');
-            const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+        const airline = currentFlightData.airline || '—';
+        const flightNo = currentFlightData.flightNo || '—';
+        const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
+        const firstPax = currentFlightData.firstPax || '—';
+        const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
+        const shift = currentFlightData.shift || '—';
+        
+        const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
 
-            const airline = currentFlightData.airline || '—';
-            const flightNo = currentFlightData.flightNo || '—';
-            const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
-            const firstPax = currentFlightData.firstPax || '—';
-            const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
-            const shift = currentFlightData.shift || '—';
-            
-            const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-            const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
-
-            let html = `<!DOCTYPE html>
+        let html = `<!DOCTYPE html>
 <html>
 <head>
     <title>Flight Report – ${flightNo}</title>
@@ -1196,37 +1215,37 @@
 </body>
 </html>`;
 
-            const w = window.open('', '_blank');
-            w.document.write(html);
-            w.document.close();
-            w.focus();
-            setTimeout(() => w.print(), 400);
-        }
+        const w = window.open('', '_blank');
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        setTimeout(() => w.print(), 400);
+    }
 
-        // initialization
-        document.addEventListener('DOMContentLoaded', function() {
-            fetchOpenShift();
-            setInterval(fetchOpenShift, 30000);
-        });
+    // initialization
+    document.addEventListener('DOMContentLoaded', function() {
+        fetchOpenShift();
+        setInterval(fetchOpenShift, 30000);
+    });
 
-        // global functions
-        window.loadDates = loadDates; 
-        window.onDateSelected = onDateSelected; 
-        window.onFlightSelected = onFlightSelected;
-        window.updateSTD = updateSTD; 
-        window.updateLastPax = updateLastPax; 
-        window.closeFlight = closeFlight;
-        window.reopenFlight = reopenFlight; 
-        window.printReport = printReport;
-        window.fetchOpenShift = fetchOpenShift; 
-        window.startEdit = startEdit; 
-        window.cancelEdit = cancelEdit;
-        window.savePassenger = savePassenger; 
-        window.confirmDelete = confirmDelete; 
-        window.onSeatChange = onSeatChange;
-        window.onPaxChange = onPaxChange; 
-        window.updatePaxFromSeat = updatePaxFromSeat; 
-        window.validateCloseButton = validateCloseButton;
-    </script>
+    // global functions
+    window.loadDates = loadDates; 
+    window.onDateSelected = onDateSelected; 
+    window.onFlightSelected = onFlightSelected;
+    window.updateSTD = updateSTD; 
+    window.updateLastPax = updateLastPax; 
+    window.closeFlight = closeFlight;
+    window.reopenFlight = reopenFlight; 
+    window.printReport = printReport;
+    window.fetchOpenShift = fetchOpenShift; 
+    window.startEdit = startEdit; 
+    window.cancelEdit = cancelEdit;
+    window.savePassenger = savePassenger; 
+    window.confirmDelete = confirmDelete; 
+    window.onSeatChange = onSeatChange;
+    window.onPaxChange = onPaxChange; 
+    window.updatePaxFromSeat = updatePaxFromSeat; 
+    window.validateCloseButton = validateCloseButton;
+</script>
 </body>
 </html>
