@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boarding Pass Parser</title>
+    <!-- Firebase SDK (must come first) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- Your combined firebase config file -->
+    <script src="fireshift.js"></script>
+    
+    <!-- Your iata.js file -->
+    <script src="iata.js"></script>
+    
+    <!-- External rate.js file with pricing data -->
+    <script src="rate.js"></script>
+    
+    <!-- External Co.js file with company header -->
+    <script src="Co.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(120deg, #faf3e0, #fff5e6);
+            min-height: 100vh;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            box-shadow: 0 5px 20px rgba(230, 184, 0, 0.15);
+            border: 1px solid rgba(230, 184, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            background: linear-gradient(90deg, #fff9e6, #ffffff);
+            border-bottom: 2px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .header h2 {
+            color: #8b6913;
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        
+        .shift-info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background: linear-gradient(135deg, #fff2d7, #fff9e6);
+            padding: 6px 20px;
+            border-radius: 40px;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+            font-size: 14px;
+        }
+        
+        .shift-info .date {
+            color: #8b6913;
+            padding-left: 22px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%238b6913" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>') left center no-repeat;
+            background-size: 14px;
+        }
+        
+        .shift-info .shift {
+            color: #6b8e23;
+            padding-left: 22px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%236b8e23" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>') left center no-repeat;
+            background-size: 14px;
+        }
+        
+        .status-badge {
+            background-color: #6b8e23;
+            color: white;
+            padding: 2px 10px;
+            border-radius: 30px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .refresh-btn {
+            background: #f0f0f0;
+            border: 1px solid #e6b800;
+            color: #8b6913;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .refresh-btn:hover {
+            background: #e6b800;
+            color: white;
+            transform: rotate(180deg);
+        }
+        
+        .main-content {
+            padding: 20px;
+        }
+        
+        /* User info bar - styled to match login page aesthetic */
+        .user-info-bar {
+            background: linear-gradient(115deg, #f3d48f20, #eec97a20, #f5cf8620);
+            padding: 10px 18px;
+            border-radius: 40px;
+            margin-bottom: 15px;
+            display: flex;
+            gap: 25px;
+            font-size: 14px;
+            border: 2px solid #ead09d;
+            box-shadow: inset 0 2px 5px #ffefcb;
+            backdrop-filter: blur(5px);
+        }
+        
+        .user-info-bar span {
+            color: #5e4a1a;
+        }
+        
+        .user-info-bar strong {
+            color: #8b6913;
+            margin-right: 6px;
+            font-weight: 600;
+        }
+        
+        .logout-link {
+            margin-left: auto;
+            color: #b6903f;
+            text-decoration: none;
+            font-size: 13px;
+            padding: 0 10px;
+            border-left: 2px solid #e5cb93;
+            cursor: pointer;
+        }
+        
+        .logout-link:hover {
+            color: #5f4c25;
+            text-decoration: underline;
+        }
+        
+        .input-section {
+            margin-bottom: 15px;
+        }
+        
+        .input-section input {
+            width: 100%;
+            padding: 12px 20px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 40px;
+            font-size: 16px;
+            text-transform: uppercase;
+            background: white;
+        }
+        
+        .input-section input:focus {
+            outline: none;
+            border-color: #e6b800;
+        }
+        
+        .input-section input::placeholder {
+            color: #c9a65c;
+            font-size: 14px;
+        }
+        
+        .status-message {
+            display: block;
+            color: #6b8e23;
+            font-size: 14px;
+            font-weight: 500;
+            margin-top: 8px;
+            text-align: center;
+            min-height: 20px;
+        }
+        
+        /* Two-column layout */
+        .two-column-layout {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .passenger-section {
+            background: linear-gradient(145deg, #fff9e6, #fff2d7);
+            border: 2px solid #e6b800;
+            border-radius: 16px;
+            padding: 15px;
+        }
+        
+        .payment-section {
+            background: linear-gradient(145deg, #fff9e6, #fff2d7);
+            border: 2px solid #e6b800;
+            border-radius: 16px;
+            padding: 15px;
+        }
+        
+        .section-title {
+            color: #8b6913;
+            margin-bottom: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            text-align: center;
+            padding-bottom: 6px;
+            border-bottom: 2px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        /* Compact form groups */
+        .form-group {
+            margin-bottom: 8px;
+        }
+        
+        .form-group label {
+            color: #8b6913;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 2px;
+            margin-left: 3px;
+            display: block;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 8px;
+            font-size: 13px;
+            background: white;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #e6b800;
+        }
+        
+        .form-group input[readonly] {
+            background-color: #f5f5f5;
+            color: #8b6913;
+            font-weight: 500;
+        }
+        
+        .receipt-field {
+            background-color: #e6f0da !important;
+            color: #2c5234 !important;
+            font-weight: 700;
+            border-color: #6b8e23 !important;
+        }
+        
+        .expiry-field {
+            background-color: #fff2d7 !important;
+            color: #c68b5e !important;
+            font-weight: 600;
+            border-color: #c68b5e !important;
+        }
+        
+        /* Compact grid layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        
+        .number-input {
+            display: flex;
+            align-items: center;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        
+        .number-input button {
+            background: linear-gradient(135deg, #e6b800, #d4a900);
+            color: white;
+            border: none;
+            width: 30px;
+            height: 32px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .number-input button:hover {
+            background: linear-gradient(135deg, #d4a900, #c29800);
+        }
+        
+        .number-input input {
+            border: none !important;
+            border-radius: 0 !important;
+            text-align: center;
+            font-weight: bold;
+            padding: 8px 3px !important;
+            width: 50px;
+            -moz-appearance: textfield;
+            font-size: 13px;
+        }
+        
+        /* Price breakdown compact */
+        .price-breakdown {
+            background: rgba(230, 184, 0, 0.05);
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 12px;
+        }
+        
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+        }
+        
+        /* Calculation row compact */
+        .calculation-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin: 10px 0;
+            padding-top: 10px;
+            border-top: 2px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .amount-display {
+            background: white;
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+            border: 2px solid #e6b800;
+        }
+        
+        .amount-display .label {
+            color: #8b6913;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .amount-display .value {
+            color: #6b8e23;
+            font-size: 18px;
+            font-weight: 700;
+        }
+        
+        .amount-display .currency {
+            color: #8b6913;
+            font-size: 12px;
+        }
+        
+        .entry-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+        
+        .clear-btn, .submit-btn, .print-btn {
+            border: none;
+            padding: 10px 25px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .clear-btn {
+            background: #c68b5e;
+            color: white;
+        }
+        
+        .submit-btn {
+            background: #6b8e23;
+            color: white;
+        }
+        
+        .print-btn {
+            background: #8b6913;
+            color: white;
+        }
+        
+        .clear-btn:hover, .submit-btn:hover, .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        
+        .validity-note {
+            text-align: center;
+            margin-top: 8px;
+            padding: 6px;
+            background: rgba(198, 139, 94, 0.1);
+            border-radius: 30px;
+            color: #c68b5e;
+            font-size: 12px;
+            border: 1px dashed #c68b5e;
+        }
+        
+        .rate-info {
+            font-size: 11px;
+            color: #8b6913;
+            margin-top: 5px;
+            text-align: right;
+        }
+        
+        .exchange-rate-note {
+            font-size: 10px;
+            color: #c68b5e;
+            margin-top: 3px;
+            text-align: right;
+        }
+        
+        .footer-note {
+            text-align: center;
+            margin-top: 10px;
+            color: #8b6913;
+            font-size: 12px;
+        }
+        
+        #hiddenCode {
+            display: none;
+        }
+        
+        /* Receipt Print Styles */
+        .receipt-print {
+            display: none;
+        }
+        
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .receipt-print, .receipt-print * {
+                visibility: visible;
+            }
+            .receipt-print {
+                display: block;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 80mm;
+                padding: 10px;
+                font-family: 'Courier New', monospace;
+                font-size: 11px;
+                background: white;
+                color: black;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header with shift information -->
+        <div class="header">
+            <h2>BOARDING PASS PARSER</h2>
+            <div class="shift-info" id="shiftInfo">
+                <div class="date">DATE: <span id="currentDate">Loading...</span></div>
+                <div class="shift">SHIFT: <span id="currentShift">Loading...</span> <span id="shiftStatus" class="status-badge"></span></div>
+                <button id="refreshShiftBtn" class="refresh-btn">↻</button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- User Info Bar - Fetched from localStorage matching login page pattern -->
+            <div class="user-info-bar" id="userInfoBar">
+                <span><strong>USER:</strong> <span id="userName">Loading...</span></span>
+                <span><strong>LEVEL:</strong> <span id="userLevel">Loading...</span></span>
+                <span><strong>RC NO:</strong> <span id="userRcNo">Loading...</span></span>
+                <a class="logout-link" id="logoutBtn">← LOGOUT</a>
+            </div>
+            
+            <!-- Input section -->
+            <div class="input-section">
+                <input type="text" id="code" placeholder="ENTER CODE OR READ BARCODE (MUST START WITH M, M1, OR M2)" autofocus>
+                <span id="statusMessage" class="status-message"></span>
+            </div>
+
+            <!-- Two Column Layout -->
+            <div class="two-column-layout">
+                <!-- Left Column: Passenger Details -->
+                <div class="passenger-section">
+                    <div class="section-title">PASSENGER DETAILS</div>
+                    <input type="hidden" id="hiddenCode" value="">
+                    
+                    <div class="form-group">
+                        <label>PASSENGER NAME</label>
+                        <input type="text" id="pName" placeholder="PASSENGER NAME" readonly>
+                    </div>
+                    
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>FLIGHT NUMBER</label>
+                            <input type="text" id="flightNo" placeholder="FLIGHT" readonly>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>SEAT NUMBER</label>
+                            <input type="text" id="seatNo" placeholder="SEAT" readonly>
+                        </div>
+                    </div>
+                    
+                    <div class="grid-2" style="margin-top: 5px;">
+                        <div class="form-group">
+                            <label>ADULT</label>
+                            <div class="number-input">
+                                <button type="button" id="adultDecrease">−</button>
+                                <input type="number" id="adult" min="0" value="1" placeholder="0" readonly>
+                                <button type="button" id="adultIncrease">+</button>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>CHILDREN</label>
+                            <div class="number-input">
+                                <button type="button" id="childrenDecrease">−</button>
+                                <input type="number" id="children" min="0" value="0" placeholder="0" readonly>
+                                <button type="button" id="childrenIncrease">+</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>TOTAL PASSENGERS</label>
+                        <input type="text" id="totalPassengers" value="1" readonly>
+                    </div>
+                </div>
+                
+                <!-- Right Column: Payment Details -->
+                <div class="payment-section">
+                    <div class="section-title">PAYMENT DETAILS</div>
+                    
+                    <div class="grid-3">
+                        <div class="form-group">
+                            <label>CURRENCY</label>
+                            <select id="currency">
+                                <option value="USD" selected>USD</option>
+                                <option value="MVR">MVR</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>RATE TYPE</label>
+                            <select id="rateType">
+                                <option value="A">RATE A</option>
+                                <option value="B" selected>RATE B</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>PAYMENT</label>
+                            <select id="paymentMethod">
+                                <option value="CASH">CASH</option>
+                                <option value="CARD">CARD</option>
+                                <option value="BANK TRANSFER">TRANSFER</option>
+                                <option value="MOBILE PAYMENT">MOBILE</option>
+                                <option value="VOUCHER">VOUCHER</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>DATE/TIME</label>
+                            <input type="text" id="currentDateTime" readonly>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>GST RATE (%)</label>
+                            <input type="text" id="gstRate" value="8" readonly>
+                        </div>
+                    </div>
+                    
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>RECEIPT NUMBER</label>
+                            <input type="text" id="receiptNo" class="receipt-field" readonly placeholder="Auto">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>EXPIRY TIME (+3 HRS)</label>
+                            <input type="text" id="expiryTime" class="expiry-field" readonly>
+                        </div>
+                    </div>
+                    
+                    <!-- Price Breakdown -->
+                    <div class="price-breakdown">
+                        <div class="price-row">
+                            <span>Adult Price:</span>
+                            <span><span id="adultPrice">55.00</span> <span id="adultCurrency">USD</span></span>
+                        </div>
+                        <div class="price-row">
+                            <span>Children Price:</span>
+                            <span><span id="childrenPrice">55.00</span> <span id="childrenCurrency">USD</span></span>
+                        </div>
+                        <div class="price-row" style="margin-top: 5px; padding-top: 5px; border-top: 1px dashed #e6b800;">
+                            <span>Adult Subtotal:</span>
+                            <span><span id="adultSubtotal">55.00</span> <span id="adultSubtotalCurrency">USD</span></span>
+                        </div>
+                        <div class="price-row">
+                            <span>Children Subtotal:</span>
+                            <span><span id="childrenSubtotal">0.00</span> <span id="childrenSubtotalCurrency">USD</span></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Calculation Results -->
+                    <div class="calculation-row">
+                        <div class="amount-display">
+                            <div class="label">SUBTOTAL</div>
+                            <div class="value" id="subtotalAmount">55.00</div>
+                            <div class="currency" id="subtotalCurrency">USD</div>
+                        </div>
+                        
+                        <div class="amount-display">
+                            <div class="label">GST (8%)</div>
+                            <div class="value" id="gstAmount">4.40</div>
+                            <div class="currency" id="gstCurrency">USD</div>
+                        </div>
+                        
+                        <div class="amount-display" style="background: #e6b800;">
+                            <div class="label" style="color: white;">TOTAL</div>
+                            <div class="value" id="totalAmount" style="color: white;">59.40</div>
+                            <div class="currency" id="totalCurrency" style="color: white;">USD</div>
+                        </div>
+                    </div>
+                    
+                    <div class="rate-info" id="rateInfo">
+                        Rate: Adult B USD - 55.00 | Kids B USD - 55.00
+                    </div>
+                    
+                    <div class="exchange-rate-note" id="exchangeRateInfo"></div>
+                    
+                    <div class="validity-note" id="validityNote">
+                        Receipt #<span id="receiptNoDisplay">______</span> valid until <span id="expiryTimeDisplay">Not submitted</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="entry-actions">
+                <button id="submitBtn" class="submit-btn">SUBMIT & SAVE</button>
+                <button id="printReceiptBtn" class="print-btn">PRINT RECEIPT</button>
+                <button id="clearAllBtn" class="clear-btn">CLEAR ALL</button>
+            </div>
+            
+            <div class="footer-note">
+                Scan boarding pass to automatically populate passenger details
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Receipt Template for Printing -->
+    <div class="receipt-print" id="receiptTemplate">
+        <div id="receiptContent"></div>
+    </div>
+
+<script>
+// Firebase shift data
+let currentShiftData = {
+    date: '',
+    shift: '',
+    status: '',
+    openTime: ''
+};
+
+// Store submission time and expiry time
+let submissionTime = null;
+let expiryTime = null;
+let currentReceiptNo = '';
+
+// Store exchange rate if available from rate.js
+let currentExchangeRate = 15.42;
+
+// User data from localStorage - matching login page pattern
+let currentUser = {
+    username: '',
+    level: '',
+    rcno: '',
+    isLoggedIn: false
+};
+
+// ========== USER LOGIN FUNCTIONS - MATCHING LOGIN PAGE PATTERN ==========
+
+function loadUserFromLocalStorage() {
+    try {
+        // Clear previous user data
+        currentUser = {
+            username: '',
+            level: '',
+            rcno: '',
+            isLoggedIn: false
+        };
+        
+        // Match EXACTLY how login page stores data:
+        // From your login page:
+        // localStorage.setItem('username', matchedUser.username);
+        // localStorage.setItem('level', level.toString());
+        // localStorage.setItem('rcno', rcno.toString());
+        // localStorage.setItem('loggedInUser', JSON.stringify(userToStore));
+        
+        // Get individual items directly
+        const username = localStorage.getItem('username');
+        const level = localStorage.getItem('level');
+        const rcno = localStorage.getItem('rcno');
+        
+        // Also try to get from loggedInUser object as backup
+        const loggedInUserStr = localStorage.getItem('loggedInUser');
+        
+        // Set username - prioritize direct localStorage item
+        if (username) {
+            currentUser.username = username;
+            currentUser.isLoggedIn = true;
+            console.log('Found username in localStorage:', username);
+        } else if (loggedInUserStr) {
+            try {
+                const loggedInUser = JSON.parse(loggedInUserStr);
+                if (loggedInUser.username) {
+                    currentUser.username = loggedInUser.username;
+                    currentUser.isLoggedIn = true;
+                    console.log('Found username in loggedInUser:', loggedInUser.username);
+                }
+            } catch (e) {
+                console.error('Error parsing loggedInUser', e);
+            }
+        }
+        
+        // Set level - prioritize direct localStorage item
+        if (level) {
+            currentUser.level = level;
+            console.log('Found level in localStorage:', level);
+        } else if (loggedInUserStr) {
+            try {
+                const loggedInUser = JSON.parse(loggedInUserStr);
+                if (loggedInUser.level) {
+                    currentUser.level = loggedInUser.level;
+                    console.log('Found level in loggedInUser:', loggedInUser.level);
+                }
+            } catch (e) {}
+        }
+        
+        // Set rcno - prioritize direct localStorage item (note: key is 'rcno' all lowercase)
+        if (rcno) {
+            currentUser.rcno = rcno;
+            console.log('Found rcno in localStorage:', rcno);
+        } else {
+            // Try alternative casings if direct rcno not found
+            const rcNo = localStorage.getItem('rcNo');
+            if (rcNo) {
+                currentUser.rcno = rcNo;
+                console.log('Found rcNo in localStorage:', rcNo);
+            } else {
+                const RCno = localStorage.getItem('RCno');
+                if (RCno) {
+                    currentUser.rcno = RCno;
+                    console.log('Found RCno in localStorage:', RCno);
+                }
+            }
+        }
+        
+        // If still no rcno, check loggedInUser object
+        if (!currentUser.rcno && loggedInUserStr) {
+            try {
+                const loggedInUser = JSON.parse(loggedInUserStr);
+                if (loggedInUser.rcno) {
+                    currentUser.rcno = loggedInUser.rcno;
+                } else if (loggedInUser.rcNo) {
+                    currentUser.rcno = loggedInUser.rcNo;
+                } else if (loggedInUser.RCno) {
+                    currentUser.rcno = loggedInUser.RCno;
+                }
+            } catch (e) {}
+        }
+        
+        // If still no username, check if we're on a page that should redirect
+        if (!currentUser.username) {
+            console.warn('No user logged in - redirecting to login page');
+            // Show warning but don't auto-redirect to allow testing
+            const statusMsg = document.getElementById('statusMessage');
+            if (statusMsg) {
+                statusMsg.textContent = '⚠️ NOT LOGGED IN - Please log in first';
+                statusMsg.style.color = '#c68b5e';
+            }
+        } else {
+            console.log('User loaded from localStorage:', currentUser);
+        }
+        
+        updateUserDisplay();
+        
+        // Log all localStorage items for debugging
+        console.log('All localStorage items:');
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            console.log(`${key}: ${localStorage.getItem(key)}`);
+        }
+        
+    } catch (error) {
+        console.error('Error loading user from localStorage:', error);
+    }
+}
+
+function updateUserDisplay() {
+    const userNameEl = document.getElementById('userName');
+    const userLevelEl = document.getElementById('userLevel');
+    const userRcNoEl = document.getElementById('userRcNo');
+    
+    if (userNameEl) {
+        userNameEl.textContent = currentUser.username || 'Not logged in';
+    }
+    
+    if (userLevelEl) {
+        userLevelEl.textContent = currentUser.level || 'N/A';
+    }
+    
+    if (userRcNoEl) {
+        userRcNoEl.textContent = currentUser.rcno || 'N/A';
+    }
+}
+
+function logout() {
+    // Clear all auth-related items from localStorage
+    localStorage.removeItem('username');
+    localStorage.removeItem('level');
+    localStorage.removeItem('rcno');
+    localStorage.removeItem('rcNo');
+    localStorage.removeItem('RCno');
+    localStorage.removeItem('loggedInUser');
+    
+    // Redirect to login page - change this to your actual login page filename
+    window.location.href = 'index.html';
+}
+
+// Check authentication on page load
+function checkAuth() {
+    loadUserFromLocalStorage();
+}
+
+// ========== FIREBASE SHIFT FUNCTIONS ==========
+
+async function fetchShiftData() {
+    try {
+        const shiftInfo = document.getElementById('shiftInfo');
+        const dateElement = document.getElementById('currentDate');
+        const shiftElement = document.getElementById('currentShift');
+        const statusBadge = document.getElementById('shiftStatus');
+        
+        if (!shiftInfo || !dateElement || !shiftElement || !statusBadge) return;
+        
+        dateElement.textContent = 'Loading...';
+        shiftElement.textContent = 'Loading...';
+        shiftInfo.classList.add('loading');
+        
+        if (typeof passengerDb === 'undefined') {
+            dateElement.textContent = 'DB ERROR';
+            shiftElement.textContent = 'NOT INITIALIZED';
+            shiftInfo.classList.remove('loading');
+            shiftInfo.classList.add('error');
+            return;
+        }
+        
+        let shiftDoc = null;
+        
+        // Try different case variations
+        try {
+            shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+        } catch (e) {}
+        
+        if (!shiftDoc || !shiftDoc.exists) {
+            try {
+                shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get();
+            } catch (e) {}
+        }
+        
+        if (!shiftDoc || !shiftDoc.exists) {
+            try {
+                shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get();
+            } catch (e) {}
+        }
+        
+        if (shiftDoc && shiftDoc.exists) {
+            const data = shiftDoc.data();
+            
+            currentShiftData.date = data.date || '';
+            
+            if (data.morning === 'open') {
+                currentShiftData.shift = 'MORNING';
+                currentShiftData.status = 'OPEN';
+                currentShiftData.openTime = data.updated || '';
+            } 
+            else if (data.evening === 'open') {
+                currentShiftData.shift = 'EVENING';
+                currentShiftData.status = 'OPEN';
+                currentShiftData.openTime = data.updated || '';
+            } 
+            else {
+                currentShiftData.shift = 'NO OPEN SHIFT';
+                currentShiftData.status = 'CLOSED';
+            }
+        } else {
+            currentShiftData.date = '';
+            currentShiftData.shift = 'NO SHIFT DATA';
+            currentShiftData.status = 'NOT FOUND';
+        }
+        
+        updateShiftDisplay();
+        
+    } catch (error) {
+        console.error('Error fetching shift data:', error);
+    }
+}
+
+function updateShiftDisplay() {
+    const dateElement = document.getElementById('currentDate');
+    const shiftElement = document.getElementById('currentShift');
+    const statusBadge = document.getElementById('shiftStatus');
+    const shiftInfo = document.getElementById('shiftInfo');
+    
+    if (!dateElement || !shiftElement || !statusBadge) return;
+    
+    dateElement.textContent = currentShiftData.date || 'NO DATE';
+    
+    if (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') {
+        shiftElement.textContent = currentShiftData.shift;
+        statusBadge.textContent = currentShiftData.status;
+        statusBadge.style.backgroundColor = '#6b8e23';
+    } else {
+        shiftElement.textContent = currentShiftData.shift;
+        statusBadge.textContent = currentShiftData.status;
+        statusBadge.style.backgroundColor = '#c68b5e';
+    }
+    
+    shiftInfo.classList.remove('loading', 'error');
+}
+
+// ========== RECEIPT NUMBER GENERATION ==========
+
+async function generateReceiptNumber() {
+    try {
+        if (typeof passengerDb === 'undefined') {
+            return 'ERR-' + Date.now().toString().slice(-6);
+        }
+        
+        const kovelipayRef = passengerDb.collection('Kovelipay');
+        const snapshot = await kovelipayRef.orderBy('receiptNo', 'desc').limit(1).get();
+        
+        let nextReceiptNo = 'R-00001';
+        
+        if (!snapshot.empty) {
+            const lastDoc = snapshot.docs[0];
+            const lastData = lastDoc.data();
+            const lastReceiptNo = lastData.receiptNo || '';
+            
+            if (lastReceiptNo && lastReceiptNo.startsWith('R-')) {
+                const numPart = parseInt(lastReceiptNo.substring(2));
+                if (!isNaN(numPart)) {
+                    const nextNum = numPart + 1;
+                    nextReceiptNo = 'R-' + nextNum.toString().padStart(5, '0');
+                }
+            }
+        }
+        
+        return nextReceiptNo;
+        
+    } catch (error) {
+        console.error('Error generating receipt number:', error);
+        return 'R-' + Date.now().toString().slice(-5);
+    }
+}
+
+// ========== FIREBASE SAVE FUNCTION ==========
+
+async function saveToFirebase(data) {
+    try {
+        if (typeof passengerDb === 'undefined') {
+            throw new Error('passengerDb not initialized');
+        }
+        
+        const kovelipayRef = passengerDb.collection('Kovelipay');
+        await kovelipayRef.doc(data.receiptNo).set(data);
+        
+        console.log('Successfully saved to Firebase with ID:', data.receiptNo);
+        return true;
+        
+    } catch (error) {
+        console.error('Error saving to Firebase:', error);
+        throw error;
+    }
+}
+
+// ========== DATE/TIME FUNCTIONS ==========
+
+function updateDateTime() {
+    const now = new Date();
+    const dateTimeString = now.toLocaleString('en-US', { 
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+    
+    document.getElementById('currentDateTime').value = dateTimeString;
+}
+
+function calculateExpiryTime() {
+    if (!submissionTime) {
+        submissionTime = new Date();
+    }
+    
+    expiryTime = new Date(submissionTime.getTime() + (3 * 60 * 60 * 1000));
+    
+    const expiryString = expiryTime.toLocaleString('en-US', { 
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+    
+    document.getElementById('expiryTime').value = expiryString;
+    document.getElementById('expiryTimeDisplay').textContent = expiryString;
+    
+    return expiryTime;
+}
+
+setInterval(updateDateTime, 1000);
+
+// ========== AIRLINE FUNCTIONS ==========
+
+function getAirlineName(iataCode) {
+    if (!iataCode) return '';
+    const airline = window.airlineData?.airlines_flying_to_maldives.find(a => a.iata === iataCode);
+    return airline ? airline.airline.toUpperCase() : iataCode.toUpperCase();
+}
+
+// ========== NUMBER INPUT CONTROL FUNCTIONS ==========
+
+function setupNumberInputs() {
+    const adultInput = document.getElementById('adult');
+    const childrenInput = document.getElementById('children');
+    
+    document.getElementById('adultIncrease').addEventListener('click', function() {
+        let currentValue = parseInt(adultInput.value) || 0;
+        adultInput.value = currentValue + 1;
+        updateTotalPassengers();
+    });
+    
+    document.getElementById('adultDecrease').addEventListener('click', function() {
+        let currentValue = parseInt(adultInput.value) || 0;
+        if (currentValue > 0) {
+            adultInput.value = currentValue - 1;
+            updateTotalPassengers();
+        }
+    });
+    
+    document.getElementById('childrenIncrease').addEventListener('click', function() {
+        let currentValue = parseInt(childrenInput.value) || 0;
+        childrenInput.value = currentValue + 1;
+        updateTotalPassengers();
+    });
+    
+    document.getElementById('childrenDecrease').addEventListener('click', function() {
+        let currentValue = parseInt(childrenInput.value) || 0;
+        if (currentValue > 0) {
+            childrenInput.value = currentValue - 1;
+            updateTotalPassengers();
+        }
+    });
+}
+
+// ========== PRICE CALCULATION FUNCTIONS ==========
+
+function calculatePrices() {
+    if (typeof rates === 'undefined') {
+        console.error('rates object not found');
+        return;
+    }
+    
+    const adult = parseInt(document.getElementById('adult').value) || 0;
+    const children = parseInt(document.getElementById('children').value) || 0;
+    const currency = document.getElementById('currency').value;
+    const rateType = document.getElementById('rateType').value;
+    
+    if (rates.exchangeRate && rates.exchangeRate.MVRtoUSD) {
+        currentExchangeRate = rates.exchangeRate.MVRtoUSD;
+    }
+    
+    const adultRateKey = `Adult${rateType}${currency}`;
+    const childrenRateKey = `Kids${rateType}${currency}`;
+    
+    let adultRate = rates[adultRateKey] || { price: 0, GST: 8 };
+    let childrenRate = rates[childrenRateKey] || { price: 0, GST: 8 };
+    
+    if (currency === 'MVR' && (adultRate.price === 0 || childrenRate.price === 0)) {
+        const adultUSDRateKey = `Adult${rateType}USD`;
+        const childrenUSDRateKey = `Kids${rateType}USD`;
+        
+        const adultUSDRate = rates[adultUSDRateKey] || { price: 0, GST: 8 };
+        const childrenUSDRate = rates[childrenUSDRateKey] || { price: 0, GST: 8 };
+        
+        if (adultUSDRate.price > 0) {
+            adultRate = {
+                price: adultUSDRate.price * currentExchangeRate,
+                GST: adultUSDRate.GST || 8
+            };
+        }
+        
+        if (childrenUSDRate.price > 0) {
+            childrenRate = {
+                price: childrenUSDRate.price * currentExchangeRate,
+                GST: childrenUSDRate.GST || 8
+            };
+        }
+    }
+    
+    const gstRate = adultRate.GST || 8;
+    document.getElementById('gstRate').value = gstRate;
+    
+    const adultSubtotal = adult * adultRate.price;
+    const childrenSubtotal = children * childrenRate.price;
+    const subtotal = adultSubtotal + childrenSubtotal;
+    
+    const gstAmount = subtotal * (gstRate / 100);
+    const totalAmount = subtotal + gstAmount;
+    
+    document.getElementById('adultPrice').textContent = adultRate.price.toFixed(2);
+    document.getElementById('childrenPrice').textContent = childrenRate.price.toFixed(2);
+    document.getElementById('adultCurrency').textContent = currency;
+    document.getElementById('childrenCurrency').textContent = currency;
+    
+    document.getElementById('adultSubtotal').textContent = adultSubtotal.toFixed(2);
+    document.getElementById('childrenSubtotal').textContent = childrenSubtotal.toFixed(2);
+    document.getElementById('adultSubtotalCurrency').textContent = currency;
+    document.getElementById('childrenSubtotalCurrency').textContent = currency;
+    
+    document.getElementById('subtotalAmount').textContent = subtotal.toFixed(2);
+    document.getElementById('gstAmount').textContent = gstAmount.toFixed(2);
+    document.getElementById('totalAmount').textContent = totalAmount.toFixed(2);
+    
+    document.getElementById('subtotalCurrency').textContent = currency;
+    document.getElementById('gstCurrency').textContent = currency;
+    document.getElementById('totalCurrency').textContent = currency;
+    
+    let rateInfo = document.getElementById('rateInfo');
+    let rateInfoText = `Rate: Adult ${rateType} ${currency} - ${adultRate.price.toFixed(2)} | Kids ${rateType} ${currency} - ${childrenRate.price.toFixed(2)} (GST: ${gstRate}%)`;
+    
+    if (currency === 'MVR' && rates.exchangeRate) {
+        const adultUSDPrice = adultRate.price / currentExchangeRate;
+        const childrenUSDPrice = childrenRate.price / currentExchangeRate;
+        rateInfoText += ` (USD: $${adultUSDPrice.toFixed(2)} / $${childrenUSDPrice.toFixed(2)})`;
+        
+        document.getElementById('exchangeRateInfo').textContent = `1 USD = ${currentExchangeRate.toFixed(2)} MVR`;
+    } else {
+        document.getElementById('exchangeRateInfo').textContent = '';
+    }
+    
+    rateInfo.textContent = rateInfoText;
+}
+
+function updateTotalPassengers() {
+    const adult = parseInt(document.getElementById('adult').value) || 0;
+    const children = parseInt(document.getElementById('children').value) || 0;
+    const total = adult + children;
+    
+    document.getElementById('totalPassengers').value = total;
+    calculatePrices();
+}
+
+// ========== CLEAR FUNCTION ==========
+
+function clearAllFields() {
+    document.getElementById('hiddenCode').value = '';
+    document.getElementById('pName').value = '';
+    document.getElementById('flightNo').value = '';
+    document.getElementById('seatNo').value = '';
+    
+    document.getElementById('adult').value = '1';
+    document.getElementById('children').value = '0';
+    document.getElementById('currency').value = 'USD';
+    document.getElementById('rateType').value = 'B';
+    document.getElementById('paymentMethod').value = 'CASH';
+    document.getElementById('receiptNo').value = '';
+    
+    submissionTime = null;
+    expiryTime = null;
+    currentReceiptNo = '';
+    document.getElementById('expiryTime').value = '';
+    document.getElementById('expiryTimeDisplay').textContent = 'Not submitted yet';
+    document.getElementById('receiptNoDisplay').textContent = '______';
+    
+    updateTotalPassengers();
+    
+    const statusMsg = document.getElementById('statusMessage');
+    if (statusMsg) {
+        statusMsg.textContent = '✓ ALL FIELDS CLEARED';
+        setTimeout(() => {
+            statusMsg.textContent = '';
+        }, 2000);
+    }
+    
+    document.getElementById('code').focus();
+}
+
+// ========== SUBMIT FUNCTION ==========
+
+async function submitForm() {
+    // Check if user is logged in
+    if (!currentUser.username) {
+        alert('Please log in first');
+        window.location.href = 'index.html'; // Redirect to login
+        return;
+    }
+    
+    if (!document.getElementById('pName').value) {
+        alert('Please scan a boarding pass first');
+        return;
+    }
+    
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'SAVING...';
+    
+    try {
+        const receiptNo = await generateReceiptNumber();
+        currentReceiptNo = receiptNo;
+        document.getElementById('receiptNo').value = receiptNo;
+        document.getElementById('receiptNoDisplay').textContent = receiptNo;
+        
+        const boardingPassData = {
+            passengerName: document.getElementById('pName').value,
+            flightNo: document.getElementById('flightNo').value,
+            seatNo: document.getElementById('seatNo').value,
+            date: currentShiftData.date,
+            shift: currentShiftData.shift
+        };
+        
+        const paymentData = {
+            adult: parseInt(document.getElementById('adult').value) || 0,
+            children: parseInt(document.getElementById('children').value) || 0,
+            totalPassengers: parseInt(document.getElementById('totalPassengers').value) || 0,
+            currency: document.getElementById('currency').value,
+            rateType: document.getElementById('rateType').value,
+            paymentMethod: document.getElementById('paymentMethod').value,
+            adultPrice: parseFloat(document.getElementById('adultPrice').textContent),
+            childrenPrice: parseFloat(document.getElementById('childrenPrice').textContent),
+            adultSubtotal: parseFloat(document.getElementById('adultSubtotal').textContent),
+            childrenSubtotal: parseFloat(document.getElementById('childrenSubtotal').textContent),
+            subtotal: parseFloat(document.getElementById('subtotalAmount').textContent),
+            gstAmount: parseFloat(document.getElementById('gstAmount').textContent),
+            gstRate: parseInt(document.getElementById('gstRate').value),
+            totalAmount: parseFloat(document.getElementById('totalAmount').textContent)
+        };
+        
+        submissionTime = new Date();
+        const expiryTime = calculateExpiryTime();
+        
+        const companyInfoData = typeof companyInfo !== 'undefined' ? companyInfo : {
+            name: 'Koveli Lounge',
+            address: 'Velana International Airport',
+            phone: '+960 304 6677'
+        };
+        
+        const exchangeRateData = {};
+        if (typeof rates !== 'undefined' && rates.exchangeRate) {
+            exchangeRateData.exchangeRate = rates.exchangeRate;
+            exchangeRateData.exchangeRateUsed = currentExchangeRate;
+        }
+        
+        // User data from localStorage - matching login page structure
+        const userData = {
+            username: currentUser.username || 'Unknown',
+            level: currentUser.level || 'N/A',
+            rcno: currentUser.rcno || 'N/A',  // Note: field name is rcno (all lowercase)
+            loginTime: new Date().toISOString()
+        };
+        
+        const completeData = {
+            receiptNo: receiptNo,
+            ...boardingPassData,
+            ...paymentData,
+            ...exchangeRateData,
+            user: userData,  // Save complete user information
+            submissionDateTime: document.getElementById('currentDateTime').value,
+            expiryDateTime: document.getElementById('expiryTime').value,
+            companyInfo: companyInfoData,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            createdAt: new Date().toISOString()
+        };
+        
+        console.log('Saving to Firebase:', completeData);
+        await saveToFirebase(completeData);
+        
+        const statusMsg = document.getElementById('statusMessage');
+        if (statusMsg) {
+            statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED BY ${currentUser.username || 'USER'}`;
+            setTimeout(() => {
+                statusMsg.textContent = '';
+            }, 5000);
+        }
+        
+        alert(`Receipt #${receiptNo} saved by ${currentUser.username || 'User'}!\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
+        
+        return completeData;
+        
+    } catch (error) {
+        console.error('Error in submitForm:', error);
+        
+        document.getElementById('statusMessage').textContent = '✗ ERROR SAVING TO DATABASE';
+        alert('Error saving to database: ' + error.message);
+        
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'SUBMIT & SAVE';
+    }
+}
+
+// ========== RECEIPT PRINTING ==========
+
+function generateReceiptContent() {
+    let companyHeader = '';
+    
+    if (typeof companyInfo !== 'undefined') {
+        companyHeader = `
+            <div style="text-align: center; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px;">
+                <h1 style="margin: 0; font-size: 16px;">${companyInfo.name || 'Koveli Lounge'}</h1>
+                <p style="margin: 2px 0; font-size: 10px;">${companyInfo.address || 'Velana International Airport'}</p>
+                <p style="margin: 2px 0; font-size: 10px;">Tel: ${companyInfo.phone || '+960 304 6677'}</p>
+            </div>
+        `;
+    } else {
+        companyHeader = `
+            <div style="text-align: center; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px;">
+                <h1 style="margin: 0; font-size: 16px;">Koveli Lounge</h1>
+                <p style="margin: 2px 0; font-size: 10px;">Velana International Airport</p>
+                <p style="margin: 2px 0; font-size: 10px;">Tel: +960 304 6677</p>
+            </div>
+        `;
+    }
+    
+    const receiptNo = document.getElementById('receiptNo').value || 'N/A';
+    const passengerName = document.getElementById('pName').value || 'N/A';
+    const flightNo = document.getElementById('flightNo').value || 'N/A';
+    const seatNo = document.getElementById('seatNo').value || 'N/A';
+    const adult = document.getElementById('adult').value;
+    const children = document.getElementById('children').value;
+    const currency = document.getElementById('currency').value;
+    const rateType = document.getElementById('rateType').value;
+    const paymentMethod = document.getElementById('paymentMethod').value;
+    const adultPrice = document.getElementById('adultPrice').textContent;
+    const childrenPrice = document.getElementById('childrenPrice').textContent;
+    const adultSubtotal = document.getElementById('adultSubtotal').textContent;
+    const childrenSubtotal = document.getElementById('childrenSubtotal').textContent;
+    const subtotal = document.getElementById('subtotalAmount').textContent;
+    const gstAmount = document.getElementById('gstAmount').textContent;
+    const gstRate = document.getElementById('gstRate').value;
+    const totalAmount = document.getElementById('totalAmount').textContent;
+    const currentDateTime = document.getElementById('currentDateTime').value;
+    const expiryDateTime = document.getElementById('expiryTime').value || 'Not set';
+    
+    const shiftDate = currentShiftData.date || 'N/A';
+    const shift = currentShiftData.shift || 'N/A';
+    
+    // User info for receipt - matching login page structure
+    const userName = currentUser.username || 'N/A';
+    const userLevel = currentUser.level || 'N/A';
+    const userRcno = currentUser.rcno || 'N/A';
+    
+    let exchangeRateText = '';
+    if (currency === 'MVR' && typeof rates !== 'undefined' && rates.exchangeRate) {
+        exchangeRateText = `<p><strong>Ex Rate:</strong> 1 USD = ${currentExchangeRate.toFixed(2)} MVR</p>`;
+    }
+    
+    return `
+        <div style="width: 100%; font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.2;">
+            ${companyHeader}
+            
+            <div style="margin-bottom: 5px;">
+                <p><strong>Receipt #:</strong> ${receiptNo}</p>
+                <p><strong>Date/Time:</strong> ${currentDateTime}</p>
+                <p><strong>Shift:</strong> ${shift} - ${shiftDate}</p>
+                <p><strong>Cashier:</strong> ${userName} (Level: ${userLevel}) - RC: ${userRcno}</p>
+            </div>
+            
+            <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 5px 0; margin-bottom: 5px;">
+                <p><strong>Passenger:</strong> ${passengerName}</p>
+                <p><strong>Flight:</strong> ${flightNo} | <strong>Seat:</strong> ${seatNo}</p>
+            </div>
+            
+            <div style="margin-bottom: 5px;">
+                <p><strong>FARE DETAILS (Rate ${rateType})</strong></p>
+                <table style="width: 100%; font-size: 9px;">
+                    <tr>
+                        <td>Adult x${adult}</td>
+                        <td style="text-align: right;">${currency} ${adultPrice}</td>
+                        <td style="text-align: right;">${currency} ${adultSubtotal}</td>
+                    </tr>
+                    <tr>
+                        <td>Children x${children}</td>
+                        <td style="text-align: right;">${currency} ${childrenPrice}</td>
+                        <td style="text-align: right;">${currency} ${childrenSubtotal}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 5px 0; margin-bottom: 5px;">
+                <table style="width: 100%; font-size: 9px;">
+                    <tr>
+                        <td><strong>SUBTOTAL</strong></td>
+                        <td style="text-align: right;"><strong>${currency} ${subtotal}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>GST (${gstRate}%)</td>
+                        <td style="text-align: right;">${currency} ${gstAmount}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>TOTAL</strong></td>
+                        <td style="text-align: right; font-size: 11px;"><strong>${currency} ${totalAmount}</strong></td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="margin-bottom: 5px;">
+                <p><strong>Payment:</strong> ${paymentMethod}</p>
+                ${exchangeRateText}
+                <p><strong>Valid Until:</strong> ${expiryDateTime}</p>
+                <p><em>Valid for 3 hours</em></p>
+            </div>
+            
+            <div style="border-top: 1px dashed #000; padding-top: 5px; text-align: center; font-size: 8px;">
+                <p>Thank you! Processed by: ${userName} (${userLevel})</p>
+                <p>${new Date().toLocaleDateString()}</p>
+            </div>
+        </div>
+    `;
+}
+
+function printReceipt() {
+    if (!document.getElementById('pName').value) {
+        alert('Please scan a boarding pass first');
+        return;
+    }
+    
+    if (!document.getElementById('receiptNo').value) {
+        alert('Please submit the form first');
+        return;
+    }
+    
+    const receiptContent = generateReceiptContent();
+    document.getElementById('receiptContent').innerHTML = receiptContent;
+    window.print();
+}
+
+// ========== MAIN PARSING FUNCTION ==========
+
+function parseAndAddToList() {
+    const codeInput = document.getElementById('code').value.toUpperCase();
+    
+    if (!codeInput) return false;
+    
+    if (!codeInput.startsWith('M')) {
+        alert('PLEASE READ A CORRECT BOARDING PASS (MUST START WITH M, M1, OR M2)');
+        return false;
+    }
+    
+    if (!codeInput.includes('MLE')) {
+        alert('PLEASE READ A CORRECT BOARDING PASS (MUST CONTAIN MLE)');
+        return false;
+    }
+    
+    try {
+        const mlePosition = codeInput.indexOf('MLE');
+        const isM1orM2 = codeInput.startsWith('M1') || codeInput.startsWith('M2');
+        
+        // Parse name
+        let namePart = '';
+        
+        if (isM1orM2) {
+            namePart = codeInput.substring(2, mlePosition + 3);
+            
+            const withoutSpaces = namePart.replace(/\s/g, '');
+            if (withoutSpaces.length > 7) {
+                let charCount = 0;
+                let cutPosition = namePart.length;
+                for (let i = namePart.length - 1; i >= 0; i--) {
+                    if (namePart[i] !== ' ') {
+                        charCount++;
+                        if (charCount === 10) {
+                            cutPosition = i;
+                            break;
+                        }
+                    }
+                }
+                namePart = namePart.substring(0, cutPosition);
+            }
+        } else {
+            namePart = codeInput.substring(1, mlePosition);
+        }
+        
+        namePart = namePart.trim();
+        
+        // Parse flight number
+        let flightNoPart = '';
+        if (codeInput.length > mlePosition + 3) {
+            flightNoPart = codeInput.substring(mlePosition + 3, mlePosition + 3 + 10);
+            flightNoPart = flightNoPart.substring(3).replace(/\s/g, '');
+        }
+        
+        // Parse seat number
+        let seatNo = '';
+        if (isM1orM2 && codeInput.length > mlePosition + 3) {
+            const afterMLE = codeInput.substring(mlePosition + 3);
+            const parts = afterMLE.split(' ').filter(p => p.trim() !== '');
+            
+            let seatString = '';
+            for (let i = 0; i < parts.length; i++) {
+                const part = parts[i];
+                if (/^\d{3}[A-Z]\d{3}[A-Z]\d{4}$/.test(part)) {
+                    seatString = part;
+                    break;
+                }
+            }
+            
+            if (!seatString) {
+                for (let i = 0; i < parts.length; i++) {
+                    const part = parts[i];
+                    if (part.length >= 13 && /[A-Z]/.test(part) && /\d/.test(part)) {
+                        seatString = part;
+                        break;
+                    }
+                }
+            }
+            
+            if (seatString) {
+                seatNo = seatString.substring(5, seatString.length - 4);
+            }
+        }
+        
+        document.getElementById('hiddenCode').value = codeInput;
+        document.getElementById('pName').value = namePart.toUpperCase();
+        document.getElementById('flightNo').value = flightNoPart ? flightNoPart.toUpperCase() : '';
+        document.getElementById('seatNo').value = seatNo ? seatNo.toUpperCase() : '';
+        
+        const statusMsg = document.getElementById('statusMessage');
+        if (statusMsg) {
+            statusMsg.textContent = '✓ BOARDING PASS PARSED';
+            setTimeout(() => {
+                statusMsg.textContent = '';
+            }, 2000);
+        }
+        
+        document.getElementById('code').value = '';
+        return true;
+        
+    } catch (error) {
+        console.error('Error parsing boarding pass:', error);
+        alert('ERROR PARSING BOARDING PASS');
+        return false;
+    }
+}
+
+// ========== INITIALIZATION ==========
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded');
+    
+    // Check authentication and load user from localStorage
+    checkAuth();
+    
+    // Setup logout button
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            logout();
+        });
+    }
+    
+    const codeField = document.getElementById('code');
+    const currencyField = document.getElementById('currency');
+    const rateTypeField = document.getElementById('rateType');
+    const submitBtn = document.getElementById('submitBtn');
+    const printReceiptBtn = document.getElementById('printReceiptBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const refreshShiftBtn = document.getElementById('refreshShiftBtn');
+    
+    setupNumberInputs();
+    
+    setTimeout(() => {
+        fetchShiftData();
+    }, 1000);
+    
+    updateDateTime();
+    
+    setTimeout(() => {
+        if (typeof rates !== 'undefined') {
+            console.log('Rates loaded:', rates);
+            if (rates.exchangeRate) {
+                currentExchangeRate = rates.exchangeRate.MVRtoUSD || 15.42;
+            }
+        }
+        updateTotalPassengers();
+    }, 500);
+    
+    if (currencyField) {
+        currencyField.addEventListener('change', calculatePrices);
+    }
+    
+    if (rateTypeField) {
+        rateTypeField.addEventListener('change', calculatePrices);
+    }
+    
+    if (codeField) {
+        codeField.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                parseAndAddToList();
+            }
+        });
+        
+        codeField.addEventListener('blur', function() {
+            if (codeField.value.trim() !== '') {
+                parseAndAddToList();
+            }
+        });
+        
+        codeField.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+        
+        codeField.focus();
+    }
+    
+    if (submitBtn) {
+        submitBtn.addEventListener('click', submitForm);
+    }
+    
+    if (printReceiptBtn) {
+        printReceiptBtn.addEventListener('click', printReceipt);
+    }
+    
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', clearAllFields);
+    }
+    
+    if (refreshShiftBtn) {
+        refreshShiftBtn.addEventListener('click', fetchShiftData);
+    }
+});
+</script>
+</body>
+</html>
