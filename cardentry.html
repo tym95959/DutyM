@@ -879,11 +879,17 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// ========== IMPROVED PAX CALCULATION FUNCTION - COUNTS ALPHABETICAL LETTERS ==========
+// ========== IMPROVED PAX CALCULATION FUNCTION - WITH SQ SPECIAL HANDLING ==========
 
-function calculatePaxFromSeat(seatNo) {
-    if (!seatNo || seatNo.trim() === '') {
-        return 0; // No seat = 0 PAX
+function calculatePaxFromSeat(seatNo, flightNo = '') {
+    // Special case for SQ flights - always return 1 regardless of seat
+    if (flightNo && flightNo.startsWith('SQ')) {
+        console.log('SQ flight detected - setting PAX to 1 regardless of seat');
+        return 1;
+    }
+    
+    if (!seatNo || seatNo.trim() === '' || seatNo === '-') {
+        return 0; // No seat = 0 PAX (except for SQ which is handled above)
     }
     
     // Remove all spaces and convert to uppercase
@@ -914,7 +920,190 @@ function calculatePaxFromSeat(seatNo) {
     return letterCount;
 }
 
-// ========== INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE ==========
+// ========== MODIFIED CHECK PASSENGER EXISTS - IGNORE NULL/'-' SEATS ==========
+
+async function checkPassengerExists(flightNo, date, seatNo, pName) {
+    try {
+        if (typeof db === 'undefined') {
+            console.error('db not initialized');
+            return { exists: false, matches: [], error: 'Database not initialized' };
+        }
+        
+        const collectionRef = db.collection('KoveliPass');
+        
+        let query = collectionRef
+            .where('flightNo', '==', flightNo)
+            .where('date', '==', date);
+        
+        const snapshot = await query.get();
+        
+        if (snapshot.empty) {
+            return { exists: false, matches: [] };
+        }
+        
+        const matches = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            
+            // Check if this is a match based on seatNo OR pName
+            let isMatch = false;
+            
+            // For seat matching - only if seatNo is not null, empty, or '-'
+            if (seatNo && seatNo.trim() !== '' && seatNo !== '-') {
+                if (data.seatNo === seatNo) {
+                    isMatch = true;
+                }
+            }
+            
+            // Always check name match regardless of seat
+            if (data.pName === pName) {
+                isMatch = true;
+            }
+            
+            if (isMatch) {
+                matches.push({
+                    id: doc.id,
+                    ...data
+                });
+            }
+        });
+        
+        if (matches.length > 0) {
+            return { exists: true, matches };
+        }
+        
+        return { exists: false, matches: [] };
+        
+    } catch (error) {
+        console.error('Error checking passenger existence:', error);
+        return { exists: false, matches: [], error: error.message };
+    }
+}
+
+// ========== MODIFIED SAVE INLINE EDIT WITH SQ HANDLING ==========
+
+function saveInlineEdit(input) {
+    if (!editingCell || editingCell.input !== input) return;
+    
+    const newValue = input.value.trim().toUpperCase();
+    const entryId = editingCell.entryId;
+    const field = editingCell.field;
+    const isSaved = editingCell.isSaved;
+    
+    // Find the entry
+    const entryArray = isSaved ? savedPasses : pendingPasses;
+    const entryIndex = entryArray.findIndex(e => e.id === entryId);
+    
+    if (entryIndex === -1) {
+        cancelEditing();
+        return;
+    }
+    
+    const entry = entryArray[entryIndex];
+    const oldValue = entry[field] || '';
+    
+    // Check if value actually changed
+    if (newValue === oldValue) {
+        cancelEditing();
+        return;
+    }
+    
+    // Handle different field types
+    if (field === 'seatNo') {
+        // Update seat
+        entry.seatNo = newValue;
+        
+        // Calculate PAX based on seat AND flight number
+        const calculatedPax = calculatePaxFromSeat(newValue, entry.flightNo);
+        
+        // Auto-update PAX based on seat
+        if (newValue === '' || newValue === '-') {
+            // If seat is empty or '-', set PAX to 0 (unless it's SQ, but that's handled in calculatePaxFromSeat)
+            entry.pax = calculatedPax.toString();
+            showTemporaryNotification(`✓ Seat ${newValue === '-' ? 'set to -' : 'removed'} - PAX set to ${calculatedPax}`, 'info');
+        } 
+        else {
+            // Always update PAX to match the calculated value
+            const oldPax = entry.pax || '0';
+            entry.pax = calculatedPax.toString();
+            
+            if (oldPax !== calculatedPax.toString()) {
+                showTemporaryNotification(`✓ PAX auto-updated from ${oldPax} to ${calculatedPax} based on seat`, 'success');
+            }
+        }
+    }
+    else if (field === 'flightNo') {
+        // Update flight number
+        entry.flightNo = newValue;
+        
+        // If this is an SQ flight and seat is empty/null/'-', set PAX to 1
+        if (newValue.startsWith('SQ')) {
+            if (!entry.seatNo || entry.seatNo === '' || entry.seatNo === '-') {
+                entry.pax = '1';
+                showTemporaryNotification('✓ SQ flight detected - PAX set to 1', 'success');
+            } else {
+                // Recalculate PAX with new flight number context
+                const calculatedPax = calculatePaxFromSeat(entry.seatNo, newValue);
+                entry.pax = calculatedPax.toString();
+            }
+        } else {
+            // Recalculate PAX for non-SQ flights
+            const calculatedPax = calculatePaxFromSeat(entry.seatNo, newValue);
+            entry.pax = calculatedPax.toString();
+        }
+    }
+    else if (field === 'pax') {
+        const paxNum = parseInt(newValue) || 0;
+        
+        // If setting PAX to 0
+        if (paxNum === 0) {
+            const confirmZero = confirm(`Set PAX to 0? This means no passengers. Continue?`);
+            if (!confirmZero) {
+                cancelEditing();
+                return;
+            }
+            entry.pax = '0';
+        } else {
+            entry.pax = paxNum.toString();
+        }
+        
+        // Check if PAX matches seat (if seat exists and not SQ special case)
+        if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && !entry.flightNo?.startsWith('SQ')) {
+            const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
+            if (calculatedPax > 0 && paxNum !== calculatedPax) {
+                showTemporaryNotification(`⚠ PAX (${paxNum}) does not match seat (${calculatedPax})`, 'warning');
+            }
+        }
+    }
+    else if (field === 'class') {
+        entry.class = newValue;
+        // Check if class is Y and FQTV is empty
+        if (newValue === 'Y' && !entry.FQTV) {
+            entry.FQTV = 'NEED FQTV J CLASS';
+        }
+    }
+    else {
+        // Regular field update
+        entry[field] = newValue;
+    }
+    
+    // Save to storage
+    if (isSaved) {
+        saveSavedToLocalStorage();
+    } else {
+        savePendingToLocalStorage();
+    }
+    
+    // Clear editing state
+    editingCell = null;
+    
+    // Refresh tables
+    renderTables();
+    
+    showTemporaryNotification(`✓ ${field} updated`, 'success');
+}
+
+// ========== MODIFIED MAKE EDITABLE WITH SQ HANDLING ==========
 
 function makeEditable(cell, entryId, field, isSaved = false) {
     // Don't allow editing if already editing another cell
@@ -975,16 +1164,21 @@ function makeEditable(cell, entryId, field, isSaved = false) {
         input.addEventListener('input', function() {
             this.value = this.value.toUpperCase();
             
-            // Find the PAX cell in the same row
+            // Find the row
             const row = this.closest('tr');
             if (row) {
-                // Find the PAX cell (7th cell for pending table with guest checkbox, 6th for saved)
+                // Find the PAX cell
                 const isPendingWithGuest = row.querySelector('.guest-checkbox') !== null;
                 const paxCellIndex = isPendingWithGuest ? 7 : 6;
                 const paxCell = row.cells[paxCellIndex];
                 
+                // Find flight number to check if SQ
+                const flightCellIndex = isPendingWithGuest ? 2 : 1; // Flight cell index
+                const flightCell = row.cells[flightCellIndex];
+                const flightNo = flightCell?.textContent?.trim() || '';
+                
                 if (paxCell && paxCell.classList.contains('editable-cell')) {
-                    const calculatedPax = calculatePaxFromSeat(this.value);
+                    const calculatedPax = calculatePaxFromSeat(this.value, flightNo);
                     
                     // Show preview
                     paxCell.setAttribute('data-preview', calculatedPax);
@@ -1001,11 +1195,20 @@ function makeEditable(cell, entryId, field, isSaved = false) {
                     
                     if (this.value.trim() === '') {
                         previewSpan.textContent = '→ 0 (no seat)';
+                    } else if (this.value === '-') {
+                        previewSpan.textContent = '→ 0 (dash)';
                     } else {
                         previewSpan.textContent = `→ ${calculatedPax}`;
                     }
                 }
             }
+        });
+    }
+    
+    // Special handling for flight number field
+    if (field === 'flightNo') {
+        input.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
         });
     }
     
@@ -1022,115 +1225,6 @@ function makeEditable(cell, entryId, field, isSaved = false) {
             // Only allow numbers
             this.value = this.value.replace(/[^0-9]/g, '');
         });
-    }
-}
-
-function saveInlineEdit(input) {
-    if (!editingCell || editingCell.input !== input) return;
-    
-    const newValue = input.value.trim().toUpperCase();
-    const entryId = editingCell.entryId;
-    const field = editingCell.field;
-    const isSaved = editingCell.isSaved;
-    
-    // Find the entry
-    const entryArray = isSaved ? savedPasses : pendingPasses;
-    const entryIndex = entryArray.findIndex(e => e.id === entryId);
-    
-    if (entryIndex === -1) {
-        cancelEditing();
-        return;
-    }
-    
-    const entry = entryArray[entryIndex];
-    const oldValue = entry[field] || '';
-    
-    // Check if value actually changed
-    if (newValue === oldValue) {
-        cancelEditing();
-        return;
-    }
-    
-    // Handle different field types
-    if (field === 'seatNo') {
-        // Calculate PAX from new seat (counts alphabetical letters)
-        const calculatedPax = calculatePaxFromSeat(newValue);
-        
-        // Update seat
-        entry.seatNo = newValue;
-        
-        // Auto-update PAX based on seat
-        if (newValue === '') {
-            // If seat is empty, set PAX to 0
-            entry.pax = '0';
-            showTemporaryNotification('✓ Seat removed - PAX set to 0', 'info');
-        } 
-        else if (calculatedPax > 0) {
-            // Always update PAX to match the seat count
-            const oldPax = entry.pax || '0';
-            entry.pax = calculatedPax.toString();
-            
-            if (oldPax !== calculatedPax.toString()) {
-                showTemporaryNotification(`✓ PAX auto-updated from ${oldPax} to ${calculatedPax} based on seat`, 'success');
-            }
-        }
-    }
-    else if (field === 'pax') {
-        const paxNum = parseInt(newValue) || 0;
-        
-        // If setting PAX to 0
-        if (paxNum === 0) {
-            const confirmZero = confirm(`Set PAX to 0? This means no passengers. Continue?`);
-            if (!confirmZero) {
-                cancelEditing();
-                return;
-            }
-            entry.pax = '0';
-        } else {
-            entry.pax = paxNum.toString();
-        }
-        
-        // Check if PAX matches seat (if seat exists)
-        if (entry.seatNo && entry.seatNo.trim() !== '') {
-            const calculatedPax = calculatePaxFromSeat(entry.seatNo);
-            if (calculatedPax > 0 && paxNum !== calculatedPax) {
-                showTemporaryNotification(`⚠ PAX (${paxNum}) does not match seat (${calculatedPax})`, 'warning');
-            }
-        }
-    }
-    else if (field === 'class') {
-        entry.class = newValue;
-        // Check if class is Y and FQTV is empty
-        if (newValue === 'Y' && !entry.FQTV) {
-            entry.FQTV = 'NEED FQTV J CLASS';
-        }
-    }
-    else {
-        // Regular field update
-        entry[field] = newValue;
-    }
-    
-    // Save to storage
-    if (isSaved) {
-        saveSavedToLocalStorage();
-    } else {
-        savePendingToLocalStorage();
-    }
-    
-    // Clear editing state
-    editingCell = null;
-    
-    // Refresh tables
-    renderTables();
-    
-    showTemporaryNotification(`✓ ${field} updated`, 'success');
-}
-
-function cancelEditing() {
-    if (editingCell) {
-        const { cell, originalValue } = editingCell;
-        cell.textContent = originalValue || '—';
-        editingCell = null;
     }
 }
 
@@ -1204,7 +1298,7 @@ function toggleGuestMode(passengerId, checked) {
             guestModeActive = true;
             selectedGuestPassengerId = passengerId;
             guestIndicator.classList.add('visible');
-            guestModeText.textContent = `ADDING GUEST FOR: ${passenger.pName} (${passenger.seatNo})`;
+            guestModeText.textContent = `ADDING GUEST FOR: ${passenger.pName} (${passenger.seatNo || 'no seat'})`;
             showTemporaryNotification(`✓ Guest mode activated for ${passenger.pName}`, 'success');
         }
     } else {
@@ -1241,8 +1335,8 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         
         const mainPassenger = pendingPasses[mainPassengerIndex];
         
-        // Calculate PAX for guest based on their seat
-        const guestPax = calculatePaxFromSeat(guestData.seatNo) || 1;
+        // Calculate PAX for guest based on their seat AND flight number
+        const guestPax = calculatePaxFromSeat(guestData.seatNo, guestData.flightNo) || 1;
         
         const guestEntry = {
             ...guestData,
@@ -1251,14 +1345,14 @@ function addGuestToPassenger(mainPassengerId, guestData) {
             mainPassengerId: mainPassengerId,
             mainPassengerName: mainPassenger.pName || '',
             mainPassengerSeat: mainPassenger.seatNo || '',
-            FQTV: `GUEST OF ${mainPassenger.pName || ''} (${mainPassenger.seatNo || ''})`,
+            FQTV: `GUEST OF ${mainPassenger.pName || ''} (${mainPassenger.seatNo || 'no seat'})`,
             approved: false,
             pName: guestData.pName || '',
             flightNo: guestData.flightNo || '',
             seatNo: guestData.seatNo || '',
             class: guestData.class || '',
             airline: guestData.airline || '',
-            pax: guestPax.toString(), // Set PAX based on guest's seat
+            pax: guestPax.toString(), // Set PAX based on guest's seat and flight
             remarks: guestData.remarks || '',
             date: guestData.date || '',
             shift: guestData.shift || '',
@@ -1420,48 +1514,6 @@ function updateShiftDisplay() {
 
 // ========== FIREBASE SAVE FUNCTIONS ==========
 
-async function checkPassengerExists(flightNo, date, seatNo, pName) {
-    try {
-        if (typeof db === 'undefined') {
-            console.error('db not initialized');
-            return { exists: false, matches: [], error: 'Database not initialized' };
-        }
-        
-        const collectionRef = db.collection('KoveliPass');
-        
-        let query = collectionRef
-            .where('flightNo', '==', flightNo)
-            .where('date', '==', date);
-        
-        const snapshot = await query.get();
-        
-        if (snapshot.empty) {
-            return { exists: false, matches: [] };
-        }
-        
-        const matches = [];
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.seatNo === seatNo || data.pName === pName) {
-                matches.push({
-                    id: doc.id,
-                    ...data
-                });
-            }
-        });
-        
-        if (matches.length > 0) {
-            return { exists: true, matches };
-        }
-        
-        return { exists: false, matches: [] };
-        
-    } catch (error) {
-        console.error('Error checking passenger existence:', error);
-        return { exists: false, matches: [], error: error.message };
-    }
-}
-
 async function saveEntryToFirebase(entry) {
     try {
         console.log('Saving entry to Firebase:', entry);
@@ -1544,6 +1596,7 @@ async function backgroundSaveToFirebase(entry) {
             return { success: true, skipped: true };
         }
         
+        // Check for duplicates - will ignore null/'-' seats
         const checkResult = await checkPassengerExists(
             entry.flightNo,
             entry.date,
@@ -1624,12 +1677,12 @@ async function approveEntry(id) {
         
         const entry = pendingPasses[entryIndex];
         
-        // Validate PAX against seat (count letters)
-        const calculatedPax = calculatePaxFromSeat(entry.seatNo);
+        // Validate PAX against seat (count letters) - with SQ special handling
+        const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
         
-        // If there's a seat but PAX doesn't match, offer to update
-        if (entry.seatNo && entry.seatNo.trim() !== '' && calculatedPax > 0 && currentPax !== calculatedPax) {
+        // If there's a seat (not null/'-') and PAX doesn't match, offer to update
+        if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && calculatedPax > 0 && currentPax !== calculatedPax) {
             const confirmUpdate = confirm(`Seat "${entry.seatNo}" contains ${calculatedPax} letters = ${calculatedPax} PAX, but current PAX is ${currentPax}. Update PAX to ${calculatedPax}?`);
             if (confirmUpdate) {
                 entry.pax = calculatedPax.toString();
@@ -1642,8 +1695,8 @@ async function approveEntry(id) {
             }
         }
         
-        // If no seat but PAX > 0
-        if ((!entry.seatNo || entry.seatNo.trim() === '') && currentPax > 0) {
+        // If no seat but PAX > 0 and not SQ flight
+        if ((!entry.seatNo || entry.seatNo.trim() === '' || entry.seatNo === '-') && currentPax > 0 && !entry.flightNo?.startsWith('SQ')) {
             const confirmNoSeat = confirm(`No seat number entered but PAX is ${currentPax}. Continue?`);
             if (!confirmNoSeat) {
                 showTemporaryNotification('Save cancelled', 'warning');
@@ -2130,10 +2183,12 @@ function addToTable(data) {
         }
     }
     
-    // Ensure PAX is calculated from seat if not set
+    // Ensure PAX is calculated from seat if not set, with SQ special handling
     if (!upperData.pax || upperData.pax === '') {
-        if (upperData.seatNo && upperData.seatNo.trim() !== '') {
-            upperData.pax = calculatePaxFromSeat(upperData.seatNo).toString();
+        if (upperData.flightNo?.startsWith('SQ')) {
+            upperData.pax = '1'; // SQ flights always have PAX 1
+        } else if (upperData.seatNo && upperData.seatNo.trim() !== '' && upperData.seatNo !== '-') {
+            upperData.pax = calculatePaxFromSeat(upperData.seatNo, upperData.flightNo).toString();
         } else {
             upperData.pax = '0';
         }
@@ -2265,8 +2320,8 @@ function parseAndAddToList() {
                 }
             }
             
-            // Calculate PAX by counting letters in seat
-            const paxCount = calculatePaxFromSeat(seatNo);
+            // Calculate PAX by counting letters in seat (with flight context)
+            const paxCount = calculatePaxFromSeat(seatNo, flightNoPart);
             
             parsedEntry = {
                 pName: namePart || '',
@@ -2362,8 +2417,8 @@ function parseAndAddToList() {
                 }
             }
             
-            // Calculate PAX by counting letters in seat
-            const paxCount = calculatePaxFromSeat(seatNo);
+            // Calculate PAX by counting letters in seat (with flight context)
+            const paxCount = calculatePaxFromSeat(seatNo, flightNoPart);
             
             // Parse FQTV for M1/M2 codes
             let fqtvValue = '';
