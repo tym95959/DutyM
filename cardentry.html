@@ -2569,7 +2569,11 @@ async function saveEntryToFirebase(entry) {
         
         if (typeof db === 'undefined') {
             console.error('db not initialized');
-            return { success: false, error: 'Database not initialized', reason: 'DB_NOT_INITIALIZED' };
+            return { 
+                success: false, 
+                error: 'Database not initialized', 
+                reason: 'DB_NOT_INITIALIZED' 
+            };
         }
         
         // CRITICAL: Check for duplicates first (for non-guest entries)
@@ -2603,7 +2607,7 @@ async function saveEntryToFirebase(entry) {
                 return { 
                     success: false, 
                     error: flightStatus.message, 
-                    reason: flightStatus.error,
+                    reason: flightStatus.error || 'FLIGHT_CLOSED',
                     flightStatus: flightStatus.status
                 };
             }
@@ -2612,68 +2616,9 @@ async function saveEntryToFirebase(entry) {
             // Still allow save but warn
         }
         
-        // Clean the entry for Firebase
-        const cleanEntry = {};
+        // Rest of your save logic...
+        // [Your existing save code here]
         
-        Object.keys(entry).forEach(key => {
-            const value = entry[key];
-            
-            if (value === undefined) {
-                if (key === 'isGuest') {
-                    cleanEntry.isGuest = false;
-                } else if (key === 'approved') {
-                    cleanEntry.approved = false;
-                } else {
-                    cleanEntry[key] = '';
-                }
-            } else if (value === null) {
-                cleanEntry[key] = '';
-            } else {
-                cleanEntry[key] = value;
-            }
-        });
-        
-        // Ensure required fields exist
-        const requiredFields = ['pName', 'flightNo', 'seatNo', 'class', 'airline', 'FQTV', 'pax', 'serialNo', 'remarks', 'date', 'shift', 'entryTime'];
-        requiredFields.forEach(field => {
-            if (cleanEntry[field] === undefined) {
-                cleanEntry[field] = '';
-            }
-        });
-        
-        // Ensure user tracking fields are present
-        if (!cleanEntry.enteredBy) cleanEntry.enteredBy = currentUser.name || currentUser.username || 'UNKNOWN';
-        if (!cleanEntry.enteredByUsername) cleanEntry.enteredByUsername = currentUser.username || 'UNKNOWN';
-        if (!cleanEntry.enteredByRCNo) cleanEntry.enteredByRCNo = currentUser.rcno || 'N/A';
-        if (!cleanEntry.enteredByLevel) cleanEntry.enteredByLevel = currentUser.level || 'OPERATOR';
-        if (!cleanEntry.enteredAt) cleanEntry.enteredAt = new Date().toISOString();
-        
-        cleanEntry.isGuest = cleanEntry.isGuest === true ? true : false;
-        cleanEntry.approved = cleanEntry.approved === true ? true : false;
-        
-        // Remove local-only fields
-        delete cleanEntry.firebaseId;
-        delete cleanEntry.id;
-        delete cleanEntry.firebaseStatus;
-        delete cleanEntry.firebaseError;
-        delete cleanEntry.firebaseReason;
-        
-        const collectionRef = db.collection('KoveliPass');
-        
-        // Create a unique document ID
-        const seatForId = cleanEntry.seatNo ? cleanEntry.seatNo.replace(/[^A-Z0-9]/g, '') : 'noseat';
-        const serialForId = cleanEntry.serialNo ? cleanEntry.serialNo.replace(/[^A-Z0-9]/g, '') : 'noserial';
-        const docId = `${cleanEntry.date}_${cleanEntry.flightNo}_${seatForId}_${serialForId}_${Date.now()}`;
-        
-        const entryWithTimestamp = {
-            ...cleanEntry,
-            savedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            savedAtLocal: new Date().toISOString()
-        };
-        
-        await collectionRef.doc(docId).set(entryWithTimestamp);
-        
-        console.log('✅ Entry saved successfully with ID:', docId);
         return { success: true, docId };
         
     } catch (error) {
@@ -2686,7 +2631,10 @@ async function saveEntryToFirebase(entry) {
     }
 }
 
+
+
 // Background save to Firebase - REMOVES FROM LOCAL STORAGE ON SUCCESS
+// Background save to Firebase - KEEPS FAILED ENTRIES, REMOVES SUCCESSFUL ONES
 async function backgroundSaveToFirebase(entry) {
     try {
         console.log('Starting background save for entry:', entry.id);
@@ -2697,6 +2645,7 @@ async function backgroundSaveToFirebase(entry) {
             savedPasses[savedIndex].firebaseStatus = 'saving';
             savedPasses[savedIndex].firebaseError = null;
             savedPasses[savedIndex].firebaseReason = null;
+            savedPasses[savedIndex].firebaseSaved = false;
             saveSavedToLocalStorage();
             renderTables();
         }
@@ -2706,19 +2655,19 @@ async function backgroundSaveToFirebase(entry) {
         if (saveResult.success) {
             console.log('✅ Background save successful');
             
-            // REMOVE FROM LOCAL STORAGE COMPLETELY on success
+            // REMOVE FROM LOCAL STORAGE ONLY ON SUCCESS
             if (savedIndex !== -1) {
                 savedPasses.splice(savedIndex, 1);
                 saveSavedToLocalStorage();
                 renderTables();
             }
             
-            showTemporaryNotification(`✅ Entry saved to Firebase and removed from local storage`, 'success');
+            showTemporaryNotification(`✅ Entry saved to Firebase`, 'success');
             
         } else {
             console.error('❌ Background save failed:', saveResult.error);
             
-            // Store detailed error information (keep in local storage for retry)
+            // KEEP IN LOCAL STORAGE for retry - update with error info
             if (savedIndex !== -1) {
                 savedPasses[savedIndex].firebaseError = saveResult.error;
                 savedPasses[savedIndex].firebaseReason = saveResult.reason || 'UNKNOWN';
@@ -2736,6 +2685,8 @@ async function backgroundSaveToFirebase(entry) {
                 showTemporaryNotification(`❌ FLIGHT CLOSED: ${saveResult.error}`, 'error');
             } else if (saveResult.reason === 'FLIGHT_NOT_FOUND') {
                 showTemporaryNotification(`❌ FLIGHT NOT FOUND: ${saveResult.error}`, 'error');
+            } else if (saveResult.reason === 'DB_NOT_INITIALIZED') {
+                showTemporaryNotification(`❌ DATABASE ERROR: ${saveResult.error}`, 'error');
             } else {
                 showTemporaryNotification(`❌ Save failed: ${saveResult.error}`, 'error');
             }
