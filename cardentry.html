@@ -303,26 +303,6 @@
             box-shadow: 0 6px 15px rgba(230, 184, 0, 0.3);
         }
         
-        .dummy-entry-btn {
-            background: linear-gradient(135deg, #6b8e23, #556b2f);
-            color: white;
-            border: none;
-            padding: 12px 25px;
-            border-radius: 50px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.3s;
-            white-space: nowrap;
-            box-shadow: 0 4px 10px rgba(107, 142, 35, 0.2);
-        }
-        
-        .dummy-entry-btn:hover {
-            background: linear-gradient(135deg, #556b2f, #445d25);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(107, 142, 35, 0.3);
-        }
-        
         .status-message {
             color: #6b8e23;
             font-size: 14px;
@@ -394,40 +374,6 @@
             gap: 15px;
             justify-content: center;
             margin-top: 10px;
-        }
-        
-        .save-btn {
-            background: linear-gradient(135deg, #6b8e23, #556b2f);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 50px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        .save-btn:hover {
-            background: linear-gradient(135deg, #556b2f, #445d25);
-            transform: translateY(-2px);
-        }
-        
-        .cancel-btn {
-            background: linear-gradient(135deg, #c68b5e, #a67244);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 50px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        .cancel-btn:hover {
-            background: linear-gradient(135deg, #a67244, #8b5a3c);
-            transform: translateY(-2px);
         }
         
         #hiddenCode {
@@ -822,24 +768,6 @@
         .table-container {
             max-height: 480px;
         }
-        
-        .pax-preview {
-            font-size: 10px;
-            color: #e6b800;
-            margin-left: 5px;
-            font-weight: bold;
-            animation: fadeIn 0.3s ease;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateX(-5px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        
-        .editable-cell[data-preview] {
-            background-color: #fff3cd !important;
-            transition: background-color 0.3s ease;
-        }
     </style>
     <!-- Font Awesome for icons (optional but makes buttons nicer) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -877,7 +805,7 @@
 
         <!-- Main Content -->
         <div class="main-content">
-            <!-- Input section with Guest mode indicator and Dummy Entry button -->
+            <!-- Input section with Guest mode indicator -->
             <div class="filter-section">
                 <input type="text" id="code" placeholder="ENTER CODE OR READ BARCODE (AUTO-ADDS TO LIST)">
                 
@@ -889,7 +817,6 @@
                 </div>
                 
                 <button id="toggleCurrentBtn" class="toggle-current-btn">SHOW CURRENT ENTRY</button>
-                <button id="dummyEntryBtn" class="dummy-entry-btn">➕ DUMMY ENTRY</button>
                 <span id="statusMessage" class="status-message"></span>
             </div>
 
@@ -1011,7 +938,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearCurrentBtn = document.getElementById('clearCurrentBtn');
     const refreshShiftBtn = document.getElementById('refreshShiftBtn');
     const cancelGuestModeBtn = document.getElementById('cancelGuestModeBtn');
-    const dummyEntryBtn = document.getElementById('dummyEntryBtn');
     
     // Load data from local storage
     loadFromLocalStorage();
@@ -1037,13 +963,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         codeField.addEventListener('input', function() {
             this.value = this.value.toUpperCase();
-        });
-    }
-    
-    // Dummy entry button
-    if (dummyEntryBtn) {
-        dummyEntryBtn.addEventListener('click', function() {
-            createDummyEntry();
         });
     }
     
@@ -1087,80 +1006,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// ========== DUMMY ENTRY FUNCTION ==========
-
-function createDummyEntry() {
-    const entryTime = getCurrentEntryTime();
-    
-    // Create a dummy entry with sample data
-    const dummyEntry = {
-        pName: 'TEST PASSENGER',
-        flightNo: 'EK123',
-        seatNo: '12A',
-        class: 'Y',
-        airline: 'EMIRATES',
-        FQTV: 'EK-1234567/G',
-        pax: '1',
-        serialNo: 'DUMMY' + Math.floor(Math.random() * 1000),
-        remarks: 'DUMMY ENTRY',
-        date: currentShiftData.date || '',
-        shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
-        entryTime: entryTime,
-        hiddenCode: 'DUMMY' + Date.now(),
-        isGuest: false,
-        mainPassengerId: '',
-        mainPassengerName: '',
-        mainPassengerSeat: ''
-    };
-    
-    // Add to pending passes
-    const newEntry = {
-        id: generateId(),
-        ...dummyEntry,
-        approved: false
-    };
-    
-    pendingPasses.push(newEntry);
-    savePendingToLocalStorage();
-    renderTables();
-    
-    // Show notification
-    showTemporaryNotification('✓ DUMMY ENTRY CREATED - Click any field to edit', 'success');
-    
-    // Auto-show the current entry section if it's hidden
-    const currentEntrySection = document.getElementById('currentEntrySection');
-    const toggleCurrentBtn = document.getElementById('toggleCurrentBtn');
-    if (currentEntrySection && !currentEntrySection.classList.contains('visible')) {
-        currentEntrySection.classList.add('visible');
-        if (toggleCurrentBtn) {
-            toggleCurrentBtn.textContent = 'HIDE CURRENT ENTRY';
-        }
-    }
-    
-    // Update current entry fields with dummy data for easy editing
-    document.getElementById('hiddenCode').value = dummyEntry.hiddenCode;
-    document.getElementById('pName').value = dummyEntry.pName;
-    document.getElementById('flightNo').value = dummyEntry.flightNo;
-    document.getElementById('seatNo').value = dummyEntry.seatNo;
-    document.getElementById('class').value = dummyEntry.class;
-    document.getElementById('airline').value = dummyEntry.airline;
-    document.getElementById('FQTV').value = dummyEntry.FQTV;
-    document.getElementById('pax').value = dummyEntry.pax;
-    document.getElementById('serialNo').value = dummyEntry.serialNo;
-    document.getElementById('remarks').value = dummyEntry.remarks;
-    document.getElementById('date').value = dummyEntry.date;
-    document.getElementById('shift').value = dummyEntry.shift;
-    document.getElementById('entryTime').value = dummyEntry.entryTime;
-    
-    // Focus on the first editable field in the table for quick editing
-    setTimeout(() => {
-        const firstEditableCell = document.querySelector('#pendingTableBody tr:first-child td.editable-cell');
-        if (firstEditableCell) {
-            firstEditableCell.click();
-        }
-    }, 100);
-}
-
 // ========== IMPROVED PAX CALCULATION FUNCTION - WITH SQ SPECIAL HANDLING ==========
 
 function calculatePaxFromSeat(seatNo, flightNo = '') {
@@ -1180,6 +1025,14 @@ function calculatePaxFromSeat(seatNo, flightNo = '') {
     console.log('Calculating PAX from seat:', cleanSeat);
     
     // Count all alphabetical letters (A-Z) in the string
+    // This handles formats like:
+    // "1A" -> 1 letter -> 1 PAX
+    // "1AB" -> 2 letters -> 2 PAX
+    // "1AB/2A" -> 3 letters (A,B,A) -> 3 PAX
+    // "1AB3BC" -> 4 letters (A,B,B,C) -> 4 PAX
+    // "12A/34B/56C" -> 3 letters -> 3 PAX
+    // "1A,2B,3C" -> 3 letters -> 3 PAX
+    
     const letters = cleanSeat.match(/[A-Z]/g);
     const letterCount = letters ? letters.length : 0;
     
@@ -1259,7 +1112,9 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
     }
 }
 
-// ========== FIXED INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE - FQTV NOW SAVES ANYTHING ==========
+// ========== INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE - CHANGED TO SINGLE CLICK ==========
+
+// ========== INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE - FIXED ==========
 
 function makeEditable(cell, entryId, field, isSaved = false) {
     // Don't allow editing if already editing another cell
@@ -1299,7 +1154,7 @@ function makeEditable(cell, entryId, field, isSaved = false) {
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
-            e.stopPropagation();
+            e.stopPropagation(); // Prevent event bubbling
             saveInlineEdit(this);
         } else if (e.key === 'Escape') {
             e.preventDefault();
@@ -1307,9 +1162,11 @@ function makeEditable(cell, entryId, field, isSaved = false) {
         }
     });
     
-    // Use blur with timeout to prevent conflicts
+    // Use mousedown instead of blur to prevent conflicts
     input.addEventListener('blur', function(e) {
+        // Small timeout to allow click on other elements
         setTimeout(() => {
+            // Check if we're still in editing mode and this input is still the active one
             if (editingCell && editingCell.input === this && document.activeElement !== this) {
                 saveInlineEdit(this);
             }
@@ -1321,12 +1178,15 @@ function makeEditable(cell, entryId, field, isSaved = false) {
         input.addEventListener('input', function() {
             this.value = this.value.toUpperCase();
             
+            // Find the row
             const row = this.closest('tr');
             if (row) {
+                // Find the PAX cell index based on table structure
                 const isPendingWithGuest = row.querySelector('.guest-checkbox') !== null;
                 const paxCellIndex = isPendingWithGuest ? 8 : 7;
                 const paxCell = row.cells[paxCellIndex];
                 
+                // Find flight number to check if SQ
                 const flightCellIndex = isPendingWithGuest ? 3 : 2;
                 const flightCell = row.cells[flightCellIndex];
                 const flightNo = flightCell?.textContent?.trim() || '';
@@ -1334,9 +1194,11 @@ function makeEditable(cell, entryId, field, isSaved = false) {
                 if (paxCell && paxCell.classList.contains('editable-cell')) {
                     const calculatedPax = calculatePaxFromSeat(this.value, flightNo);
                     
+                    // Show preview
                     paxCell.setAttribute('data-preview', calculatedPax);
                     paxCell.style.backgroundColor = '#fff3cd';
                     
+                    // Add or update preview indicator
                     let previewSpan = paxCell.querySelector('.pax-preview');
                     if (!previewSpan) {
                         previewSpan = document.createElement('span');
@@ -1374,6 +1236,7 @@ function makeEditable(cell, entryId, field, isSaved = false) {
     // Special handling for PAX field
     if (field === 'pax') {
         input.addEventListener('input', function() {
+            // Only allow numbers
             this.value = this.value.replace(/[^0-9]/g, '');
         });
     }
@@ -1384,8 +1247,6 @@ function makeEditable(cell, entryId, field, isSaved = false) {
             this.value = this.value.toUpperCase();
         });
     }
-    
-    // NO SPECIAL HANDLING FOR FQTV - just normal input
 }
 
 function saveInlineEdit(input) {
@@ -1418,15 +1279,19 @@ function saveInlineEdit(input) {
     
     // Handle different field types
     if (field === 'seatNo') {
+        // Update seat
         entry.seatNo = newValue;
         
+        // Calculate PAX based on seat AND flight number
         const calculatedPax = calculatePaxFromSeat(newValue, entry.flightNo);
         
+        // Auto-update PAX based on seat (but NOT for guests - guest PAX is always 1)
         if (!entry.isGuest) {
             if (newValue === '' || newValue === '-') {
                 entry.pax = calculatedPax.toString();
                 showTemporaryNotification(`✓ Seat ${newValue === '-' ? 'set to -' : 'removed'} - PAX set to ${calculatedPax}`, 'info');
-            } else {
+            } 
+            else {
                 const oldPax = entry.pax || '0';
                 entry.pax = calculatedPax.toString();
                 
@@ -1435,12 +1300,15 @@ function saveInlineEdit(input) {
                 }
             }
         } else {
+            // For guests, PAX stays at 1 regardless of seat
             showTemporaryNotification(`✓ Guest seat updated (PAX remains 1)`, 'info');
         }
     }
     else if (field === 'flightNo') {
+        // Update flight number
         entry.flightNo = newValue;
         
+        // If this is an SQ flight and seat is empty/null/'-', set PAX to 1 (but NOT for guests)
         if (newValue.startsWith('SQ') && !entry.isGuest) {
             if (!entry.seatNo || entry.seatNo === '' || entry.seatNo === '-') {
                 entry.pax = '1';
@@ -1457,6 +1325,7 @@ function saveInlineEdit(input) {
     else if (field === 'pax') {
         const paxNum = parseInt(newValue) || 0;
         
+        // For guests, warn if trying to change PAX from 1
         if (entry.isGuest) {
             if (paxNum !== 1) {
                 alert('Guest entries must have PAX = 1. Setting back to 1.');
@@ -1486,12 +1355,12 @@ function saveInlineEdit(input) {
     }
     else if (field === 'class') {
         entry.class = newValue;
-        // REMOVED: The auto FQTV setting when class is Y
-        // Now just save whatever the user entered
+        if (newValue === 'Y' && !entry.FQTV) {
+            entry.FQTV = 'NEED FQTV J CLASS';
+        }
     }
     else {
-        // Regular field update - THIS INCLUDES FQTV NOW
-        // No special logic, just save what the user typed
+        // Regular field update (including serialNo)
         entry[field] = newValue;
     }
     
@@ -1513,6 +1382,14 @@ function saveInlineEdit(input) {
     renderTables();
     
     showTemporaryNotification(`✓ ${field} updated`, 'success');
+}
+
+function cancelEditing() {
+    if (editingCell) {
+        const { cell, originalValue } = editingCell;
+        cell.textContent = originalValue || '—';
+        editingCell = null;
+    }
 }
 
 function cancelEditing() {
@@ -1574,7 +1451,7 @@ async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
     }
 }
 
-// ========== GUEST MODE FUNCTIONS ==========
+// ========== GUEST MODE FUNCTIONS - MODIFIED TO SET PAX TO 2 AND FOCUS INPUT ==========
 
 function toggleGuestMode(passengerId, checked) {
     const guestIndicator = document.getElementById('guestModeIndicator');
@@ -1582,6 +1459,7 @@ function toggleGuestMode(passengerId, checked) {
     const codeField = document.getElementById('code');
     
     if (checked) {
+        // Uncheck all other checkboxes
         document.querySelectorAll('.guest-checkbox').forEach(cb => {
             if (cb.dataset.passengerId !== passengerId) {
                 cb.checked = false;
@@ -1596,9 +1474,10 @@ function toggleGuestMode(passengerId, checked) {
             guestModeText.textContent = `ADDING GUEST FOR: ${passenger.pName} (${passenger.seatNo || 'no seat'})`;
             showTemporaryNotification(`✓ Guest mode activated for ${passenger.pName}`, 'success');
             
+            // Focus on the boarding pass input field
             if (codeField) {
                 codeField.focus();
-                codeField.value = '';
+                codeField.value = ''; // Clear any existing value
                 codeField.placeholder = 'SCAN GUEST BOARDING PASS...';
             }
         }
@@ -1644,6 +1523,7 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         
         const mainPassenger = pendingPasses[mainPassengerIndex];
         
+        // GUEST PAX IS ALWAYS 1
         const guestPax = 1;
         
         const guestEntry = {
@@ -1661,7 +1541,7 @@ function addGuestToPassenger(mainPassengerId, guestData) {
             seatNo: guestData.seatNo || '',
             class: guestData.class || '',
             airline: guestData.airline || '',
-            pax: guestPax.toString(),
+            pax: guestPax.toString(), // Always 1 for guests
             serialNo: guestData.serialNo || '',
             remarks: guestData.remarks || '',
             date: guestData.date || '',
@@ -1671,6 +1551,9 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         };
         
         pendingPasses.push(guestEntry);
+        
+        // ✅ FIXED: Main passenger's PAX should stay the same
+        // DO NOT modify the main passenger's PAX
         
         savePendingToLocalStorage();
         
@@ -1829,6 +1712,7 @@ async function saveEntryToFirebase(entry) {
             return { success: false, error: 'Database not initialized' };
         }
         
+        // Clean the entry data
         const cleanEntry = {};
         
         Object.keys(entry).forEach(key => {
@@ -1902,12 +1786,13 @@ async function backgroundSaveToFirebase(entry) {
             return { success: true, skipped: true };
         }
         
+        // Check for duplicates - pass isGuest flag to allow guests with same seat/name
         const checkResult = await checkPassengerExists(
             entry.flightNo,
             entry.date,
             entry.seatNo || '',
             entry.pName || '',
-            entry.isGuest || false
+            entry.isGuest || false // Pass isGuest flag
         );
         
         if (checkResult.exists) {
@@ -1983,10 +1868,13 @@ async function approveEntry(id) {
         
         const entry = pendingPasses[entryIndex];
         
+        // Validate PAX against seat (count letters) - with SQ special handling
         const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
         
+        // Skip PAX validation for guests (they should have PAX 2)
         if (!entry.isGuest) {
+            // If there's a seat (not null/'-') and PAX doesn't match, offer to update
             if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && calculatedPax > 0 && currentPax !== calculatedPax) {
                 const confirmUpdate = confirm(`Seat "${entry.seatNo}" contains ${calculatedPax} letters = ${calculatedPax} PAX, but current PAX is ${currentPax}. Update PAX to ${calculatedPax}?`);
                 if (confirmUpdate) {
@@ -2000,6 +1888,7 @@ async function approveEntry(id) {
                 }
             }
             
+            // If no seat but PAX > 0 and not SQ flight
             if ((!entry.seatNo || entry.seatNo.trim() === '' || entry.seatNo === '-') && currentPax > 0 && !entry.flightNo?.startsWith('SQ')) {
                 const confirmNoSeat = confirm(`No seat number entered but PAX is ${currentPax}. Continue?`);
                 if (!confirmNoSeat) {
@@ -2008,6 +1897,7 @@ async function approveEntry(id) {
                 }
             }
             
+            // Check for zero PAX
             if (currentPax === 0) {
                 const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}`);
                 if (!confirmZeroPax) {
@@ -2195,7 +2085,7 @@ function generateId() {
     return Date.now() + Math.random().toString(36).substr(2, 9);
 }
 
-// ========== CREATE EDITABLE CELL FUNCTION ==========
+// ========== CREATE EDITABLE CELL FUNCTION - CHANGED TO SINGLE CLICK ==========
 
 function createEditableCell(text, entryId, field, isSaved, className = '') {
     const cell = document.createElement('td');
@@ -2205,6 +2095,7 @@ function createEditableCell(text, entryId, field, isSaved, className = '') {
     cell.setAttribute('data-entry-id', entryId);
     cell.setAttribute('data-is-saved', isSaved);
     
+    // Remove any preview indicators on mouse leave
     cell.addEventListener('mouseleave', function() {
         const preview = this.querySelector('.pax-preview');
         if (preview) preview.remove();
@@ -2212,7 +2103,9 @@ function createEditableCell(text, entryId, field, isSaved, className = '') {
         this.removeAttribute('data-preview');
     });
     
+    // CHANGED: Single click now triggers editing (was double-click)
     cell.onclick = function(e) { 
+        // Don't trigger if clicking on an input
         if (!e.target.classList.contains('editable-input')) {
             makeEditable(this, entryId, field, isSaved); 
         }
@@ -2233,15 +2126,21 @@ function renderPendingTable() {
     if (!tbody) return;
     tbody.innerHTML = '';
     
+    // Render main passengers (non-guests)
     pendingPasses.forEach(entry => {
         if (entry.isGuest) return;
         
         const row = document.createElement('tr');
         row.setAttribute('data-id', entry.id);
         
-        let displayFQTV = entry.FQTV || '—';
+        let displayFQTV = entry.FQTV;
         let fqtvClass = '';
+        if (entry.class === 'Y' && !entry.FQTV) {
+            displayFQTV = 'NEED FQTV J CLASS';
+            fqtvClass = 'fqtv-field-warning';
+        }
         
+        // Guest checkbox cell
         const guestCell = document.createElement('td');
         guestCell.style.textAlign = 'center';
         const checkbox = document.createElement('input');
@@ -2252,16 +2151,19 @@ function renderPendingTable() {
         checkbox.onchange = function() { toggleGuestMode(entry.id, this.checked); };
         guestCell.appendChild(checkbox);
         
+        // Create editable cells - with serial number
+        
         const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', false);
         const flightCell = createEditableCell(entry.flightNo || '—', entry.id, 'flightNo', false);
         const seatCell = createEditableCell(entry.seatNo || '—', entry.id, 'seatNo', false);
         const classCell = createEditableCell(entry.class || '—', entry.id, 'class', false);
         const airlineCell = createEditableCell(entry.airline || '—', entry.id, 'airline', false);
-        const fqtvCell = createEditableCell(displayFQTV, entry.id, 'FQTV', false, fqtvClass);
+        const fqtvCell = createEditableCell(displayFQTV || '—', entry.id, 'FQTV', false, fqtvClass);
         const paxCell = createEditableCell(entry.pax || '—', entry.id, 'pax', false);
         const serialCell = createEditableCell(entry.serialNo || '—', entry.id, 'serialNo', false, 'serial-number');
         const remarksCell = createEditableCell(entry.remarks || '—', entry.id, 'remarks', false);
         
+        // Hidden date and shift cells
         const dateCell = document.createElement('td');
         dateCell.style.display = 'none';
         dateCell.textContent = entry.date || '';
@@ -2298,25 +2200,29 @@ function renderPendingTable() {
         tbody.appendChild(row);
     });
     
+    // Render guests separately
     const guests = pendingPasses.filter(entry => entry.isGuest);
     guests.forEach(entry => {
         const row = document.createElement('tr');
         row.setAttribute('data-id', entry.id);
         row.classList.add('guest-row');
         
-        let displayFQTV = entry.FQTV || '—';
+        let displayFQTV = entry.FQTV;
         
+        // Guest indicator cell
         const guestCell = document.createElement('td');
         guestCell.innerHTML = '👤';
         guestCell.style.textAlign = 'center';
         guestCell.style.color = '#6b8e23';
         
+        // Create editable cells for guest - with serial number
+       
         const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', false);
         const flightCell = createEditableCell(entry.flightNo || '—', entry.id, 'flightNo', false);
         const seatCell = createEditableCell(entry.seatNo || '—', entry.id, 'seatNo', false);
         const classCell = createEditableCell(entry.class || '—', entry.id, 'class', false);
         const airlineCell = createEditableCell(entry.airline || '—', entry.id, 'airline', false);
-        const fqtvCell = createEditableCell(displayFQTV, entry.id, 'FQTV', false, 'guest-indicator');
+        const fqtvCell = createEditableCell(displayFQTV || '—', entry.id, 'FQTV', false, 'guest-indicator');
         const paxCell = createEditableCell(entry.pax || '—', entry.id, 'pax', false);
         const serialCell = createEditableCell(entry.serialNo || '—', entry.id, 'serialNo', false, 'serial-number');
         const remarksCell = createEditableCell(entry.remarks || '—', entry.id, 'remarks', false);
@@ -2340,6 +2246,7 @@ function renderPendingTable() {
         `;
         
         row.appendChild(guestCell);
+
         row.appendChild(nameCell);
         row.appendChild(flightCell);
         row.appendChild(seatCell);
@@ -2372,8 +2279,12 @@ function renderSavedTable() {
             row.classList.add('guest-row');
         }
         
-        let displayFQTV = entry.FQTV || '—';
+        let displayFQTV = entry.FQTV;
         let fqtvClass = '';
+        if (entry.class === 'Y' && !entry.FQTV) {
+            displayFQTV = 'NEED FQTV J CLASS';
+            fqtvClass = 'fqtv-field-warning';
+        }
         
         if (entry.isGuest) {
             fqtvClass = 'guest-indicator';
@@ -2393,12 +2304,14 @@ function renderSavedTable() {
             statusColor = '#c68b5e';
         }
         
+        // Create editable cells for saved entries - with serial number
+        
         const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', true);
         const flightCell = createEditableCell(entry.flightNo || '—', entry.id, 'flightNo', true);
         const seatCell = createEditableCell(entry.seatNo || '—', entry.id, 'seatNo', true);
         const classCell = createEditableCell(entry.class || '—', entry.id, 'class', true);
         const airlineCell = createEditableCell(entry.airline || '—', entry.id, 'airline', true);
-        const fqtvCell = createEditableCell(displayFQTV, entry.id, 'FQTV', true, fqtvClass);
+        const fqtvCell = createEditableCell(displayFQTV || '—', entry.id, 'FQTV', true, fqtvClass);
         const paxCell = createEditableCell(entry.pax || '—', entry.id, 'pax', true);
         const serialCell = createEditableCell(entry.serialNo || '—', entry.id, 'serialNo', true, 'serial-number');
         const remarksCell = createEditableCell(entry.remarks || '—', entry.id, 'remarks', true);
@@ -2428,6 +2341,7 @@ function renderSavedTable() {
             `;
         }
         
+        
         row.appendChild(nameCell);
         row.appendChild(flightCell);
         row.appendChild(seatCell);
@@ -2449,6 +2363,7 @@ function renderSavedTable() {
 // ========== TABLE MANAGEMENT FUNCTIONS ==========
 
 function addToTable(data) {
+    // Convert all string values to uppercase and ensure defaults
     const upperData = {};
     for (let key in data) {
         if (typeof data[key] === 'string') {
@@ -2466,9 +2381,10 @@ function addToTable(data) {
         }
     }
     
+    // Ensure PAX is calculated from seat if not set, with SQ special handling
     if (!upperData.pax || upperData.pax === '') {
         if (upperData.flightNo?.startsWith('SQ')) {
-            upperData.pax = '1';
+            upperData.pax = '1'; // SQ flights always have PAX 1
         } else if (upperData.seatNo && upperData.seatNo.trim() !== '' && upperData.seatNo !== '-') {
             upperData.pax = calculatePaxFromSeat(upperData.seatNo, upperData.flightNo).toString();
         } else {
@@ -2602,9 +2518,11 @@ function parseAndAddToList() {
                 }
             }
             
+            // Calculate PAX by counting letters in seat (with flight context)
             const paxCount = calculatePaxFromSeat(seatNo, flightNoPart);
             
             parsedEntry = {
+               
                 pName: namePart || '',
                 flightNo: flightNoPart || '',
                 seatNo: seatNo || '',
@@ -2612,7 +2530,7 @@ function parseAndAddToList() {
                 airline: airline || 'TURKISH AIRLINES',
                 FQTV: '',
                 pax: paxCount.toString(),
-                serialNo: '',
+                serialNo: '', // Serial number not parsed from barcode, user will enter manually
                 remarks: '',
                 date: currentShiftData.date || '',
                 shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
@@ -2699,8 +2617,10 @@ function parseAndAddToList() {
                 }
             }
             
+            // Calculate PAX by counting letters in seat (with flight context)
             const paxCount = calculatePaxFromSeat(seatNo, flightNoPart);
             
+            // Parse FQTV for M1/M2 codes
             let fqtvValue = '';
             if (isM1orM2 && flightNoPart && codeInput.length > mlePosition + 30) {
                 const trimmedCode = codeInput.trim();
@@ -2721,6 +2641,7 @@ function parseAndAddToList() {
                     let shouldProcess = false;
                     
                     if (flightNoPrefix) {
+                        // Airline-specific parsing
                         if (flightNoPrefix === 'EK') {
                             if (fourthLastWord === 'EK') {
                                 fqtvNumber = fourthLastWord + '-' + thirdLastWord;
@@ -2794,6 +2715,10 @@ function parseAndAddToList() {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
+                        else if (flightNoPrefix === 'SQ' ) {
+                            fqtvNumber = "";
+                            shouldProcess = true;
+                        }
                         else if (flightNoPrefix === 'UL' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
@@ -2844,8 +2769,12 @@ function parseAndAddToList() {
             }
             
             let displayFQTV = fqtvValue;
+            if (isM1orM2 && classChar === 'Y' && !fqtvValue) {
+                displayFQTV = 'NEED FQTV J CLASS';
+            }
             
             parsedEntry = {
+                
                 pName: namePart || '',
                 flightNo: flightNoPart || '',
                 seatNo: seatNo || '',
@@ -2853,7 +2782,7 @@ function parseAndAddToList() {
                 airline: airline || '',
                 FQTV: displayFQTV || '',
                 pax: paxCount.toString(),
-                serialNo: '',
+                serialNo: '', // Serial number not parsed from barcode, user will enter manually
                 remarks: '',
                 date: currentShiftData.date || '',
                 shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
@@ -2866,14 +2795,17 @@ function parseAndAddToList() {
             };
         }
         
+        // Check if guest mode is active
         if (guestModeActive && selectedGuestPassengerId) {
             const result = addGuestToPassenger(selectedGuestPassengerId, parsedEntry);
             cancelGuestMode();
             if (result) return true;
         }
         
+        // Normal mode - add as regular passenger
         addToTable(parsedEntry);
         
+        // Update current entry fields
         document.getElementById('hiddenCode').value = codeInput;
         
         document.getElementById('pName').value = parsedEntry.pName;
@@ -2900,6 +2832,36 @@ function parseAndAddToList() {
     }
 }
 
+// ========== ADD CSS FOR PAX PREVIEW ==========
+
+// Add CSS for PAX preview
+const style = document.createElement('style');
+style.textContent = `
+    .pax-preview {
+        font-size: 10px;
+        color: #e6b800;
+        margin-left: 5px;
+        font-weight: bold;
+        animation: fadeIn 0.3s ease;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateX(-5px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    
+    .editable-cell[data-preview] {
+        background-color: #fff3cd !important;
+        transition: background-color 0.3s ease;
+    }
+    
+    .serial-number {
+        font-weight: 600;
+        color: #8b6913;
+    }
+`;
+document.head.appendChild(style);
+
 // Make functions global
 window.switchTab = switchTab;
 window.deleteEntry = deleteEntry;
@@ -2910,7 +2872,6 @@ window.cancelGuestMode = cancelGuestMode;
 window.makeEditable = makeEditable;
 window.saveInlineEdit = saveInlineEdit;
 window.saveHiddenCodeToCardDB = saveHiddenCodeToCardDB;
-window.createDummyEntry = createDummyEntry;
 </script>
 </body>
-</html>
+</html>  
