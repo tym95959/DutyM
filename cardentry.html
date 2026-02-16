@@ -212,10 +212,11 @@
             display: flex;
             gap: 15px;
             align-items: center;
+            flex-wrap: wrap;
         }
         
         .filter-section input {
-            flex: 1;
+            flex: 2;
             padding: 14px 20px;
             border: 2px solid rgba(230, 184, 0, 0.3);
             border-radius: 50px;
@@ -230,6 +231,52 @@
             outline: none;
             border-color: #e6b800;
             box-shadow: 0 5px 15px rgba(230, 184, 0, 0.1);
+        }
+        
+        .guest-section {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .guest-section select {
+            flex: 1;
+            padding: 14px 20px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 50px;
+            font-size: 14px;
+            background: white;
+            color: #5e4a1a;
+            cursor: pointer;
+        }
+        
+        .guest-section select:focus {
+            outline: none;
+            border-color: #e6b800;
+        }
+        
+        .guest-section button {
+            padding: 14px 25px;
+            background: linear-gradient(135deg, #6b8e23, #556b2f);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: all 0.3s;
+        }
+        
+        .guest-section button:hover:not(:disabled) {
+            background: linear-gradient(135deg, #7cb342, #6b8e23);
+            transform: translateY(-2px);
+        }
+        
+        .guest-section button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         
         .toggle-current-btn {
@@ -311,6 +358,11 @@
             outline: none;
             border-color: #e6b800;
             box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.1);
+        }
+        
+        .current-entry-section input[readonly] {
+            background-color: #f5f5f5;
+            cursor: not-allowed;
         }
         
         .entry-actions {
@@ -457,13 +509,18 @@
             background: rgba(230, 184, 0, 0.02);
         }
         
+        .guest-row {
+            background: rgba(107, 142, 35, 0.05);
+            border-left: 3px solid #6b8e23;
+        }
+        
         .action-buttons {
             display: flex;
             gap: 6px;
             flex-wrap: wrap;
         }
         
-        .edit-btn, .delete-btn, .approve-btn, .save-btn, .cancel-btn {
+        .edit-btn, .delete-btn, .approve-btn, .save-btn, .cancel-btn, .guest-btn {
             padding: 6px 14px;
             border: none;
             border-radius: 30px;
@@ -504,6 +561,17 @@
         
         .approve-btn:hover {
             background: #6b8e23;
+            color: white;
+        }
+        
+        .guest-btn {
+            background: #e6e0c0;
+            color: #8b6913;
+            border-color: #8b6913;
+        }
+        
+        .guest-btn:hover {
+            background: #8b6913;
             color: white;
         }
         
@@ -551,6 +619,12 @@
             color: #c68b5e;
             font-style: italic;
             font-weight: 600;
+        }
+        
+        .guest-indicator {
+            color: #6b8e23;
+            font-style: italic;
+            font-size: 12px;
         }
         
         .loading {
@@ -604,9 +678,18 @@
 
         <!-- Main Content -->
         <div class="main-content">
-            <!-- Input section -->
+            <!-- Input section with Guest selection -->
             <div class="filter-section">
                 <input type="text" id="code" placeholder="ENTER CODE OR READ BARCODE (AUTO-ADDS TO LIST)">
+                
+                <!-- Guest selection dropdown -->
+                <div class="guest-section">
+                    <select id="guestSelect">
+                        <option value="">-- SELECT MAIN PASSENGER FOR GUEST --</option>
+                    </select>
+                    <button id="addGuestBtn" disabled>ADD AS GUEST</button>
+                </div>
+                
                 <button id="toggleCurrentBtn" class="toggle-current-btn">SHOW CURRENT ENTRY</button>
                 <span id="statusMessage" class="status-message"></span>
             </div>
@@ -699,6 +782,7 @@
 let pendingPasses = [];
 let savedPasses = [];
 let editingId = null;
+let currentGuestMainPassenger = null; // Store selected main passenger for guest
 
 // Firebase shift data
 let currentShiftData = {
@@ -787,82 +871,529 @@ async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
     }
 }
 
-// ========== FIXED APPROVE ENTRY FUNCTION ==========
+// ========== ADD GUEST FUNCTION ==========
 
-// Modified approveEntry function - now uses current shift data as fallback
-async function approveEntry(id) {
+/**
+ * Add a guest to an existing main passenger
+ * @param {string} mainPassengerId - ID of the main passenger
+ * @param {object} guestData - Parsed guest data from boarding pass
+ */
+function addGuestToPassenger(mainPassengerId, guestData) {
     try {
-        // Find the entry in pending passes
-        const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
-        if (entryIndex === -1) {
-            console.error('Entry not found:', id);
-            return;
+        // Find the main passenger in pending passes
+        const mainPassengerIndex = pendingPasses.findIndex(p => p.id === mainPassengerId);
+        
+        if (mainPassengerIndex === -1) {
+            showTemporaryNotification('❌ Main passenger not found', 'error');
+            return false;
         }
         
-        const entry = pendingPasses[entryIndex];
+        const mainPassenger = pendingPasses[mainPassengerIndex];
         
-        // FIX: Use current shift data if entry doesn't have date
-        const dateToUse = entry.date || currentShiftData.date || '';
-        const flightNoToUse = entry.flightNo || '';
-        const shiftToUse = entry.shift || (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING' ? currentShiftData.shift : '');
-        
-        // Check if we have valid date and flight number
-        if (!dateToUse) {
-            showTemporaryNotification('Cannot save: Missing date - please refresh shift data', 'warning');
-            console.log('Missing date:', { date: dateToUse });
-            return;
-        }
-        
-        if (!flightNoToUse) {
-            showTemporaryNotification('Cannot save: Missing flight number', 'warning');
-            console.log('Missing flight number:', { flightNo: flightNoToUse });
-            return;
-        }
-        
-        // Get hidden code value
-        const hiddenCode = document.getElementById('hiddenCode')?.value || '';
-        
-        // Create approved entry with proper date/shift
-        const approvedEntry = { 
-            ...entry, 
-            date: dateToUse, // Use the fixed date
-            shift: shiftToUse, // Use the fixed shift
-            approved: true, 
-            firebaseStatus: 'pending', // pending, success, error, duplicate
-            firebaseSaved: false,
-            hiddenCode: hiddenCode // Store hidden code with entry
+        // Create guest entry with modified FQTV
+        const guestEntry = {
+            ...guestData,
+            id: generateId(),
+            isGuest: true,
+            mainPassengerId: mainPassengerId,
+            mainPassengerName: mainPassenger.pName,
+            mainPassengerSeat: mainPassenger.seatNo,
+            // Modify FQTV to show "Guest of (original guest Seat No)"
+            FQTV: `GUEST OF ${mainPassenger.pName} (${mainPassenger.seatNo})`,
+            approved: false
         };
         
-        // IMMEDIATELY move to saved tab (frontend first)
-        savedPasses.push(approvedEntry);
-        pendingPasses.splice(entryIndex, 1);
+        // Add to pending passes
+        pendingPasses.push(guestEntry);
+        
+        // Update the main passenger's PAX count
+        const currentPax = parseInt(mainPassenger.pax) || 0;
+        mainPassenger.pax = (currentPax + 1).toString();
         
         // Save to local storage
         savePendingToLocalStorage();
-        saveSavedToLocalStorage();
         
-        // Show immediate success message
-        showTemporaryNotification('✓ Entry moved to saved tab', 'success');
+        // Clear guest selection
+        currentGuestMainPassenger = null;
+        document.getElementById('guestSelect').value = '';
+        document.getElementById('addGuestBtn').disabled = true;
         
-        // Refresh tables immediately
+        // Clear code field
+        document.getElementById('code').value = '';
+        
+        // Show success message
+        showTemporaryNotification(`✅ Guest added for ${mainPassenger.pName}`, 'success');
+        
+        // Update current entry fields (optional)
+        document.getElementById('hiddenCode').value = guestData.hiddenCode || '';
+        document.getElementById('pName').value = guestData.pName || '';
+        document.getElementById('flightNo').value = guestData.flightNo || '';
+        document.getElementById('seatNo').value = guestData.seatNo || '';
+        document.getElementById('class').value = guestData.class || '';
+        document.getElementById('airline').value = guestData.airline || '';
+        document.getElementById('FQTV').value = guestEntry.FQTV; // Show modified FQTV
+        document.getElementById('pax').value = guestData.pax || '';
+        document.getElementById('remarks').value = guestData.remarks || '';
+        document.getElementById('date').value = guestData.date || '';
+        document.getElementById('shift').value = guestData.shift || '';
+        document.getElementById('entryTime').value = guestData.entryTime || '';
+        
+        // Refresh tables
         renderTables();
         
-        // START BACKGROUND SAVE TO FIREBASE (KoveliPass) - non-blocking
-        setTimeout(() => {
-            backgroundSaveToFirebase(approvedEntry);
-        }, 100);
+        // Update guest dropdown
+        updateGuestDropdown();
         
-        // ADDITIONALLY: Save ONLY code to cardentryqr database if flight number exists
-        if (hiddenCode && flightNoToUse) {
-            setTimeout(() => {
-                // Pass only the code, flight number, and date - no other data
-                saveHiddenCodeToCardDB(hiddenCode, flightNoToUse, dateToUse);
-            }, 200); // Slight delay to not block UI
-        }
+        return true;
         
     } catch (error) {
-        console.error('Error in approveEntry:', error);
-        showTemporaryNotification('Error processing entry: ' + error.message, 'error');
+        console.error('Error adding guest:', error);
+        showTemporaryNotification('❌ Error adding guest', 'error');
+        return false;
+    }
+}
+
+// ========== UPDATE GUEST DROPDOWN ==========
+
+/**
+ * Update the guest selection dropdown with available main passengers
+ */
+function updateGuestDropdown() {
+    const guestSelect = document.getElementById('guestSelect');
+    const addGuestBtn = document.getElementById('addGuestBtn');
+    
+    if (!guestSelect || !addGuestBtn) return;
+    
+    // Clear existing options except the first one
+    while (guestSelect.options.length > 1) {
+        guestSelect.remove(1);
+    }
+    
+    // Get potential main passengers (not guests themselves)
+    const mainPassengers = pendingPasses.filter(p => !p.isGuest);
+    
+    // Add options for each main passenger
+    mainPassengers.forEach(passenger => {
+        const option = document.createElement('option');
+        option.value = passenger.id;
+        option.textContent = `${passenger.pName} - ${passenger.flightNo} - Seat: ${passenger.seatNo} (PAX: ${passenger.pax})`;
+        guestSelect.appendChild(option);
+    });
+    
+    // If no main passengers, disable the add guest button
+    if (mainPassengers.length === 0) {
+        addGuestBtn.disabled = true;
+        guestSelect.disabled = true;
+    } else {
+        guestSelect.disabled = false;
+    }
+}
+
+// ========== MODIFIED PARSE FUNCTION FOR GUEST HANDLING ==========
+
+function parseAndAddToList() {
+    const codeInput = document.getElementById('code').value.toUpperCase();
+    
+    if (!codeInput) return false;
+    
+    // Check if it's a TKVCPO code
+    const isTKVCPO = codeInput.startsWith('TKVCPO');
+    
+    // Check if it's a valid boarding pass
+    if (!isTKVCPO && !codeInput.startsWith('M')) {
+        alert('PLEASE READ A CORRECT BOARDING PASS (MUST START WITH M OR TKVCPO)');
+        return false;
+    }
+    
+    // For TKVCPO codes, still need MLE for seat parsing
+    if (!codeInput.includes('MLE')) {
+        alert('PLEASE READ A CORRECT BOARDING PASS (MUST CONTAIN MLE)');
+        return false;
+    }
+    
+    try {
+        // Get current system time for entry/check-in time
+        const entryTime = getCurrentEntryTime();
+        
+        let parsedEntry;
+        
+        if (isTKVCPO) {
+            // Special handling for TKVCPO codes
+            const tk07Position = codeInput.indexOf('TK07');
+            const mlePosition = codeInput.indexOf('MLE');
+            
+            if (tk07Position === -1) {
+                alert('TKVCPO CODE MUST CONTAIN TK07');
+                return false;
+            }
+            
+            // Parse name - remove first 6 letters (TKVCPO) and take everything until TK07
+            let namePart = codeInput.substring(6, tk07Position);
+            namePart = namePart.trim();
+            
+            // Parse flight number - TK + 4 letters after TK07 (total 6 letters including TK)
+            let flightNoPart = '';
+            if (codeInput.length > tk07Position + 4) {
+                // Take TK07 + next 4 characters, then extract TK + next 4
+                const afterTK07 = codeInput.substring(tk07Position, tk07Position + 6); // TK07 + 2 more
+                flightNoPart = afterTK07; // This will be like "TK07XX"
+            }
+            
+            // Parse airline - first two letters of flight number (TK)
+            let airline = '';
+            if (flightNoPart && flightNoPart.length >= 2) {
+                const iataCode = flightNoPart.substring(0, 2); // "TK"
+                airline = getAirlineName(iataCode);
+            }
+            
+            // Parse seat number - look for MLE and count including MLE
+            let seatNo = '';
+            let classChar = '';
+            
+            if (mlePosition !== -1 && codeInput.length > mlePosition + 11) {
+                // MLE is 3 characters, so:
+                // 10th character from MLE (including MLE) = mlePosition + 9
+                // 11th character from MLE (including MLE) = mlePosition + 10
+                
+                const tenthChar = codeInput.charAt(mlePosition + 9);
+                const eleventhChar = codeInput.charAt(mlePosition + 10);
+                
+                if (tenthChar && eleventhChar) {
+                    seatNo = tenthChar + eleventhChar;
+                    console.log('Seat number extracted:', seatNo, 'from positions', mlePosition + 9, 'and', mlePosition + 10);
+                }
+                
+                // Try to determine class from nearby characters
+                if (codeInput.length > mlePosition + 11) {
+                    // Class might be at position mlePosition + 11 or nearby
+                    classChar = codeInput.charAt(mlePosition + 11) || '';
+                }
+            }
+            
+            // Calculate PAX based on seat number
+            const paxCount = seatNo ? 1 : 0; // For TKVCPO, assume 1 passenger
+            
+            parsedEntry = {
+                pName: namePart,
+                flightNo: flightNoPart || '',
+                seatNo: seatNo || '',
+                class: classChar || '',
+                airline: airline || 'TURKISH AIRLINES',
+                FQTV: '',
+                pax: paxCount.toString(),
+                remarks: '',
+                date: currentShiftData.date || '',
+                shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
+                entryTime: entryTime,
+                hiddenCode: codeInput
+            };
+            
+        } else {
+            // Original M/M1/M2 code handling
+            const mlePosition = codeInput.indexOf('MLE');
+            
+            // Determine if it's M1, M2, or just M
+            const isM1orM2 = codeInput.startsWith('M1') || codeInput.startsWith('M2');
+            
+            // Parse name based on code type
+            let namePart = '';
+            
+            if (isM1orM2) {
+                // Original M1/M2 behavior - remove first 2 characters
+                namePart = codeInput.substring(2, mlePosition + 3);
+                
+                // Original character limit logic for M1/M2
+                const withoutSpaces = namePart.replace(/\s/g, '');
+                if (withoutSpaces.length > 7) {
+                    let charCount = 0;
+                    let cutPosition = namePart.length;
+                    for (let i = namePart.length - 1; i >= 0; i--) {
+                        if (namePart[i] !== ' ') {
+                            charCount++;
+                            if (charCount === 10) {
+                                cutPosition = i;
+                                break;
+                            }
+                        }
+                    }
+                    namePart = namePart.substring(0, cutPosition);
+                }
+            } else {
+                // M only behavior - remove first 1 character and remove MLE from the end
+                namePart = codeInput.substring(1, mlePosition);
+            }
+            
+            // Trim the name
+            namePart = namePart.trim();
+            
+            // Parse flight number
+            let flightNoPart = '';
+            if (codeInput.length > mlePosition + 3) {
+                flightNoPart = codeInput.substring(mlePosition + 3, mlePosition + 3 + 10);
+                flightNoPart = flightNoPart.substring(3).replace(/\s/g, '');
+            }
+            
+            // Parse airline
+            let airline = '';
+            let iataCode = '';
+            if (flightNoPart && flightNoPart.length >= 2) {
+                iataCode = flightNoPart.substring(0, 2);
+                airline = getAirlineName(iataCode);
+            }
+            
+            // Parse seat and class based on code type
+            let seatNo = '';
+            let classChar = '';
+            
+            // Only try to parse seat for M1/M2 codes
+            if (isM1orM2 && codeInput.length > mlePosition + 3) {
+                const afterMLE = codeInput.substring(mlePosition + 3);
+                const parts = afterMLE.split(' ').filter(p => p.trim() !== '');
+                
+                let seatString = '';
+                for (let i = 0; i < parts.length; i++) {
+                    const part = parts[i];
+                    if (/^\d{3}[A-Z]\d{3}[A-Z]\d{4}$/.test(part)) {
+                        seatString = part;
+                        break;
+                    }
+                }
+                
+                if (!seatString) {
+                    for (let i = 0; i < parts.length; i++) {
+                        const part = parts[i];
+                        if (part.length >= 13 && /[A-Z]/.test(part) && /\d/.test(part)) {
+                            seatString = part;
+                            break;
+                        }
+                    }
+                }
+                
+                if (seatString) {
+                    seatNo = seatString.substring(5, seatString.length - 4);
+                    classChar = seatString.charAt(3);
+                }
+            }
+            
+            // Calculate PAX based on seat number
+            const paxCount = seatNo ? calculatePaxFromSeat(seatNo) : 0;
+            
+            // Parse FQTV for M1/M2 codes
+            let fqtvValue = '';
+            if (isM1orM2 && flightNoPart && codeInput.length > mlePosition + 30) {
+                const trimmedCode = codeInput.trim();
+                const words = trimmedCode.split(' ').filter(w => w.trim() !== '');
+                
+                if (words.length >= 4) {
+                    const lastWord = words[words.length - 1];
+                    const secondLastWord = words[words.length - 2];
+                    const thirdLastWord = words[words.length - 3];
+                    const fourthLastWord = words[words.length - 4];
+                    
+                    const flightNoWord = words.find(w => /^[A-Z]{2}\d+[A-Z]?$/.test(w)) || flightNoPart;
+                    const flightNoPrefix = flightNoWord.substring(0, 2);
+                    
+                    const validSuffixes = ['N1', 'N2', 'N3', 'Y1', 'Y2'];
+                    
+                    let fqtvNumber = '';
+                    let shouldProcess = false;
+                    
+                    if (flightNoPrefix) {
+                        // EK special case
+                        if (flightNoPrefix === 'EK') {
+                            if (fourthLastWord === 'EK') {
+                                fqtvNumber = fourthLastWord + '-' + thirdLastWord;
+                            } else if (thirdLastWord === 'EK') {
+                                fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            }
+                            shouldProcess = true;
+                        }
+                        // AZ special case
+                        else if (flightNoPrefix === 'AZ' && thirdLastWord === 'AZ') {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // AI special case
+                        else if (flightNoPrefix === 'AI' && fourthLastWord && fourthLastWord.length === 2) {
+                            fqtvNumber = fourthLastWord + '-' + thirdLastWord;
+                            shouldProcess = true;
+                        }
+                        // OS special case
+                        else if (flightNoPrefix === 'OS' && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'OS' &&  fourthLastWord.length === 2) {
+                            fqtvNumber = fourthLastWord + '-' + thirdLastWord;
+                            shouldProcess = true;
+                        }
+                        // SV special case
+                        else if (flightNoPrefix === 'SV' && thirdLastWord.length  === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // MH special case
+                        else if (flightNoPrefix === 'MH' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // WK special case
+                        else if (flightNoPrefix === 'WK' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // FZ special case
+                        else if (flightNoPrefix === 'FZ' && secondLastWord && secondLastWord.length === 2) {
+                            fqtvNumber = secondLastWord + '-' + lastWord;
+                            shouldProcess = true;
+                        }
+                        // QR special case
+                        else if (flightNoPrefix === 'QR' && thirdLastWord && thirdLastWord.length === 2 && 
+                 ['n1', 'n2', 'n3'].map(s => s.toUpperCase()).includes(lastWord)) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // EY special case
+                        else if (flightNoPrefix === 'EY' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // SQ special case
+                        else if (flightNoPrefix === 'SQ' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // TG special case
+                        else if (flightNoPrefix === 'TG' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // BA special case
+                        else if (flightNoPrefix === 'BA' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // AF special case
+                        else if (flightNoPrefix === 'AF' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // LH special case
+                        else if (flightNoPrefix === 'LH' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // UL special case
+                        else if (flightNoPrefix === 'UL' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // 3K special case
+                        else if (flightNoPrefix === '3K' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // AK special case
+                        else if (flightNoPrefix === 'AK' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // FD special case
+                        else if (flightNoPrefix === 'FD' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        // QZ special case
+                        else if (flightNoPrefix === 'QZ' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                    }
+                    
+                    if (shouldProcess) {
+                        if (validSuffixes.includes(lastWord)) {
+                            const suffixMap = {
+                                'N1': 'P',
+                                'N2': 'G',
+                                'N3': 'S',
+                                'Y1': 'G',
+                                'Y2': 'S'
+                            };
+                            let suffix = suffixMap[lastWord];
+                            
+                            const alliance = getAirlineAlliance(iataCode);
+                            const fqtvFirstChar = fqtvNumber.split('-')[0].charAt(0);
+                            
+                            if (alliance === 'ONE WORLD' && fqtvFirstChar !== iataCode.charAt(0)) {
+                                if (suffix === 'G') suffix = 'EMER';
+                                else if (suffix === 'S') suffix = 'SAPP';
+                            }
+                            
+                            fqtvValue = `${fqtvNumber}/${suffix}`;
+                        } else {
+                            fqtvValue = fqtvNumber;
+                        }
+                    }
+                }
+            }
+            
+            // Check for Y class with no FQTV
+            let displayFQTV = fqtvValue;
+            if (isM1orM2 && classChar === 'Y' && !fqtvValue) {
+                displayFQTV = 'NEED FQTV J CLASS';
+            }
+            
+            parsedEntry = {
+                pName: namePart,
+                flightNo: flightNoPart || '',
+                seatNo: seatNo || '',
+                class: classChar || '',
+                airline: airline || '',
+                FQTV: displayFQTV,
+                pax: paxCount.toString(),
+                remarks: '',
+                date: currentShiftData.date || '',
+                shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
+                entryTime: entryTime,
+                hiddenCode: codeInput
+            };
+        }
+        
+        // Check if we're in guest mode (a main passenger is selected)
+        if (currentGuestMainPassenger) {
+            // Add as guest to the selected main passenger
+            const result = addGuestToPassenger(currentGuestMainPassenger, parsedEntry);
+            if (result) {
+                return true;
+            }
+        }
+        
+        // Normal mode - add as regular passenger
+        addToTable(parsedEntry);
+        
+        // Update current entry fields
+        document.getElementById('hiddenCode').value = codeInput;
+        document.getElementById('pName').value = parsedEntry.pName.toUpperCase();
+        document.getElementById('flightNo').value = parsedEntry.flightNo.toUpperCase();
+        document.getElementById('seatNo').value = parsedEntry.seatNo.toUpperCase();
+        document.getElementById('class').value = parsedEntry.class.toUpperCase();
+        document.getElementById('airline').value = parsedEntry.airline.toUpperCase();
+        document.getElementById('FQTV').value = parsedEntry.FQTV.toUpperCase();
+        document.getElementById('pax').value = parsedEntry.pax;
+        document.getElementById('remarks').value = parsedEntry.remarks.toUpperCase();
+        document.getElementById('date').value = parsedEntry.date.toUpperCase();
+        document.getElementById('shift').value = parsedEntry.shift.toUpperCase();
+        document.getElementById('entryTime').value = parsedEntry.entryTime;
+        
+        // Clear code field
+        document.getElementById('code').value = '';
+        
+        return true;
+        
+    } catch (error) {
+        console.error('Error parsing boarding pass:', error);
+        alert('ERROR PARSING BOARDING PASS CODE');
+        return false;
     }
 }
 
@@ -1221,6 +1752,87 @@ async function backgroundSaveToFirebase(entry) {
     }
 }
 
+// ========== MODIFIED APPROVE ENTRY FUNCTION ==========
+
+async function approveEntry(id) {
+    try {
+        // Find the entry in pending passes
+        const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
+        if (entryIndex === -1) {
+            console.error('Entry not found:', id);
+            return;
+        }
+        
+        const entry = pendingPasses[entryIndex];
+        
+        // FIX: Use current shift data if entry doesn't have date
+        const dateToUse = entry.date || currentShiftData.date || '';
+        const flightNoToUse = entry.flightNo || '';
+        const shiftToUse = entry.shift || (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING' ? currentShiftData.shift : '');
+        
+        // Check if we have valid date and flight number
+        if (!dateToUse) {
+            showTemporaryNotification('Cannot save: Missing date - please refresh shift data', 'warning');
+            console.log('Missing date:', { date: dateToUse });
+            return;
+        }
+        
+        if (!flightNoToUse) {
+            showTemporaryNotification('Cannot save: Missing flight number', 'warning');
+            console.log('Missing flight number:', { flightNo: flightNoToUse });
+            return;
+        }
+        
+        // Get hidden code value
+        const hiddenCode = document.getElementById('hiddenCode')?.value || '';
+        
+        // Create approved entry with proper date/shift
+        const approvedEntry = { 
+            ...entry, 
+            date: dateToUse, // Use the fixed date
+            shift: shiftToUse, // Use the fixed shift
+            approved: true, 
+            firebaseStatus: 'pending', // pending, success, error, duplicate
+            firebaseSaved: false,
+            hiddenCode: hiddenCode // Store hidden code with entry
+        };
+        
+        // IMMEDIATELY move to saved tab (frontend first)
+        savedPasses.push(approvedEntry);
+        pendingPasses.splice(entryIndex, 1);
+        
+        // Save to local storage
+        savePendingToLocalStorage();
+        saveSavedToLocalStorage();
+        
+        // Show immediate success message
+        showTemporaryNotification('✓ Entry moved to saved tab', 'success');
+        
+        // Refresh tables immediately
+        renderTables();
+        
+        // Update guest dropdown
+        updateGuestDropdown();
+        
+        // START BACKGROUND SAVE TO FIREBASE (KoveliPass) - non-blocking
+        setTimeout(() => {
+            backgroundSaveToFirebase(approvedEntry);
+        }, 100);
+        
+        // ADDITIONALLY: Save ONLY code to cardentryqr database if flight number exists
+        if (hiddenCode && flightNoToUse) {
+            setTimeout(() => {
+                // Pass only the code, flight number, and date - no other data
+                saveHiddenCodeToCardDB(hiddenCode, flightNoToUse, dateToUse);
+            }, 200); // Slight delay to not block UI
+        }
+        
+    } catch (error) {
+        console.error('Error in approveEntry:', error);
+        showTemporaryNotification('Error processing entry: ' + error.message, 'error');
+    }
+}
+
 // ========== MODIFIED SAVE EDIT FUNCTION ==========
 
 async function saveEdit(id, isSaved = false) {
@@ -1260,7 +1872,11 @@ async function saveEdit(id, isSaved = false) {
         date: row.querySelector('.edit-date') ? row.querySelector('.edit-date').value.toUpperCase() : (isSaved ? savedPasses.find(e => e.id === id)?.date : pendingPasses.find(e => e.id === id)?.date) || '',
         shift: row.querySelector('.edit-shift') ? row.querySelector('.edit-shift').value.toUpperCase() : (isSaved ? savedPasses.find(e => e.id === id)?.shift : pendingPasses.find(e => e.id === id)?.shift) || '',
         entryTime: row.querySelector('.edit-entryTime') ? row.querySelector('.edit-entryTime').value : (isSaved ? savedPasses.find(e => e.id === id)?.entryTime : pendingPasses.find(e => e.id === id)?.entryTime) || getCurrentEntryTime(),
-        approved: isSaved ? true : false
+        approved: isSaved ? true : false,
+        isGuest: isSaved ? savedPasses.find(e => e.id === id)?.isGuest : pendingPasses.find(e => e.id === id)?.isGuest,
+        mainPassengerId: isSaved ? savedPasses.find(e => e.id === id)?.mainPassengerId : pendingPasses.find(e => e.id === id)?.mainPassengerId,
+        mainPassengerName: isSaved ? savedPasses.find(e => e.id === id)?.mainPassengerName : pendingPasses.find(e => e.id === id)?.mainPassengerName,
+        mainPassengerSeat: isSaved ? savedPasses.find(e => e.id === id)?.mainPassengerSeat : pendingPasses.find(e => e.id === id)?.mainPassengerSeat
     };
     
     if (isSaved) {
@@ -1314,6 +1930,9 @@ async function saveEdit(id, isSaved = false) {
             entry.id === id ? updatedEntry : entry
         );
         savePendingToLocalStorage();
+        
+        // Update guest dropdown
+        updateGuestDropdown();
     }
     
     editingId = null;
@@ -1346,6 +1965,7 @@ function loadFromLocalStorage() {
     }
     
     updateTabCounts();
+    updateGuestDropdown();
     renderTables();
 }
 
@@ -1353,6 +1973,7 @@ function loadFromLocalStorage() {
 function savePendingToLocalStorage() {
     localStorage.setItem('pendingPasses', JSON.stringify(pendingPasses));
     updateTabCounts();
+    updateGuestDropdown();
 }
 
 // Save saved passes to local storage
@@ -1439,13 +2060,6 @@ function calculatePaxFromSeat(seatNo) {
     return letters ? letters.length : 0;
 }
 
-// Helper function to calculate PAX from TKVCPO seat format
-function calculatePaxFromTKVCPOSeat(seatNo) {
-    if (!seatNo) return 0;
-    // For a 2-character seat like "12", "34", etc., assume 1 passenger
-    return 1;
-}
-
 // ========== TIME FUNCTIONS ==========
 
 // Get current system time for entry/check-in time
@@ -1483,6 +2097,9 @@ function addToTable(data) {
     savePendingToLocalStorage();
     renderTables();
     
+    // Update guest dropdown
+    updateGuestDropdown();
+    
     // Show status message
     showTemporaryNotification('✓ BOARDING PASS ADDED TO LIST', 'success');
 }
@@ -1494,6 +2111,8 @@ function deleteEntry(id, isSaved = false) {
     } else {
         pendingPasses = pendingPasses.filter(entry => entry.id !== id);
         savePendingToLocalStorage();
+        // Update guest dropdown
+        updateGuestDropdown();
     }
     
     if (editingId === id) {
@@ -1634,12 +2253,22 @@ function renderPendingTable() {
         const row = document.createElement('tr');
         row.setAttribute('data-id', entry.id);
         
+        // Add special class for guest rows
+        if (entry.isGuest) {
+            row.classList.add('guest-row');
+        }
+        
         // Check if class is Y and FQTV is empty for display
         let displayFQTV = entry.FQTV;
         let fqtvClass = '';
         if (entry.class === 'Y' && !entry.FQTV) {
             displayFQTV = 'NEED FQTV J CLASS';
             fqtvClass = 'fqtv-field-warning';
+        }
+        
+        // Add guest indicator if applicable
+        if (entry.isGuest) {
+            displayFQTV = entry.FQTV || ''; // Already set in addGuestToPassenger
         }
         
         if (editingId === entry.id) {
@@ -1676,7 +2305,7 @@ function renderPendingTable() {
                 <td>${entry.seatNo || ''}</td>
                 <td>${entry.class || ''}</td>
                 <td>${entry.airline || ''}</td>
-                <td><span class="${fqtvClass}">${displayFQTV}</span></td>
+                <td><span class="${fqtvClass} ${entry.isGuest ? 'guest-indicator' : ''}">${displayFQTV}</span></td>
                 <td>${entry.pax || ''}</td>
                 <td>${entry.remarks || ''}</td>
                 <td style="display: none;">${entry.date || ''}</td>
@@ -1704,12 +2333,22 @@ function renderSavedTable() {
         row.setAttribute('data-id', entry.id);
         row.classList.add('saved-row');
         
+        // Add special class for guest rows
+        if (entry.isGuest) {
+            row.classList.add('guest-row');
+        }
+        
         // Check if class is Y and FQTV is empty for display
         let displayFQTV = entry.FQTV;
         let fqtvClass = '';
         if (entry.class === 'Y' && !entry.FQTV) {
             displayFQTV = 'NEED FQTV J CLASS';
             fqtvClass = 'fqtv-field-warning';
+        }
+        
+        // Add guest indicator if applicable
+        if (entry.isGuest) {
+            displayFQTV = entry.FQTV || ''; // Already set in addGuestToPassenger
         }
         
         // Add status indicator
@@ -1803,7 +2442,7 @@ function renderSavedTable() {
                 <td>${entry.seatNo || ''}</td>
                 <td>${entry.class || ''}</td>
                 <td>${entry.airline || ''}</td>
-                <td><span class="${fqtvClass}">${displayFQTV}</span></td>
+                <td><span class="${fqtvClass} ${entry.isGuest ? 'guest-indicator' : ''}">${displayFQTV}</span></td>
                 <td>${entry.pax || ''}</td>
                 <td>${entry.remarks || ''}</td>
                 <td style="display: none;">${entry.date || ''}</td>
@@ -1841,448 +2480,6 @@ function showTemporaryNotification(message, type = 'info') {
     }
 }
 
-// ========== MAIN PARSING FUNCTION ==========
-
-function parseAndAddToList() {
-    const codeInput = document.getElementById('code').value.toUpperCase();
-    
-    if (!codeInput) return false;
-    
-    // Check if it's a TKVCPO code
-    const isTKVCPO = codeInput.startsWith('TKVCPO');
-    
-    // Check if it's a valid boarding pass
-    if (!isTKVCPO && !codeInput.startsWith('M')) {
-        alert('PLEASE READ A CORRECT BOARDING PASS (MUST START WITH M OR TKVCPO)');
-        return false;
-    }
-    
-    // For TKVCPO codes, still need MLE for seat parsing
-    if (!codeInput.includes('MLE')) {
-        alert('PLEASE READ A CORRECT BOARDING PASS (MUST CONTAIN MLE)');
-        return false;
-    }
-    
-    try {
-        // Get current system time for entry/check-in time
-        const entryTime = getCurrentEntryTime();
-        
-        if (isTKVCPO) {
-            // Special handling for TKVCPO codes
-            const tk07Position = codeInput.indexOf('TK07');
-            const mlePosition = codeInput.indexOf('MLE');
-            
-            if (tk07Position === -1) {
-                alert('TKVCPO CODE MUST CONTAIN TK07');
-                return false;
-            }
-            
-            // Parse name - remove first 6 letters (TKVCPO) and take everything until TK07
-            let namePart = codeInput.substring(6, tk07Position);
-            namePart = namePart.trim();
-            
-            // Parse flight number - TK + 4 letters after TK07 (total 6 letters including TK)
-            let flightNoPart = '';
-            if (codeInput.length > tk07Position + 4) {
-                // Take TK07 + next 4 characters, then extract TK + next 4
-                const afterTK07 = codeInput.substring(tk07Position, tk07Position + 6); // TK07 + 2 more
-                flightNoPart = afterTK07; // This will be like "TK07XX"
-            }
-            
-            // Parse airline - first two letters of flight number (TK)
-            let airline = '';
-            if (flightNoPart && flightNoPart.length >= 2) {
-                const iataCode = flightNoPart.substring(0, 2); // "TK"
-                airline = getAirlineName(iataCode);
-            }
-            
-            // Parse seat number - look for MLE and count including MLE
-            // 10th and 11th character from MLE (including MLE)
-            let seatNo = '';
-            let classChar = '';
-            
-            if (mlePosition !== -1 && codeInput.length > mlePosition + 11) {
-                // MLE is 3 characters, so:
-                // M position = mlePosition
-                // L position = mlePosition + 1
-                // E position = mlePosition + 2
-                // 1st after MLE = mlePosition + 3
-                // ...
-                // 10th character from MLE (including MLE) = mlePosition + 9
-                // 11th character from MLE (including MLE) = mlePosition + 10
-                
-                const tenthChar = codeInput.charAt(mlePosition + 9);
-                const eleventhChar = codeInput.charAt(mlePosition + 10);
-                
-                if (tenthChar && eleventhChar) {
-                    seatNo = tenthChar + eleventhChar;
-                    console.log('Seat number extracted:', seatNo, 'from positions', mlePosition + 9, 'and', mlePosition + 10);
-                }
-                
-                // Try to determine class from nearby characters
-                if (codeInput.length > mlePosition + 11) {
-                    // Class might be at position mlePosition + 11 or nearby
-                    classChar = codeInput.charAt(mlePosition + 11) || '';
-                }
-            }
-            
-            // Calculate PAX based on seat number (1 for a 2-character seat, or parse if it's a range)
-            const paxCount = seatNo ? calculatePaxFromTKVCPOSeat(seatNo) : 0;
-            
-            // FQTV parsing for TK (Turkish Airlines) - simplified
-            let fqtvValue = '';
-            
-            // Check for Y class with no FQTV
-            let displayFQTV = fqtvValue;
-            if (classChar === 'Y' && !fqtvValue) {
-                displayFQTV = 'NEED FQTV J CLASS';
-            }
-            
-            // IMPORTANT: ALWAYS use Firebase shift data for date and shift
-            const entryDate = currentShiftData.date || '';
-            const entryShift = (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '';
-            
-            // Create entry object
-            const entry = {
-                pName: namePart,
-                flightNo: flightNoPart || '',
-                seatNo: seatNo || '',
-                class: classChar || '',
-                airline: airline || 'TURKISH AIRLINES',
-                FQTV: displayFQTV,
-                pax: paxCount.toString(),
-                remarks: '',
-                date: entryDate,
-                shift: entryShift,
-                entryTime: entryTime
-            };
-            
-            // Add to table
-            addToTable(entry);
-            
-            // Update current entry fields
-            document.getElementById('hiddenCode').value = codeInput;
-            document.getElementById('pName').value = entry.pName.toUpperCase();
-            document.getElementById('flightNo').value = entry.flightNo.toUpperCase();
-            document.getElementById('seatNo').value = entry.seatNo.toUpperCase();
-            document.getElementById('class').value = entry.class.toUpperCase();
-            document.getElementById('airline').value = entry.airline.toUpperCase();
-            document.getElementById('FQTV').value = entry.FQTV.toUpperCase();
-            document.getElementById('pax').value = entry.pax;
-            document.getElementById('remarks').value = entry.remarks.toUpperCase();
-            document.getElementById('date').value = entry.date.toUpperCase();
-            document.getElementById('shift').value = entry.shift.toUpperCase();
-            document.getElementById('entryTime').value = entry.entryTime;
-            
-            // Clear code field
-            document.getElementById('code').value = '';
-            
-            return true;
-            
-        } else {
-            // Original M/M1/M2 code handling
-            const mlePosition = codeInput.indexOf('MLE');
-            
-            // Determine if it's M1, M2, or just M
-            const isM1orM2 = codeInput.startsWith('M1') || codeInput.startsWith('M2');
-            
-            // Parse name based on code type
-            let namePart = '';
-            
-            if (isM1orM2) {
-                // Original M1/M2 behavior - remove first 2 characters
-                namePart = codeInput.substring(2, mlePosition + 3);
-                
-                // Original character limit logic for M1/M2
-                const withoutSpaces = namePart.replace(/\s/g, '');
-                if (withoutSpaces.length > 7) {
-                    let charCount = 0;
-                    let cutPosition = namePart.length;
-                    for (let i = namePart.length - 1; i >= 0; i--) {
-                        if (namePart[i] !== ' ') {
-                            charCount++;
-                            if (charCount === 10) {
-                                cutPosition = i;
-                                break;
-                            }
-                        }
-                    }
-                    namePart = namePart.substring(0, cutPosition);
-                }
-            } else {
-                // M only behavior - remove first 1 character and remove MLE from the end
-                namePart = codeInput.substring(1, mlePosition);
-            }
-            
-            // Trim the name
-            namePart = namePart.trim();
-            
-            // Parse flight number
-            let flightNoPart = '';
-            if (codeInput.length > mlePosition + 3) {
-                flightNoPart = codeInput.substring(mlePosition + 3, mlePosition + 3 + 10);
-                flightNoPart = flightNoPart.substring(3).replace(/\s/g, '');
-            }
-            
-            // Parse airline
-            let airline = '';
-            let iataCode = '';
-            if (flightNoPart && flightNoPart.length >= 2) {
-                iataCode = flightNoPart.substring(0, 2);
-                airline = getAirlineName(iataCode);
-            }
-            
-            // Parse seat and class based on code type
-            let seatNo = '';
-            let classChar = '';
-            
-            // Only try to parse seat for M1/M2 codes
-            if (isM1orM2 && codeInput.length > mlePosition + 3) {
-                const afterMLE = codeInput.substring(mlePosition + 3);
-                const parts = afterMLE.split(' ').filter(p => p.trim() !== '');
-                
-                let seatString = '';
-                for (let i = 0; i < parts.length; i++) {
-                    const part = parts[i];
-                    if (/^\d{3}[A-Z]\d{3}[A-Z]\d{4}$/.test(part)) {
-                        seatString = part;
-                        break;
-                    }
-                }
-                
-                if (!seatString) {
-                    for (let i = 0; i < parts.length; i++) {
-                        const part = parts[i];
-                        if (part.length >= 13 && /[A-Z]/.test(part) && /\d/.test(part)) {
-                            seatString = part;
-                            break;
-                        }
-                    }
-                }
-                
-                if (seatString) {
-                    seatNo = seatString.substring(5, seatString.length - 4);
-                    classChar = seatString.charAt(3);
-                }
-            }
-            
-            // Calculate PAX based on seat number
-            const paxCount = seatNo ? calculatePaxFromSeat(seatNo) : 0;
-            
-            // Parse FQTV for M1/M2 codes
-            let fqtvValue = '';
-            if (isM1orM2 && flightNoPart && codeInput.length > mlePosition + 30) {
-                const trimmedCode = codeInput.trim();
-                const words = trimmedCode.split(' ').filter(w => w.trim() !== '');
-                
-                if (words.length >= 4) {
-                    const lastWord = words[words.length - 1];
-                    const secondLastWord = words[words.length - 2];
-                    const thirdLastWord = words[words.length - 3];
-                    const fourthLastWord = words[words.length - 4];
-                    
-                    const flightNoWord = words.find(w => /^[A-Z]{2}\d+[A-Z]?$/.test(w)) || flightNoPart;
-                    const flightNoPrefix = flightNoWord.substring(0, 2);
-                    
-                    const validSuffixes = ['N1', 'N2', 'N3', 'Y1', 'Y2'];
-                    
-                    let fqtvNumber = '';
-                    let shouldProcess = false;
-                    
-                    if (flightNoPrefix) {
-                        // EK special case
-                        if (flightNoPrefix === 'EK') {
-                            if (fourthLastWord === 'EK') {
-                                fqtvNumber = fourthLastWord + '-' + thirdLastWord;
-                            } else if (thirdLastWord === 'EK') {
-                                fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            }
-                            shouldProcess = true;
-                        }
-                        // AZ special case
-                        else if (flightNoPrefix === 'AZ' && thirdLastWord === 'AZ') {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // AI special case
-                        else if (flightNoPrefix === 'AI' && fourthLastWord && fourthLastWord.length === 2) {
-                            fqtvNumber = fourthLastWord + '-' + thirdLastWord;
-                            shouldProcess = true;
-                        }
-                        // OS special case
-                        else if (flightNoPrefix === 'OS' && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        else if (flightNoPrefix === 'OS' &&  fourthLastWord.length === 2) {
-                            fqtvNumber = fourthLastWord + '-' + thirdLastWord;
-                            shouldProcess = true;
-                        }
-                        // SV special case
-                        else if (flightNoPrefix === 'SV' && thirdLastWord.length  === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // MH special case
-                        else if (flightNoPrefix === 'MH' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // WK special case
-                        else if (flightNoPrefix === 'WK' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // FZ special case
-                        else if (flightNoPrefix === 'FZ' && secondLastWord && secondLastWord.length === 2) {
-                            fqtvNumber = secondLastWord + '-' + lastWord;
-                            shouldProcess = true;
-                        }
-                        // QR special case
-                        else if (flightNoPrefix === 'QR' && thirdLastWord && thirdLastWord.length === 2 && 
-                 ['n1', 'n2', 'n3'].map(s => s.toUpperCase()).includes(lastWord)) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // EY special case
-                        else if (flightNoPrefix === 'EY' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // SQ special case
-                        else if (flightNoPrefix === 'SQ' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // TG special case
-                        else if (flightNoPrefix === 'TG' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // BA special case
-                        else if (flightNoPrefix === 'BA' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // AF special case
-                        else if (flightNoPrefix === 'AF' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // LH special case
-                        else if (flightNoPrefix === 'LH' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // UL special case
-                        else if (flightNoPrefix === 'UL' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // 3K special case
-                        else if (flightNoPrefix === '3K' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // AK special case
-                        else if (flightNoPrefix === 'AK' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // FD special case
-                        else if (flightNoPrefix === 'FD' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                        // QZ special case
-                        else if (flightNoPrefix === 'QZ' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
-                        }
-                    }
-                    
-                    if (shouldProcess) {
-                        if (validSuffixes.includes(lastWord)) {
-                            const suffixMap = {
-                                'N1': 'P',
-                                'N2': 'G',
-                                'N3': 'S',
-                                'Y1': 'G',
-                                'Y2': 'S'
-                            };
-                            let suffix = suffixMap[lastWord];
-                            
-                            const alliance = getAirlineAlliance(iataCode);
-                            const fqtvFirstChar = fqtvNumber.split('-')[0].charAt(0);
-                            
-                            if (alliance === 'ONE WORLD' && fqtvFirstChar !== iataCode.charAt(0)) {
-                                if (suffix === 'G') suffix = 'EMER';
-                                else if (suffix === 'S') suffix = 'SAPP';
-                            }
-                            
-                            fqtvValue = `${fqtvNumber}/${suffix}`;
-                        } else {
-                            fqtvValue = fqtvNumber;
-                        }
-                    }
-                }
-            }
-            
-            // Check for Y class with no FQTV
-            let displayFQTV = fqtvValue;
-            if (isM1orM2 && classChar === 'Y' && !fqtvValue) {
-                displayFQTV = 'NEED FQTV J CLASS';
-            }
-            
-            // IMPORTANT: ALWAYS use Firebase shift data for date and shift
-            const entryDate = currentShiftData.date || '';
-            const entryShift = (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '';
-            
-            // Create entry object
-            const entry = {
-                pName: namePart,
-                flightNo: flightNoPart || '',
-                seatNo: seatNo || '',
-                class: classChar || '',
-                airline: airline || '',
-                FQTV: displayFQTV,
-                pax: paxCount.toString(),
-                remarks: '',
-                date: entryDate,
-                shift: entryShift,
-                entryTime: entryTime
-            };
-            
-            // Add to table
-            addToTable(entry);
-            
-            // Update current entry fields
-            document.getElementById('hiddenCode').value = codeInput;
-            document.getElementById('pName').value = entry.pName.toUpperCase();
-            document.getElementById('flightNo').value = entry.flightNo.toUpperCase();
-            document.getElementById('seatNo').value = entry.seatNo.toUpperCase();
-            document.getElementById('class').value = entry.class.toUpperCase();
-            document.getElementById('airline').value = entry.airline.toUpperCase();
-            document.getElementById('FQTV').value = entry.FQTV.toUpperCase();
-            document.getElementById('pax').value = entry.pax;
-            document.getElementById('remarks').value = entry.remarks.toUpperCase();
-            document.getElementById('date').value = entry.date.toUpperCase();
-            document.getElementById('shift').value = entry.shift.toUpperCase();
-            document.getElementById('entryTime').value = entry.entryTime;
-            
-            // Clear code field
-            document.getElementById('code').value = '';
-            
-            return true;
-        }
-        
-    } catch (error) {
-        console.error('Error parsing boarding pass:', error);
-        alert('ERROR PARSING BOARDING PASS CODE');
-        return false;
-    }
-}
-
 // ========== INITIALIZATION ==========
 
 // Initialize on page load
@@ -2295,6 +2492,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const updateCurrentBtn = document.getElementById('updateCurrentBtn');
     const clearCurrentBtn = document.getElementById('clearCurrentBtn');
     const refreshShiftBtn = document.getElementById('refreshShiftBtn');
+    const guestSelect = document.getElementById('guestSelect');
+    const addGuestBtn = document.getElementById('addGuestBtn');
     
     // Load data from local storage
     loadFromLocalStorage();
@@ -2320,6 +2519,28 @@ document.addEventListener('DOMContentLoaded', function() {
         
         codeField.addEventListener('input', function() {
             this.value = this.value.toUpperCase();
+        });
+    }
+    
+    // Guest selection
+    if (guestSelect) {
+        guestSelect.addEventListener('change', function() {
+            const selectedValue = this.value;
+            addGuestBtn.disabled = !selectedValue;
+            currentGuestMainPassenger = selectedValue || null;
+        });
+    }
+    
+    if (addGuestBtn) {
+        addGuestBtn.addEventListener('click', function() {
+            if (!currentGuestMainPassenger) {
+                showTemporaryNotification('Please select a main passenger first', 'warning');
+                return;
+            }
+            
+            // Focus on code field for scanning
+            codeField.focus();
+            showTemporaryNotification(`Scan boarding pass for guest of selected passenger`, 'info');
         });
     }
     
@@ -2361,6 +2582,8 @@ window.saveEdit = saveEdit;
 window.updatePaxFromSeatInEdit = updatePaxFromSeatInEdit;
 window.validatePaxInEdit = validatePaxInEdit;
 window.checkClassFQTVInEdit = checkClassFQTVInEdit;
+window.addGuestToPassenger = addGuestToPassenger;
+window.updateGuestDropdown = updateGuestDropdown;
 // Add card DB function to window
 window.saveHiddenCodeToCardDB = saveHiddenCodeToCardDB;
 </script>
