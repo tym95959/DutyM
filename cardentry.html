@@ -1767,7 +1767,7 @@ async function backgroundSaveToFirebase(entry) {
     }
 }
 
-// ========== MODIFIED APPROVE ENTRY FUNCTION ==========
+// ========== MODIFIED APPROVE ENTRY FUNCTION WITH 0 PAX CONFIRMATION ==========
 
 async function approveEntry(id) {
     try {
@@ -1779,6 +1779,15 @@ async function approveEntry(id) {
         }
         
         const entry = pendingPasses[entryIndex];
+        
+        // Check if PAX is 0 and ask for confirmation
+        if (parseInt(entry.pax) === 0) {
+            const confirmZeroPax = confirm(`WARNING: PAX count is 0. Are you sure you want to save this entry?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}\nSeat: ${entry.seatNo}`);
+            if (!confirmZeroPax) {
+                showTemporaryNotification('Save cancelled - PAX is 0', 'warning');
+                return;
+            }
+        }
         
         // FIX: Use current shift data if entry doesn't have date
         const dateToUse = entry.date || currentShiftData.date || '';
@@ -1845,7 +1854,7 @@ async function approveEntry(id) {
     }
 }
 
-// ========== MODIFIED SAVE EDIT FUNCTION ==========
+// ========== MODIFIED SAVE EDIT FUNCTION WITH 0 PAX CONFIRMATION ==========
 
 async function saveEdit(id, isSaved = false) {
     const row = document.querySelector(`tr[data-id="${id}"]`);
@@ -1855,8 +1864,18 @@ async function saveEdit(id, isSaved = false) {
     const paxValue = row.querySelector('.edit-pax').value;
     const calculatedPax = calculatePaxFromSeat(seatNo);
     
-    // Allow save even if PAX doesn't match, but show warning
-    if (parseInt(paxValue) !== calculatedPax) {
+    // Check if PAX is 0 and ask for confirmation
+    if (parseInt(paxValue) === 0) {
+        const pName = row.querySelector('.edit-pName').value.toUpperCase();
+        const flightNo = row.querySelector('.edit-flightNo').value.toUpperCase();
+        const confirmZeroPax = confirm(`WARNING: PAX count is 0. Are you sure you want to save this entry?\n\nPassenger: ${pName}\nFlight: ${flightNo}\nSeat: ${seatNo}`);
+        if (!confirmZeroPax) {
+            showTemporaryNotification('Save cancelled - PAX is 0', 'warning');
+            return;
+        }
+    }
+    // Also check if PAX doesn't match seat number (existing warning)
+    else if (parseInt(paxValue) !== calculatedPax) {
         if (!confirm(`WARNING: PAX (${paxValue}) DOESN'T MATCH SEAT NUMBER (${seatNo}) WHICH INDICATES ${calculatedPax} PAX. SAVE ANYWAY?`)) {
             return;
         }
@@ -1946,6 +1965,158 @@ async function saveEdit(id, isSaved = false) {
     
     editingId = null;
     renderTables();
+}
+
+// ========== MODIFIED BACKGROUND SAVE TO FIREBASE TO HANDLE 0 PAX ==========
+
+async function backgroundSaveToFirebase(entry) {
+    try {
+        console.log('Starting background save for entry:', entry.id);
+        
+        // First check if already saved to Firebase
+        if (entry.firebaseSaved || entry.firebaseStatus === 'success') {
+            console.log('Entry already saved to Firebase, skipping');
+            return { success: true, skipped: true };
+        }
+        
+        // Check for duplicates first (but don't block UI)
+        const checkResult = await checkPassengerExists(
+            entry.flightNo,
+            entry.date,
+            entry.seatNo || '',
+            entry.pName || ''
+        );
+        
+        if (checkResult.exists) {
+            // Log duplicate warning but don't interrupt
+            console.warn('⚠️ Duplicate passenger found in background check:', checkResult.matches);
+            
+            // Show non-blocking notification
+            showTemporaryNotification(`⚠️ Duplicate passenger detected: ${entry.pName} - Not saving`, 'warning');
+            
+            // Update entry status to show duplicate
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses[savedIndex].firebaseStatus = 'duplicate';
+                savedPasses[savedIndex].firebaseError = 'Duplicate entry exists';
+                saveSavedToLocalStorage();
+                renderTables();
+            }
+            
+            return { success: false, duplicate: true };
+        }
+        
+        // Log if PAX is 0 (but still save since user confirmed)
+        if (parseInt(entry.pax) === 0) {
+            console.log('⚠️ Saving entry with PAX = 0 (user confirmed):', entry.pName);
+        }
+        
+        // Save to Firebase (KoveliPass collection)
+        const saveResult = await saveEntryToFirebase(entry);
+        
+        if (saveResult.success) {
+            console.log('✅ Background save successful for entry:', entry.id);
+            
+            // REMOVE FROM SAVED PASSES AND LOCAL STORAGE
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                // Remove from savedPasses array
+                savedPasses.splice(savedIndex, 1);
+                
+                // Save to local storage (this will remove it)
+                saveSavedToLocalStorage();
+                
+                // Refresh tables
+                renderTables();
+            }
+            
+            // Show success notification
+            showTemporaryNotification(`✅ Entry saved to Firebase and removed from list`, 'success');
+            
+        } else {
+            console.error('❌ Background save failed for entry:', entry.id, saveResult.error);
+            
+            // Mark as failed in savedPasses
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses[savedIndex].firebaseError = saveResult.error;
+                savedPasses[savedIndex].firebaseStatus = 'error';
+                savedPasses[savedIndex].firebaseRetry = true;
+                saveSavedToLocalStorage();
+                renderTables();
+            }
+            
+            // Show error notification
+            showTemporaryNotification(`❌ Firebase save failed: ${saveResult.error}`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Background save error for entry:', entry.id, error);
+        
+        // Mark as failed in savedPasses
+        const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+        if (savedIndex !== -1) {
+            savedPasses[savedIndex].firebaseError = error.message;
+            savedPasses[savedIndex].firebaseStatus = 'error';
+            savedPasses[savedIndex].firebaseRetry = true;
+            saveSavedToLocalStorage();
+            renderTables();
+        }
+        
+        showTemporaryNotification(`❌ Firebase save error: ${error.message}`, 'error');
+    }
+}
+
+// ========== MODIFIED CHECK PASSENGER EXISTS (optional - doesn't check PAX) ==========
+
+async function checkPassengerExists(flightNo, date, seatNo, pName) {
+    try {
+        console.log('Checking if passenger exists:', { flightNo, date, seatNo, pName });
+        
+        // Use the db from fireshift.js for KoveliPass collection
+        if (typeof db === 'undefined') {
+            console.error('db not initialized from fireshift.js');
+            return { exists: false, matches: [], error: 'Database not initialized' };
+        }
+        
+        // Query the KoveliPass collection
+        const collectionRef = db.collection('KoveliPass');
+        
+        // First try to find by flight number and date
+        let query = collectionRef
+            .where('flightNo', '==', flightNo)
+            .where('date', '==', date);
+        
+        const snapshot = await query.get();
+        
+        if (snapshot.empty) {
+            console.log('No existing entries found for this flight and date');
+            return { exists: false, matches: [] };
+        }
+        
+        // Check for matches with same seatNo OR same pName
+        const matches = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.seatNo === seatNo || data.pName === pName) {
+                matches.push({
+                    id: doc.id,
+                    ...data
+                });
+            }
+        });
+        
+        if (matches.length > 0) {
+            console.log('Found matching entries:', matches);
+            return { exists: true, matches };
+        }
+        
+        return { exists: false, matches: [] };
+        
+    } catch (error) {
+        console.error('Error checking passenger existence:', error);
+        return { exists: false, matches: [], error: error.message };
+    }
 }
 
 // ========== LOCAL STORAGE FUNCTIONS ==========
