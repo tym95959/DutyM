@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Report – Passenger List (rearranged)</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- Your config files -->
+    <script src="fireshift.js"></script>
+    <script src="Co.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f0e1, #fff5e6);
+            min-height: 100vh;
+            padding: 16px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        /* ===== smaller top ribbon ===== */
+        .shift-ribbon {
+            background: linear-gradient(135deg, #8b6913, #e6b800);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(230, 184, 0, 0.25);
+            font-size: 0.9rem;
+        }
+        
+        .shift-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .shift-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 14px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .date-value {
+            font-weight: 500;
+            font-size: 13px;
+            opacity: 0.9;
+        }
+        
+        .refresh-shift {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 4px 14px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        /* ===== main card – more compact ===== */
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 18px 22px;
+            box-shadow: 0 8px 24px rgba(230, 184, 0, 0.15);
+            border: 2px solid #e6b800;
+            margin-bottom: 18px;
+        }
+        
+        /* --- REARRANGED: date/flight on left, ops on right --- */
+        .selection-flight-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        
+        /* left block: date + flight selects */
+        .left-selectors {
+            display: flex;
+            gap: 16px;
+            flex: 2;
+            min-width: 360px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            flex: 1;
+        }
+        
+        .form-group label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        
+        .form-control {
+            padding: 8px 12px;
+            border: 2px solid rgba(230, 184, 0, 0.25);
+            border-radius: 10px;
+            font-size: 14px;
+            background: white;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        /* right block: minimal quick info (optional) */
+        .quick-shift-box {
+            background: #fff9e6;
+            border-radius: 30px;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+            font-weight: 500;
+            color: #8b6913;
+            border: 1px solid #e6b800;
+            white-space: nowrap;
+        }
+        
+        /* flight panel — two columns now: left (details + stats) and right (ops + buttons) */
+        .flight-panel-revised {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-top: 8px;
+        }
+        
+        .left-details-block {
+            background: #fff9e6;
+            border-radius: 14px;
+            padding: 14px 16px;
+            border-left: 4px solid #e6b800;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px 16px;
+            align-items: center;
+            font-size: 13px;
+        }
+        
+        .info-label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        .info-value {
+            color: #2c3e50;
+            font-weight: 500;
+            font-size: 13px;
+        }
+        
+        /* stats inside left block */
+        .stats-mini {
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            background: white;
+            border-radius: 12px;
+            padding: 10px 8px;
+            border: 1px solid rgba(230,184,0,0.2);
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-label {
+            color: #8b6913;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        
+        .stat-number {
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        /* right block: ops + buttons (under last pax) */
+        .right-ops-block {
+            background: white;
+            border-radius: 14px;
+            padding: 14px 16px;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        
+        .ops-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px 16px;
+            align-items: center;
+            font-size: 13px;
+        }
+        
+        .ops-label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        .ops-value {
+            color: #2c3e50;
+            font-weight: 500;
+        }
+        
+        .edit-field {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        
+        .edit-input {
+            padding: 4px 8px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 6px;
+            font-size: 12px;
+            width: 100px;
+        }
+        
+        .edit-btn {
+            background: #e6b800;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        
+        /* action buttons – now placed under the ops grid (last pax area) */
+        .action-buttons-vertical {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 8px;
+            border-top: 1px dashed rgba(230,184,0,0.3);
+            padding-top: 12px;
+        }
+        
+        .close-btn, .reopen-btn, .print-btn, .save-all-btn {
+            padding: 8px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            flex: 1 0 auto;
+            min-width: 110px;
+            white-space: nowrap;
+        }
+        
+        .close-btn { background: #c68b5e; color: white; }
+        .reopen-btn { background: #6b8e23; color: white; }
+        .print-btn { background: #4a6fa5; color: white; }
+        .save-all-btn { background: #e6b800; color: white; }
+        
+        /* passenger table unchanged */
+        .table-container {
+            background: white;
+            border-radius: 16px;
+            border: 2px solid #e6b800;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .table-header {
+            background: linear-gradient(135deg, #faf3e0, #fff5e6);
+            padding: 12px 18px;
+            border-bottom: 2px solid #e6b800;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .table-header h3 {
+            color: #8b6913;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .passenger-count {
+            background: #6b8e23;
+            color: white;
+            padding: 4px 14px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: 480px;
+            overflow-y: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1000px;
+        }
+        
+        th {
+            background: #e6b800;
+            color: white;
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid rgba(230, 184, 0, 0.2);
+            color: #2c3e50;
+            font-size: 12px;
+        }
+        
+        tr:hover td {
+            background: rgba(230, 184, 0, 0.04);
+        }
+        
+        .serial-no {
+            font-weight: 600;
+            color: #8b6913;
+            font-family: monospace;
+        }
+        
+        .action-cell {
+            white-space: nowrap;
+        }
+        
+        .table-action-btn {
+            padding: 4px 10px;
+            border: none;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 0 2px;
+        }
+        
+        .edit-table-btn { background: #e6b800; color: white; }
+        .delete-table-btn { background: #c68b5e; color: white; }
+        .save-table-btn { background: #6b8e23; color: white; }
+        .cancel-table-btn { background: #7f8c8d; color: white; }
+        
+        .edit-mode-input {
+            width: 100%;
+            padding: 4px 6px;
+            border: 2px solid #e6b800;
+            border-radius: 6px;
+            font-size: 11px;
+        }
+        
+        .pax-warning {
+            font-size: 10px;
+            color: #c68b5e;
+            margin-top: 2px;
+        }
+        
+        .flight-status {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 30px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .status-open { background: #6b8e23; color: white; }
+        .status-closed { background: #c68b5e; color: white; }
+        
+        .no-data, .loading { text-align: center; padding: 30px; color: #8b6913; }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(230,184,0,0.3); border-radius: 50%; border-top-color: #e6b800; animation: spin 1s infinite; margin-right: 6px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- smaller ribbon -->
+        <div class="shift-ribbon" id="shiftRibbon">
+            <div class="shift-info">
+                <span class="shift-badge" id="shiftBadge">LOADING...</span>
+                <span class="date-value" id="ribbonDate">--</span>
+            </div>
+            <button class="refresh-shift" onclick="fetchOpenShift()">↻ REFRESH</button>
+        </div>
+
+        <!-- main card – compact & rearranged -->
+        <div class="card">
+            <!-- Row: Date and Flight No on left side, extra right box for visual balance (optional) -->
+            <div class="selection-flight-row">
+                <div class="left-selectors">
+                    <div class="form-group">
+                        <label>📅 DATE</label>
+                        <select id="dateSelect" class="form-control" onclick="loadDates()" onchange="onDateSelected()">
+                            <option value="">-- Click to load dates --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>✈ FLIGHT NO</label>
+                        <select id="flightSelect" class="form-control" onchange="onFlightSelected()" disabled>
+                            <option value="">-- Select date first --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="quick-shift-box" id="quickShiftDisplay">
+                    <span id="quickShiftText">Select flight</span>
+                </div>
+            </div>
+            
+            <!-- flight panel – now two columns: left details+stats, right ops+buttons under last pax -->
+            <div id="flightPanel" style="display: none;">
+                <div class="flight-panel-revised">
+                    <!-- LEFT SIDE: airline, flight, date, status + stats -->
+                    <div class="left-details-block">
+                        <div class="info-grid">
+                            <span class="info-label">Airline:</span><span class="info-value" id="airlineDisplay">-</span>
+                            <span class="info-label">Flight No:</span><span class="info-value" id="flightNoDisplay">-</span>
+                            <span class="info-label">Date:</span><span class="info-value" id="dateDisplay">-</span>
+                            <span class="info-label">Status:</span>
+                            <span class="info-value"><span id="flightStatus" class="flight-status status-open">OPEN</span></span>
+                        </div>
+                        <!-- stats moved inside left block (right below basic info) -->
+                        <div class="stats-mini">
+                            <div class="stat-item"><div class="stat-label">Total Pax</div><div class="stat-number" id="totalPaxStat">0</div></div>
+                            <div class="stat-item"><div class="stat-label">First Pax</div><div class="stat-number" id="firstPaxStat">--:--</div></div>
+                            <div class="stat-item"><div class="stat-label">Last Pax</div><div class="stat-number" id="lastPaxStat">--:--</div></div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT SIDE: Shift, STD, Last Pax (with edit) + buttons under last pax -->
+                    <div class="right-ops-block">
+                        <div class="ops-grid">
+                            <span class="ops-label">Shift:</span><span class="ops-value" id="shiftDisplay">-</span>
+                            <span class="ops-label">STD:</span>
+                            <div class="edit-field">
+                                <input type="time" id="stdInput" class="edit-input">
+                                <button class="edit-btn" onclick="updateSTD()">Update</button>
+                            </div>
+                            <span class="ops-label">First Pax:</span><span class="ops-value first-pax" id="firstPaxDisplay">-</span>
+                            <span class="ops-label">Last Pax:</span>
+                            <div class="edit-field">
+                                <input type="time" id="lastPaxInput" class="edit-input">
+                                <button class="edit-btn" onclick="updateLastPax()">Update</button>
+                            </div>
+                        </div>
+                        
+                        <!-- BUTTONS placed directly under Last Pax row (left side of right block) -->
+                        <div class="action-buttons-vertical">
+                            <button id="closeFlightBtn" class="close-btn" onclick="closeFlight()">🔒 CLOSE</button>
+                            <button id="reopenFlightBtn" class="reopen-btn" onclick="reopenFlight()" style="display: none;">🔓 REOPEN</button>
+                            <button id="printReportBtn" class="print-btn" onclick="printReport()" disabled>🖨️ PRINT</button>
+                            <button class="save-all-btn" onclick="saveFlightData()">💾 SAVE ALL</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- no separate action row; it's now inside right block -->
+            </div>
+        </div>
+
+        <!-- passenger table – unchanged -->
+        <div id="tableContainer" class="table-container" style="display: none;">
+            <div class="table-header">
+                <h3>✈ PASSENGER LIST</h3>
+                <span class="passenger-count" id="passengerCount">0</span>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr><th>No.</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody id="passengerTableBody">
+                        <tr><td colspan="9" class="no-data">Select a flight to view passengers</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== GLOBAL VARIABLES ==========
+        let flightsByDate = {};
+        let allDates = [];
+        let currentFlightData = null;
+        let flightReports = {};
+        let editingRowId = null;
+
+        // ========== UTILS ==========
+        function calculatePaxFromSeat(seatNo) {
+            if (!seatNo) return 1;
+            const letters = seatNo.toString().match(/[A-Za-z]/g);
+            return letters ? letters.length : 1;
+        }
+
+        function onSeatChange(docId) {
+            const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+            const paxInput = document.getElementById(`edit-pax-${docId}`);
+            const warningDiv = document.getElementById(`pax-warning-${docId}`);
+            if (seatInput && paxInput) {
+                const calculated = calculatePaxFromSeat(seatInput.value);
+                paxInput.value = calculated;
+                if (warningDiv) {
+                    warningDiv.textContent = '✓ auto-updated';
+                    warningDiv.style.color = '#6b8e23';
+                    setTimeout(() => { if(warningDiv) warningDiv.textContent = ''; }, 2000);
+                }
+            }
+        }
+
+        function onPaxChange(docId) {
+            const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+            const paxInput = document.getElementById(`edit-pax-${docId}`);
+            const warningDiv = document.getElementById(`pax-warning-${docId}`);
+            if (seatInput && paxInput) {
+                const calculated = calculatePaxFromSeat(seatInput.value);
+                const entered = parseInt(paxInput.value) || 0;
+                if (entered !== calculated) {
+                    if (warningDiv) {
+                        warningDiv.innerHTML = `⚠ mismatch (seat->${calculated}) <button onclick="updatePaxFromSeat('${docId}')" style="background:none; border:1px solid #c68b5e; border-radius:12px; padding:2px 6px; font-size:9px; cursor:pointer;">fix</button>`;
+                        warningDiv.style.color = '#c68b5e';
+                    }
+                } else {
+                    if (warningDiv) warningDiv.textContent = '';
+                }
+            }
+        }
+
+        function updatePaxFromSeat(docId) {
+            const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+            const paxInput = document.getElementById(`edit-pax-${docId}`);
+            const warningDiv = document.getElementById(`pax-warning-${docId}`);
+            if (seatInput && paxInput) {
+                paxInput.value = calculatePaxFromSeat(seatInput.value);
+                if (warningDiv) warningDiv.textContent = '';
+            }
+        }
+
+        function showNotification(msg) { console.log(msg); }
+
+        // ========== SHIFT ==========
+        async function fetchOpenShift() {
+            try {
+                const shiftBadge = document.getElementById('shiftBadge');
+                const ribbonDate = document.getElementById('ribbonDate');
+                const ribbon = document.getElementById('shiftRibbon');
+                shiftBadge.textContent = 'LOADING...';
+                ribbonDate.textContent = '--';
+                if (typeof passengerDb === 'undefined') throw new Error('no passengerDb');
+                const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+                if (shiftDoc.exists) {
+                    const data = shiftDoc.data();
+                    const date = data.date || 'No date';
+                    const morning = data.morning || 'closed';
+                    const evening = data.evening || 'closed';
+                    if (morning === 'open') {
+                        shiftBadge.textContent = 'MORNING SHIFT';
+                        ribbonDate.textContent = date;
+                        ribbon.style.background = 'linear-gradient(135deg, #6b8e23, #8b6913)';
+                    } else if (evening === 'open') {
+                        shiftBadge.textContent = 'EVENING SHIFT';
+                        ribbonDate.textContent = date;
+                        ribbon.style.background = 'linear-gradient(135deg, #c68b5e, #8b6913)';
+                    } else {
+                        shiftBadge.textContent = 'NO OPEN SHIFT';
+                        ribbonDate.textContent = date;
+                        ribbon.style.background = 'linear-gradient(135deg, #7f8c8d, #5e4a1a)';
+                    }
+                } else throw new Error('shift missing');
+            } catch (error) {
+                document.getElementById('shiftBadge').textContent = 'ERROR';
+                document.getElementById('ribbonDate').textContent = '--';
+            }
+        }
+
+        // ========== LOAD DATES ==========
+        let isLoadingDates = false;
+        async function loadDates() {
+            if (isLoadingDates) return;
+            const dateSelect = document.getElementById('dateSelect');
+            if (allDates.length > 0) return;
+            isLoadingDates = true;
+            dateSelect.innerHTML = '<option value="">Loading dates...</option>';
+            dateSelect.disabled = true;
+            try {
+                if (typeof db === 'undefined') throw new Error('db not initialized');
+                const snapshot = await db.collection('KoveliPass').get();
+                if (snapshot.empty) {
+                    dateSelect.innerHTML = '<option value="">No dates</option>';
+                    dateSelect.disabled = false;
+                    isLoadingDates = false;
+                    return;
+                }
+                const dates = new Set();
+                flightsByDate = {};
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const date = data.date;
+                    const docId = doc.id;
+                    if (date) {
+                        dates.add(date);
+                        if (!flightsByDate[date]) flightsByDate[date] = new Map();
+                        const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
+                        if (!flightsByDate[date].has(flightKey)) {
+                            flightsByDate[date].set(flightKey, {
+                                flightNo: data.flightNo,
+                                shift: data.shift || 'UNKNOWN',
+                                airline: data.airline || '',
+                                passengers: [],
+                                firstPax: null,
+                                lastPax: null,
+                                std: '',
+                                isClosed: false
+                            });
+                        }
+                        const flightData = flightsByDate[date].get(flightKey);
+                        flightData.passengers.push({
+                            docId: docId,
+                            pName: data.pName || '',
+                            seatNo: data.seatNo || '',
+                            pax: data.pax || '1',
+                            FQTV: data.FQTV || '',
+                            entryTime: data.entryTime || '',
+                            remarks: data.remarks || '',
+                            serialNo: data.serialNo || ''
+                        });
+                        if (data.entryTime) {
+                            if (!flightData.firstPax || data.entryTime < flightData.firstPax) flightData.firstPax = data.entryTime;
+                            if (!flightData.lastPax || data.entryTime > flightData.lastPax) flightData.lastPax = data.entryTime;
+                        }
+                    }
+                });
+                allDates = Array.from(dates).sort().reverse();
+                let options = '<option value="">-- Select a date --</option>';
+                allDates.forEach(d => { options += `<option value="${d}">${d}</option>`; });
+                dateSelect.innerHTML = options;
+                dateSelect.disabled = false;
+            } catch (error) {
+                console.error(error);
+                dateSelect.innerHTML = '<option value="">Error</option>';
+                dateSelect.disabled = false;
+            } finally { isLoadingDates = false; }
+        }
+
+        function onDateSelected() {
+            const dateSelect = document.getElementById('dateSelect');
+            const flightSelect = document.getElementById('flightSelect');
+            const selectedDate = dateSelect.value;
+            flightSelect.innerHTML = '<option value="">-- Select flight --</option>';
+            flightSelect.disabled = true;
+            document.getElementById('flightPanel').style.display = 'none';
+            document.getElementById('tableContainer').style.display = 'none';
+            document.getElementById('quickShiftText').innerText = 'Select flight';
+            editingRowId = null;
+            if (!selectedDate) return;
+            const flights = flightsByDate[selectedDate];
+            if (!flights) return;
+            const flightsArray = Array.from(flights.values()).sort((a,b) => a.flightNo.localeCompare(b.flightNo));
+            let options = '<option value="">-- Select flight --</option>';
+            flightsArray.forEach(f => { options += `<option value="${f.flightNo}|${f.shift}">${f.flightNo}</option>`; });
+            flightSelect.innerHTML = options;
+            flightSelect.disabled = false;
+        }
+
+        function onFlightSelected() {
+            const dateSelect = document.getElementById('dateSelect');
+            const flightSelect = document.getElementById('flightSelect');
+            const selectedDate = dateSelect.value;
+            const selectedFlight = flightSelect.value;
+            if (!selectedDate || !selectedFlight) {
+                document.getElementById('flightPanel').style.display = 'none';
+                document.getElementById('tableContainer').style.display = 'none';
+                return;
+            }
+            const [flightNo, shift] = selectedFlight.split('|');
+            const flightKey = `${flightNo}_${shift}`;
+            const flightData = flightsByDate[selectedDate]?.get(flightKey);
+            if (!flightData) return;
+            currentFlightData = flightData;
+            editingRowId = null;
+            document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
+            document.getElementById('flightNoDisplay').textContent = flightNo;
+            document.getElementById('dateDisplay').textContent = selectedDate;
+            document.getElementById('shiftDisplay').textContent = shift;
+            document.getElementById('firstPaxDisplay').textContent = flightData.firstPax || '-';
+            document.getElementById('stdInput').value = flightData.std || '';
+            document.getElementById('lastPaxInput').value = flightData.lastPax || '';
+            document.getElementById('totalPaxStat').textContent = flightData.passengers.length;
+            document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
+            document.getElementById('lastPaxStat').textContent = flightData.lastPax || '--:--';
+            document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
+            document.getElementById('quickShiftText').innerText = `${flightNo} | ${shift}`;
+            
+            // set status UI based on isClosed (default false)
+            if (flightData.isClosed) {
+                document.getElementById('flightStatus').textContent = 'CLOSED';
+                document.getElementById('flightStatus').className = 'flight-status status-closed';
+                document.getElementById('closeFlightBtn').style.display = 'none';
+                document.getElementById('reopenFlightBtn').style.display = 'block';
+                document.getElementById('printReportBtn').disabled = false;
+            } else {
+                document.getElementById('flightStatus').textContent = 'OPEN';
+                document.getElementById('flightStatus').className = 'flight-status status-open';
+                document.getElementById('closeFlightBtn').style.display = 'block';
+                document.getElementById('reopenFlightBtn').style.display = 'none';
+                document.getElementById('printReportBtn').disabled = true;
+            }
+            
+            document.getElementById('flightPanel').style.display = 'block';
+            displayPassengerTable(flightData.passengers);
+        }
+
+        function displayPassengerTable(passengers) {
+            const tbody = document.getElementById('passengerTableBody');
+            if (!passengers || passengers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="no-data">No passengers</td></tr>';
+                document.getElementById('tableContainer').style.display = 'block';
+                return;
+            }
+            const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+            let html = '';
+            sorted.forEach((p, idx) => {
+                const serial = String(idx+1).padStart(3,'0');
+                if (editingRowId === p.docId) {
+                    html += `<tr id="edit-row-${p.docId}">
+                        <td class="serial-no">${serial}</td>
+                        <td><input type="text" id="edit-pName-${p.docId}" value="${p.pName||''}" class="edit-mode-input"></td>
+                        <td>
+                            <input type="text" id="edit-seatNo-${p.docId}" value="${p.seatNo||''}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
+                            <div id="pax-warning-${p.docId}" class="pax-warning"></div>
+                        </td>
+                        <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
+                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${p.FQTV||''}" class="edit-mode-input"></td>
+                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${p.serialNo||''}" class="edit-mode-input"></td>
+                        <td>${p.entryTime||'-'}</td>
+                        <td><input type="text" id="edit-remarks-${p.docId}" value="${p.remarks||''}" class="edit-mode-input"></td>
+                        <td class="action-cell">
+                            <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
+                            <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                        </td>
+                    </tr>`;
+                } else {
+                    html += `<tr>
+                        <td class="serial-no">${serial}</td>
+                        <td>${p.pName||'-'}</td>
+                        <td>${p.seatNo||'-'}</td>
+                        <td style="text-align:center;">${p.pax||'1'}</td>
+                        <td>${p.FQTV||'-'}</td>
+                        <td class="${p.serialNo?'serial-no':'serial-blank'}">${p.serialNo||'—'}</td>
+                        <td>${p.entryTime||'-'}</td>
+                        <td>${p.remarks||'-'}</td>
+                        <td class="action-cell">
+                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${p.pName}')">Del</button>
+                        </td>
+                    </tr>`;
+                }
+            });
+            tbody.innerHTML = html;
+            document.getElementById('tableContainer').style.display = 'block';
+        }
+
+        function startEdit(docId) { editingRowId = docId; displayPassengerTable(currentFlightData.passengers); }
+        function cancelEdit() { editingRowId = null; displayPassengerTable(currentFlightData.passengers); }
+
+        async function savePassenger(docId) {
+            try {
+                const pName = document.getElementById(`edit-pName-${docId}`).value;
+                const seatNo = document.getElementById(`edit-seatNo-${docId}`).value;
+                const pax = document.getElementById(`edit-pax-${docId}`).value;
+                const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
+                const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
+                const remarks = document.getElementById(`edit-remarks-${docId}`).value;
+                const calculated = calculatePaxFromSeat(seatNo);
+                if (parseInt(pax) !== calculated && !confirm(`PAX mismatch (seat->${calculated}). Save anyway?`)) return;
+                await db.collection('KoveliPass').doc(docId).update({ pName, seatNo, pax, FQTV, serialNo, remarks, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                const passenger = currentFlightData.passengers.find(p => p.docId === docId);
+                if (passenger) { passenger.pName = pName; passenger.seatNo = seatNo; passenger.pax = pax; passenger.FQTV = FQTV; passenger.serialNo = serialNo; passenger.remarks = remarks; }
+                editingRowId = null;
+                displayPassengerTable(currentFlightData.passengers);
+                alert('Updated');
+            } catch (error) { alert('Error: '+error.message); }
+        }
+
+        function confirmDelete(docId, name) { if (confirm(`Delete ${name}?`)) deletePassenger(docId); }
+        async function deletePassenger(docId) {
+            try {
+                await db.collection('KoveliPass').doc(docId).delete();
+                const idx = currentFlightData.passengers.findIndex(p => p.docId === docId);
+                if (idx !== -1) currentFlightData.passengers.splice(idx,1);
+                document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
+                document.getElementById('passengerCount').textContent = currentFlightData.passengers.length+' PAX';
+                displayPassengerTable(currentFlightData.passengers);
+                alert('Deleted');
+            } catch (error) { alert('Error: '+error.message); }
+        }
+
+        function updateSTD() { const v = document.getElementById('stdInput').value; if(v && currentFlightData) { currentFlightData.std = v; showNotification('STD updated'); } }
+        function updateLastPax() { const v = document.getElementById('lastPaxInput').value; if(v && currentFlightData) { currentFlightData.lastPax = v; document.getElementById('lastPaxStat').textContent = v; document.getElementById('lastPaxDisplay').textContent = v; } }
+
+        async function closeFlight() {
+            if (!currentFlightData || !confirm('Close flight?')) return;
+            currentFlightData.isClosed = true;
+            document.getElementById('flightStatus').textContent = 'CLOSED';
+            document.getElementById('flightStatus').className = 'flight-status status-closed';
+            document.getElementById('closeFlightBtn').style.display = 'none';
+            document.getElementById('reopenFlightBtn').style.display = 'block';
+            document.getElementById('printReportBtn').disabled = false;
+            await saveFlightData();
+            alert('Flight closed');
+        }
+        async function reopenFlight() {
+            if (!currentFlightData || !confirm('Reopen flight?')) return;
+            currentFlightData.isClosed = false;
+            document.getElementById('flightStatus').textContent = 'OPEN';
+            document.getElementById('flightStatus').className = 'flight-status status-open';
+            document.getElementById('closeFlightBtn').style.display = 'block';
+            document.getElementById('reopenFlightBtn').style.display = 'none';
+            document.getElementById('printReportBtn').disabled = true;
+            await saveFlightData();
+            alert('Flight reopened');
+        }
+        async function saveFlightData() {
+            if (!currentFlightData) return;
+            try {
+                const date = document.getElementById('dateDisplay').textContent;
+                const reportId = `${currentFlightData.flightNo}_${date}`;
+                await db.collection('FlightReports').doc(reportId).set({
+                    flightNo: currentFlightData.flightNo, date, shift: currentFlightData.shift,
+                    airline: currentFlightData.airline, std: currentFlightData.std||'',
+                    firstPax: currentFlightData.firstPax||'', lastPax: currentFlightData.lastPax||'',
+                    totalPax: currentFlightData.passengers.length, isClosed: currentFlightData.isClosed||false,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                alert('Flight data saved');
+            } catch (error) { alert('Error: '+error.message); }
+        }
+        function printReport() {
+            if (!currentFlightData || !currentFlightData.isClosed) { alert('Flight must be closed'); return; }
+            const company = window.companyInfo || { name:'Company', address:'', phone:'' };
+            const date = document.getElementById('dateDisplay').textContent.split('-');
+            const fDate = date[2]+'/'+date[1]+'/'+date[0];
+            const sorted = [...currentFlightData.passengers].sort((a,b)=>(a.entryTime||'').localeCompare(b.entryTime||''));
+            const totalPax = sorted.reduce((s,p)=>s+(parseInt(p.pax)||1),0);
+            let html = `<html><head><title>Flight Report</title><style>body{font-family:Arial;padding:20px;font-size:12px;} .header{display:flex;justify-content:space-between;border-bottom:2px solid #e6b800;margin-bottom:20px;} table{width:100%;border-collapse:collapse;} th{background:#e6b800;color:white;padding:6px;text-align:left;} td{padding:5px;border-bottom:1px solid #e6d8a5;}</style></head><body>
+            <div class='header'><div><h2>${company.name||''}</h2><p>${company.address||''}<br>${company.phone||''}</p></div><div><h3>FLIGHT ${currentFlightData.flightNo}</h3><p>${fDate}</p></div></div>
+            <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;'><div><strong>Airline:</strong> ${currentFlightData.airline}</div><div><strong>STD:</strong> ${currentFlightData.std||'--:--'}</div><div><strong>First Pax:</strong> ${currentFlightData.firstPax||'--:--'}</div><div><strong>Last Pax:</strong> ${currentFlightData.lastPax||'--:--'}</div><div><strong>Total PAX:</strong> ${totalPax}</div></div>
+            <table><thead><tr><th>#</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial</th><th>Time</th><th>Remarks</th></tr></thead><tbody>`;
+            sorted.forEach((p,i) => { html += `<tr><td>${String(i+1).padStart(3,'0')}</td><td>${p.pName||'-'}</td><td>${p.seatNo||'-'}</td><td>${p.pax||1}</td><td>${p.FQTV||'-'}</td><td>${p.serialNo||'-'}</td><td>${p.entryTime||'-'}</td><td>${p.remarks||'-'}</td></tr>`; });
+            html += `</tbody></table><div style='margin-top:30px; border-top:1px solid #e6b800; padding-top:15px; display:flex; justify-content:space-between'><span>Prepared: ________</span><span>Checked: ________</span></div></body></html>`;
+            const w = window.open('','_blank'); w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>w.print(),400);
+        }
+
+        // initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchOpenShift();
+            setInterval(fetchOpenShift, 30000);
+        });
+
+        // global functions
+        window.loadDates = loadDates; window.onDateSelected = onDateSelected; window.onFlightSelected = onFlightSelected;
+        window.updateSTD = updateSTD; window.updateLastPax = updateLastPax; window.closeFlight = closeFlight;
+        window.reopenFlight = reopenFlight; window.saveFlightData = saveFlightData; window.printReport = printReport;
+        window.fetchOpenShift = fetchOpenShift; window.startEdit = startEdit; window.cancelEdit = cancelEdit;
+        window.savePassenger = savePassenger; window.confirmDelete = confirmDelete; window.onSeatChange = onSeatChange;
+        window.onPaxChange = onPaxChange; window.updatePaxFromSeat = updatePaxFromSeat;
+    </script>
+</body>
+</html>
