@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flight Report – Passenger List (logo left, close with STD/Last Pax)</title>
+    <title>Flight Report – Passenger List (fixed Firebase save)</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -485,18 +485,18 @@
                             <span class="ops-label">Shift:</span><span class="ops-value" id="shiftDisplay">-</span>
                             <span class="ops-label">STD:</span>
                             <div class="edit-field">
-                                <input type="time" id="stdInput" class="edit-input" onchange="validateCloseButton()">
+                                <input type="time" id="stdInput" class="edit-input" onchange="updateSTD()">
                                 <button class="edit-btn" onclick="updateSTD()">Update</button>
                             </div>
                             <span class="ops-label">First Pax:</span><span class="ops-value first-pax" id="firstPaxDisplay">-</span>
                             <span class="ops-label">Last Pax:</span>
                             <div class="edit-field">
-                                <input type="time" id="lastPaxInput" class="edit-input" onchange="validateCloseButton()">
+                                <input type="time" id="lastPaxInput" class="edit-input" onchange="updateLastPax()">
                                 <button class="edit-btn" onclick="updateLastPax()">Update</button>
                             </div>
                         </div>
                         
-                        <!-- BUTTONS: SAVE ALL removed; only CLOSE / REOPEN / PRINT -->
+                        <!-- BUTTONS: only CLOSE / REOPEN / PRINT -->
                         <div class="action-buttons-vertical">
                             <button id="closeFlightBtn" class="close-btn" onclick="closeFlight()" disabled>🔒 CLOSE</button>
                             <button id="reopenFlightBtn" class="reopen-btn" onclick="reopenFlight()" style="display: none;">🔓 REOPEN</button>
@@ -504,7 +504,6 @@
                         </div>
                     </div>
                 </div>
-                <!-- no separate action row; it's now inside right block -->
             </div>
         </div>
 
@@ -837,13 +836,31 @@
                 const remarks = document.getElementById(`edit-remarks-${docId}`).value;
                 const calculated = calculatePaxFromSeat(seatNo);
                 if (parseInt(pax) !== calculated && !confirm(`PAX mismatch (seat->${calculated}). Save anyway?`)) return;
-                await db.collection('KoveliPass').doc(docId).update({ pName, seatNo, pax, FQTV, serialNo, remarks, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                await db.collection('KoveliPass').doc(docId).update({ 
+                    pName, 
+                    seatNo, 
+                    pax, 
+                    FQTV, 
+                    serialNo, 
+                    remarks, 
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
+                });
                 const passenger = currentFlightData.passengers.find(p => p.docId === docId);
-                if (passenger) { passenger.pName = pName; passenger.seatNo = seatNo; passenger.pax = pax; passenger.FQTV = FQTV; passenger.serialNo = serialNo; passenger.remarks = remarks; }
+                if (passenger) { 
+                    passenger.pName = pName; 
+                    passenger.seatNo = seatNo; 
+                    passenger.pax = pax; 
+                    passenger.FQTV = FQTV; 
+                    passenger.serialNo = serialNo; 
+                    passenger.remarks = remarks; 
+                }
                 editingRowId = null;
                 displayPassengerTable(currentFlightData.passengers);
                 alert('Updated');
-            } catch (error) { alert('Error: '+error.message); }
+            } catch (error) { 
+                alert('Error: '+error.message); 
+                console.error(error);
+            }
         }
 
         function confirmDelete(docId, name) { if (confirm(`Delete ${name}?`)) deletePassenger(docId); }
@@ -856,29 +873,88 @@
                 document.getElementById('passengerCount').textContent = currentFlightData.passengers.length+' PAX';
                 displayPassengerTable(currentFlightData.passengers);
                 alert('Deleted');
-            } catch (error) { alert('Error: '+error.message); }
+            } catch (error) { 
+                alert('Error: '+error.message);
+                console.error(error);
+            }
         }
 
-        function updateSTD() { 
+        async function updateSTD() { 
             const v = document.getElementById('stdInput').value; 
             if(v && currentFlightData) { 
                 currentFlightData.std = v; 
                 showNotification('STD updated'); 
                 validateCloseButton();
-                // Auto-save STD to Firebase (optional, but we also save on close)
+                // Save to Firebase immediately
+                try {
+                    await saveFlightDataToFirebase();
+                    console.log('STD auto-saved');
+                } catch (error) {
+                    console.error('Error saving STD:', error);
+                }
             } 
         }
-        function updateLastPax() { 
+        
+        async function updateLastPax() { 
             const v = document.getElementById('lastPaxInput').value; 
             if(v && currentFlightData) { 
                 currentFlightData.lastPax = v; 
                 document.getElementById('lastPaxStat').textContent = v; 
                 document.getElementById('lastPaxDisplay').textContent = v;
                 validateCloseButton();
+                // Save to Firebase immediately
+                try {
+                    await saveFlightDataToFirebase();
+                    console.log('Last Pax auto-saved');
+                } catch (error) {
+                    console.error('Error saving Last Pax:', error);
+                }
             } 
         }
 
-        // CLOSE FLIGHT: now saves all flight data to Firebase before closing
+        // Save flight data to Firebase
+        async function saveFlightDataToFirebase() {
+            if (!currentFlightData) return;
+            
+            try {
+                const date = document.getElementById('dateDisplay').textContent;
+                const flightNo = document.getElementById('flightNoDisplay').textContent;
+                const shift = document.getElementById('shiftDisplay').textContent;
+                const airline = document.getElementById('airlineDisplay').textContent;
+                const std = document.getElementById('stdInput').value || currentFlightData.std || '';
+                const lastPax = document.getElementById('lastPaxInput').value || currentFlightData.lastPax || '';
+                const firstPax = currentFlightData.firstPax || '';
+                const totalPax = currentFlightData.passengers.length;
+                const isClosed = currentFlightData.isClosed || false;
+                
+                // Create a report ID
+                const reportId = `${flightNo}_${date}`;
+                
+                console.log('Saving to Firebase:', { reportId, flightNo, date, shift, airline, std, lastPax, firstPax, totalPax, isClosed });
+                
+                // Save to FlightReports collection
+                await db.collection('FlightReports').doc(reportId).set({
+                    flightNo: flightNo,
+                    date: date,
+                    shift: shift,
+                    airline: airline,
+                    std: std,
+                    firstPax: firstPax,
+                    lastPax: lastPax,
+                    totalPax: totalPax,
+                    isClosed: isClosed,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                
+                console.log('Flight data saved successfully');
+                return true;
+            } catch (error) { 
+                console.error('Error saving flight data:', error);
+                throw error;
+            }
+        }
+
+        // CLOSE FLIGHT: saves to Firebase then closes
         async function closeFlight() {
             if (!currentFlightData) return;
             
@@ -890,63 +966,64 @@
                 return;
             }
             
-            // Save flight data to Firebase (including STD, LastPax, etc.)
-            await saveFlightDataToFirebase();
+            // Update currentFlightData with latest values
+            currentFlightData.std = std;
+            currentFlightData.lastPax = lastPax;
             
-            // Then mark as closed
-            currentFlightData.isClosed = true;
-            document.getElementById('flightStatus').textContent = 'CLOSED';
-            document.getElementById('flightStatus').className = 'flight-status status-closed';
-            document.getElementById('closeFlightBtn').style.display = 'none';
-            document.getElementById('reopenFlightBtn').style.display = 'block';
-            document.getElementById('printReportBtn').disabled = false;
-            
-            alert('Flight closed and data saved.');
-        }
-
-        // New function to save flight data to Firebase (extracted from old saveFlightData)
-        async function saveFlightDataToFirebase() {
-            if (!currentFlightData) return;
             try {
-                const date = document.getElementById('dateDisplay').textContent;
-                const reportId = `${currentFlightData.flightNo}_${date}`;
-                await db.collection('FlightReports').doc(reportId).set({
-                    flightNo: currentFlightData.flightNo, 
-                    date, 
-                    shift: currentFlightData.shift,
-                    airline: currentFlightData.airline, 
-                    std: currentFlightData.std || document.getElementById('stdInput').value || '',
-                    firstPax: currentFlightData.firstPax || '', 
-                    lastPax: currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '',
-                    totalPax: currentFlightData.passengers.length, 
-                    isClosed: currentFlightData.isClosed || false,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-                console.log('Flight data auto-saved');
-            } catch (error) { 
-                console.error('Error saving flight data:', error); 
-                throw error;
+                // Save flight data to Firebase first
+                await saveFlightDataToFirebase();
+                
+                // Then mark as closed
+                currentFlightData.isClosed = true;
+                
+                // Save again with closed status
+                await saveFlightDataToFirebase();
+                
+                // Update UI
+                document.getElementById('flightStatus').textContent = 'CLOSED';
+                document.getElementById('flightStatus').className = 'flight-status status-closed';
+                document.getElementById('closeFlightBtn').style.display = 'none';
+                document.getElementById('reopenFlightBtn').style.display = 'block';
+                document.getElementById('printReportBtn').disabled = false;
+                
+                alert('Flight closed and data saved to Firebase.');
+            } catch (error) {
+                alert('Error saving to Firebase: ' + error.message);
+                console.error('Close flight error:', error);
             }
         }
 
         async function reopenFlight() {
             if (!currentFlightData || !confirm('Reopen flight?')) return;
-            currentFlightData.isClosed = false;
-            document.getElementById('flightStatus').textContent = 'OPEN';
-            document.getElementById('flightStatus').className = 'flight-status status-open';
-            document.getElementById('closeFlightBtn').style.display = 'block';
-            document.getElementById('reopenFlightBtn').style.display = 'none';
-            document.getElementById('printReportBtn').disabled = true;
-            validateCloseButton(); // re-evaluate close button state
             
-            // Update Firebase with reopened status
-            await saveFlightDataToFirebase();
-            alert('Flight reopened');
+            try {
+                currentFlightData.isClosed = false;
+                
+                // Update Firebase with reopened status
+                await saveFlightDataToFirebase();
+                
+                // Update UI
+                document.getElementById('flightStatus').textContent = 'OPEN';
+                document.getElementById('flightStatus').className = 'flight-status status-open';
+                document.getElementById('closeFlightBtn').style.display = 'block';
+                document.getElementById('reopenFlightBtn').style.display = 'none';
+                document.getElementById('printReportBtn').disabled = true;
+                validateCloseButton(); // re-evaluate close button state
+                
+                alert('Flight reopened and data saved.');
+            } catch (error) {
+                alert('Error saving to Firebase: ' + error.message);
+                console.error('Reopen flight error:', error);
+            }
         }
 
-        // Print function (unchanged, but uses companyInfo from Co.js, logo left in print)
+        // Print function with logo on left
         function printReport() {
-            if (!currentFlightData || !currentFlightData.isClosed) { alert('Flight must be closed'); return; }
+            if (!currentFlightData || !currentFlightData.isClosed) { 
+                alert('Flight must be closed'); 
+                return; 
+            }
 
             const company = window.companyInfo || { name: 'Airline Name', address: '123 Aviation Road', phone: '+123 456 7890' };
             
@@ -1133,12 +1210,23 @@
         });
 
         // global functions
-        window.loadDates = loadDates; window.onDateSelected = onDateSelected; window.onFlightSelected = onFlightSelected;
-        window.updateSTD = updateSTD; window.updateLastPax = updateLastPax; window.closeFlight = closeFlight;
-        window.reopenFlight = reopenFlight; window.printReport = printReport;
-        window.fetchOpenShift = fetchOpenShift; window.startEdit = startEdit; window.cancelEdit = cancelEdit;
-        window.savePassenger = savePassenger; window.confirmDelete = confirmDelete; window.onSeatChange = onSeatChange;
-        window.onPaxChange = onPaxChange; window.updatePaxFromSeat = updatePaxFromSeat; window.validateCloseButton = validateCloseButton;
+        window.loadDates = loadDates; 
+        window.onDateSelected = onDateSelected; 
+        window.onFlightSelected = onFlightSelected;
+        window.updateSTD = updateSTD; 
+        window.updateLastPax = updateLastPax; 
+        window.closeFlight = closeFlight;
+        window.reopenFlight = reopenFlight; 
+        window.printReport = printReport;
+        window.fetchOpenShift = fetchOpenShift; 
+        window.startEdit = startEdit; 
+        window.cancelEdit = cancelEdit;
+        window.savePassenger = savePassenger; 
+        window.confirmDelete = confirmDelete; 
+        window.onSeatChange = onSeatChange;
+        window.onPaxChange = onPaxChange; 
+        window.updatePaxFromSeat = updatePaxFromSeat; 
+        window.validateCloseButton = validateCloseButton;
     </script>
 </body>
 </html>
