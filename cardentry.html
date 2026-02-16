@@ -1025,14 +1025,6 @@ function calculatePaxFromSeat(seatNo, flightNo = '') {
     console.log('Calculating PAX from seat:', cleanSeat);
     
     // Count all alphabetical letters (A-Z) in the string
-    // This handles formats like:
-    // "1A" -> 1 letter -> 1 PAX
-    // "1AB" -> 2 letters -> 2 PAX
-    // "1AB/2A" -> 3 letters (A,B,A) -> 3 PAX
-    // "1AB3BC" -> 4 letters (A,B,B,C) -> 4 PAX
-    // "12A/34B/56C" -> 3 letters -> 3 PAX
-    // "1A,2B,3C" -> 3 letters -> 3 PAX
-    
     const letters = cleanSeat.match(/[A-Z]/g);
     const letterCount = letters ? letters.length : 0;
     
@@ -1112,9 +1104,7 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
     }
 }
 
-// ========== INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE - CHANGED TO SINGLE CLICK ==========
-
-// ========== INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE - FIXED ==========
+// ========== FIXED INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE ==========
 
 function makeEditable(cell, entryId, field, isSaved = false) {
     // Don't allow editing if already editing another cell
@@ -1162,7 +1152,7 @@ function makeEditable(cell, entryId, field, isSaved = false) {
         }
     });
     
-    // Use mousedown instead of blur to prevent conflicts
+    // Use blur with timeout to prevent conflicts
     input.addEventListener('blur', function(e) {
         // Small timeout to allow click on other elements
         setTimeout(() => {
@@ -1392,14 +1382,6 @@ function cancelEditing() {
     }
 }
 
-function cancelEditing() {
-    if (editingCell) {
-        const { cell, originalValue } = editingCell;
-        cell.textContent = originalValue || '—';
-        editingCell = null;
-    }
-}
-
 // ========== HIDDEN CODE SAVING ==========
 
 async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
@@ -1451,7 +1433,7 @@ async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
     }
 }
 
-// ========== GUEST MODE FUNCTIONS - MODIFIED TO SET PAX TO 2 AND FOCUS INPUT ==========
+// ========== GUEST MODE FUNCTIONS - MODIFIED TO SET PAX TO 1 AND FOCUS INPUT ==========
 
 function toggleGuestMode(passengerId, checked) {
     const guestIndicator = document.getElementById('guestModeIndicator');
@@ -1552,7 +1534,6 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         
         pendingPasses.push(guestEntry);
         
-        // ✅ FIXED: Main passenger's PAX should stay the same
         // DO NOT modify the main passenger's PAX
         
         savePendingToLocalStorage();
@@ -1872,7 +1853,7 @@ async function approveEntry(id) {
         const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
         
-        // Skip PAX validation for guests (they should have PAX 2)
+        // Skip PAX validation for guests (they should have PAX 1)
         if (!entry.isGuest) {
             // If there's a seat (not null/'-') and PAX doesn't match, offer to update
             if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && calculatedPax > 0 && currentPax !== calculatedPax) {
@@ -2152,7 +2133,6 @@ function renderPendingTable() {
         guestCell.appendChild(checkbox);
         
         // Create editable cells - with serial number
-        
         const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', false);
         const flightCell = createEditableCell(entry.flightNo || '—', entry.id, 'flightNo', false);
         const seatCell = createEditableCell(entry.seatNo || '—', entry.id, 'seatNo', false);
@@ -2216,7 +2196,6 @@ function renderPendingTable() {
         guestCell.style.color = '#6b8e23';
         
         // Create editable cells for guest - with serial number
-       
         const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', false);
         const flightCell = createEditableCell(entry.flightNo || '—', entry.id, 'flightNo', false);
         const seatCell = createEditableCell(entry.seatNo || '—', entry.id, 'seatNo', false);
@@ -2246,7 +2225,6 @@ function renderPendingTable() {
         `;
         
         row.appendChild(guestCell);
-
         row.appendChild(nameCell);
         row.appendChild(flightCell);
         row.appendChild(seatCell);
@@ -2305,7 +2283,6 @@ function renderSavedTable() {
         }
         
         // Create editable cells for saved entries - with serial number
-        
         const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', true);
         const flightCell = createEditableCell(entry.flightNo || '—', entry.id, 'flightNo', true);
         const seatCell = createEditableCell(entry.seatNo || '—', entry.id, 'seatNo', true);
@@ -2340,7 +2317,6 @@ function renderSavedTable() {
                 <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)">DEL</button>
             `;
         }
-        
         
         row.appendChild(nameCell);
         row.appendChild(flightCell);
@@ -2522,7 +2498,6 @@ function parseAndAddToList() {
             const paxCount = calculatePaxFromSeat(seatNo, flightNoPart);
             
             parsedEntry = {
-               
                 pName: namePart || '',
                 flightNo: flightNoPart || '',
                 seatNo: seatNo || '',
@@ -2774,7 +2749,6 @@ function parseAndAddToList() {
             }
             
             parsedEntry = {
-                
                 pName: namePart || '',
                 flightNo: flightNoPart || '',
                 seatNo: seatNo || '',
