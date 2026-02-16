@@ -786,6 +786,7 @@
 
 <script>
 // ========== GLOBAL VARIABLES ==========
+// ========== GLOBAL VARIABLES ==========
 let pendingPasses = [];
 let savedPasses = [];
 let editingCell = null; // Track currently editing cell
@@ -920,9 +921,9 @@ function calculatePaxFromSeat(seatNo, flightNo = '') {
     return letterCount;
 }
 
-// ========== MODIFIED CHECK PASSENGER EXISTS - IGNORE NULL/'-' SEATS ==========
+// ========== MODIFIED CHECK PASSENGER EXISTS - ALLOW GUESTS WITH SAME SEAT/NAME ==========
 
-async function checkPassengerExists(flightNo, date, seatNo, pName) {
+async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = false) {
     try {
         if (typeof db === 'undefined') {
             console.error('db not initialized');
@@ -969,6 +970,11 @@ async function checkPassengerExists(flightNo, date, seatNo, pName) {
         });
         
         if (matches.length > 0) {
+            // If this is a guest entry, we don't care about duplicates - allow saving
+            if (isGuest) {
+                console.log('⚠️ Guest entry with potential duplicate found, but allowing save');
+                return { exists: false, matches: [], isGuest: true }; // Return false to allow save
+            }
             return { exists: true, matches };
         }
         
@@ -977,6 +983,89 @@ async function checkPassengerExists(flightNo, date, seatNo, pName) {
     } catch (error) {
         console.error('Error checking passenger existence:', error);
         return { exists: false, matches: [], error: error.message };
+    }
+}
+
+// ========== MODIFIED BACKGROUND SAVE TO FIREBASE - ALLOW GUEST DUPLICATES ==========
+
+async function backgroundSaveToFirebase(entry) {
+    try {
+        console.log('Starting background save for entry:', entry.id);
+        
+        if (entry.firebaseSaved || entry.firebaseStatus === 'success') {
+            return { success: true, skipped: true };
+        }
+        
+        // Check for duplicates - pass isGuest flag to allow guests with same seat/name
+        const checkResult = await checkPassengerExists(
+            entry.flightNo,
+            entry.date,
+            entry.seatNo || '',
+            entry.pName || '',
+            entry.isGuest || false // Pass isGuest flag
+        );
+        
+        if (checkResult.exists) {
+            console.warn('⚠️ Duplicate passenger found (non-guest)');
+            showTemporaryNotification(`⚠️ Duplicate passenger detected`, 'warning');
+            
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses[savedIndex].firebaseStatus = 'duplicate';
+                savedPasses[savedIndex].firebaseError = 'Duplicate entry exists';
+                saveSavedToLocalStorage();
+                renderTables();
+            }
+            
+            return { success: false, duplicate: true };
+        }
+        
+        if (parseInt(entry.pax) === 0) {
+            console.log('⚠️ Saving entry with PAX = 0');
+        }
+        
+        const saveResult = await saveEntryToFirebase(entry);
+        
+        if (saveResult.success) {
+            console.log('✅ Background save successful');
+            
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses.splice(savedIndex, 1);
+                saveSavedToLocalStorage();
+                renderTables();
+            }
+            
+            showTemporaryNotification(`✅ Entry saved to Firebase`, 'success');
+            
+        } else {
+            console.error('❌ Background save failed:', saveResult.error);
+            
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses[savedIndex].firebaseError = saveResult.error;
+                savedPasses[savedIndex].firebaseStatus = 'error';
+                savedPasses[savedIndex].firebaseRetry = true;
+                saveSavedToLocalStorage();
+                renderTables();
+            }
+            
+            showTemporaryNotification(`❌ Firebase save failed`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Background save error:', error);
+        
+        const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+        if (savedIndex !== -1) {
+            savedPasses[savedIndex].firebaseError = error.message;
+            savedPasses[savedIndex].firebaseStatus = 'error';
+            savedPasses[savedIndex].firebaseRetry = true;
+            saveSavedToLocalStorage();
+            renderTables();
+        }
+        
+        showTemporaryNotification(`❌ Firebase save error`, 'error');
     }
 }
 
@@ -1596,16 +1685,17 @@ async function backgroundSaveToFirebase(entry) {
             return { success: true, skipped: true };
         }
         
-        // Check for duplicates - will ignore null/'-' seats
+        // Check for duplicates - pass isGuest flag to allow guests with same seat/name
         const checkResult = await checkPassengerExists(
             entry.flightNo,
             entry.date,
             entry.seatNo || '',
-            entry.pName || ''
+            entry.pName || '',
+            entry.isGuest || false // Pass isGuest flag
         );
         
         if (checkResult.exists) {
-            console.warn('⚠️ Duplicate passenger found');
+            console.warn('⚠️ Duplicate passenger found (non-guest)');
             showTemporaryNotification(`⚠️ Duplicate passenger detected`, 'warning');
             
             const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
@@ -2459,6 +2549,10 @@ function parseAndAddToList() {
                             shouldProcess = true;
                         }
                         else if (flightNoPrefix === 'OS' && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'SU' && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
