@@ -1114,6 +1114,8 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
 
 // ========== INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE - CHANGED TO SINGLE CLICK ==========
 
+// ========== INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE - FIXED ==========
+
 function makeEditable(cell, entryId, field, isSaved = false) {
     // Don't allow editing if already editing another cell
     if (editingCell && editingCell.cell !== cell) {
@@ -1152,6 +1154,7 @@ function makeEditable(cell, entryId, field, isSaved = false) {
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
+            e.stopPropagation(); // Prevent event bubbling
             saveInlineEdit(this);
         } else if (e.key === 'Escape') {
             e.preventDefault();
@@ -1159,10 +1162,12 @@ function makeEditable(cell, entryId, field, isSaved = false) {
         }
     });
     
-    input.addEventListener('blur', function() {
+    // Use mousedown instead of blur to prevent conflicts
+    input.addEventListener('blur', function(e) {
         // Small timeout to allow click on other elements
         setTimeout(() => {
-            if (editingCell && editingCell.input === this) {
+            // Check if we're still in editing mode and this input is still the active one
+            if (editingCell && editingCell.input === this && document.activeElement !== this) {
                 saveInlineEdit(this);
             }
         }, 200);
@@ -1178,11 +1183,11 @@ function makeEditable(cell, entryId, field, isSaved = false) {
             if (row) {
                 // Find the PAX cell index based on table structure
                 const isPendingWithGuest = row.querySelector('.guest-checkbox') !== null;
-                const paxCellIndex = isPendingWithGuest ? 8 : 7; // Adjusted for serial number
+                const paxCellIndex = isPendingWithGuest ? 8 : 7;
                 const paxCell = row.cells[paxCellIndex];
                 
                 // Find flight number to check if SQ
-                const flightCellIndex = isPendingWithGuest ? 3 : 2; // Flight cell index (after serial)
+                const flightCellIndex = isPendingWithGuest ? 3 : 2;
                 const flightCell = row.cells[flightCellIndex];
                 const flightNo = flightCell?.textContent?.trim() || '';
                 
@@ -1245,7 +1250,9 @@ function makeEditable(cell, entryId, field, isSaved = false) {
 }
 
 function saveInlineEdit(input) {
-    if (!editingCell || editingCell.input !== input) return;
+    if (!editingCell || editingCell.input !== input) {
+        return;
+    }
     
     const newValue = input.value.trim().toUpperCase();
     const entryId = editingCell.entryId;
@@ -1278,7 +1285,7 @@ function saveInlineEdit(input) {
         // Calculate PAX based on seat AND flight number
         const calculatedPax = calculatePaxFromSeat(newValue, entry.flightNo);
         
-        // Auto-update PAX based on seat (but NOT for guests - guest PAX is always 2)
+        // Auto-update PAX based on seat (but NOT for guests - guest PAX is always 1)
         if (!entry.isGuest) {
             if (newValue === '' || newValue === '-') {
                 entry.pax = calculatedPax.toString();
@@ -1293,8 +1300,8 @@ function saveInlineEdit(input) {
                 }
             }
         } else {
-            // For guests, PAX stays at 2 regardless of seat
-            showTemporaryNotification(`✓ Guest seat updated (PAX remains 2)`, 'info');
+            // For guests, PAX stays at 1 regardless of seat
+            showTemporaryNotification(`✓ Guest seat updated (PAX remains 1)`, 'info');
         }
     }
     else if (field === 'flightNo') {
@@ -1318,10 +1325,10 @@ function saveInlineEdit(input) {
     else if (field === 'pax') {
         const paxNum = parseInt(newValue) || 0;
         
-        // For guests, warn if trying to change PAX from 2
+        // For guests, warn if trying to change PAX from 1
         if (entry.isGuest) {
             if (paxNum !== 1) {
-                alert('Guest entries must have PAX = 2. Setting back to 2.');
+                alert('Guest entries must have PAX = 1. Setting back to 1.');
                 entry.pax = '1';
             } else {
                 entry.pax = '1';
@@ -1364,13 +1371,25 @@ function saveInlineEdit(input) {
         savePendingToLocalStorage();
     }
     
+    // Update the cell content BEFORE clearing editing state
+    const cell = editingCell.cell;
+    cell.textContent = entry[field] || '—';
+    
     // Clear editing state
     editingCell = null;
     
-    // Refresh tables
+    // Refresh tables to ensure everything is consistent
     renderTables();
     
     showTemporaryNotification(`✓ ${field} updated`, 'success');
+}
+
+function cancelEditing() {
+    if (editingCell) {
+        const { cell, originalValue } = editingCell;
+        cell.textContent = originalValue || '—';
+        editingCell = null;
+    }
 }
 
 function cancelEditing() {
@@ -2855,4 +2874,4 @@ window.saveInlineEdit = saveInlineEdit;
 window.saveHiddenCodeToCardDB = saveHiddenCodeToCardDB;
 </script>
 </body>
-</html>
+</html>  
