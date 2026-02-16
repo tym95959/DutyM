@@ -1,0 +1,3299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boarding Pass Parser</title>
+    <!-- Firebase SDK (must come first) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- Your combined firebase config file - THIS ALREADY HAS BOTH CONFIGS -->
+    <script src="fireshift.js"></script>
+    
+    <!-- Your iata.js file -->
+    <script src="iata.js"></script>
+    
+   <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(120deg, #faf3e0, #fff5e6);
+            min-height: 100vh;
+            padding: 80px 30px 30px 30px;
+            position: relative;
+        }
+        
+        /* Floating Action Buttons - MOVED TO TOP */
+        .fab-container {
+            position: fixed;
+            top: 15px;
+            right: 30px;
+            z-index: 1000;
+            display: flex;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px 15px;
+            border-radius: 50px;
+            box-shadow: 0 4px 20px rgba(230, 184, 0, 0.3);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .fab-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #e6b800, #d4a900);
+            border: 2px solid white;
+            box-shadow: 0 2px 8px rgba(230, 184, 0, 0.4);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            color: white;
+            font-size: 18px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .fab-button::before {
+            content: attr(data-tooltip);
+            position: absolute;
+            top: 50px;
+            background: linear-gradient(135deg, #8b6913, #5e4a1a);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        .fab-button:hover::before {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .fab-button:hover {
+            transform: scale(1.15) rotate(5deg);
+            background: linear-gradient(135deg, #f5c400, #e0b300);
+            box-shadow: 0 8px 25px rgba(230, 184, 0, 0.6);
+        }
+        
+        .fab-button:active {
+            transform: scale(0.95);
+        }
+        
+        /* Different colors for each button */
+        .fab-button[data-tooltip="Report"] {
+            background: linear-gradient(135deg, #6b8e23, #556b2f);
+        }
+        
+        .fab-button[data-tooltip="Logout"] {
+            background: linear-gradient(135deg, #c68b5e, #a67244);
+        }
+        
+        .fab-button[data-tooltip="Dashboard"] {
+            background: linear-gradient(135deg, #4682b4, #31698e);
+        }
+        
+        .fab-button[data-tooltip="Payment"] {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+        }
+        
+        .fab-button[data-tooltip="Shift End"] {
+            background: linear-gradient(135deg, #e67e22, #d35400);
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 5px 20px rgba(230, 184, 0, 0.15);
+            border: 1px solid rgba(230, 184, 0, 0.2);
+            overflow: hidden;
+            backdrop-filter: blur(5px);
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background: linear-gradient(90deg, #fff9e6, #ffffff);
+            border-bottom: 2px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .header h2 {
+            color: #8b6913;
+            font-size: 26px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-shadow: 2px 2px 4px rgba(230, 184, 0, 0.1);
+        }
+        
+        .user-info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background: linear-gradient(135deg, #fff2d7, #fff9e6);
+            padding: 8px 20px;
+            border-radius: 40px;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+            margin-right: 15px;
+        }
+        
+        .user-details {
+            display: flex;
+            gap: 15px;
+            color: #5e4a1a;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .user-name {
+            color: #6b8e23;
+            padding-left: 22px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%236b8e23" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>') left center no-repeat;
+            background-size: 16px;
+        }
+        
+        .user-rcno {
+            color: #8b6913;
+            padding-left: 22px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%238b6913" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>') left center no-repeat;
+            background-size: 16px;
+        }
+        
+        .user-level {
+            color: #e67e22;
+            padding-left: 22px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%23e67e22" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>') left center no-repeat;
+            background-size: 16px;
+        }
+        
+        .shift-info {
+            display: flex;
+            gap: 25px;
+            align-items: center;
+            background: linear-gradient(135deg, #fff2d7, #fff9e6);
+            padding: 10px 25px;
+            border-radius: 40px;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+            box-shadow: 0 2px 8px rgba(230, 184, 0, 0.1);
+        }
+        
+        .shift-info div {
+            color: #5e4a1a;
+            font-size: 15px;
+            font-weight: 500;
+        }
+        
+        .shift-info .date {
+            color: #8b6913;
+            padding-left: 25px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%238b6913" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>') left center no-repeat;
+            background-size: 16px;
+        }
+        
+        .shift-info .shift {
+            color: #6b8e23;
+            padding-left: 25px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%236b8e23" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>') left center no-repeat;
+            background-size: 16px;
+        }
+        
+        .status-badge {
+            background-color: #6b8e23;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .refresh-btn {
+            background: #f0f0f0;
+            border: 1px solid #e6b800;
+            color: #8b6913;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .refresh-btn:hover {
+            background: #e6b800;
+            color: white;
+            transform: rotate(180deg);
+        }
+        
+        .main-content {
+            padding: 30px 40px;
+        }
+        
+        .filter-section {
+            margin-bottom: 25px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .filter-section input {
+            flex: 4;
+            padding: 14px 20px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 50px;
+            font-size: 15px;
+            text-transform: uppercase;
+            background: white;
+            transition: all 0.3s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+        
+        .filter-section input:focus {
+            outline: none;
+            border-color: #e6b800;
+            box-shadow: 0 5px 15px rgba(230, 184, 0, 0.1);
+        }
+        
+        .guest-mode-indicator {
+            flex: 1;
+            background: linear-gradient(135deg, #6b8e23, #556b2f);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            white-space: nowrap;
+            animation: pulse 2s infinite;
+        }
+        
+        .guest-mode-indicator.visible {
+            display: flex;
+        }
+        
+        .guest-mode-indicator i {
+            font-size: 16px;
+        }
+        
+        .cancel-guest-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 10px;
+            transition: all 0.3s;
+        }
+        
+        .cancel-guest-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { opacity: 1; }
+        }
+        
+        .toggle-current-btn {
+            background: linear-gradient(135deg, #e6b800, #d4a900);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            white-space: nowrap;
+            box-shadow: 0 4px 10px rgba(230, 184, 0, 0.2);
+        }
+        
+        .toggle-current-btn:hover {
+            background: linear-gradient(135deg, #d4a900, #c29800);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(230, 184, 0, 0.3);
+        }
+        
+        .dummy-entry-btn {
+            background: linear-gradient(135deg, #6b8e23, #556b2f);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            white-space: nowrap;
+            box-shadow: 0 4px 10px rgba(107, 142, 35, 0.2);
+        }
+        
+        .dummy-entry-btn:hover {
+            background: linear-gradient(135deg, #556b2f, #445d25);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(107, 142, 35, 0.3);
+        }
+        
+        .status-message {
+            color: #6b8e23;
+            font-size: 14px;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+        
+        .current-entry-section {
+            background: linear-gradient(145deg, #fff9e6, #fff2d7);
+            border: 2px solid #e6b800;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            display: none;
+            box-shadow: 0 10px 25px rgba(230, 184, 0, 0.1);
+        }
+        
+        .current-entry-section.visible {
+            display: block;
+            animation: fadeIn 0.4s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .current-entry-section h3 {
+            color: #8b6913;
+            margin-bottom: 20px;
+            font-size: 20px;
+            font-weight: 600;
+            text-align: center;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .entry-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .current-entry-section input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 12px;
+            font-size: 14px;
+            text-transform: uppercase;
+            background: white;
+            transition: all 0.3s;
+        }
+        
+        .current-entry-section input:focus {
+            outline: none;
+            border-color: #e6b800;
+            box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.1);
+        }
+        
+        .current-entry-section input[readonly] {
+            background-color: #f5f5f5;
+            cursor: not-allowed;
+        }
+        
+        .entry-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        
+        .save-btn {
+            background: linear-gradient(135deg, #6b8e23, #556b2f);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .save-btn:hover {
+            background: linear-gradient(135deg, #556b2f, #445d25);
+            transform: translateY(-2px);
+        }
+        
+        .cancel-btn {
+            background: linear-gradient(135deg, #c68b5e, #a67244);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .cancel-btn:hover {
+            background: linear-gradient(135deg, #a67244, #8b5a3c);
+            transform: translateY(-2px);
+        }
+        
+        #hiddenCode {
+            display: none;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            border-bottom: 2px solid rgba(230, 184, 0, 0.2);
+            padding-bottom: 10px;
+        }
+        
+        .tab {
+            padding: 12px 30px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #8b6913;
+            border-radius: 8px;
+            transition: all 0.3s;
+            position: relative;
+        }
+        
+        .tab:hover {
+            background: rgba(230, 184, 0, 0.1);
+        }
+        
+        .tab.active {
+            background: linear-gradient(135deg, #e6b800, #d4a900);
+            color: white;
+            box-shadow: 0 4px 12px rgba(230, 184, 0, 0.3);
+        }
+        
+        .tab-badge {
+            background: rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 30px;
+            padding: 2px 8px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+            animation: slideIn 0.4s ease;
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .tab-content h3 {
+            color: #8b6913;
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: 600;
+            padding-left: 15px;
+            border-left: 4px solid #e6b800;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 450px;
+            border-radius: 16px;
+            background: white;
+            box-shadow: 0 2px 20px rgba(230, 184, 0, 0.15);
+            border: 1px solid rgba(230, 184, 0, 0.2);
+            width: 100%;
+        }
+        
+        .table-container::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+        
+        .table-container::-webkit-scrollbar-track {
+            background: #faf3e0;
+            border-radius: 10px;
+        }
+        
+        .table-container::-webkit-scrollbar-thumb {
+            background: #e6b800;
+            border-radius: 10px;
+            border: 3px solid #faf3e0;
+        }
+        
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: #d4a900;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 100%;
+            table-layout: fixed;
+        }
+        
+        th {
+            background: linear-gradient(135deg, #faf3e0, #fff5e6);
+            color: #8b6913;
+            padding: 15px 4px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            border-bottom: 2px solid #e6b800;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        td {
+            padding: 8px 4px;
+            border-bottom: 1px solid rgba(230, 184, 0, 0.1);
+            color: #5e4a1a;
+            font-size: 12px;
+            transition: background-color 0.2s;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        /* Hide date and shift columns */
+        th:nth-child(11), td:nth-child(11),
+        th:nth-child(12), td:nth-child(12) {
+            display: none;
+        }
+        
+        /* Hide time column */
+        th:nth-child(13), td:nth-child(13) {
+            display: none;
+        }
+        
+        tr:hover td {
+            background: rgba(230, 184, 0, 0.05);
+        }
+        
+        .editable-cell {
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .editable-cell:hover {
+            background-color: rgba(230, 184, 0, 0.1);
+        }
+        
+        .editable-cell:hover::after {
+            content: '✎';
+            position: absolute;
+            right: 2px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #e6b800;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+        
+        .editable-input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 2px solid #e6b800;
+            border-radius: 4px;
+            font-size: 12px;
+            text-transform: uppercase;
+            background: white;
+            box-shadow: 0 2px 8px rgba(230, 184, 0, 0.2);
+        }
+        
+        .editable-input:focus {
+            outline: none;
+            border-color: #d4a900;
+            box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.2);
+        }
+        
+        .saved-row {
+            background: rgba(230, 184, 0, 0.02);
+        }
+        
+        .guest-row {
+            background: rgba(107, 142, 35, 0.05);
+            border-left: 3px solid #6b8e23;
+        }
+        
+        .guest-checkbox {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #6b8e23;
+            margin: 0 auto;
+            display: block;
+        }
+        
+        .guest-checkbox:checked {
+            transform: scale(1.1);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            flex-wrap: nowrap;
+        }
+        
+        .delete-btn, .approve-btn {
+            padding: 6px 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            min-width: 45px;
+        }
+        
+        .delete-btn {
+            background: #fff1f0;
+            color: #c68b5e;
+            border-color: #c68b5e;
+            order: 2;
+        }
+        
+        .delete-btn:hover {
+            background: #c68b5e;
+            color: white;
+            transform: scale(1.05);
+        }
+        
+        .approve-btn {
+            background: #f0f7e6;
+            color: #6b8e23;
+            border-color: #6b8e23;
+            order: 1;
+        }
+        
+        .approve-btn:hover {
+            background: #6b8e23;
+            color: white;
+            transform: scale(1.05);
+        }
+        
+        .pax-warning {
+            color: #c68b5e;
+            font-size: 10px;
+            margin-top: 2px;
+            font-style: italic;
+        }
+        
+        .fqtv-field-warning {
+            color: #c68b5e;
+            font-style: italic;
+            font-weight: 600;
+        }
+        
+        .guest-indicator {
+            color: #6b8e23;
+            font-style: italic;
+            font-size: 12px;
+        }
+        
+        .loading {
+            color: #e6b800;
+            font-style: italic;
+        }
+        
+        .error {
+            color: #c68b5e;
+            font-style: italic;
+        }
+        
+        ::placeholder {
+            color: #c9a65c;
+            opacity: 0.6;
+        }
+        
+        .save-hint {
+            font-size: 11px;
+            color: #8b6913;
+            text-align: center;
+            margin-top: 4px;
+            opacity: 0.7;
+        }
+        
+        .serial-number {
+            font-weight: 600;
+            color: #8b6913;
+        }
+        
+        /* Compact table styles */
+        .small-table td {
+            padding: 8px 4px;
+            font-size: 12px;
+            line-height: 1.3;
+        }
+        
+        .small-table th {
+            padding: 12px 4px;
+            font-size: 12px;
+        }
+        
+        .small-table .action-buttons {
+            gap: 6px;
+        }
+        
+        .small-table .delete-btn, 
+        .small-table .approve-btn {
+            padding: 6px 10px;
+            font-size: 12px;
+            min-width: 45px;
+        }
+        
+        .small-table .guest-checkbox {
+            width: 18px;
+            height: 18px;
+        }
+        
+        /* Print styles (kept for potential future use) */
+        @media print {
+            body {
+                padding: 0;
+                background: white;
+            }
+            
+            .fab-container,
+            .filter-section,
+            .tabs,
+            .save-hint,
+            .current-entry-section,
+            .delete-btn,
+            .approve-btn,
+            .action-buttons button {
+                display: none !important;
+            }
+            
+            .container {
+                max-width: 100%;
+                box-shadow: none;
+                border: none;
+                backdrop-filter: none;
+                background: white;
+            }
+            
+            .main-content {
+                padding: 0;
+            }
+            
+            .tab-content {
+                display: block !important;
+            }
+            
+            #pendingTab, #savedTab {
+                display: block !important;
+            }
+            
+            .table-container {
+                max-height: none;
+                overflow: visible;
+                box-shadow: none;
+                border: 1px solid #ccc;
+            }
+            
+            table {
+                page-break-inside: auto;
+            }
+            
+            tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+            
+            thead {
+                display: table-header-group;
+            }
+            
+            tfoot {
+                display: table-footer-group;
+            }
+            
+            th {
+                background: #f5f5f5 !important;
+                color: black !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            td {
+                border-bottom: 1px solid #ddd;
+            }
+            
+            .print-header {
+                display: block !important;
+                text-align: center;
+                margin-bottom: 20px;
+                font-size: 14px;
+            }
+            
+            .print-header h1 {
+                font-size: 18px;
+                margin: 5px 0;
+            }
+            
+            .print-header .print-date {
+                color: #333;
+                font-size: 12px;
+            }
+        }
+        
+        .print-header {
+            display: none;
+        }
+        
+        /* Optimized column widths - WITHOUT TIME COLUMN */
+        
+        /* Guest checkbox column */
+        th:first-child, td:first-child {
+            min-width: 45px;
+            max-width: 45px;
+            width: 45px;
+            text-align: center;
+        }
+        
+        /* Name column */
+        th:nth-child(2), td:nth-child(2) {
+            min-width: 150px;
+            max-width: 150px;
+            width: 150px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        /* Flight No column */
+        th:nth-child(3), td:nth-child(3) {
+            min-width: 70px;
+            max-width: 70px;
+            width: 70px;
+            font-size: 12px;
+        }
+        
+        /* Seat No column */
+        th:nth-child(4), td:nth-child(4) {
+            min-width: 60px;
+            max-width: 60px;
+            width: 60px;
+            text-align: center;
+            font-size: 12px;
+        }
+        
+        /* Class column */
+        th:nth-child(5), td:nth-child(5) {
+            min-width: 40px;
+            max-width: 40px;
+            width: 40px;
+            text-align: center;
+            font-size: 12px;
+        }
+        
+        /* Airline column */
+        th:nth-child(6), td:nth-child(6) {
+            min-width: 100px;
+            max-width: 100px;
+            width: 100px;
+            font-size: 12px;
+        }
+        
+        /* FQTV column */
+        th:nth-child(7), td:nth-child(7) {
+            min-width: 100px;
+            max-width: 100px;
+            width: 100px;
+            font-size: 12px;
+        }
+        
+        /* PAX column */
+        th:nth-child(8), td:nth-child(8) {
+            min-width: 45px;
+            max-width: 45px;
+            width: 45px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        /* Serial No column */
+        th:nth-child(9), td:nth-child(9) {
+            min-width: 80px;
+            max-width: 80px;
+            width: 80px;
+            font-size: 12px;
+            text-align: center;
+        }
+        
+        /* Remarks column */
+        th:nth-child(10), td:nth-child(10) {
+            min-width: 90px;
+            max-width: 90px;
+            width: 90px;
+            font-size: 12px;
+        }
+        
+        /* Actions column (now the last column since time is removed) */
+        th:last-child, td:last-child {
+            min-width: 120px;
+            max-width: 120px;
+            width: 120px;
+            white-space: nowrap;
+            text-align: center;
+        }
+        
+        .pax-preview {
+            font-size: 10px;
+            color: #e6b800;
+            margin-left: 5px;
+            font-weight: bold;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-5px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .editable-cell[data-preview] {
+            background-color: #fff3cd !important;
+            transition: background-color 0.3s ease;
+        }
+    </style>
+    <!-- Font Awesome for icons (optional but makes buttons nicer) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- Floating Action Buttons - MOVED TO TOP (Print button removed) -->
+    <div class="fab-container">
+        <button class="fab-button" data-tooltip="Report" onclick="window.location.href='report.html'">
+            <i class="fas fa-chart-bar"></i>
+        </button>
+        <button class="fab-button" data-tooltip="Logout" onclick="logout()">
+            <i class="fas fa-sign-out-alt"></i>
+        </button>
+        <button class="fab-button" data-tooltip="Dashboard" onclick="window.location.href='dashboard.html'">
+            <i class="fas fa-tachometer-alt"></i>
+        </button>
+        <button class="fab-button" data-tooltip="Payment" onclick="window.location.href='pay.html'">
+            <i class="fas fa-credit-card"></i>
+        </button>
+        <button class="fab-button" data-tooltip="Shift End" onclick="window.location.href='shiftend.html'">
+            <i class="fas fa-clock"></i>
+        </button>
+    </div>
+
+    <div class="container">
+        <!-- Header with user information and shift information -->
+        <div class="header">
+            <h2>BOARDING PASS PARSER</h2>
+            <div style="display: flex; align-items: center;">
+                <!-- User info section from local storage -->
+                <div class="user-info" id="userInfo">
+                    <div class="user-details">
+                        <div class="user-name" id="userNameDisplay">Loading...</div>
+                        <div class="user-rcno" id="userRcnoDisplay">Loading...</div>
+                        <div class="user-level" id="userLevelDisplay">Loading...</div>
+                    </div>
+                </div>
+                <div class="shift-info" id="shiftInfo">
+                    <div class="date">DATE: <span id="currentDate">Loading...</span></div>
+                    <div class="shift">SHIFT: <span id="currentShift">Loading...</span> <span id="shiftStatus" class="status-badge"></span></div>
+                    <button id="refreshShiftBtn" class="refresh-btn">↻</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Input section with Guest mode indicator and Dummy Entry button -->
+            <div class="filter-section">
+                <input type="text" id="code" placeholder="ENTER CODE OR READ BARCODE (AUTO-ADDS TO LIST)">
+                
+                <!-- Guest mode indicator -->
+                <div id="guestModeIndicator" class="guest-mode-indicator">
+                    <i class="fas fa-user-plus"></i>
+                    <span id="guestModeText">GUEST MODE ACTIVE</span>
+                    <button id="cancelGuestModeBtn" class="cancel-guest-btn">CANCEL</button>
+                </div>
+                
+                <button id="toggleCurrentBtn" class="toggle-current-btn">SHOW CURRENT ENTRY</button>
+                <button id="dummyEntryBtn" class="dummy-entry-btn">➕ DUMMY ENTRY</button>
+                <span id="statusMessage" class="status-message"></span>
+            </div>
+
+            <!-- Current entry section -->
+            <div id="currentEntrySection" class="current-entry-section">
+                <h3>CURRENT ENTRY</h3>
+                <input type="hidden" id="hiddenCode" value="">
+                <div class="entry-grid">
+                    
+                    <input type="text" id="pName" placeholder="PASSENGER NAME">
+                    <input type="text" id="flightNo" placeholder="FLIGHT NUMBER">
+                    <input type="text" id="seatNo" placeholder="SEAT NUMBER">
+                    <input type="text" id="class" placeholder="CLASS">
+                    <input type="text" id="airline" placeholder="AIRLINE">
+                    <input type="text" id="FQTV" placeholder="FQTV">
+                    <input type="text" id="pax" placeholder="PAX">
+                    <input type="text" id="serialNo" placeholder="SERIAL NUMBER">
+                    <input type="text" id="remarks" placeholder="REMARKS">
+                    <input type="text" id="date" placeholder="DATE" style="display: none;">
+                    <input type="text" id="shift" placeholder="SHIFT" style="display: none;">
+                    <input type="text" id="entryTime" placeholder="ENTRY TIME" readonly>
+                </div>
+                <div class="entry-actions">
+                    <button id="updateCurrentBtn" class="save-btn">UPDATE ENTRY</button>
+                    <button id="clearCurrentBtn" class="cancel-btn">CLEAR</button>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('pending')">PENDING <span id="pendingCount" class="tab-badge">0</span></button>
+                <button class="tab" onclick="switchTab('saved')">SAVED <span id="savedCount" class="tab-badge">0</span></button>
+            </div>
+
+            <!-- Pending Tab -->
+            <div id="pendingTab" class="tab-content active">
+                <h3>PENDING BOARDING PASSES <span style="font-size: 12px; font-weight: normal; margin-left: 10px;">(Click any field to edit, press Tab to navigate)</span></h3>
+                <div class="table-container">
+                    <table id="pendingTable" class="small-table">
+                        <thead>
+                            <tr>
+                                <th style="text-align: center;">GUEST</th>
+                                <th>NAME</th>
+                                <th>FLIGHT NO</th>
+                                <th>SEAT NO</th>
+                                <th>CLASS</th>
+                                <th>AIRLINE</th>
+                                <th>FQTV</th>
+                                <th>PAX</th>
+                                <th>SERIAL NO</th>
+                                <th>REMARKS</th>
+                                <th style="display: none;">DATE</th>
+                                <th style="display: none;">SHIFT</th>
+                                <th style="display: none;">TIME</th>
+                                <th>ACTIONS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pendingTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="save-hint">✓ Click to edit • Press Tab to navigate • Enter to save • Escape to cancel</div>
+            </div>
+
+            <!-- Saved Tab -->
+            <div id="savedTab" class="tab-content">
+                <h3>SAVED BOARDING PASSES</h3>
+                <div class="table-container">
+                    <table id="savedTable" class="small-table">
+                        <thead>
+                            <tr>
+                                <th>NAME</th>
+                                <th>FLIGHT NO</th>
+                                <th>SEAT NO</th>
+                                <th>CLASS</th>
+                                <th>AIRLINE</th>
+                                <th>FQTV</th>
+                                <th>PAX</th>
+                                <th>SERIAL NO</th>
+                                <th>REMARKS</th>
+                                <th style="display: none;">DATE</th>
+                                <th style="display: none;">SHIFT</th>
+                                <th style="display: none;">TIME</th>
+                                <th>ACTIONS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="savedTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Print header template (hidden, kept for potential future use) -->
+    <div id="printHeaderTemplate" style="display: none;">
+        <div class="print-header">
+            <h1>BOARDING PASS RECORDS</h1>
+            <div class="print-date">DATE: <span id="printDate"></span> | SHIFT: <span id="printShift"></span></div>
+            <div class="print-date">PRINTED: <span id="printTime"></span></div>
+            <hr>
+        </div>
+    </div>
+
+<script>
+// ========== GLOBAL VARIABLES ==========
+let pendingPasses = [];
+let savedPasses = [];
+let editingCell = null; // Track currently editing cell
+let guestModeActive = false;
+let selectedGuestPassengerId = null;
+
+// User data from local storage
+let currentUser = {
+    name: '',
+    rcno: '',
+    level: ''
+};
+
+// Firebase shift data
+let currentShiftData = {
+    date: '',
+    shift: '',
+    status: '',
+    openTime: ''
+};
+
+// ========== INITIALIZATION ==========
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded');
+    
+    // Load user data from local storage
+    loadUserData();
+    
+    const codeField = document.getElementById('code');
+    const toggleCurrentBtn = document.getElementById('toggleCurrentBtn');
+    const currentEntrySection = document.getElementById('currentEntrySection');
+    const updateCurrentBtn = document.getElementById('updateCurrentBtn');
+    const clearCurrentBtn = document.getElementById('clearCurrentBtn');
+    const refreshShiftBtn = document.getElementById('refreshShiftBtn');
+    const cancelGuestModeBtn = document.getElementById('cancelGuestModeBtn');
+    const dummyEntryBtn = document.getElementById('dummyEntryBtn');
+    
+    // Load data from local storage
+    loadFromLocalStorage();
+    
+    // Fetch shift data from Firebase
+    setTimeout(() => {
+        fetchShiftData();
+    }, 1000);
+    
+    // Event listeners
+    if (codeField) {
+        codeField.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                parseAndAddToList();
+            }
+        });
+        
+        codeField.addEventListener('blur', function() {
+            if (codeField.value.trim() !== '') {
+                parseAndAddToList();
+            }
+        });
+        
+        codeField.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+    }
+    
+    // Dummy entry button
+    if (dummyEntryBtn) {
+        dummyEntryBtn.addEventListener('click', function() {
+            createDummyEntry();
+        });
+    }
+    
+    // Cancel guest mode button
+    if (cancelGuestModeBtn) {
+        cancelGuestModeBtn.addEventListener('click', function() {
+            cancelGuestMode();
+        });
+    }
+    
+    if (toggleCurrentBtn && currentEntrySection) {
+        toggleCurrentBtn.addEventListener('click', function() {
+            currentEntrySection.classList.toggle('visible');
+            toggleCurrentBtn.textContent = currentEntrySection.classList.contains('visible') ? 'HIDE CURRENT ENTRY' : 'SHOW CURRENT ENTRY';
+        });
+    }
+    
+    if (updateCurrentBtn) {
+        updateCurrentBtn.addEventListener('click', function() {
+            updateCurrentEntryFromCode();
+        });
+    }
+    
+    if (clearCurrentBtn) {
+        clearCurrentBtn.addEventListener('click', function() {
+            clearCurrentEntry();
+        });
+    }
+    
+    if (refreshShiftBtn) {
+        refreshShiftBtn.addEventListener('click', function() {
+            fetchShiftData();
+        });
+    }
+    
+    // Click outside to cancel editing
+    document.addEventListener('click', function(e) {
+        if (editingCell && !e.target.classList.contains('editable-input') && !e.target.classList.contains('editable-cell')) {
+            cancelEditing();
+        }
+    });
+});
+
+// ========== USER DATA FUNCTIONS ==========
+
+function loadUserData() {
+    try {
+        // Try to get user data from local storage
+        const storedName = localStorage.getItem('userName');
+        const storedRcno = localStorage.getItem('userRCNo');
+        const storedLevel = localStorage.getItem('userLevel');
+        
+        // Also check for login data format
+        const loginData = localStorage.getItem('loginData');
+        if (loginData) {
+            try {
+                const parsedLogin = JSON.parse(loginData);
+                if (parsedLogin) {
+                    currentUser.name = parsedLogin.userName || parsedLogin.name || storedName || '';
+                    currentUser.rcno = parsedLogin.rcno || parsedLogin.RCNo || storedRcno || '';
+                    currentUser.level = parsedLogin.level || parsedLogin.Level || storedLevel || '';
+                }
+            } catch (e) {
+                console.error('Error parsing loginData:', e);
+            }
+        }
+        
+        // Fallback to individual items
+        if (!currentUser.name) currentUser.name = storedName || '';
+        if (!currentUser.rcno) currentUser.rcno = storedRcno || '';
+        if (!currentUser.level) currentUser.level = storedLevel || '';
+        
+        // If still empty, use default test values
+        if (!currentUser.name) currentUser.name = 'TEST USER';
+        if (!currentUser.rcno) currentUser.rcno = 'RC12345';
+        if (!currentUser.level) currentUser.level = 'OPERATOR';
+        
+        updateUserDisplay();
+        
+        console.log('User data loaded:', currentUser);
+        
+    } catch (error) {
+        console.error('Error loading user data:', error);
+        // Set default values on error
+        currentUser = {
+            name: 'TEST USER',
+            rcno: 'RC12345',
+            level: 'OPERATOR'
+        };
+        updateUserDisplay();
+    }
+}
+
+function updateUserDisplay() {
+    const userNameDisplay = document.getElementById('userNameDisplay');
+    const userRcnoDisplay = document.getElementById('userRcnoDisplay');
+    const userLevelDisplay = document.getElementById('userLevelDisplay');
+    
+    if (userNameDisplay) userNameDisplay.textContent = currentUser.name || 'N/A';
+    if (userRcnoDisplay) userRcnoDisplay.textContent = currentUser.rcno || 'N/A';
+    if (userLevelDisplay) userLevelDisplay.textContent = currentUser.level || 'N/A';
+}
+
+function logout() {
+    // Clear any guest mode
+    if (guestModeActive) {
+        cancelGuestMode();
+    }
+    
+    // Clear user data from local storage if needed
+    // localStorage.removeItem('userName');
+    // localStorage.removeItem('userRCNo');
+    // localStorage.removeItem('userLevel');
+    // localStorage.removeItem('loginData');
+    
+    // Redirect to login page
+    window.location.href = 'login.html';
+}
+
+// ========== PRINT FUNCTION - REMOVED ==========
+
+// ========== DUMMY ENTRY FUNCTION WITH USER TRACKING ==========
+
+function createDummyEntry() {
+    const entryTime = getCurrentEntryTime();
+    
+    // Create a dummy entry with sample data and user info
+    const dummyEntry = {
+        pName: 'TEST PASSENGER',
+        flightNo: 'EK123',
+        seatNo: '12A',
+        class: 'Y',
+        airline: 'EMIRATES',
+        FQTV: 'EK-1234567/G',
+        pax: '1',
+        serialNo: 'DUMMY' + Math.floor(Math.random() * 1000),
+        remarks: 'DUMMY ENTRY',
+        date: currentShiftData.date || '',
+        shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
+        entryTime: entryTime,
+        hiddenCode: 'DUMMY' + Date.now(),
+        isGuest: false,
+        mainPassengerId: '',
+        mainPassengerName: '',
+        mainPassengerSeat: '',
+        // User tracking fields
+        enteredBy: currentUser.name || 'UNKNOWN',
+        enteredByRCNo: currentUser.rcno || 'UNKNOWN',
+        enteredByLevel: currentUser.level || 'UNKNOWN',
+        enteredAt: new Date().toISOString()
+    };
+    
+    // Add to pending passes
+    const newEntry = {
+        id: generateId(),
+        ...dummyEntry,
+        approved: false
+    };
+    
+    pendingPasses.push(newEntry);
+    savePendingToLocalStorage();
+    renderTables();
+    
+    // Show notification
+    showTemporaryNotification('✓ DUMMY ENTRY CREATED - Click any field to edit', 'success');
+    
+    // Update current entry fields with dummy data but don't show the section
+    document.getElementById('hiddenCode').value = dummyEntry.hiddenCode;
+    document.getElementById('pName').value = dummyEntry.pName;
+    document.getElementById('flightNo').value = dummyEntry.flightNo;
+    document.getElementById('seatNo').value = dummyEntry.seatNo;
+    document.getElementById('class').value = dummyEntry.class;
+    document.getElementById('airline').value = dummyEntry.airline;
+    document.getElementById('FQTV').value = dummyEntry.FQTV;
+    document.getElementById('pax').value = dummyEntry.pax;
+    document.getElementById('serialNo').value = dummyEntry.serialNo;
+    document.getElementById('remarks').value = dummyEntry.remarks;
+    document.getElementById('date').value = dummyEntry.date;
+    document.getElementById('shift').value = dummyEntry.shift;
+    document.getElementById('entryTime').value = dummyEntry.entryTime;
+}
+
+// ========== IMPROVED PAX CALCULATION FUNCTION - WITH SQ SPECIAL HANDLING ==========
+
+function calculatePaxFromSeat(seatNo, flightNo = '') {
+    // Special case for SQ flights - always return 1 regardless of seat
+    if (flightNo && flightNo.startsWith('SQ')) {
+        console.log('SQ flight detected - setting PAX to 1 regardless of seat');
+        return 1;
+    }
+    
+    if (!seatNo || seatNo.trim() === '' || seatNo === '-') {
+        return 0; // No seat = 0 PAX (except for SQ which is handled above)
+    }
+    
+    // Remove all spaces and convert to uppercase
+    const cleanSeat = seatNo.replace(/\s/g, '').toUpperCase();
+    
+    console.log('Calculating PAX from seat:', cleanSeat);
+    
+    // Count all alphabetical letters (A-Z) in the string
+    const letters = cleanSeat.match(/[A-Z]/g);
+    const letterCount = letters ? letters.length : 0;
+    
+    console.log(`Found ${letterCount} letters in seat string`);
+    
+    // If no letters found but there are numbers, assume 1 passenger
+    if (letterCount === 0 && cleanSeat.match(/\d/)) {
+        console.log('No letters found but numbers present - assuming 1 passenger');
+        return 1;
+    }
+    
+    return letterCount;
+}
+
+// ========== MODIFIED CHECK PASSENGER EXISTS - ALLOW GUESTS WITH SAME SEAT/NAME ==========
+
+async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = false) {
+    try {
+        if (typeof db === 'undefined') {
+            console.error('db not initialized');
+            return { exists: false, matches: [], error: 'Database not initialized' };
+        }
+        
+        const collectionRef = db.collection('KoveliPass');
+        
+        let query = collectionRef
+            .where('flightNo', '==', flightNo)
+            .where('date', '==', date);
+        
+        const snapshot = await query.get();
+        
+        if (snapshot.empty) {
+            return { exists: false, matches: [] };
+        }
+        
+        const matches = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            
+            // Check if this is a match based on seatNo OR pName
+            let isMatch = false;
+            
+            // For seat matching - only if seatNo is not null, empty, or '-'
+            if (seatNo && seatNo.trim() !== '' && seatNo !== '-') {
+                if (data.seatNo === seatNo) {
+                    isMatch = true;
+                }
+            }
+            
+            // Always check name match regardless of seat
+            if (data.pName === pName) {
+                isMatch = true;
+            }
+            
+            if (isMatch) {
+                matches.push({
+                    id: doc.id,
+                    ...data
+                });
+            }
+        });
+        
+        if (matches.length > 0) {
+            // If this is a guest entry, we don't care about duplicates - allow saving
+            if (isGuest) {
+                console.log('⚠️ Guest entry with potential duplicate found, but allowing save');
+                return { exists: false, matches: [], isGuest: true }; // Return false to allow save
+            }
+            return { exists: true, matches };
+        }
+        
+        return { exists: false, matches: [] };
+        
+    } catch (error) {
+        console.error('Error checking passenger existence:', error);
+        return { exists: false, matches: [], error: error.message };
+    }
+}
+
+// ========== FIXED INLINE EDITING FUNCTIONS WITH AUTO PAX UPDATE AND TAB NAVIGATION ==========
+
+function makeEditable(cell, entryId, field, isSaved = false) {
+    // Don't allow editing if already editing another cell
+    if (editingCell && editingCell.cell !== cell) {
+        cancelEditing();
+    }
+    
+    // Get current value
+    const currentValue = cell.textContent.trim();
+    
+    // Create input element
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'editable-input';
+    input.value = currentValue === '—' ? '' : currentValue;
+    input.setAttribute('data-entry-id', entryId);
+    input.setAttribute('data-field', field);
+    input.setAttribute('data-is-saved', isSaved);
+    
+    // Make it tabbable
+    input.tabIndex = 0;
+    
+    // Clear cell and append input
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+    
+    // Store editing state
+    editingCell = {
+        cell: cell,
+        input: input,
+        entryId: entryId,
+        field: field,
+        isSaved: isSaved,
+        originalValue: currentValue
+    };
+    
+    // Handle input events
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            saveInlineEdit(this);
+            
+            // Move to next cell after saving
+            setTimeout(() => {
+                const nextCell = findNextEditableCell(cell);
+                if (nextCell) {
+                    nextCell.click();
+                }
+            }, 50);
+        } else if (e.key === 'Tab') {
+            e.preventDefault();
+            saveInlineEdit(this);
+            
+            // Move to next cell
+            setTimeout(() => {
+                const nextCell = findNextEditableCell(cell, !e.shiftKey);
+                if (nextCell) {
+                    nextCell.click();
+                }
+            }, 50);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelEditing();
+        }
+    });
+    
+    // Use blur with timeout to prevent conflicts
+    input.addEventListener('blur', function(e) {
+        setTimeout(() => {
+            if (editingCell && editingCell.input === this && document.activeElement !== this) {
+                saveInlineEdit(this);
+            }
+        }, 200);
+    });
+    
+    // Special handling for seat field - auto-calculate PAX in real-time
+    if (field === 'seatNo') {
+        input.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+            
+            const row = this.closest('tr');
+            if (row) {
+                const isPendingWithGuest = row.querySelector('.guest-checkbox') !== null;
+                const paxCellIndex = isPendingWithGuest ? 8 : 7;
+                const paxCell = row.cells[paxCellIndex];
+                
+                const flightCellIndex = isPendingWithGuest ? 3 : 2;
+                const flightCell = row.cells[flightCellIndex];
+                const flightNo = flightCell?.textContent?.trim() || '';
+                
+                if (paxCell && paxCell.classList.contains('editable-cell')) {
+                    const calculatedPax = calculatePaxFromSeat(this.value, flightNo);
+                    
+                    paxCell.setAttribute('data-preview', calculatedPax);
+                    paxCell.style.backgroundColor = '#fff3cd';
+                    
+                    let previewSpan = paxCell.querySelector('.pax-preview');
+                    if (!previewSpan) {
+                        previewSpan = document.createElement('span');
+                        previewSpan.className = 'pax-preview';
+                        previewSpan.style.cssText = 'font-size: 10px; color: #e6b800; margin-left: 5px; font-weight: bold;';
+                        paxCell.appendChild(previewSpan);
+                    }
+                    
+                    if (this.value.trim() === '') {
+                        previewSpan.textContent = '→ 0 (no seat)';
+                    } else if (this.value === '-') {
+                        previewSpan.textContent = '→ 0 (dash)';
+                    } else {
+                        previewSpan.textContent = `→ ${calculatedPax}`;
+                    }
+                }
+            }
+        });
+    }
+    
+    // Special handling for flight number field
+    if (field === 'flightNo') {
+        input.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+    }
+    
+    // Special handling for class field
+    if (field === 'class') {
+        input.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+    }
+    
+    // Special handling for PAX field
+    if (field === 'pax') {
+        input.addEventListener('input', function() {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+    }
+    
+    // Special handling for serial number field
+    if (field === 'serialNo') {
+        input.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+    }
+}
+
+function findNextEditableCell(currentCell, forward = true) {
+    const allEditableCells = Array.from(document.querySelectorAll('.editable-cell'));
+    const currentIndex = allEditableCells.indexOf(currentCell);
+    
+    if (currentIndex === -1) return null;
+    
+    const nextIndex = forward ? currentIndex + 1 : currentIndex - 1;
+    
+    if (nextIndex >= 0 && nextIndex < allEditableCells.length) {
+        return allEditableCells[nextIndex];
+    }
+    
+    return null;
+}
+
+function saveInlineEdit(input) {
+    if (!editingCell || editingCell.input !== input) {
+        return;
+    }
+    
+    const newValue = input.value.trim().toUpperCase();
+    const entryId = editingCell.entryId;
+    const field = editingCell.field;
+    const isSaved = editingCell.isSaved;
+    
+    // Find the entry
+    const entryArray = isSaved ? savedPasses : pendingPasses;
+    const entryIndex = entryArray.findIndex(e => e.id === entryId);
+    
+    if (entryIndex === -1) {
+        cancelEditing();
+        return;
+    }
+    
+    const entry = entryArray[entryIndex];
+    const oldValue = entry[field] || '';
+    
+    // Check if value actually changed
+    if (newValue === oldValue) {
+        cancelEditing();
+        return;
+    }
+    
+    // Handle different field types
+    if (field === 'seatNo') {
+        entry.seatNo = newValue;
+        
+        const calculatedPax = calculatePaxFromSeat(newValue, entry.flightNo);
+        
+        if (!entry.isGuest) {
+            if (newValue === '' || newValue === '-') {
+                entry.pax = calculatedPax.toString();
+                showTemporaryNotification(`✓ Seat ${newValue === '-' ? 'set to -' : 'removed'} - PAX set to ${calculatedPax}`, 'info');
+            } else {
+                const oldPax = entry.pax || '0';
+                entry.pax = calculatedPax.toString();
+                
+                if (oldPax !== calculatedPax.toString()) {
+                    showTemporaryNotification(`✓ PAX auto-updated from ${oldPax} to ${calculatedPax} based on seat`, 'success');
+                }
+            }
+        } else {
+            showTemporaryNotification(`✓ Guest seat updated (PAX remains 1)`, 'info');
+        }
+    }
+    else if (field === 'flightNo') {
+        entry.flightNo = newValue;
+        
+        if (newValue.startsWith('SQ') && !entry.isGuest) {
+            if (!entry.seatNo || entry.seatNo === '' || entry.seatNo === '-') {
+                entry.pax = '1';
+                showTemporaryNotification('✓ SQ flight detected - PAX set to 1', 'success');
+            } else {
+                const calculatedPax = calculatePaxFromSeat(entry.seatNo, newValue);
+                entry.pax = calculatedPax.toString();
+            }
+        } else if (!entry.isGuest) {
+            const calculatedPax = calculatePaxFromSeat(entry.seatNo, newValue);
+            entry.pax = calculatedPax.toString();
+        }
+    }
+    else if (field === 'pax') {
+        const paxNum = parseInt(newValue) || 0;
+        
+        if (entry.isGuest) {
+            if (paxNum !== 1) {
+                alert('Guest entries must have PAX = 1. Setting back to 1.');
+                entry.pax = '1';
+            } else {
+                entry.pax = '1';
+            }
+        } else {
+            if (paxNum === 0) {
+                const confirmZero = confirm(`Set PAX to 0? This means no passengers. Continue?`);
+                if (!confirmZero) {
+                    cancelEditing();
+                    return;
+                }
+                entry.pax = '0';
+            } else {
+                entry.pax = paxNum.toString();
+            }
+            
+            if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && !entry.flightNo?.startsWith('SQ')) {
+                const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
+                if (calculatedPax > 0 && paxNum !== calculatedPax) {
+                    showTemporaryNotification(`⚠ PAX (${paxNum}) does not match seat (${calculatedPax})`, 'warning');
+                }
+            }
+        }
+    }
+    else if (field === 'class') {
+        entry.class = newValue;
+    }
+    else {
+        // Regular field update
+        entry[field] = newValue;
+    }
+    
+    // Save to storage
+    if (isSaved) {
+        saveSavedToLocalStorage();
+    } else {
+        savePendingToLocalStorage();
+    }
+    
+    // Update the cell content BEFORE clearing editing state
+    const cell = editingCell.cell;
+    cell.textContent = entry[field] || '—';
+    
+    // Clear editing state
+    editingCell = null;
+    
+    // Refresh tables to ensure everything is consistent
+    renderTables();
+    
+    showTemporaryNotification(`✓ ${field} updated`, 'success');
+}
+
+function cancelEditing() {
+    if (editingCell) {
+        const { cell, originalValue } = editingCell;
+        cell.textContent = originalValue || '—';
+        editingCell = null;
+    }
+}
+
+// ========== HIDDEN CODE SAVING ==========
+
+async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
+    if (!hiddenCodeValue || !hiddenCodeValue.trim()) {
+        console.log('❌ Not saving to card DB: Hidden code is empty');
+        return false;
+    }
+    
+    if (!flightNo || !flightNo.trim()) {
+        console.log('❌ Not saving to card DB: No flight number');
+        return false;
+    }
+    
+    if (typeof cardDb === 'undefined') {
+        console.error('❌ cardDb not initialized');
+        showTemporaryNotification('❌ Card database not initialized', 'error');
+        return false;
+    }
+    
+    const cleanHiddenCode = hiddenCodeValue.trim();
+    const cleanFlightNo = flightNo.trim();
+    
+    let cleanDate = '';
+    if (date) {
+        cleanDate = date.replace(/[^0-9]/g, '');
+    } else {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        cleanDate = `${year}${month}${day}`;
+    }
+    
+    const docId = `${cleanDate}_${cleanFlightNo}`;
+    
+    try {
+        await cardDb.collection('QrCards').doc(docId).set({
+            code: cleanHiddenCode,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        
+        console.log('✅ Code saved to cardentryqr database');
+        showTemporaryNotification(`✅ QR code saved for flight ${cleanFlightNo}`, 'success');
+        return true;
+    } catch (error) {
+        console.error('❌ Error saving code:', error);
+        showTemporaryNotification(`❌ Failed to save QR code`, 'error');
+        return false;
+    }
+}
+
+// ========== GUEST MODE FUNCTIONS ==========
+
+function toggleGuestMode(passengerId, checked) {
+    const guestIndicator = document.getElementById('guestModeIndicator');
+    const guestModeText = document.getElementById('guestModeText');
+    const codeField = document.getElementById('code');
+    
+    if (checked) {
+        document.querySelectorAll('.guest-checkbox').forEach(cb => {
+            if (cb.dataset.passengerId !== passengerId) {
+                cb.checked = false;
+            }
+        });
+        
+        const passenger = pendingPasses.find(p => p.id === passengerId);
+        if (passenger) {
+            guestModeActive = true;
+            selectedGuestPassengerId = passengerId;
+            guestIndicator.classList.add('visible');
+            guestModeText.textContent = `ADDING GUEST FOR: ${passenger.pName} (${passenger.seatNo || 'no seat'})`;
+            showTemporaryNotification(`✓ Guest mode activated for ${passenger.pName}`, 'success');
+            
+            if (codeField) {
+                codeField.focus();
+                codeField.value = '';
+                codeField.placeholder = 'SCAN GUEST BOARDING PASS...';
+            }
+        }
+    } else {
+        if (selectedGuestPassengerId === passengerId) {
+            guestModeActive = false;
+            selectedGuestPassengerId = null;
+            guestIndicator.classList.remove('visible');
+            if (codeField) {
+                codeField.placeholder = 'ENTER CODE OR READ BARCODE (AUTO-ADDS TO LIST)';
+            }
+        }
+    }
+}
+
+function cancelGuestMode() {
+    guestModeActive = false;
+    selectedGuestPassengerId = null;
+    
+    document.querySelectorAll('.guest-checkbox').forEach(cb => {
+        cb.checked = false;
+    });
+    
+    const guestIndicator = document.getElementById('guestModeIndicator');
+    guestIndicator.classList.remove('visible');
+    
+    const codeField = document.getElementById('code');
+    if (codeField) {
+        codeField.placeholder = 'ENTER CODE OR READ BARCODE (AUTO-ADDS TO LIST)';
+    }
+    
+    showTemporaryNotification('Guest mode cancelled', 'info');
+}
+
+function addGuestToPassenger(mainPassengerId, guestData) {
+    try {
+        const mainPassengerIndex = pendingPasses.findIndex(p => p.id === mainPassengerId);
+        
+        if (mainPassengerIndex === -1) {
+            showTemporaryNotification('❌ Main passenger not found', 'error');
+            return false;
+        }
+        
+        const mainPassenger = pendingPasses[mainPassengerIndex];
+        
+        const guestPax = 1;
+        
+        const guestEntry = {
+            ...guestData,
+            id: generateId(),
+            isGuest: true,
+            mainPassengerId: mainPassengerId,
+            mainPassengerName: mainPassenger.pName || '',
+            mainPassengerSeat: mainPassenger.seatNo || '',
+            FQTV: `GUEST OF (${mainPassenger.seatNo || 'no seat'})`,
+            approved: false,
+            
+            pName: guestData.pName || '',
+            flightNo: guestData.flightNo || '',
+            seatNo: guestData.seatNo || '',
+            class: guestData.class || '',
+            airline: guestData.airline || '',
+            pax: guestPax.toString(),
+            serialNo: guestData.serialNo || '',
+            remarks: guestData.remarks || '',
+            date: guestData.date || '',
+            shift: guestData.shift || '',
+            entryTime: guestData.entryTime || '',
+            hiddenCode: guestData.hiddenCode || '',
+            // Add user tracking for guest entry
+            enteredBy: currentUser.name || 'UNKNOWN',
+            enteredByRCNo: currentUser.rcno || 'UNKNOWN',
+            enteredByLevel: currentUser.level || 'UNKNOWN',
+            enteredAt: new Date().toISOString()
+        };
+        
+        // Insert guest right after main passenger for better visibility
+        const mainIndex = pendingPasses.findIndex(p => p.id === mainPassengerId);
+        pendingPasses.splice(mainIndex + 1, 0, guestEntry);
+        
+        savePendingToLocalStorage();
+        
+        document.getElementById('code').value = '';
+        
+        showTemporaryNotification(`✅ Guest added for ${mainPassenger.pName}`, 'success');
+        
+        renderTables();
+        
+        return true;
+        
+    } catch (error) {
+        console.error('Error adding guest:', error);
+        showTemporaryNotification('❌ Error adding guest', 'error');
+        return false;
+    }
+}
+
+// ========== FIREBASE SHIFT FUNCTIONS ==========
+
+async function fetchShiftData() {
+    try {
+        const shiftInfo = document.getElementById('shiftInfo');
+        const dateElement = document.getElementById('currentDate');
+        const shiftElement = document.getElementById('currentShift');
+        const statusBadge = document.getElementById('shiftStatus');
+        
+        if (!shiftInfo || !dateElement || !shiftElement || !statusBadge) {
+            console.error('Shift display elements not found');
+            return;
+        }
+        
+        dateElement.textContent = 'Loading...';
+        shiftElement.textContent = 'Loading...';
+        shiftInfo.classList.add('loading');
+        
+        if (typeof passengerDb === 'undefined') {
+            console.error('passengerDb not initialized');
+            dateElement.textContent = 'DB ERROR';
+            shiftElement.textContent = 'NOT INITIALIZED';
+            shiftInfo.classList.remove('loading');
+            shiftInfo.classList.add('error');
+            return;
+        }
+        
+        let shiftDoc = null;
+        
+        try {
+            shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+        } catch (e) {
+            console.log('Error with lowercase:', e);
+        }
+        
+        if (!shiftDoc || !shiftDoc.exists) {
+            try {
+                shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get();
+            } catch (e) {
+                console.log('Error with currentShift:', e);
+            }
+        }
+        
+        if (!shiftDoc || !shiftDoc.exists) {
+            try {
+                shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get();
+            } catch (e) {
+                console.log('Error with CurrentShift:', e);
+            }
+        }
+        
+        if (shiftDoc && shiftDoc.exists) {
+            const data = shiftDoc.data();
+            
+            currentShiftData.date = data.date || '';
+            
+            if (data.morning === 'open') {
+                currentShiftData.shift = 'MORNING';
+                currentShiftData.status = 'OPEN';
+                currentShiftData.openTime = data.updated || '';
+            } 
+            else if (data.evening === 'open') {
+                currentShiftData.shift = 'EVENING';
+                currentShiftData.status = 'OPEN';
+                currentShiftData.openTime = data.updated || '';
+            } 
+            else {
+                currentShiftData.shift = 'NO OPEN SHIFT';
+                currentShiftData.status = 'CLOSED';
+                currentShiftData.openTime = '';
+            }
+        } else {
+            currentShiftData.date = '';
+            currentShiftData.shift = 'NO SHIFT DATA';
+            currentShiftData.status = 'NOT FOUND';
+            currentShiftData.openTime = '';
+        }
+        
+        updateShiftDisplay();
+        
+    } catch (error) {
+        console.error('Error fetching shift data:', error);
+        
+        const dateElement = document.getElementById('currentDate');
+        const shiftElement = document.getElementById('currentShift');
+        const shiftInfo = document.getElementById('shiftInfo');
+        
+        if (dateElement) dateElement.textContent = 'ERROR';
+        if (shiftElement) shiftElement.textContent = 'ERROR LOADING';
+        if (shiftInfo) {
+            shiftInfo.classList.remove('loading');
+            shiftInfo.classList.add('error');
+        }
+    }
+}
+
+function updateShiftDisplay() {
+    const dateElement = document.getElementById('currentDate');
+    const shiftElement = document.getElementById('currentShift');
+    const statusBadge = document.getElementById('shiftStatus');
+    const shiftInfo = document.getElementById('shiftInfo');
+    
+    if (!dateElement || !shiftElement || !statusBadge || !shiftInfo) return;
+    
+    dateElement.textContent = currentShiftData.date || 'NO DATE';
+    
+    if (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') {
+        shiftElement.textContent = currentShiftData.shift;
+        statusBadge.textContent = currentShiftData.status;
+        statusBadge.style.backgroundColor = '#6b8e23';
+    } else {
+        shiftElement.textContent = currentShiftData.shift;
+        statusBadge.textContent = currentShiftData.status;
+        statusBadge.style.backgroundColor = '#c68b5e';
+    }
+    
+    shiftInfo.classList.remove('loading', 'error');
+    
+    const shiftField = document.getElementById('shift');
+    if (shiftField && !shiftField.value && (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING')) {
+        shiftField.value = currentShiftData.shift;
+    }
+    
+    const dateField = document.getElementById('date');
+    if (dateField && !dateField.value && currentShiftData.date) {
+        dateField.value = currentShiftData.date;
+    }
+}
+
+// ========== FIREBASE SAVE FUNCTIONS WITH USER TRACKING ==========
+
+async function saveEntryToFirebase(entry) {
+    try {
+        console.log('Saving entry to Firebase:', entry);
+        
+        if (typeof db === 'undefined') {
+            console.error('db not initialized');
+            return { success: false, error: 'Database not initialized' };
+        }
+        
+        const cleanEntry = {};
+        
+        Object.keys(entry).forEach(key => {
+            const value = entry[key];
+            
+            if (value === undefined) {
+                if (key === 'isGuest') {
+                    cleanEntry.isGuest = false;
+                } else if (key === 'approved') {
+                    cleanEntry.approved = false;
+                } else if (key === 'firebaseStatus') {
+                    cleanEntry.firebaseStatus = 'pending';
+                } else if (key === 'firebaseSaved') {
+                    cleanEntry.firebaseSaved = false;
+                } else if (key === 'firebaseRetry') {
+                    cleanEntry.firebaseRetry = false;
+                } else {
+                    cleanEntry[key] = '';
+                }
+            } else if (value === null) {
+                cleanEntry[key] = '';
+            } else {
+                cleanEntry[key] = value;
+            }
+        });
+        
+        const requiredFields = [ 'pName', 'flightNo', 'seatNo', 'class', 'airline', 'FQTV', 'pax','serialNo', 'remarks', 'date', 'shift', 'entryTime'];
+        requiredFields.forEach(field => {
+            if (cleanEntry[field] === undefined) {
+                cleanEntry[field] = '';
+            }
+        });
+        
+        // Ensure user tracking fields are present
+        if (!cleanEntry.enteredBy) cleanEntry.enteredBy = currentUser.name || 'UNKNOWN';
+        if (!cleanEntry.enteredByRCNo) cleanEntry.enteredByRCNo = currentUser.rcno || 'UNKNOWN';
+        if (!cleanEntry.enteredByLevel) cleanEntry.enteredByLevel = currentUser.level || 'UNKNOWN';
+        if (!cleanEntry.enteredAt) cleanEntry.enteredAt = new Date().toISOString();
+        
+        cleanEntry.isGuest = cleanEntry.isGuest === true ? true : false;
+        cleanEntry.approved = cleanEntry.approved === true ? true : false;
+        cleanEntry.firebaseSaved = cleanEntry.firebaseSaved === true ? true : false;
+        cleanEntry.firebaseRetry = cleanEntry.firebaseRetry === true ? true : false;
+        cleanEntry.firebaseStatus = cleanEntry.firebaseStatus || 'pending';
+        
+        delete cleanEntry.firebaseId;
+        delete cleanEntry.id;
+        
+        const collectionRef = db.collection('KoveliPass');
+        
+        const seatForId = cleanEntry.seatNo ? cleanEntry.seatNo.replace(/[^A-Z0-9]/g, '') : 'noseat';
+        const serialForId = cleanEntry.serialNo ? cleanEntry.serialNo.replace(/[^A-Z0-9]/g, '') : 'noserial';
+        const docId = `${cleanEntry.date}_${cleanEntry.flightNo}_${seatForId}_${serialForId}_${Date.now()}`;
+        
+        const entryWithTimestamp = {
+            ...cleanEntry,
+            savedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            savedAtLocal: new Date().toISOString()
+        };
+        
+        await collectionRef.doc(docId).set(entryWithTimestamp);
+        
+        console.log('✅ Entry saved successfully with ID:', docId);
+        return { success: true, docId };
+        
+    } catch (error) {
+        console.error('❌ Error saving to Firebase:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function backgroundSaveToFirebase(entry) {
+    try {
+        console.log('Starting background save for entry:', entry.id);
+        
+        if (entry.firebaseSaved || entry.firebaseStatus === 'success') {
+            return { success: true, skipped: true };
+        }
+        
+        const checkResult = await checkPassengerExists(
+            entry.flightNo,
+            entry.date,
+            entry.seatNo || '',
+            entry.pName || '',
+            entry.isGuest || false
+        );
+        
+        if (checkResult.exists) {
+            console.warn('⚠️ Duplicate passenger found (non-guest)');
+            showTemporaryNotification(`⚠️ Duplicate passenger detected`, 'warning');
+            
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses[savedIndex].firebaseStatus = 'duplicate';
+                savedPasses[savedIndex].firebaseError = 'Duplicate entry exists';
+                saveSavedToLocalStorage();
+                renderTables();
+            }
+            
+            return { success: false, duplicate: true };
+        }
+        
+        if (parseInt(entry.pax) === 0) {
+            console.log('⚠️ Saving entry with PAX = 0');
+        }
+        
+        const saveResult = await saveEntryToFirebase(entry);
+        
+        if (saveResult.success) {
+            console.log('✅ Background save successful');
+            
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses.splice(savedIndex, 1);
+                saveSavedToLocalStorage();
+                renderTables();
+            }
+            
+            showTemporaryNotification(`✅ Entry saved to Firebase`, 'success');
+            
+        } else {
+            console.error('❌ Background save failed:', saveResult.error);
+            
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses[savedIndex].firebaseError = saveResult.error;
+                savedPasses[savedIndex].firebaseStatus = 'error';
+                savedPasses[savedIndex].firebaseRetry = true;
+                saveSavedToLocalStorage();
+                renderTables();
+            }
+            
+            showTemporaryNotification(`❌ Firebase save failed`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Background save error:', error);
+        
+        const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+        if (savedIndex !== -1) {
+            savedPasses[savedIndex].firebaseError = error.message;
+            savedPasses[savedIndex].firebaseStatus = 'error';
+            savedPasses[savedIndex].firebaseRetry = true;
+            saveSavedToLocalStorage();
+            renderTables();
+        }
+        
+        showTemporaryNotification(`❌ Firebase save error`, 'error');
+    }
+}
+
+// ========== APPROVE ENTRY FUNCTION WITH PAX VALIDATION AND USER TRACKING ==========
+
+async function approveEntry(id) {
+    try {
+        const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
+        if (entryIndex === -1) return;
+        
+        const entry = pendingPasses[entryIndex];
+        
+        const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
+        const currentPax = parseInt(entry.pax) || 0;
+        
+        if (!entry.isGuest) {
+            if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && calculatedPax > 0 && currentPax !== calculatedPax) {
+                const confirmUpdate = confirm(`Seat "${entry.seatNo}" contains ${calculatedPax} letters = ${calculatedPax} PAX, but current PAX is ${currentPax}. Update PAX to ${calculatedPax}?`);
+                if (confirmUpdate) {
+                    entry.pax = calculatedPax.toString();
+                } else {
+                    const continueAnyway = confirm(`Continue saving with mismatched PAX (${currentPax} vs ${calculatedPax})?`);
+                    if (!continueAnyway) {
+                        showTemporaryNotification('Save cancelled', 'warning');
+                        return;
+                    }
+                }
+            }
+            
+            if ((!entry.seatNo || entry.seatNo.trim() === '' || entry.seatNo === '-') && currentPax > 0 && !entry.flightNo?.startsWith('SQ')) {
+                const confirmNoSeat = confirm(`No seat number entered but PAX is ${currentPax}. Continue?`);
+                if (!confirmNoSeat) {
+                    showTemporaryNotification('Save cancelled', 'warning');
+                    return;
+                }
+            }
+            
+            if (currentPax === 0) {
+                const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}`);
+                if (!confirmZeroPax) {
+                    showTemporaryNotification('Save cancelled - PAX is 0', 'warning');
+                    return;
+                }
+            }
+        }
+        
+        const dateToUse = entry.date || currentShiftData.date || '';
+        const flightNoToUse = entry.flightNo || '';
+        const shiftToUse = entry.shift || (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING' ? currentShiftData.shift : '');
+        
+        if (!dateToUse) {
+            showTemporaryNotification('Missing date', 'warning');
+            return;
+        }
+        
+        if (!flightNoToUse) {
+            showTemporaryNotification('Missing flight number', 'warning');
+            return;
+        }
+        
+        const hiddenCode = document.getElementById('hiddenCode')?.value || '';
+        
+        // Add user tracking information if not already present
+        if (!entry.enteredBy) {
+            entry.enteredBy = currentUser.name || 'UNKNOWN';
+            entry.enteredByRCNo = currentUser.rcno || 'UNKNOWN';
+            entry.enteredByLevel = currentUser.level || 'UNKNOWN';
+            entry.enteredAt = new Date().toISOString();
+        }
+        
+        const approvedEntry = { 
+            ...entry, 
+            date: dateToUse,
+            shift: shiftToUse,
+            approved: true, 
+            firebaseStatus: 'pending',
+            firebaseSaved: false,
+            firebaseRetry: false,
+            hiddenCode: hiddenCode,
+            isGuest: entry.isGuest === true ? true : false,
+            mainPassengerId: entry.mainPassengerId || '',
+            mainPassengerName: entry.mainPassengerName || '',
+            mainPassengerSeat: entry.mainPassengerSeat || '',
+            // Ensure user tracking is present in approved entry
+            enteredBy: entry.enteredBy || currentUser.name || 'UNKNOWN',
+            enteredByRCNo: entry.enteredByRCNo || currentUser.rcno || 'UNKNOWN',
+            enteredByLevel: entry.enteredByLevel || currentUser.level || 'UNKNOWN',
+            enteredAt: entry.enteredAt || new Date().toISOString()
+        };
+        
+        savedPasses.push(approvedEntry);
+        pendingPasses.splice(entryIndex, 1);
+        
+        savePendingToLocalStorage();
+        saveSavedToLocalStorage();
+        
+        showTemporaryNotification('✓ Entry moved to saved tab', 'success');
+        
+        renderTables();
+        
+        setTimeout(() => {
+            backgroundSaveToFirebase(approvedEntry);
+        }, 100);
+        
+        if (hiddenCode && flightNoToUse) {
+            setTimeout(() => {
+                saveHiddenCodeToCardDB(hiddenCode, flightNoToUse, dateToUse);
+            }, 200);
+        }
+        
+    } catch (error) {
+        console.error('Error in approveEntry:', error);
+        showTemporaryNotification('Error: ' + error.message, 'error');
+    }
+}
+
+// ========== LOCAL STORAGE FUNCTIONS ==========
+
+function loadFromLocalStorage() {
+    const pendingData = localStorage.getItem('pendingPasses');
+    const savedData = localStorage.getItem('savedPasses');
+    
+    if (pendingData) {
+        try {
+            pendingPasses = JSON.parse(pendingData);
+        } catch (e) {
+            console.error('Error parsing pending data:', e);
+            pendingPasses = [];
+        }
+    }
+    
+    if (savedData) {
+        try {
+            savedPasses = JSON.parse(savedData);
+        } catch (e) {
+            console.error('Error parsing saved data:', e);
+            savedPasses = [];
+        }
+    }
+    
+    updateTabCounts();
+    renderTables();
+}
+
+function savePendingToLocalStorage() {
+    localStorage.setItem('pendingPasses', JSON.stringify(pendingPasses));
+    updateTabCounts();
+}
+
+function saveSavedToLocalStorage() {
+    localStorage.setItem('savedPasses', JSON.stringify(savedPasses));
+    updateTabCounts();
+}
+
+function updateTabCounts() {
+    const pendingCount = document.getElementById('pendingCount');
+    const savedCount = document.getElementById('savedCount');
+    
+    if (pendingCount) pendingCount.textContent = pendingPasses.length;
+    if (savedCount) savedCount.textContent = savedPasses.length;
+}
+
+// ========== TAB FUNCTIONS ==========
+
+function switchTab(tabName) {
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    document.getElementById(tabName + 'Tab').classList.add('active');
+    
+    renderTables();
+}
+
+// ========== CURRENT ENTRY FUNCTIONS ==========
+
+function updateCurrentEntryFromCode() {
+    const hiddenCode = document.getElementById('hiddenCode')?.value;
+    if (hiddenCode) {
+        document.getElementById('code').value = hiddenCode;
+        parseAndAddToList();
+    }
+}
+
+function clearCurrentEntry() {
+    document.getElementById('hiddenCode').value = '';
+    
+    document.getElementById('pName').value = '';
+    document.getElementById('flightNo').value = '';
+    document.getElementById('seatNo').value = '';
+    document.getElementById('class').value = '';
+    document.getElementById('airline').value = '';
+    document.getElementById('FQTV').value = '';
+    document.getElementById('pax').value = '';
+    document.getElementById('serialNo').value = '';
+    document.getElementById('remarks').value = '';
+    document.getElementById('date').value = currentShiftData.date || '';
+    document.getElementById('shift').value = (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '';
+    document.getElementById('entryTime').value = '';
+}
+
+// ========== AIRLINE FUNCTIONS ==========
+
+function getAirlineName(iataCode) {
+    if (!iataCode) return '';
+    const airline = window.airlineData?.airlines_flying_to_maldives?.find(a => a.iata === iataCode);
+    return airline ? airline.airline.toUpperCase() : iataCode.toUpperCase();
+}
+
+function getAirlineAlliance(iataCode) {
+    if (!iataCode) return '';
+    const airline = window.airlineData?.airlines_flying_to_maldives?.find(a => a.iata === iataCode);
+    return airline ? (airline.alliance || '').toUpperCase() : '';
+}
+
+// ========== TIME FUNCTIONS ==========
+
+function getCurrentEntryTime() {
+    const now = new Date();
+    return now.toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
+
+// ========== ID GENERATION ==========
+
+function generateId() {
+    return Date.now() + Math.random().toString(36).substr(2, 9);
+}
+
+// ========== CREATE EDITABLE CELL FUNCTION ==========
+
+function createEditableCell(text, entryId, field, isSaved, className = '') {
+    const cell = document.createElement('td');
+    cell.className = `editable-cell ${className}`;
+    cell.textContent = text;
+    cell.setAttribute('data-field', field);
+    cell.setAttribute('data-entry-id', entryId);
+    cell.setAttribute('data-is-saved', isSaved);
+    cell.tabIndex = 0; // Make cell focusable for tab navigation
+    
+    cell.addEventListener('mouseleave', function() {
+        const preview = this.querySelector('.pax-preview');
+        if (preview) preview.remove();
+        this.style.backgroundColor = '';
+        this.removeAttribute('data-preview');
+    });
+    
+    cell.onclick = function(e) { 
+        if (!e.target.classList.contains('editable-input')) {
+            makeEditable(this, entryId, field, isSaved); 
+        }
+    };
+    
+    // Allow tab to focus on cell
+    cell.onfocus = function(e) {
+        if (!editingCell && !this.querySelector('.editable-input')) {
+            // Optional: auto-enter edit mode on focus? For now just highlight
+            this.style.outline = '2px solid #e6b800';
+        }
+    };
+    
+    cell.onblur = function() {
+        this.style.outline = 'none';
+    };
+    
+    return cell;
+}
+
+// ========== RENDER FUNCTIONS ==========
+
+function renderTables() {
+    renderPendingTable();
+    renderSavedTable();
+}
+
+function renderPendingTable() {
+    const tbody = document.getElementById('pendingTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    // Sort pending passes to keep guests next to their main passenger
+    const sortedPasses = [];
+    const processedIds = new Set();
+    
+    pendingPasses.forEach(entry => {
+        if (processedIds.has(entry.id)) return;
+        
+        // Add main entry
+        sortedPasses.push(entry);
+        processedIds.add(entry.id);
+        
+        // Add any guests for this main entry right after
+        if (!entry.isGuest) {
+            const guests = pendingPasses.filter(g => g.isGuest && g.mainPassengerId === entry.id);
+            guests.forEach(guest => {
+                sortedPasses.push(guest);
+                processedIds.add(guest.id);
+            });
+        }
+    });
+    
+    // Add any remaining guests that might not have main passenger (shouldn't happen)
+    pendingPasses.forEach(entry => {
+        if (!processedIds.has(entry.id)) {
+            sortedPasses.push(entry);
+        }
+    });
+    
+    sortedPasses.forEach(entry => {
+        const row = document.createElement('tr');
+        row.setAttribute('data-id', entry.id);
+        
+        if (entry.isGuest) {
+            row.classList.add('guest-row');
+        }
+        
+        let displayFQTV = entry.FQTV || '—';
+        
+        const guestCell = document.createElement('td');
+        guestCell.style.textAlign = 'center';
+        
+        if (entry.isGuest) {
+            guestCell.innerHTML = '👤';
+            guestCell.style.color = '#6b8e23';
+        } else {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'guest-checkbox';
+            checkbox.dataset.passengerId = entry.id;
+            checkbox.checked = guestModeActive && selectedGuestPassengerId === entry.id;
+            checkbox.onchange = function() { toggleGuestMode(entry.id, this.checked); };
+            guestCell.appendChild(checkbox);
+        }
+        
+        const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', false);
+        const flightCell = createEditableCell(entry.flightNo || '—', entry.id, 'flightNo', false);
+        const seatCell = createEditableCell(entry.seatNo || '—', entry.id, 'seatNo', false);
+        const classCell = createEditableCell(entry.class || '—', entry.id, 'class', false);
+        const airlineCell = createEditableCell(entry.airline || '—', entry.id, 'airline', false);
+        const fqtvCell = createEditableCell(displayFQTV, entry.id, 'FQTV', false, entry.isGuest ? 'guest-indicator' : '');
+        const paxCell = createEditableCell(entry.pax || '—', entry.id, 'pax', false);
+        const serialCell = createEditableCell(entry.serialNo || '—', entry.id, 'serialNo', false, 'serial-number');
+        const remarksCell = createEditableCell(entry.remarks || '—', entry.id, 'remarks', false);
+        
+        const dateCell = document.createElement('td');
+        dateCell.style.display = 'none';
+        dateCell.textContent = entry.date || '';
+        
+        const shiftCell = document.createElement('td');
+        shiftCell.style.display = 'none';
+        shiftCell.textContent = entry.shift || '';
+        
+        const timeCell = document.createElement('td');
+        timeCell.style.display = 'none';
+        timeCell.textContent = entry.entryTime || '';
+        
+        const actionsCell = document.createElement('td');
+        actionsCell.className = 'action-buttons';
+        actionsCell.innerHTML = `
+            <button class="approve-btn" onclick="approveEntry('${entry.id}')">${entry.isGuest ? 'SAVE' : 'Approve'}</button>
+            <button class="delete-btn" onclick="deleteEntry('${entry.id}', false)">DEL</button>
+        `;
+        
+        row.appendChild(guestCell);
+        row.appendChild(nameCell);
+        row.appendChild(flightCell);
+        row.appendChild(seatCell);
+        row.appendChild(classCell);
+        row.appendChild(airlineCell);
+        row.appendChild(fqtvCell);
+        row.appendChild(paxCell);
+        row.appendChild(serialCell);
+        row.appendChild(remarksCell);
+        row.appendChild(dateCell);
+        row.appendChild(shiftCell);
+        row.appendChild(timeCell);
+        row.appendChild(actionsCell);
+        
+        tbody.appendChild(row);
+    });
+}
+
+function renderSavedTable() {
+    const tbody = document.getElementById('savedTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    savedPasses.forEach(entry => {
+        const row = document.createElement('tr');
+        row.setAttribute('data-id', entry.id);
+        row.classList.add('saved-row');
+        
+        if (entry.isGuest) {
+            row.classList.add('guest-row');
+        }
+        
+        let displayFQTV = entry.FQTV || '—';
+        let fqtvClass = '';
+        
+        if (entry.isGuest) {
+            fqtvClass = 'guest-indicator';
+        }
+        
+        let statusIndicator = '';
+        let statusColor = '';
+        
+        if (entry.firebaseStatus === 'pending') {
+            statusIndicator = '⏳';
+            statusColor = '#e6b800';
+        } else if (entry.firebaseStatus === 'duplicate') {
+            statusIndicator = '⚠️';
+            statusColor = '#e6b800';
+        } else if (entry.firebaseError || entry.firebaseStatus === 'error') {
+            statusIndicator = '❌';
+            statusColor = '#c68b5e';
+        }
+        
+        const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', true);
+        const flightCell = createEditableCell(entry.flightNo || '—', entry.id, 'flightNo', true);
+        const seatCell = createEditableCell(entry.seatNo || '—', entry.id, 'seatNo', true);
+        const classCell = createEditableCell(entry.class || '—', entry.id, 'class', true);
+        const airlineCell = createEditableCell(entry.airline || '—', entry.id, 'airline', true);
+        const fqtvCell = createEditableCell(displayFQTV, entry.id, 'FQTV', true, fqtvClass);
+        const paxCell = createEditableCell(entry.pax || '—', entry.id, 'pax', true);
+        const serialCell = createEditableCell(entry.serialNo || '—', entry.id, 'serialNo', true, 'serial-number');
+        const remarksCell = createEditableCell(entry.remarks || '—', entry.id, 'remarks', true);
+        
+        const dateCell = document.createElement('td');
+        dateCell.style.display = 'none';
+        dateCell.textContent = entry.date || '';
+        
+        const shiftCell = document.createElement('td');
+        shiftCell.style.display = 'none';
+        shiftCell.textContent = entry.shift || '';
+        
+        const timeCell = document.createElement('td');
+        timeCell.style.display = 'none';
+        timeCell.textContent = entry.entryTime || '';
+        
+        const actionsCell = document.createElement('td');
+        actionsCell.className = 'action-buttons';
+        
+        if (entry.firebaseStatus === 'pending' || entry.firebaseStatus === 'duplicate' || entry.firebaseError) {
+            actionsCell.innerHTML = `
+                <button class="approve-btn" style="background-color: #e6b800;" onclick="syncEntry('${entry.id}')">SYNC</button>
+                <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)">DEL</button>
+            `;
+        } else {
+            actionsCell.innerHTML = `
+                <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)">DEL</button>
+            `;
+        }
+        
+        row.appendChild(nameCell);
+        row.appendChild(flightCell);
+        row.appendChild(seatCell);
+        row.appendChild(classCell);
+        row.appendChild(airlineCell);
+        row.appendChild(fqtvCell);
+        row.appendChild(paxCell);
+        row.appendChild(serialCell);
+        row.appendChild(remarksCell);
+        row.appendChild(dateCell);
+        row.appendChild(shiftCell);
+        row.appendChild(timeCell);
+        row.appendChild(actionsCell);
+        
+        tbody.appendChild(row);
+    });
+}
+
+// ========== PRINT ROW FUNCTION (kept for potential future use) ==========
+
+function printRow(id, isSaved = false) {
+    const entryArray = isSaved ? savedPasses : pendingPasses;
+    const entry = entryArray.find(e => e.id === id);
+    
+    if (!entry) return;
+    
+    const printContent = document.createElement('div');
+    printContent.innerHTML = `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2 style="text-align: center; color: #8b6913;">BOARDING PASS RECORD</h2>
+            <hr>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Passenger Name:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.pName || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Flight Number:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.flightNo || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Seat Number:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.seatNo || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Class:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.class || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Airline:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.airline || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>FQTV:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.FQTV || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>PAX:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.pax || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Serial Number:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.serialNo || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Remarks:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.remarks || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Date:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.date || currentShiftData.date || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Shift:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.shift || currentShiftData.shift || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Entry Time:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.entryTime || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Guest:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.isGuest ? 'YES' : 'NO'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Entered By:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.enteredBy || 'UNKNOWN'} (${entry.enteredByRCNo || ''}) - ${entry.enteredByLevel || ''}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Entered At:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.enteredAt ? new Date(entry.enteredAt).toLocaleString() : '—'}</td></tr>
+            </table>
+            <hr>
+            <p style="text-align: center; font-size: 12px; color: #666;">Printed: ${new Date().toLocaleString()}</p>
+        </div>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <html>
+        <head>
+            <title>Boarding Pass Record - ${entry.pName || 'Unknown'}</title>
+            <style>
+                body { font-family: Arial, sans-serif; }
+                @media print {
+                    body { padding: 0; }
+                }
+            </style>
+        </head>
+        <body>
+            ${printContent.innerHTML}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+}
+
+// ========== TABLE MANAGEMENT FUNCTIONS ==========
+
+function addToTable(data) {
+    const upperData = {};
+    for (let key in data) {
+        if (typeof data[key] === 'string') {
+            upperData[key] = data[key].toUpperCase();
+        } else if (data[key] === undefined) {
+            if (key === 'isGuest') {
+                upperData[key] = false;
+            } else if (key === 'mainPassengerId' || key === 'mainPassengerName' || key === 'mainPassengerSeat') {
+                upperData[key] = '';
+            } else {
+                upperData[key] = '';
+            }
+        } else {
+            upperData[key] = data[key];
+        }
+    }
+    
+    if (!upperData.pax || upperData.pax === '') {
+        if (upperData.flightNo?.startsWith('SQ')) {
+            upperData.pax = '1';
+        } else if (upperData.seatNo && upperData.seatNo.trim() !== '' && upperData.seatNo !== '-') {
+            upperData.pax = calculatePaxFromSeat(upperData.seatNo, upperData.flightNo).toString();
+        } else {
+            upperData.pax = '0';
+        }
+    }
+    
+    // Add user tracking information if not already present
+    if (!upperData.enteredBy) {
+        upperData.enteredBy = currentUser.name || 'UNKNOWN';
+        upperData.enteredByRCNo = currentUser.rcno || 'UNKNOWN';
+        upperData.enteredByLevel = currentUser.level || 'UNKNOWN';
+        upperData.enteredAt = new Date().toISOString();
+    }
+    
+    const newEntry = {
+        id: generateId(),
+        ...upperData,
+        approved: false
+    };
+    
+    pendingPasses.push(newEntry);
+    savePendingToLocalStorage();
+    renderTables();
+    
+    showTemporaryNotification('✓ BOARDING PASS ADDED', 'success');
+}
+
+function deleteEntry(id, isSaved = false) {
+    if (isSaved) {
+        savedPasses = savedPasses.filter(entry => entry.id !== id);
+        saveSavedToLocalStorage();
+    } else {
+        pendingPasses = pendingPasses.filter(entry => entry.id !== id);
+        savePendingToLocalStorage();
+    }
+    
+    renderTables();
+}
+
+async function syncEntry(id) {
+    const entryIndex = savedPasses.findIndex(e => e.id === id);
+    if (entryIndex === -1) return;
+    
+    const entry = savedPasses[entryIndex];
+    
+    savedPasses[entryIndex].firebaseError = null;
+    savedPasses[entryIndex].firebaseRetry = false;
+    savedPasses[entryIndex].firebaseStatus = 'pending';
+    savedPasses[entryIndex].firebaseSaved = false;
+    saveSavedToLocalStorage();
+    renderTables();
+    
+    showTemporaryNotification('🔄 Syncing...', 'info');
+    
+    setTimeout(() => {
+        backgroundSaveToFirebase(entry);
+    }, 100);
+}
+
+function showTemporaryNotification(message, type = 'info') {
+    const statusMsg = document.getElementById('statusMessage');
+    if (statusMsg) {
+        const colors = {
+            success: '#6b8e23',
+            warning: '#e6b800',
+            error: '#c68b5e',
+            info: '#8b6913'
+        };
+        
+        statusMsg.textContent = message;
+        statusMsg.style.color = colors[type] || '#8b6913';
+        
+        setTimeout(() => {
+            statusMsg.textContent = '';
+            statusMsg.style.color = '#6b8e23';
+        }, 3000);
+    }
+}
+
+// ========== PARSE FUNCTION WITH USER TRACKING ==========
+
+function parseAndAddToList() {
+    const codeInput = document.getElementById('code').value.toUpperCase();
+    
+    if (!codeInput) return false;
+    
+    const isTKVCPO = codeInput.startsWith('TKVCPO');
+    
+    if (!isTKVCPO && !codeInput.startsWith('M')) {
+        alert('INVALID BOARDING PASS FORMAT');
+        return false;
+    }
+    
+    if (!codeInput.includes('MLE')) {
+        alert('MUST CONTAIN MLE');
+        return false;
+    }
+    
+    try {
+        const entryTime = getCurrentEntryTime();
+        let parsedEntry;
+        
+        if (isTKVCPO) {
+            const tk07Position = codeInput.indexOf('TK07');
+            const mlePosition = codeInput.indexOf('MLE');
+            
+            if (tk07Position === -1) {
+                alert('TKVCPO CODE MUST CONTAIN TK07');
+                return false;
+            }
+            
+            let namePart = codeInput.substring(6, tk07Position).trim();
+            
+            let flightNoPart = '';
+            if (codeInput.length > tk07Position + 4) {
+                flightNoPart = codeInput.substring(tk07Position, tk07Position + 6);
+            }
+            
+            let airline = '';
+            if (flightNoPart && flightNoPart.length >= 2) {
+                const iataCode = flightNoPart.substring(0, 2);
+                airline = getAirlineName(iataCode);
+            }
+            
+            let seatNo = '';
+            let classChar = '';
+            
+            if (mlePosition !== -1 && codeInput.length > mlePosition + 11) {
+                const tenthChar = codeInput.charAt(mlePosition + 9);
+                const eleventhChar = codeInput.charAt(mlePosition + 10);
+                
+                if (tenthChar && eleventhChar) {
+                    seatNo = tenthChar + eleventhChar;
+                }
+                
+                if (codeInput.length > mlePosition + 11) {
+                    classChar = codeInput.charAt(mlePosition + 11) || '';
+                }
+            }
+            
+            const paxCount = calculatePaxFromSeat(seatNo, flightNoPart);
+            
+            parsedEntry = {
+                pName: namePart || '',
+                flightNo: flightNoPart || '',
+                seatNo: seatNo || '',
+                class: classChar || '',
+                airline: airline || 'TURKISH AIRLINES',
+                FQTV: '',
+                pax: paxCount.toString(),
+                serialNo: '',
+                remarks: '',
+                date: currentShiftData.date || '',
+                shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
+                entryTime: entryTime,
+                hiddenCode: codeInput,
+                isGuest: false,
+                mainPassengerId: '',
+                mainPassengerName: '',
+                mainPassengerSeat: '',
+                // User tracking fields
+                enteredBy: currentUser.name || 'UNKNOWN',
+                enteredByRCNo: currentUser.rcno || 'UNKNOWN',
+                enteredByLevel: currentUser.level || 'UNKNOWN',
+                enteredAt: new Date().toISOString()
+            };
+            
+        } else {
+            const mlePosition = codeInput.indexOf('MLE');
+            const isM1orM2 = codeInput.startsWith('M1') || codeInput.startsWith('M2');
+            
+            let namePart = '';
+            
+            if (isM1orM2) {
+                namePart = codeInput.substring(2, mlePosition + 3);
+                
+                const withoutSpaces = namePart.replace(/\s/g, '');
+                if (withoutSpaces.length > 7) {
+                    let charCount = 0;
+                    let cutPosition = namePart.length;
+                    for (let i = namePart.length - 1; i >= 0; i--) {
+                        if (namePart[i] !== ' ') {
+                            charCount++;
+                            if (charCount === 10) {
+                                cutPosition = i;
+                                break;
+                            }
+                        }
+                    }
+                    namePart = namePart.substring(0, cutPosition);
+                }
+            } else {
+                namePart = codeInput.substring(1, mlePosition);
+            }
+            
+            namePart = namePart.trim();
+            
+            let flightNoPart = '';
+            if (codeInput.length > mlePosition + 3) {
+                flightNoPart = codeInput.substring(mlePosition + 3, mlePosition + 3 + 10);
+                flightNoPart = flightNoPart.substring(3).replace(/\s/g, '');
+            }
+            
+            let airline = '';
+            let iataCode = '';
+            if (flightNoPart && flightNoPart.length >= 2) {
+                iataCode = flightNoPart.substring(0, 2);
+                airline = getAirlineName(iataCode);
+            }
+            
+            let seatNo = '';
+            let classChar = '';
+            
+            if (isM1orM2 && codeInput.length > mlePosition + 3) {
+                const afterMLE = codeInput.substring(mlePosition + 3);
+                const parts = afterMLE.split(' ').filter(p => p.trim() !== '');
+                
+                let seatString = '';
+                for (let i = 0; i < parts.length; i++) {
+                    const part = parts[i];
+                    if (/^\d{3}[A-Z]\d{3}[A-Z]\d{4}$/.test(part)) {
+                        seatString = part;
+                        break;
+                    }
+                }
+                
+                if (!seatString) {
+                    for (let i = 0; i < parts.length; i++) {
+                        const part = parts[i];
+                        if (part.length >= 13 && /[A-Z]/.test(part) && /\d/.test(part)) {
+                            seatString = part;
+                            break;
+                        }
+                    }
+                }
+                
+                if (seatString) {
+                    seatNo = seatString.substring(5, seatString.length - 4);
+                    classChar = seatString.charAt(3);
+                }
+            }
+            
+            const paxCount = calculatePaxFromSeat(seatNo, flightNoPart);
+            
+            let fqtvValue = '';
+            if (isM1orM2 && flightNoPart && codeInput.length > mlePosition + 30) {
+                const trimmedCode = codeInput.trim();
+                const words = trimmedCode.split(' ').filter(w => w.trim() !== '');
+                
+                if (words.length >= 4) {
+                    const lastWord = words[words.length - 1];
+                    const secondLastWord = words[words.length - 2];
+                    const thirdLastWord = words[words.length - 3];
+                    const fourthLastWord = words[words.length - 4];
+                    
+                    const flightNoWord = words.find(w => /^[A-Z]{2}\d+[A-Z]?$/.test(w)) || flightNoPart;
+                    const flightNoPrefix = flightNoWord.substring(0, 2);
+                    
+                    const validSuffixes = ['N1', 'N2', 'N3', 'Y1', 'Y2'];
+                    
+                    let fqtvNumber = '';
+                    let shouldProcess = false;
+                    
+                    if (flightNoPrefix) {
+                        if (flightNoPrefix === 'EK') {
+                            if (fourthLastWord === 'EK') {
+                                fqtvNumber = fourthLastWord + '-' + thirdLastWord;
+                            } else if (thirdLastWord === 'EK') {
+                                fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            }
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'AZ' && thirdLastWord === 'AZ') {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'AI' && fourthLastWord && fourthLastWord.length === 2) {
+                            fqtvNumber = fourthLastWord + '-' + thirdLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'OS' && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'OS' && fourthLastWord.length === 2) {
+                            fqtvNumber = fourthLastWord + '-' + thirdLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'SV' && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'MH' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'WK' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'FZ' && secondLastWord && secondLastWord.length === 2) {
+                            fqtvNumber = secondLastWord + '-' + lastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'QR' && thirdLastWord && thirdLastWord.length === 2 && 
+                                ['N1', 'N2', 'N3'].includes(lastWord)) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'EY' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'SQ' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'TG' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'BA' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'AF' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'LH' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'SU' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'UL' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === '3K' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'AK' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'FD' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'QZ' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                    }
+                    
+                    if (shouldProcess) {
+                        if (validSuffixes.includes(lastWord)) {
+                            const suffixMap = {
+                                'N1': 'P',
+                                'N2': 'G',
+                                'N3': 'S',
+                                'Y1': 'G',
+                                'Y2': 'S'
+                            };
+                            let suffix = suffixMap[lastWord];
+                            
+                            const alliance = getAirlineAlliance(iataCode);
+                            const fqtvFirstChar = fqtvNumber.split('-')[0].charAt(0);
+                            
+                            if (alliance === 'ONE WORLD' && fqtvFirstChar !== iataCode.charAt(0)) {
+                                if (suffix === 'G') suffix = 'EMER';
+                                else if (suffix === 'S') suffix = 'SAPP';
+                            }
+                            
+                            fqtvValue = `${fqtvNumber}/${suffix}`;
+                        } else {
+                            fqtvValue = fqtvNumber;
+                        }
+                    }
+                }
+            }
+            
+            let displayFQTV = fqtvValue;
+            
+            parsedEntry = {
+                pName: namePart || '',
+                flightNo: flightNoPart || '',
+                seatNo: seatNo || '',
+                class: classChar || '',
+                airline: airline || '',
+                FQTV: displayFQTV || '',
+                pax: paxCount.toString(),
+                serialNo: '',
+                remarks: '',
+                date: currentShiftData.date || '',
+                shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
+                entryTime: entryTime,
+                hiddenCode: codeInput,
+                isGuest: false,
+                mainPassengerId: '',
+                mainPassengerName: '',
+                mainPassengerSeat: '',
+                // User tracking fields
+                enteredBy: currentUser.name || 'UNKNOWN',
+                enteredByRCNo: currentUser.rcno || 'UNKNOWN',
+                enteredByLevel: currentUser.level || 'UNKNOWN',
+                enteredAt: new Date().toISOString()
+            };
+        }
+        
+        if (guestModeActive && selectedGuestPassengerId) {
+            const result = addGuestToPassenger(selectedGuestPassengerId, parsedEntry);
+            cancelGuestMode();
+            if (result) return true;
+        }
+        
+        addToTable(parsedEntry);
+        
+        document.getElementById('hiddenCode').value = codeInput;
+        
+        document.getElementById('pName').value = parsedEntry.pName;
+        document.getElementById('flightNo').value = parsedEntry.flightNo;
+        document.getElementById('seatNo').value = parsedEntry.seatNo;
+        document.getElementById('class').value = parsedEntry.class;
+        document.getElementById('airline').value = parsedEntry.airline;
+        document.getElementById('FQTV').value = parsedEntry.FQTV;
+        document.getElementById('pax').value = parsedEntry.pax;
+        document.getElementById('serialNo').value = parsedEntry.serialNo;
+        document.getElementById('remarks').value = parsedEntry.remarks;
+        document.getElementById('date').value = parsedEntry.date;
+        document.getElementById('shift').value = parsedEntry.shift;
+        document.getElementById('entryTime').value = parsedEntry.entryTime;
+        
+        document.getElementById('code').value = '';
+        
+        return true;
+        
+    } catch (error) {
+        console.error('Error parsing boarding pass:', error);
+        alert('ERROR PARSING BOARDING PASS CODE');
+        return false;
+    }
+}
+
+// Make functions global
+window.switchTab = switchTab;
+window.deleteEntry = deleteEntry;
+window.approveEntry = approveEntry;
+window.syncEntry = syncEntry;
+window.toggleGuestMode = toggleGuestMode;
+window.cancelGuestMode = cancelGuestMode;
+window.makeEditable = makeEditable;
+window.saveInlineEdit = saveInlineEdit;
+window.saveHiddenCodeToCardDB = saveHiddenCodeToCardDB;
+window.createDummyEntry = createDummyEntry;
+window.logout = logout;
+window.printRow = printRow; // Kept for potential future use
+</script>
+</body>   
+</html>
