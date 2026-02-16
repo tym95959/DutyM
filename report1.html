@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flight Report – Passenger List (rearranged)</title>
+    <title>Flight Report – Passenger List (print ready)</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -409,6 +409,19 @@
         .no-data, .loading { text-align: center; padding: 30px; color: #8b6913; }
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(230,184,0,0.3); border-radius: 50%; border-top-color: #e6b800; animation: spin 1s infinite; margin-right: 6px; }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* print-specific styles */
+        @media print {
+            body { background: white; padding: 0.5in; }
+            .shift-ribbon, .card .selection-flight-row, .action-buttons-vertical, .edit-btn, .table-action-btn, .refresh-shift, .quick-shift-box { display: none; }
+            .card { border: none; box-shadow: none; padding: 0; background: transparent; }
+            .flight-panel-revised { display: block; }
+            .left-details-block, .right-ops-block { background: transparent; border: none; padding: 0; }
+            .stats-mini { border: 1px solid #ccc; }
+            .table-container { border: 1px solid #000; }
+            th { background: #e6b800 !important; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .flight-status { border: 1px solid #000; background: #eee; }
+        }
     </style>
 </head>
 <body>
@@ -871,20 +884,215 @@
                 alert('Flight data saved');
             } catch (error) { alert('Error: '+error.message); }
         }
+
+        // ========== REVISED PRINT FUNCTION ==========
         function printReport() {
             if (!currentFlightData || !currentFlightData.isClosed) { alert('Flight must be closed'); return; }
-            const company = window.companyInfo || { name:'Company', address:'', phone:'' };
-            const date = document.getElementById('dateDisplay').textContent.split('-');
-            const fDate = date[2]+'/'+date[1]+'/'+date[0];
-            const sorted = [...currentFlightData.passengers].sort((a,b)=>(a.entryTime||'').localeCompare(b.entryTime||''));
-            const totalPax = sorted.reduce((s,p)=>s+(parseInt(p.pax)||1),0);
-            let html = `<html><head><title>Flight Report</title><style>body{font-family:Arial;padding:20px;font-size:12px;} .header{display:flex;justify-content:space-between;border-bottom:2px solid #e6b800;margin-bottom:20px;} table{width:100%;border-collapse:collapse;} th{background:#e6b800;color:white;padding:6px;text-align:left;} td{padding:5px;border-bottom:1px solid #e6d8a5;}</style></head><body>
-            <div class='header'><div><h2>${company.name||''}</h2><p>${company.address||''}<br>${company.phone||''}</p></div><div><h3>FLIGHT ${currentFlightData.flightNo}</h3><p>${fDate}</p></div></div>
-            <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;'><div><strong>Airline:</strong> ${currentFlightData.airline}</div><div><strong>STD:</strong> ${currentFlightData.std||'--:--'}</div><div><strong>First Pax:</strong> ${currentFlightData.firstPax||'--:--'}</div><div><strong>Last Pax:</strong> ${currentFlightData.lastPax||'--:--'}</div><div><strong>Total PAX:</strong> ${totalPax}</div></div>
-            <table><thead><tr><th>#</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial</th><th>Time</th><th>Remarks</th></tr></thead><tbody>`;
-            sorted.forEach((p,i) => { html += `<tr><td>${String(i+1).padStart(3,'0')}</td><td>${p.pName||'-'}</td><td>${p.seatNo||'-'}</td><td>${p.pax||1}</td><td>${p.FQTV||'-'}</td><td>${p.serialNo||'-'}</td><td>${p.entryTime||'-'}</td><td>${p.remarks||'-'}</td></tr>`; });
-            html += `</tbody></table><div style='margin-top:30px; border-top:1px solid #e6b800; padding-top:15px; display:flex; justify-content:space-between'><span>Prepared: ________</span><span>Checked: ________</span></div></body></html>`;
-            const w = window.open('','_blank'); w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>w.print(),400);
+
+            // Get company info from Co.js (expected to be window.companyInfo)
+            const company = window.companyInfo || { name: 'Airline Name', address: '123 Aviation Road', phone: '+123 456 7890' };
+            
+            // Format date nicely (assuming YYYY-MM-DD)
+            const dateStr = document.getElementById('dateDisplay').textContent; 
+            const dateParts = dateStr.split('-');
+            const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+
+            // Get flight values
+            const airline = currentFlightData.airline || '—';
+            const flightNo = currentFlightData.flightNo || '—';
+            const std = currentFlightData.std || '—';
+            const firstPax = currentFlightData.firstPax || '—';
+            const lastPax = currentFlightData.lastPax || '—';
+            const shift = currentFlightData.shift || '—';
+            
+            // Calculate total PAX (sum of pax field)
+            const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+            const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+
+            // Begin print HTML
+            let html = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Flight Report – ${flightNo}</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0.5in; font-size: 12px; }
+        .report-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #e6b800;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }
+        .logo-section {
+            text-align: right;
+        }
+        .logo-img {
+            max-height: 70px;
+            max-width: 200px;
+        }
+        .company-details {
+            margin-top: 6px;
+            font-size: 10px;
+            color: #333;
+            line-height: 1.3;
+        }
+        .flight-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0 20px 0;
+            border: 1px solid #e6b800;
+            padding: 14px 16px;
+            border-radius: 8px;
+            background: #fefaf2;
+        }
+        .left-flight {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .left-flight div {
+            display: flex;
+            align-items: baseline;
+        }
+        .left-flight .label {
+            font-weight: 600;
+            color: #8b6913;
+            width: 70px;
+            font-size: 12px;
+        }
+        .left-flight .value {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        .right-flight {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .right-flight div {
+            display: flex;
+            align-items: baseline;
+        }
+        .right-flight .label {
+            font-weight: 600;
+            color: #8b6913;
+            width: 80px;
+            font-size: 12px;
+        }
+        .right-flight .value {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        .total-pax-row {
+            margin-top: 8px;
+            border-top: 1px dashed #e6b800;
+            padding-top: 10px;
+            font-weight: 600;
+            text-align: right;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 11px;
+        }
+        th {
+            background: #e6b800;
+            color: white;
+            padding: 8px 6px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 6px 6px;
+            border-bottom: 1px solid #e6d8a5;
+        }
+        .footer-signature {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #e6b800;
+            padding-top: 20px;
+            font-size: 11px;
+        }
+        @media print {
+            body { margin: 0.3in; }
+            th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+    <!-- header with logo on right and company address under logo -->
+    <div class="report-header">
+        <div></div> <!-- empty left for spacing -->
+        <div class="logo-section">
+            <img src="macl.png" alt="MACL Logo" class="logo-img" onerror="this.style.display='none'">
+            <div class="company-details">
+                ${company.address || ''}<br>
+                ${company.phone || ''}
+            </div>
+        </div>
+    </div>
+    
+    <!-- flight info grid: left side Airline / FlightNo / Date ; right side STD / First Pax / Last Pax / Shift -->
+    <div class="flight-info-grid">
+        <div class="left-flight">
+            <div><span class="label">Airline:</span><span class="value"> ${airline}</span></div>
+            <div><span class="label">Flight No:</span><span class="value"> ${flightNo}</span></div>
+            <div><span class="label">Date:</span><span class="value"> ${formattedDate}</span></div>
+        </div>
+        <div class="right-flight">
+            <div><span class="label">STD:</span><span class="value"> ${std}</span></div>
+            <div><span class="label">First Pax:</span><span class="value"> ${firstPax}</span></div>
+            <div><span class="label">Last Pax:</span><span class="value"> ${lastPax}</span></div>
+            <div><span class="label">Shift:</span><span class="value"> ${shift}</span></div>
+        </div>
+    </div>
+    
+    <!-- total pax line (under the grid, on the right) -->
+    <div class="total-pax-row">
+        TOTAL PASSENGERS: <strong>${totalPaxSum}</strong>
+    </div>
+    
+    <!-- passenger list table -->
+    <table>
+        <thead>
+            <tr><th>#</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th></tr>
+        </thead>
+        <tbody>`;
+            
+            sortedPassengers.forEach((p, idx) => {
+                const serialNum = String(idx+1).padStart(3,'0');
+                html += `<tr>
+                    <td>${serialNum}</td>
+                    <td>${p.pName || '-'}</td>
+                    <td>${p.seatNo || '-'}</td>
+                    <td style="text-align:center;">${p.pax || 1}</td>
+                    <td>${p.FQTV || '-'}</td>
+                    <td>${p.serialNo || '-'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${p.remarks || '-'}</td>
+                </tr>`;
+            });
+            
+            html += `</tbody>
+    </table>
+    
+    <div class="footer-signature">
+        <span>Prepared: ____________________</span>
+        <span>Checked: ____________________</span>
+    </div>
+</body>
+</html>`;
+
+            const w = window.open('', '_blank');
+            w.document.write(html);
+            w.document.close();
+            w.focus();
+            setTimeout(() => w.print(), 400);
         }
 
         // initialization
