@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Golden Line · Login</title>
-    <!-- External user data - your users.js file -->
+    <title>Koveli Lounge · sign in</title>
+    <!-- External user data – your users.js file -->
     <script src="users.js"></script>
     <style>
         * {
@@ -198,7 +198,7 @@
 <body>
     <div class="login-card">
         <div class="gold-accent"></div>
-        <h2>golden line</h2>
+        <h2>Koveli Lounge</h2>
         <div class="sub">authenticate to continue</div>
 
         <form id="loginForm">
@@ -234,22 +234,23 @@
 
     <script>
         (function() {
-            // =============================================
-            // LOGIN HANDLER - Uses external users.js
-            // =============================================
+            // =================================================
+            // KOVELI LOGIN – stores username, RCNo, Level in localStorage
+            // redirects to dashboard.html after successful login
+            // =================================================
             const form = document.getElementById('loginForm');
             const statusEl = document.getElementById('statusMessage');
             const usernameInput = document.getElementById('username');
             const passwordInput = document.getElementById('password');
 
-            // Check if users.js loaded properly
-            if (typeof users === 'undefined') {
-                statusEl.textContent = '❌ Error: users.js not loaded';
+            // verify users.js is loaded (users array expected)
+            if (typeof users === 'undefined' || !Array.isArray(users)) {
+                statusEl.textContent = '❌ Error: users.js not loaded (users array missing)';
                 statusEl.className = 'message error';
-                console.error('users.js file not found or not loaded properly');
+                console.error('users.js file not found or invalid');
             }
 
-            // SHA-256 Hash function
+            // SHA‑256 hash (same as originally used)
             async function hashPassword(password) {
                 const encoder = new TextEncoder();
                 const data = encoder.encode(password);
@@ -258,17 +259,14 @@
                 return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
             }
 
-            // Check for existing session
+            // optional: show session hint, but never auto‑fill
             try {
                 const existingUser = localStorage.getItem('loggedInUser');
                 if (existingUser) {
-                    const userData = JSON.parse(existingUser);
-                    statusEl.textContent = '⚡ session active · please log in to continue';
+                    statusEl.textContent = '⚡ session exists · please log in again';
                     statusEl.className = 'message';
                 }
-            } catch (e) {
-                // localStorage not available
-            }
+            } catch (e) { /* ignore */ }
 
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
@@ -276,94 +274,97 @@
                 const username = usernameInput.value.trim();
                 const password = passwordInput.value;
 
-                // Validation
                 if (!username || !password) {
                     statusEl.textContent = '⚠️ both fields are required';
                     statusEl.className = 'message error';
                     return;
                 }
 
-                // Check if users array exists
                 if (typeof users === 'undefined' || !Array.isArray(users)) {
                     statusEl.textContent = '❌ authentication service unavailable';
                     statusEl.className = 'message error';
-                    console.error('users array not found');
                     return;
                 }
 
-                // Find user (case-insensitive)
+                // find user (case‑insensitive)
                 const matchedUser = users.find(u => u.username.toLowerCase() === username.toLowerCase());
 
                 if (!matchedUser) {
                     statusEl.textContent = '❌ invalid username or password';
                     statusEl.className = 'message error';
-                    passwordInput.value = ''; // Clear password field
+                    passwordInput.value = '';
                     return;
                 }
 
                 try {
-                    // Hash the entered password
                     const hashedInput = await hashPassword(password);
 
-                    // Compare with stored hash from users.js
+                    // compare with stored hash (users.js contains passwordHash)
                     if (hashedInput !== matchedUser.passwordHash) {
                         statusEl.textContent = '❌ invalid username or password';
                         statusEl.className = 'message error';
-                        passwordInput.value = ''; // Clear password field
+                        passwordInput.value = '';
                         return;
                     }
 
-                    // SUCCESS: Store user data in localStorage (excluding passwordHash)
+                    // ✅ SUCCESS — store required fields in localStorage
+                    // we save username, RCNo, Level exactly as requested
                     const userToStore = {
-                        username: matchedUser.username,
-                        name: matchedUser.name,
-                        Level: matchedUser.Level,
-                        RCNo: matchedUser.RCNo,
+                        username: matchedUser.username,      // original casing (from users.js)
+                        RCNo: matchedUser.RCNo,              // as provided in users.js
+                        Level: matchedUser.Level,            // numeric/string level
+                        // optional: include name if needed, but not mandatory
+                        name: matchedUser.name || '',
                         loginTime: new Date().toISOString()
                     };
 
                     localStorage.setItem('loggedInUser', JSON.stringify(userToStore));
 
-                    // Show success message
-                    statusEl.textContent = '✅ login successful · redirecting...';
+                    // show success message
+                    statusEl.textContent = '✅ login successful · redirecting to dashboard...';
                     statusEl.className = 'message success';
 
-                    // Clear form
+                    // clear sensitive fields
                     usernameInput.value = '';
                     passwordInput.value = '';
 
-                    // Log success (for debugging - remove in production)
-                    console.log('User logged in:', matchedUser.username);
-                    console.log('Stored in localStorage:', userToStore);
-
-                    // Optional: Redirect to another page after 1.5 seconds
-                    // setTimeout(() => {
-                    //     window.location.href = 'dashboard.html';
-                    // }, 1500);
+                    // 👑 REDIRECT TO DASHBOARD (you already have dashboard.html)
+                    // slight delay to show success message, then redirect
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1200);  // 1.2 sec gives user feedback, adjust as needed
 
                 } catch (cryptoError) {
-                    console.error('Crypto error:', cryptoError);
-                    statusEl.textContent = '❌ authentication service unavailable';
+                    console.error('crypto error:', cryptoError);
+                    statusEl.textContent = '❌ authentication error';
                     statusEl.className = 'message error';
                 }
             });
 
-            // Clear message on input focus
-            usernameInput.addEventListener('focus', clearMessage);
-            passwordInput.addEventListener('focus', clearMessage);
+            // Clear error/success message when user focuses input
+            usernameInput.addEventListener('focus', resetStatusMessage);
+            passwordInput.addEventListener('focus', resetStatusMessage);
 
-            function clearMessage() {
+            function resetStatusMessage() {
                 if (statusEl.className.includes('error') || statusEl.className.includes('success')) {
                     statusEl.textContent = '⚡ enter your credentials';
                     statusEl.className = 'message';
                 }
             }
 
-            // Clear password field on page load for security
+            // clear password field on load (security)
             window.addEventListener('load', function() {
                 passwordInput.value = '';
             });
+
+            // (Optional) also clear if users.js is missing – already handled
         })();
     </script>
+
+    <!-- ==========  dashboard.html counterpart example (not executed here) ========== 
+         On dashboard.html you would retrieve data with:
+         const userData = JSON.parse(localStorage.getItem('loggedInUser'));
+         console.log(userData.username, userData.RCNo, userData.Level);
+    -->
 </body>
 </html>
