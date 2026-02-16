@@ -864,7 +864,7 @@ function openEditModal(receiptNo) {
     document.getElementById('editReceiptNo').value = receiptNo;
     document.getElementById('editOriginalPaymentMethod').value = receipt.paymentMethod;
     
-    // Now these are editable fields - remove readonly attribute
+    // Editable fields
     document.getElementById('editPName').value = receipt.passengerName || '';
     document.getElementById('editFlightNo').value = receipt.flightNo || '';
     document.getElementById('editSeatNo').value = receipt.seatNo || '';
@@ -912,6 +912,8 @@ function handleEditPaymentMethodChange() {
     if (paymentMethod === 'CASH') {
         approvalCode.disabled = true;
         batchNo.disabled = true;
+        approvalCode.value = '';
+        batchNo.value = '';
         approvalCode.placeholder = 'Not required for cash';
         batchNo.placeholder = 'Not required for cash';
     } else {
@@ -922,34 +924,66 @@ function handleEditPaymentMethodChange() {
     }
 }
 
+// ========== CALCULATION FUNCTIONS ==========
+
 function calculateEditPrices() {
-    if (typeof rates === 'undefined') {
-        console.error('rates not loaded');
-        return;
-    }
+    console.log('Calculating prices...'); // Debug log
     
+    // Get form values
     const adult = parseInt(document.getElementById('editAdult').value) || 0;
     const children = parseInt(document.getElementById('editChildren').value) || 0;
     const currency = document.getElementById('editCurrency').value;
     const rateType = document.getElementById('editRateType').value;
     
+    console.log('Values:', { adult, children, currency, rateType }); // Debug log
+    
+    // Define default rates in case rates.js is not loaded
+    const defaultRates = {
+        // Rate A - USD
+        AdultAUSD: { price: 45.00, GST: 8 },
+        KidsAUSD: { price: 25.00, GST: 8 },
+        // Rate A - MVR
+        AdultAMVR: { price: 675.00, GST: 8 },
+        KidsAMVR: { price: 375.00, GST: 8 },
+        // Rate B - USD
+        AdultBUSD: { price: 55.00, GST: 8 },
+        KidsBUSD: { price: 30.00, GST: 8 },
+        // Rate B - MVR
+        AdultBMVR: { price: 825.00, GST: 8 },
+        KidsBMVR: { price: 450.00, GST: 8 }
+    };
+    
+    // Use rates from rate.js if available, otherwise use defaultRates
+    const rateSource = typeof rates !== 'undefined' ? rates : defaultRates;
+    
+    // Construct rate keys
     const adultRateKey = `Adult${rateType}${currency}`;
     const childrenRateKey = `Kids${rateType}${currency}`;
     
-    const adultRate = rates[adultRateKey] || { price: 0, GST: 8 };
-    const childrenRate = rates[childrenRateKey] || { price: 0, GST: 8 };
+    console.log('Rate keys:', { adultRateKey, childrenRateKey }); // Debug log
+    console.log('Rate source:', rateSource); // Debug log
     
-    const adultSubtotal = adult * adultRate.price;
-    const childrenSubtotal = children * childrenRate.price;
+    // Get rates with fallback
+    const adultRate = rateSource[adultRateKey] || { price: 0, GST: 8 };
+    const childrenRate = rateSource[childrenRateKey] || { price: 0, GST: 8 };
+    
+    console.log('Rates found:', { adultRate, childrenRate }); // Debug log
+    
+    // Calculate subtotals
+    const adultSubtotal = adult * (adultRate.price || 0);
+    const childrenSubtotal = children * (childrenRate.price || 0);
     const subtotal = adultSubtotal + childrenSubtotal;
     
+    // Calculate GST (use adult rate GST or default 8%)
     const gstRate = adultRate.GST || 8;
     const gstAmount = subtotal * (gstRate / 100);
     const totalAmount = subtotal + gstAmount;
     
-    // Update display
-    document.getElementById('editAdultPrice').textContent = adultRate.price.toFixed(2);
-    document.getElementById('editChildrenPrice').textContent = childrenRate.price.toFixed(2);
+    console.log('Calculated:', { adultSubtotal, childrenSubtotal, subtotal, gstAmount, totalAmount }); // Debug log
+    
+    // Update display with proper formatting
+    document.getElementById('editAdultPrice').textContent = (adultRate.price || 0).toFixed(2);
+    document.getElementById('editChildrenPrice').textContent = (childrenRate.price || 0).toFixed(2);
     document.getElementById('editAdultCurrency').textContent = currency;
     document.getElementById('editChildrenCurrency').textContent = currency;
     
@@ -1004,16 +1038,31 @@ async function saveEdit() {
         saveBtn.disabled = true;
         saveBtn.textContent = 'SAVING...';
         
+        // Get current values for calculation
         const adult = parseInt(document.getElementById('editAdult').value) || 0;
         const children = parseInt(document.getElementById('editChildren').value) || 0;
         const currency = document.getElementById('editCurrency').value;
         const rateType = document.getElementById('editRateType').value;
         
+        // Define default rates
+        const defaultRates = {
+            AdultAUSD: { price: 45.00, GST: 8 },
+            KidsAUSD: { price: 25.00, GST: 8 },
+            AdultAMVR: { price: 675.00, GST: 8 },
+            KidsAMVR: { price: 375.00, GST: 8 },
+            AdultBUSD: { price: 55.00, GST: 8 },
+            KidsBUSD: { price: 30.00, GST: 8 },
+            AdultBMVR: { price: 825.00, GST: 8 },
+            KidsBMVR: { price: 450.00, GST: 8 }
+        };
+        
+        const rateSource = typeof rates !== 'undefined' ? rates : defaultRates;
+        
         const adultRateKey = `Adult${rateType}${currency}`;
         const childrenRateKey = `Kids${rateType}${currency}`;
         
-        const adultRate = rates[adultRateKey] || { price: 0, GST: 8 };
-        const childrenRate = rates[childrenRateKey] || { price: 0, GST: 8 };
+        const adultRate = rateSource[adultRateKey] || { price: 0, GST: 8 };
+        const childrenRate = rateSource[childrenRateKey] || { price: 0, GST: 8 };
         
         const adultSubtotal = adult * adultRate.price;
         const childrenSubtotal = children * childrenRate.price;
@@ -1024,14 +1073,12 @@ async function saveEdit() {
         // Determine payment status
         let paymentStatus = 'COMPLETED';
         if (!isCash) {
-            // If it's non-cash and no approval codes yet, keep pending
             const approvalCode = document.getElementById('editApprovalCode').value.trim();
             const batchNo = document.getElementById('editBatchNo').value.trim();
             paymentStatus = (approvalCode && batchNo) ? 'COMPLETED' : 'PENDING_APPROVAL';
         }
         
         const updateData = {
-            // Add the newly editable fields
             passengerName: passengerName,
             flightNo: flightNo,
             seatNo: seatNo,
@@ -1053,8 +1100,10 @@ async function saveEdit() {
             batchNo: document.getElementById('editBatchNo').value.trim() || '',
             paymentStatus: paymentStatus,
             editedAt: new Date().toISOString(),
-            editedBy: 'user' // You can add user info here
+            editedBy: 'user'
         };
+        
+        console.log('Saving data:', updateData); // Debug log
         
         const kovelipayRef = passengerDb.collection('Kovelipay').doc(receiptNo);
         await kovelipayRef.update(updateData);
@@ -1087,26 +1136,58 @@ function printReceipt(receiptNo) {
 function printEditedReceipt() {
     if (!currentEditReceipt) return;
     
+    // Get current form values
+    const adult = parseInt(document.getElementById('editAdult').value) || 0;
+    const children = parseInt(document.getElementById('editChildren').value) || 0;
+    const currency = document.getElementById('editCurrency').value;
+    const rateType = document.getElementById('editRateType').value;
+    
+    // Calculate current values
+    const defaultRates = {
+        AdultAUSD: { price: 45.00, GST: 8 },
+        KidsAUSD: { price: 25.00, GST: 8 },
+        AdultAMVR: { price: 675.00, GST: 8 },
+        KidsAMVR: { price: 375.00, GST: 8 },
+        AdultBUSD: { price: 55.00, GST: 8 },
+        KidsBUSD: { price: 30.00, GST: 8 },
+        AdultBMVR: { price: 825.00, GST: 8 },
+        KidsBMVR: { price: 450.00, GST: 8 }
+    };
+    
+    const rateSource = typeof rates !== 'undefined' ? rates : defaultRates;
+    
+    const adultRateKey = `Adult${rateType}${currency}`;
+    const childrenRateKey = `Kids${rateType}${currency}`;
+    
+    const adultRate = rateSource[adultRateKey] || { price: 0, GST: 8 };
+    const childrenRate = rateSource[childrenRateKey] || { price: 0, GST: 8 };
+    
+    const adultSubtotal = adult * adultRate.price;
+    const childrenSubtotal = children * childrenRate.price;
+    const subtotal = adultSubtotal + childrenSubtotal;
+    const gstAmount = subtotal * (adultRate.GST / 100);
+    const totalAmount = subtotal + gstAmount;
+    
     // Create updated receipt object with current form values
     const updatedReceipt = {
         ...currentEditReceipt,
-        // Get the editable field values from the form
         passengerName: document.getElementById('editPName').value,
         flightNo: document.getElementById('editFlightNo').value,
         seatNo: document.getElementById('editSeatNo').value,
         
-        adult: parseInt(document.getElementById('editAdult').value) || 0,
-        children: parseInt(document.getElementById('editChildren').value) || 0,
-        currency: document.getElementById('editCurrency').value,
-        rateType: document.getElementById('editRateType').value,
+        adult: adult,
+        children: children,
+        currency: currency,
+        rateType: rateType,
         paymentMethod: document.getElementById('editPaymentMethod').value,
-        adultPrice: parseFloat(document.getElementById('editAdultPrice').textContent),
-        childrenPrice: parseFloat(document.getElementById('editChildrenPrice').textContent),
-        adultSubtotal: parseFloat(document.getElementById('editAdultSubtotal').textContent),
-        childrenSubtotal: parseFloat(document.getElementById('editChildrenSubtotal').textContent),
-        subtotal: parseFloat(document.getElementById('editSubtotal').textContent),
-        gstAmount: parseFloat(document.getElementById('editGst').textContent),
-        totalAmount: parseFloat(document.getElementById('editTotal').textContent),
+        adultPrice: adultRate.price,
+        childrenPrice: childrenRate.price,
+        adultSubtotal: adultSubtotal,
+        childrenSubtotal: childrenSubtotal,
+        subtotal: subtotal,
+        gstAmount: gstAmount,
+        gstRate: adultRate.GST,
+        totalAmount: totalAmount,
         approvalCode: document.getElementById('editApprovalCode').value,
         batchNo: document.getElementById('editBatchNo').value,
         expiryDateTime: document.getElementById('editExpiryTime').value,
@@ -1219,9 +1300,18 @@ function printReceiptContent(receipt) {
 // ========== INITIALIZATION ==========
 
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing...'); // Debug log
+    console.log('Rates available:', typeof rates !== 'undefined' ? rates : 'Not loaded'); // Debug log
+    
     loadReceipts();
     
-    // Event listeners
+    // Event listeners for real-time calculation
+    document.getElementById('editAdult').addEventListener('input', calculateEditPrices);
+    document.getElementById('editChildren').addEventListener('input', calculateEditPrices);
+    document.getElementById('editCurrency').addEventListener('change', calculateEditPrices);
+    document.getElementById('editRateType').addEventListener('change', calculateEditPrices);
+    
+    // Search and filter events
     document.getElementById('searchInput').addEventListener('input', applyFilters);
     document.getElementById('paymentFilter').addEventListener('change', applyFilters);
     document.getElementById('statusFilter').addEventListener('change', applyFilters);
