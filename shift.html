@@ -68,6 +68,33 @@
             border: 1px solid #fff3cf;
         }
 
+        /* Debug info panel */
+        .debug-info {
+            background: rgba(0,0,0,0.03);
+            border-radius: 20px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            font-size: 11px;
+            font-family: monospace;
+            border: 1px dashed #e6b800;
+            color: #74592d;
+            max-height: 150px;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        .debug-info.visible {
+            display: block;
+        }
+        
+        .debug-info .success {
+            color: #2b6e2b;
+        }
+        
+        .debug-info .error {
+            color: #ac3a3a;
+        }
+
         /* Current shift indicator - similar to shift-info in parser */
         .shift-info {
             display: flex;
@@ -541,6 +568,18 @@
             text-align: right;
             font-style: italic;
         }
+
+        /* Toggle debug button */
+        .toggle-debug {
+            background: none;
+            border: 1px dashed #e6b800;
+            color: #8b6913;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 10px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
     </style>
 
     <!-- Firebase -->
@@ -557,6 +596,11 @@
             <div class="date">DATE: <span id="currentDate">Loading...</span></div>
             <div class="shift">SHIFT: <span id="currentShift">Loading...</span> <span id="shiftStatus" class="status-badge"></span></div>
             <button id="refreshShiftBtn" class="refresh-btn">↻</button>
+        </div>
+        
+        <!-- Debug Info Panel (hidden by default) -->
+        <div class="debug-info" id="debugInfo">
+            <div id="debugContent">Loading debug info...</div>
         </div>
         
         <!-- User badge - fetches from login -->
@@ -612,6 +656,9 @@
         <div class="last-updated" id="lastUpdated">
             last updated: loading...
         </div>
+        
+        <!-- Toggle debug button -->
+        <button class="toggle-debug" onclick="toggleDebug()">🔍 toggle debug info</button>
     </div>
 
     <script>
@@ -633,11 +680,44 @@
 
         // Store last update time
         let lastUpdateTime = null;
+        
+        // Debug info
+        let debugMessages = [];
+
+        // Toggle debug panel
+        window.toggleDebug = function() {
+            const debugPanel = document.getElementById('debugInfo');
+            debugPanel.classList.toggle('visible');
+        };
+
+        // Add debug message
+        function addDebug(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            debugMessages.push({ message, type, timestamp });
+            
+            // Keep only last 10 messages
+            if (debugMessages.length > 10) {
+                debugMessages.shift();
+            }
+            
+            updateDebugDisplay();
+        }
+
+        // Update debug display
+        function updateDebugDisplay() {
+            const debugContent = document.getElementById('debugContent');
+            let html = '';
+            debugMessages.forEach(msg => {
+                const color = msg.type === 'error' ? '#ac3a3a' : msg.type === 'success' ? '#2b6e2b' : '#74592d';
+                html += `<div style="margin-bottom: 4px; color: ${color};">[${msg.timestamp}] ${msg.message}</div>`;
+            });
+            debugContent.innerHTML = html || 'No debug messages';
+        }
 
         // Load user from login page localStorage
         function loadUserFromLogin() {
             try {
-                console.log('Loading user data from login...');
+                addDebug('Loading user from localStorage...');
                 
                 // Get data from login page
                 const username = localStorage.getItem('username');
@@ -645,7 +725,7 @@
                 const rcno = localStorage.getItem('rcno');
                 const loggedInUser = localStorage.getItem('loggedInUser');
                 
-                console.log('Raw localStorage values:', { username, level, rcno });
+                addDebug(`Raw: username=${username}, level=${level}, rcno=${rcno}`);
                 
                 // Parse loggedInUser if exists
                 if (loggedInUser) {
@@ -654,8 +734,9 @@
                         currentUser.name = parsed.username || parsed.name || username || 'operator';
                         currentUser.level = parsed.level || level || 'operator';
                         currentUser.rcno = parsed.rcno || rcno || '';
+                        addDebug(`Parsed loggedInUser: ${JSON.stringify(parsed)}`);
                     } catch (e) {
-                        console.error('Error parsing loggedInUser:', e);
+                        addDebug(`Error parsing loggedInUser: ${e.message}`, 'error');
                     }
                 }
                 
@@ -673,10 +754,10 @@
                 if (!currentUser.level) currentUser.level = 'operator';
                 if (!currentUser.rcno) currentUser.rcno = 'N/A';
                 
-                console.log('Final user data:', currentUser);
+                addDebug(`Final user: ${currentUser.name} (${currentUser.level}) - Supervisor: ${currentUser.isSupervisor}`, 'success');
                 
             } catch (error) {
-                console.error('Error loading user:', error);
+                addDebug(`Error loading user: ${error.message}`, 'error');
                 // Fallback
                 currentUser = { 
                     name: 'operator', 
@@ -791,15 +872,18 @@
                 statusBadge.textContent = currentShiftData.status;
                 statusBadge.style.backgroundColor = '#6b8e23';
                 morningShift.classList.add('active-shift');
+                addDebug(`Active shift: MORNING (${currentShiftData.status})`, 'success');
             } else if (currentShiftData.shift === 'EVENING') {
                 shiftElement.textContent = 'EVENING';
                 statusBadge.textContent = currentShiftData.status;
                 statusBadge.style.backgroundColor = '#6b8e23';
                 eveningShift.classList.add('active-shift');
+                addDebug(`Active shift: EVENING (${currentShiftData.status})`, 'success');
             } else {
                 shiftElement.textContent = currentShiftData.shift;
                 statusBadge.textContent = currentShiftData.status;
                 statusBadge.style.backgroundColor = '#c68b5e';
+                addDebug(`No active shift: ${currentShiftData.shift}`, 'warning');
             }
             
             shiftInfo.classList.remove('loading', 'error');
@@ -827,8 +911,10 @@
                 shiftElement.textContent = 'Loading...';
                 shiftInfo.classList.add('loading');
                 
+                addDebug('Loading shift data from Firebase...');
+                
                 if (typeof db === 'undefined') {
-                    console.error('db not initialized');
+                    addDebug('db not initialized!', 'error');
                     dateElement.textContent = 'DB ERROR';
                     shiftElement.textContent = 'NOT INITIALIZED';
                     shiftInfo.classList.remove('loading');
@@ -836,34 +922,35 @@
                     return;
                 }
                 
+                addDebug('Firebase db is initialized');
+                
                 let shiftDoc = null;
+                let docFound = false;
+                let usedPath = '';
                 
                 // Try different case variations - exactly like the parser
-                try {
-                    shiftDoc = await db.collection('shifts').doc('currentshift').get();
-                } catch (e) {
-                    console.log('Error with lowercase:', e);
-                }
+                const paths = ['currentshift', 'currentShift', 'CurrentShift'];
                 
-                if (!shiftDoc || !shiftDoc.exists) {
+                for (const path of paths) {
                     try {
-                        shiftDoc = await db.collection('shifts').doc('currentShift').get();
+                        addDebug(`Trying: shifts/${path}`);
+                        shiftDoc = await db.collection('shifts').doc(path).get();
+                        if (shiftDoc.exists) {
+                            docFound = true;
+                            usedPath = path;
+                            addDebug(`✅ Found document at: shifts/${path}`, 'success');
+                            break;
+                        } else {
+                            addDebug(`Document not found at: shifts/${path}`);
+                        }
                     } catch (e) {
-                        console.log('Error with currentShift:', e);
+                        addDebug(`Error with ${path}: ${e.message}`, 'error');
                     }
                 }
                 
-                if (!shiftDoc || !shiftDoc.exists) {
-                    try {
-                        shiftDoc = await db.collection('shifts').doc('CurrentShift').get();
-                    } catch (e) {
-                        console.log('Error with CurrentShift:', e);
-                    }
-                }
-                
-                if (shiftDoc && shiftDoc.exists) {
+                if (docFound && shiftDoc) {
                     const data = shiftDoc.data();
-                    console.log('Firebase data received:', data);
+                    addDebug(`✅ Data received: ${JSON.stringify(data)}`, 'success');
                     
                     // Update morning and evening status displays
                     const morningStat = document.getElementById('morningStatus');
@@ -893,20 +980,28 @@
                         currentShiftData.shift = 'MORNING';
                         currentShiftData.status = 'OPEN';
                         currentShiftData.openTime = data.updated || '';
+                        addDebug(`Morning shift is OPEN`, 'success');
                     } 
                     else if (data.evening === 'open') {
                         currentShiftData.shift = 'EVENING';
                         currentShiftData.status = 'OPEN';
                         currentShiftData.openTime = data.updated || '';
+                        addDebug(`Evening shift is OPEN`, 'success');
                     } 
                     else {
                         currentShiftData.shift = 'NO OPEN SHIFT';
                         currentShiftData.status = 'CLOSED';
                         currentShiftData.openTime = data.updated || '';
+                        addDebug(`No shift is currently open`, 'warning');
                     }
                     
                 } else {
-                    console.log('No document found, using defaults');
+                    addDebug('❌ No shift document found in Firebase!', 'error');
+                    addDebug('Please check:');
+                    addDebug('1. Collection name is exactly "shifts"');
+                    addDebug('2. Document exists with one of these IDs: currentshift, currentShift, CurrentShift');
+                    addDebug('3. Firebase permissions allow reading this document');
+                    
                     currentShiftData.date = '';
                     currentShiftData.shift = 'NO SHIFT DATA';
                     currentShiftData.status = 'NOT FOUND';
@@ -923,6 +1018,7 @@
                 updateShiftDisplay();
                 
             } catch (error) {
+                addDebug(`❌ Fatal error: ${error.message}`, 'error');
                 console.error('Error fetching shift data:', error);
                 
                 const dateElement = document.getElementById('currentDate');
@@ -983,7 +1079,7 @@
         // Handle shift open/close
         async function handleShift(shift, action) {
             try {
-                console.log(`Handling ${shift} shift ${action}...`);
+                addDebug(`Handling ${shift} shift ${action}...`);
                 
                 // Get current document
                 const doc = await db.collection('shifts').doc('currentshift').get();
@@ -1042,16 +1138,19 @@
                     updateData.date = existingDate;
                 }
 
+                addDebug(`Saving to Firebase: ${JSON.stringify(updateData)}`);
+                
                 // Save to Firebase
                 await db.collection('shifts').doc('currentshift').set(updateData, { merge: true });
                 
+                addDebug(`✅ ${shift} shift ${newStatus} by ${currentUser.name}`, 'success');
                 showMessage(`✨ ${shift} shift ${newStatus} by ${currentUser.name}`);
                 
                 // Reload data to reflect changes
                 await loadTodayData();
                 
             } catch (error) {
-                console.error('Save error:', error);
+                addDebug(`❌ Save error: ${error.message}`, 'error');
                 showMessage('Error saving shift', true);
             }
         }
@@ -1071,6 +1170,8 @@
             const now = new Date().toLocaleString(); // Format: "2/16/2026, 10:26:06 AM"
             
             try {
+                addDebug(`Supervisor reset initiated by ${currentUser.name}`);
+                
                 const updateData = {
                     morning: 'pending',
                     evening: 'pending',
@@ -1084,10 +1185,11 @@
                 };
                 
                 await db.collection('shifts').doc('currentshift').set(updateData);
+                addDebug('✅ Reset successful', 'success');
                 showMessage('✅ supervisor reset · new day started');
                 await loadTodayData();
             } catch (error) {
-                console.error('Reset error:', error);
+                addDebug(`❌ Reset error: ${error.message}`, 'error');
                 showMessage('Error resetting shifts', true);
             }
         }
@@ -1117,6 +1219,7 @@
                 // Auto-refresh every 30 seconds
                 setInterval(loadTodayData, 30000);
             } else {
+                addDebug('❌ Firebase db not defined!', 'error');
                 showMessage('⚠️ Firebase not connected', true);
             }
             
