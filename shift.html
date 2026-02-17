@@ -44,7 +44,7 @@
         }
 
         .container {
-            width: 480px;
+            width: 500px;
             background: rgba(255, 250, 240, 0.85);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
@@ -66,6 +66,58 @@
             border-radius: 6px;
             margin: 0 auto 20px auto;
             border: 1px solid #fff3cf;
+        }
+
+        /* Current shift indicator */
+        .current-shift-badge {
+            background: linear-gradient(115deg, #fff5df, #fdeece);
+            border-radius: 60px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            border: 2px solid #ffd700;
+            box-shadow: 0 4px 0 #dbb67b, 0 8px 16px -8px rgba(184, 134, 11, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .current-shift-label {
+            color: #7a5c2e;
+            font-weight: 500;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .current-shift-value {
+            background: white;
+            padding: 6px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            color: #8b6913;
+            border: 1px solid #ffd700;
+            box-shadow: inset 0 1px 4px #ffe6b3;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .current-shift-value.open-morning {
+            background: #ebf7e4;
+            color: #2b6e2b;
+            border-color: #aacf94;
+        }
+
+        .current-shift-value.open-evening {
+            background: #fff2cf;
+            color: #8f6327;
+            border-color: #f5d797;
+        }
+
+        .current-shift-value.closed {
+            background: #ffe8e8;
+            color: #ac3a3a;
+            border-color: #fbbdbd;
         }
 
         .date {
@@ -116,6 +168,7 @@
             align-items: center;
             gap: 12px;
             font-size: 0.95rem;
+            flex-wrap: wrap;
         }
 
         .user-name {
@@ -186,6 +239,13 @@
             box-shadow: 0 8px 0 #e5c294, 0 12px 28px -12px rgba(179, 139, 81, 0.4);
             backdrop-filter: blur(5px);
             position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .shift.active-shift {
+            border: 2px solid #ffd700;
+            box-shadow: 0 8px 0 #e5c294, 0 12px 28px -8px rgba(255, 215, 0, 0.5);
+            transform: scale(1.02);
         }
 
         .shift::before {
@@ -429,6 +489,16 @@
             margin: 20px auto 0;
         }
 
+        /* Last updated info */
+        .last-updated {
+            font-size: 0.75rem;
+            color: #ad8e4f;
+            text-align: center;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px dashed #eac476;
+        }
+
         /* Scrollbar styling */
         ::-webkit-scrollbar {
             width: 8px;
@@ -483,11 +553,17 @@
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="fireshift.js"></script>
+    <script src="shiftfire.js"></script>
 </head>
 <body>
     <div class="container">
         <div class="gold-bar"></div>
+        
+        <!-- Current Open Shift Indicator -->
+        <div class="current-shift-badge" id="currentShiftBadge">
+            <span class="current-shift-label">🔔 CURRENT SHIFT</span>
+            <span class="current-shift-value" id="currentShiftValue">loading...</span>
+        </div>
         
         <div class="date" id="dateDisplay">
             📅 <span id="dateText">loading...</span>
@@ -506,7 +582,7 @@
         <div id="message"></div>
         
         <!-- Morning shift -->
-        <div class="shift">
+        <div class="shift" id="morningShift">
             <div class="shift-header">
                 <span>🌅</span>
                 <h3>morning shift</h3>
@@ -519,7 +595,7 @@
         </div>
         
         <!-- Evening shift -->
-        <div class="shift">
+        <div class="shift" id="eveningShift">
             <div class="shift-header">
                 <span>🌆</span>
                 <h3>evening shift</h3>
@@ -541,6 +617,11 @@
         </button>
         
         <div class="welcome-text" id="welcomeMessage"></div>
+        
+        <!-- Last updated info -->
+        <div class="last-updated" id="lastUpdated">
+            last updated: loading...
+        </div>
     </div>
 
     <script>
@@ -551,6 +632,9 @@
             rcno: '',
             isSupervisor: false 
         };
+
+        // Store last update time
+        let lastUpdateTime = null;
 
         // Load user from login page localStorage
         function loadUserFromLogin() {
@@ -680,6 +764,21 @@
             }
         }
 
+        // Format time for display
+        function formatTime(timestamp) {
+            if (!timestamp) return 'never';
+            try {
+                const date = new Date(timestamp);
+                return date.toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            } catch {
+                return 'unknown';
+            }
+        }
+
         // Show message
         function showMessage(text, isError = false) {
             const msg = document.getElementById('message');
@@ -689,8 +788,40 @@
             setTimeout(() => msg.style.display = 'none', 3000);
         }
 
+        // Update current shift indicator
+        function updateCurrentShiftIndicator(morningStatus, eveningStatus, updatedBy) {
+            const currentShiftValue = document.getElementById('currentShiftValue');
+            const morningShift = document.getElementById('morningShift');
+            const eveningShift = document.getElementById('eveningShift');
+            
+            // Remove active class from both shifts
+            morningShift.classList.remove('active-shift');
+            eveningShift.classList.remove('active-shift');
+            
+            if (morningStatus === 'open') {
+                currentShiftValue.innerHTML = '🌅 MORNING SHIFT OPEN';
+                currentShiftValue.className = 'current-shift-value open-morning';
+                morningShift.classList.add('active-shift');
+            } else if (eveningStatus === 'open') {
+                currentShiftValue.innerHTML = '🌆 EVENING SHIFT OPEN';
+                currentShiftValue.className = 'current-shift-value open-evening';
+                eveningShift.classList.add('active-shift');
+            } else if (morningStatus === 'closed' && eveningStatus === 'closed') {
+                currentShiftValue.innerHTML = '🔴 ALL SHIFTS CLOSED';
+                currentShiftValue.className = 'current-shift-value closed';
+            } else {
+                currentShiftValue.innerHTML = '🟡 NO ACTIVE SHIFT';
+                currentShiftValue.className = 'current-shift-value';
+            }
+            
+            // Add updated by info if available
+            if (updatedBy) {
+                currentShiftValue.setAttribute('title', `Last action by: ${updatedBy}`);
+            }
+        }
+
         // Update UI based on shift status
-        function updateUIBasedOnStatus(morningStatus, eveningStatus, storedDate) {
+        function updateUIBasedOnStatus(morningStatus, eveningStatus, storedDate, updatedBy, updatedTime) {
             const morningStat = document.getElementById('morningStatus');
             const openMorning = document.getElementById('openMorning');
             const closeMorning = document.getElementById('closeMorning');
@@ -713,6 +844,15 @@
                 dateText.textContent = formatDateForDisplay(storedDate);
             } else {
                 dateText.textContent = formatDateForDisplay(getLocalDate());
+            }
+
+            // Update current shift indicator
+            updateCurrentShiftIndicator(morningStatus, eveningStatus, updatedBy);
+
+            // Update last updated time
+            if (updatedTime) {
+                lastUpdateTime = updatedTime;
+                document.getElementById('lastUpdated').textContent = `last updated: ${formatTime(updatedTime)} by ${updatedBy || 'system'}`;
             }
 
             // Button states
@@ -747,7 +887,7 @@
             }
         }
 
-        // Load shift data
+        // Load shift data from Firebase
         async function loadTodayData() {
             try {
                 const doc = await db.collection('shifts').doc('currentshift').get();
@@ -755,9 +895,18 @@
                 if (doc.exists) {
                     const data = doc.data();
                     const storedDate = data.date || getLocalDate();
-                    updateUIBasedOnStatus(data.morning || 'pending', data.evening || 'pending', storedDate);
+                    const updatedBy = data.updatedBy || data.resetBy || 'system';
+                    const updatedTime = data.updated || data.resetAt || new Date().toISOString();
+                    
+                    updateUIBasedOnStatus(
+                        data.morning || 'pending', 
+                        data.evening || 'pending', 
+                        storedDate,
+                        updatedBy,
+                        updatedTime
+                    );
                 } else {
-                    updateUIBasedOnStatus('pending', 'pending', getLocalDate());
+                    updateUIBasedOnStatus('pending', 'pending', getLocalDate(), 'system', new Date().toISOString());
                 }
             } catch (error) {
                 console.error('Load error:', error);
@@ -816,9 +965,10 @@
 
                 // Update data with user info
                 const newStatus = action === 'open' ? 'open' : 'closed';
+                const now = new Date().toISOString();
                 const updateData = {
                     [shift]: newStatus,
-                    updated: new Date().toLocaleString(),
+                    updated: now,
                     updatedBy: currentUser.name,
                     updatedByLevel: currentUser.level,
                     updatedByRC: currentUser.rcno
@@ -853,17 +1003,19 @@
             }
 
             const today = getLocalDate();
+            const now = new Date().toISOString();
+            
             try {
                 const updateData = {
                     morning: 'pending',
                     evening: 'pending',
                     date: today,
-                    updated: new Date().toLocaleString(),
+                    updated: now,
                     updatedBy: currentUser.name,
                     updatedByLevel: currentUser.level,
                     updatedByRC: currentUser.rcno,
                     resetBy: currentUser.name,
-                    resetAt: new Date().toISOString()
+                    resetAt: now
                 };
                 
                 await db.collection('shifts').doc('currentshift').set(updateData);
