@@ -108,16 +108,36 @@
             border-color: #aacf94;
         }
 
+        .current-shift-value.open-morning::before {
+            content: '🌅';
+            margin-right: 5px;
+        }
+
         .current-shift-value.open-evening {
             background: #fff2cf;
             color: #8f6327;
             border-color: #f5d797;
         }
 
+        .current-shift-value.open-evening::before {
+            content: '🌆';
+            margin-right: 5px;
+        }
+
         .current-shift-value.closed {
             background: #ffe8e8;
             color: #ac3a3a;
             border-color: #fbbdbd;
+        }
+
+        .current-shift-value.closed::before {
+            content: '🔴';
+            margin-right: 5px;
+        }
+
+        .current-shift-value.pending::before {
+            content: '🟡';
+            margin-right: 5px;
         }
 
         .date {
@@ -747,35 +767,18 @@
             }, 1000);
         };
 
-        // Get today's date
-        function getLocalDate() {
-            const d = new Date();
-            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        }
-
-        // Format date for display
+        // Format date for display (YYYY-MM-DD to DD/MM/YYYY)
         function formatDateForDisplay(dateStr) {
-            if (!dateStr) return getLocalDate();
+            if (!dateStr) return 'No date set';
             try {
-                const [year, month, day] = dateStr.split('-');
-                return `${day}/${month}/${year}`;
+                // If it's already in YYYY-MM-DD format
+                if (dateStr.includes('-')) {
+                    const [year, month, day] = dateStr.split('-');
+                    return `${day}/${month}/${year}`;
+                }
+                return dateStr;
             } catch {
                 return dateStr;
-            }
-        }
-
-        // Format time for display
-        function formatTime(timestamp) {
-            if (!timestamp) return 'never';
-            try {
-                const date = new Date(timestamp);
-                return date.toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
-            } catch {
-                return 'unknown';
             }
         }
 
@@ -788,7 +791,7 @@
             setTimeout(() => msg.style.display = 'none', 3000);
         }
 
-        // Update current shift indicator
+        // Update current shift indicator based on morning and evening status
         function updateCurrentShiftIndicator(morningStatus, eveningStatus, updatedBy) {
             const currentShiftValue = document.getElementById('currentShiftValue');
             const morningShift = document.getElementById('morningShift');
@@ -798,21 +801,27 @@
             morningShift.classList.remove('active-shift');
             eveningShift.classList.remove('active-shift');
             
+            let shiftText = '';
+            let shiftClass = '';
+            
             if (morningStatus === 'open') {
-                currentShiftValue.innerHTML = '🌅 MORNING SHIFT OPEN';
-                currentShiftValue.className = 'current-shift-value open-morning';
+                shiftText = 'MORNING SHIFT OPEN';
+                shiftClass = 'open-morning';
                 morningShift.classList.add('active-shift');
             } else if (eveningStatus === 'open') {
-                currentShiftValue.innerHTML = '🌆 EVENING SHIFT OPEN';
-                currentShiftValue.className = 'current-shift-value open-evening';
+                shiftText = 'EVENING SHIFT OPEN';
+                shiftClass = 'open-evening';
                 eveningShift.classList.add('active-shift');
             } else if (morningStatus === 'closed' && eveningStatus === 'closed') {
-                currentShiftValue.innerHTML = '🔴 ALL SHIFTS CLOSED';
-                currentShiftValue.className = 'current-shift-value closed';
+                shiftText = 'ALL SHIFTS CLOSED';
+                shiftClass = 'closed';
             } else {
-                currentShiftValue.innerHTML = '🟡 NO ACTIVE SHIFT';
-                currentShiftValue.className = 'current-shift-value';
+                shiftText = 'NO ACTIVE SHIFT';
+                shiftClass = 'pending';
             }
+            
+            currentShiftValue.textContent = shiftText;
+            currentShiftValue.className = `current-shift-value ${shiftClass}`;
             
             // Add updated by info if available
             if (updatedBy) {
@@ -820,8 +829,16 @@
             }
         }
 
-        // Update UI based on shift status
-        function updateUIBasedOnStatus(morningStatus, eveningStatus, storedDate, updatedBy, updatedTime) {
+        // Update UI based on shift status from Firebase
+        function updateUIBasedOnStatus(data) {
+            // Extract data from Firebase document
+            const morningStatus = data.morning || 'pending';
+            const eveningStatus = data.evening || 'pending';
+            const storedDate = data.date || '';
+            const updatedBy = data.updatedBy || 'system';
+            const updatedTime = data.updated || '';
+            
+            // Update morning shift UI
             const morningStat = document.getElementById('morningStatus');
             const openMorning = document.getElementById('openMorning');
             const closeMorning = document.getElementById('closeMorning');
@@ -830,6 +847,7 @@
                                     morningStatus === 'closed' ? '🔴 shift closed' : '🟡 pending';
             morningStat.className = `status ${morningStatus}`;
             
+            // Update evening shift UI
             const eveningStat = document.getElementById('eveningStatus');
             const openEvening = document.getElementById('openEvening');
             const closeEvening = document.getElementById('closeEvening');
@@ -838,12 +856,12 @@
                                      eveningStatus === 'closed' ? '🔴 shift closed' : '🟡 pending';
             eveningStat.className = `status ${eveningStatus}`;
 
-            // Update date
+            // Update date display
             const dateText = document.getElementById('dateText');
             if (storedDate) {
                 dateText.textContent = formatDateForDisplay(storedDate);
             } else {
-                dateText.textContent = formatDateForDisplay(getLocalDate());
+                dateText.textContent = 'No date set';
             }
 
             // Update current shift indicator
@@ -852,10 +870,12 @@
             // Update last updated time
             if (updatedTime) {
                 lastUpdateTime = updatedTime;
-                document.getElementById('lastUpdated').textContent = `last updated: ${formatTime(updatedTime)} by ${updatedBy || 'system'}`;
+                document.getElementById('lastUpdated').textContent = `last updated: ${updatedTime} by ${updatedBy}`;
+            } else {
+                document.getElementById('lastUpdated').textContent = `last updated: never`;
             }
 
-            // Button states
+            // Button state logic based on shift status
             if (morningStatus === 'pending') {
                 openMorning.disabled = false;
                 closeMorning.disabled = true;
@@ -890,23 +910,29 @@
         // Load shift data from Firebase
         async function loadTodayData() {
             try {
+                console.log('Loading shift data from Firebase...');
                 const doc = await db.collection('shifts').doc('currentshift').get();
                 
                 if (doc.exists) {
                     const data = doc.data();
-                    const storedDate = data.date || getLocalDate();
-                    const updatedBy = data.updatedBy || data.resetBy || 'system';
-                    const updatedTime = data.updated || data.resetAt || new Date().toISOString();
+                    console.log('Firebase data received:', data);
                     
-                    updateUIBasedOnStatus(
-                        data.morning || 'pending', 
-                        data.evening || 'pending', 
-                        storedDate,
-                        updatedBy,
-                        updatedTime
-                    );
+                    // Update UI with the data
+                    updateUIBasedOnStatus(data);
+                    
+                    // Show success message
+                    showMessage('✅ Shift data refreshed', false);
                 } else {
-                    updateUIBasedOnStatus('pending', 'pending', getLocalDate(), 'system', new Date().toISOString());
+                    console.log('No document found, using defaults');
+                    // No document exists, create default structure
+                    const defaultData = {
+                        morning: 'pending',
+                        evening: 'pending',
+                        date: new Date().toISOString().split('T')[0],
+                        updated: new Date().toLocaleString()
+                    };
+                    updateUIBasedOnStatus(defaultData);
+                    showMessage('📝 Using default shift data', false);
                 }
             } catch (error) {
                 console.error('Load error:', error);
@@ -917,22 +943,20 @@
         // Handle shift open/close
         async function handleShift(shift, action) {
             try {
+                console.log(`Handling ${shift} shift ${action}...`);
+                
+                // Get current document
                 const doc = await db.collection('shifts').doc('currentshift').get();
                 const currentData = doc.exists ? doc.data() : {};
                 
                 const existingDate = currentData.date;
-                const todayStr = getLocalDate();
-                const shiftDate = existingDate || todayStr;
+                const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
-                // Validation
+                // Validation rules
                 if (shift === 'morning') {
                     if (action === 'open') {
                         if (currentData.morning === 'open') {
                             showMessage('morning shift already open!', true); 
-                            return;
-                        }
-                        if (currentData.morning === 'closed' && existingDate === shiftDate) {
-                            showMessage('morning already closed for today', true); 
                             return;
                         }
                     }
@@ -952,10 +976,6 @@
                             showMessage('evening shift already open!', true); 
                             return;
                         }
-                        if (currentData.evening === 'closed' && existingDate === shiftDate) {
-                            showMessage('evening already closed for today', true); 
-                            return;
-                        }
                     }
                     if (action === 'close' && currentData.evening !== 'open') {
                         showMessage('open evening shift first!', true); 
@@ -965,7 +985,8 @@
 
                 // Update data with user info
                 const newStatus = action === 'open' ? 'open' : 'closed';
-                const now = new Date().toISOString();
+                const now = new Date().toLocaleString(); // Format: "2/16/2026, 10:26:06 AM"
+                
                 const updateData = {
                     [shift]: newStatus,
                     updated: now,
@@ -974,16 +995,20 @@
                     updatedByRC: currentUser.rcno
                 };
                 
+                // Preserve existing date or set new one
                 if (!existingDate) {
                     updateData.date = todayStr;
                 } else {
                     updateData.date = existingDate;
                 }
 
+                // Save to Firebase
                 await db.collection('shifts').doc('currentshift').set(updateData, { merge: true });
                 
                 showMessage(`✨ ${shift} shift ${newStatus} by ${currentUser.name}`);
-                loadTodayData();
+                
+                // Reload data to reflect changes
+                await loadTodayData();
                 
             } catch (error) {
                 console.error('Save error:', error);
@@ -1002,8 +1027,8 @@
                 return;
             }
 
-            const today = getLocalDate();
-            const now = new Date().toISOString();
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const now = new Date().toLocaleString(); // Format: "2/16/2026, 10:26:06 AM"
             
             try {
                 const updateData = {
@@ -1020,8 +1045,9 @@
                 
                 await db.collection('shifts').doc('currentshift').set(updateData);
                 showMessage('✅ supervisor reset · new day started');
-                loadTodayData();
+                await loadTodayData();
             } catch (error) {
+                console.error('Reset error:', error);
                 showMessage('Error resetting shifts', true);
             }
         }
