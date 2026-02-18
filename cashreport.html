@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koveli Lounge – Cash Report (detailed by payment method)</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <!-- external config & data -->
+    <script src="fireshift.js"></script>
+    <script src="iata.js"></script>
+    <script src="rate.js"></script>
+    <script src="Co.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f2ede4;
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            padding: 30px 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .report-container {
+            max-width: 1300px;
+            width: 100%;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 25px 45px -12px rgba(100, 70, 20, 0.25);
+            border: 1px solid #f0dbc0;
+            overflow: hidden;
+        }
+        /* company header */
+        .company-header {
+            padding: 24px 32px 8px 32px;
+            text-align: center;
+            border-bottom: 1px solid #e6d5b8;
+        }
+        .company-name {
+            font-size: 2.2rem;
+            font-weight: 400;
+            letter-spacing: 2px;
+            color: #3e362e;
+        }
+        .company-address {
+            font-size: 1rem;
+            color: #7f6e54;
+            margin-top: 6px;
+            font-weight: 300;
+        }
+        .report-title {
+            font-size: 1.8rem;
+            font-weight: 350;
+            color: #9b7b4b;
+            margin-top: 6px;
+            letter-spacing: 1px;
+        }
+
+        /* filter bar */
+        .filter-bar {
+            padding: 20px 32px 10px 32px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .filter-panel {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background: #faf8f2;
+            padding: 8px 20px;
+            border-radius: 48px;
+            border: 1px solid #e0cfb0;
+        }
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .filter-item label {
+            color: #6b4f2a;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        .filter-item input, .filter-item select {
+            padding: 8px 14px;
+            border: 1px solid #d4bc8c;
+            border-radius: 40px;
+            background: white;
+            font-size: 0.9rem;
+            min-width: 140px;
+            outline: none;
+        }
+        .filter-item input:focus, .filter-item select:focus {
+            border-color: #b48c48;
+            box-shadow: 0 0 0 2px rgba(180,140,72,0.2);
+        }
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        .btn {
+            border: none;
+            background: #2d5a4b;
+            color: white;
+            padding: 10px 28px;
+            border-radius: 40px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: 1px solid #244e41;
+        }
+        .btn.print {
+            background: #5e503f;
+            border-color: #4e4234;
+        }
+        .btn:hover {
+            filter: brightness(1.08);
+            transform: translateY(-1px);
+        }
+        .refresh-small {
+            background: #f1e9da;
+            border: 1px solid #bcaa85;
+            border-radius: 40px;
+            padding: 5px 18px;
+            cursor: pointer;
+        }
+
+        /* summary area – cash total, non-cash by currency, and totals row (no exchange rate) */
+        .summary-section {
+            padding: 16px 32px 8px 32px;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-block {
+            background: #fbf9f5;
+            border-radius: 18px;
+            padding: 18px 20px;
+            border: 1px solid #e7dbc6;
+        }
+        .stat-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #7f6e54;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        .currency-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 1.1rem;
+            border-bottom: 1px dashed #ddd0bb;
+        }
+        .currency-line:last-child {
+            border-bottom: none;
+        }
+        .currency-code {
+            font-weight: 400;
+            color: #5b4a32;
+        }
+        .currency-amount {
+            font-weight: 500;
+            color: #2c3e2f;
+        }
+        .sub-foot {
+            font-size: 0.75rem;
+            color: #9b8b74;
+            margin-top: 8px;
+        }
+
+        /* totals row (receipts, adults, children) – no exchange rate */
+        .totals-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 42px;
+            padding: 16px 0 10px 0;
+            color: #4a4136;
+            border-bottom: 1px solid #eedfcb;
+            font-size: 1.1rem;
+        }
+        .totals-row span {
+            font-weight: 400;
+        }
+        .totals-row strong {
+            font-weight: 600;
+            color: #3f4d2f;
+            margin-left: 8px;
+            font-size: 1.3rem;
+        }
+
+        /* non-cash breakdown table – shows every payment method present (Amex, Visa, Master, Unionpay, etc) */
+        .noncash-breakdown {
+            padding: 8px 32px 0 32px;
+        }
+        .noncash-breakdown h3 {
+            font-weight: 400;
+            font-size: 1.2rem;
+            color: #4e3f2b;
+            border-bottom: 1px solid #e6d5b8;
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+        }
+        .method-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fefdfa;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .method-table th {
+            text-align: left;
+            padding: 14px 16px;
+            background: #ece2d2;
+            font-weight: 500;
+            color: #3e3526;
+        }
+        .method-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0e4d2;
+        }
+        .method-table tr:last-child td { border-bottom: none; }
+
+        /* transaction list */
+        .table-wrapper {
+            padding: 24px 32px 32px 32px;
+        }
+        .list-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        .list-table th {
+            background: #ece2d2;
+            font-weight: 500;
+            padding: 16px 8px;
+            color: #3e3526;
+            font-size: 0.8rem;
+            border-bottom: 1px solid #dacbad;
+        }
+        .list-table td {
+            padding: 14px 8px;
+            border-bottom: 1px solid #f1e6d6;
+            text-align: center;
+        }
+        .footer-note {
+            padding: 12px 32px 24px;
+            text-align: right;
+            color: #856f4c;
+            border-top: 1px solid #eedfcb;
+        }
+
+        @media print {
+            body { background: white; padding: 0; }
+            .report-container { box-shadow: none; border: none; }
+            .filter-panel, .action-buttons, .btn, .refresh-small { display: none; }
+            .stat-block { background: none; border: 1px solid #aaa; }
+            .method-table { border: 1px solid #aaa; }
+            .list-table th { background: #ddd; }
+        }
+    </style>
+</head>
+<body>
+<div class="report-container">
+    <!-- company header & main title -->
+    <div class="company-header">
+        <div class="company-name" id="companyName">KOVELI LOUNGE</div>
+        <div class="company-address" id="companyAddress">Velana International Airport, Malé, Maldives</div>
+        <div class="report-title">CASH REPORT</div>
+    </div>
+
+    <!-- filter row -->
+    <div class="filter-bar">
+        <div class="filter-panel">
+            <div class="filter-item"><label>📅 DATE</label><input type="date" id="filterDate"></div>
+            <div class="filter-item"><label>⏳ SHIFT</label>
+                <select id="filterShift"><option value="ALL">ALL SHIFTS</option><option value="MORNING">MORNING</option><option value="EVENING">EVENING</option></select>
+            </div>
+            <button class="refresh-small" id="loadReportBtn">↻ LOAD</button>
+        </div>
+        <div class="action-buttons"><button class="btn print" id="printReportBtn">🖨️ PRINT A4</button></div>
+    </div>
+
+    <!-- summary area: cash total, non-cash by currency, and totals row (exchange rate removed) -->
+    <div class="summary-section">
+        <div class="summary-grid">
+            <!-- Block 1: Total cash (by currency) -->
+            <div class="stat-block">
+                <div class="stat-label">💰 CASH TOTAL</div>
+                <div class="currency-line"><span class="currency-code">USD</span><span class="currency-amount" id="cashUSD">0.00</span></div>
+                <div class="currency-line"><span class="currency-code">MVR</span><span class="currency-amount" id="cashMVR">0.00</span></div>
+                <div class="sub-foot">includes all cash payments</div>
+            </div>
+            <!-- Block 2: Non‑cash total by currency (all card & other non-cash combined) -->
+            <div class="stat-block">
+                <div class="stat-label">💳 NON‑CASH TOTAL (by currency)</div>
+                <div class="currency-line"><span class="currency-code">USD</span><span class="currency-amount" id="noncashUSD">0.00</span></div>
+                <div class="currency-line"><span class="currency-code">MVR</span><span class="currency-amount" id="noncashMVR">0.00</span></div>
+                <div class="sub-foot">all card + other electronic</div>
+            </div>
+            <!-- Block 3: Receipts & pax summary -->
+            <div class="stat-block">
+                <div class="stat-label">📋 SUMMARY</div>
+                <div class="currency-line"><span class="currency-code">Receipts</span><span class="currency-amount" id="totalReceipts">0</span></div>
+                <div class="currency-line"><span class="currency-code">Adults</span><span class="currency-amount" id="totalAdults">0</span></div>
+                <div class="currency-line"><span class="currency-code">Children</span><span class="currency-amount" id="totalChildren">0</span></div>
+                <div class="sub-foot">total passengers</div>
+            </div>
+        </div>
+        <!-- exchange rate row removed as requested -->
+    </div>
+
+    <!-- Non‑cash breakdown by card type (shows every method present: Amex, Visa, Master, Unionpay, etc) -->
+    <div class="noncash-breakdown">
+        <h3>💳 PAYMENT METHOD DETAILS (all non‑cash methods)</h3>
+        <table class="method-table" id="noncashTable">
+            <thead><tr><th>Payment method</th><th>USD total</th><th>MVR total</th><th>Transactions</th></tr></thead>
+            <tbody id="noncashBody">
+                <tr><td colspan="4" style="text-align:center;">loading ...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- detailed transaction list -->
+    <div class="table-wrapper">
+        <table class="list-table" id="reportTable">
+            <thead><tr><th>Receipt</th><th>Date/time</th><th>Shift</th><th>Passenger</th><th>Flight</th><th>A/C</th><th>Curr</th><th>Total</th><th>Method</th></tr></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+    <div class="footer-note" id="generatedFoot">generated upon load</div>
+</div>
+
+<script>
+    (function() {
+        // ----- configuration -----
+        let allTransactions = [];
+
+        // DOM elements
+        const dateInput = document.getElementById('filterDate');
+        const shiftSelect = document.getElementById('filterShift');
+        const loadBtn = document.getElementById('loadReportBtn');
+        const printBtn = document.getElementById('printReportBtn');
+
+        // summary spans
+        const cashUSDspan = document.getElementById('cashUSD');
+        const cashMVRspan = document.getElementById('cashMVR');
+        const noncashUSDspan = document.getElementById('noncashUSD');
+        const noncashMVRspan = document.getElementById('noncashMVR');
+        const totalReceiptsSpan = document.getElementById('totalReceipts');
+        const totalAdultsSpan = document.getElementById('totalAdults');
+        const totalChildrenSpan = document.getElementById('totalChildren');
+
+        const noncashBody = document.getElementById('noncashBody');
+        const tableBody = document.getElementById('tableBody');
+        const footGen = document.getElementById('generatedFoot');
+
+        // optionally set company info from Co.js if available
+        if (typeof companyInfo !== 'undefined') {
+            const nameEl = document.getElementById('companyName');
+            const addrEl = document.getElementById('companyAddress');
+            if (companyInfo.name) nameEl.innerText = companyInfo.name;
+            if (companyInfo.address) addrEl.innerText = companyInfo.address;
+        }
+
+        // set default date = today
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.value = today;
+
+        // helper: extract YYYY-MM-DD from "MM/DD/YYYY, ..."
+        function extractDateFromDateTimeField(dt) {
+            if (!dt) return '';
+            let datePart = dt.split(',')[0];
+            if (!datePart.includes('/')) return '';
+            let [m, d, y] = datePart.split('/');
+            if (y && m && d) return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+            return '';
+        }
+
+        // ----- fetch data from Firestore -----
+        async function fetchReportData() {
+            const selectedDate = dateInput.value;
+            const shiftFilter = shiftSelect.value;
+            if (!selectedDate) { alert('Select date'); return; }
+            if (typeof passengerDb === 'undefined') { alert('passengerDb missing'); return; }
+
+            tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center;">⏳ loading ...</td></tr>';
+            noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">loading...</td></tr>';
+
+            try {
+                const snapshot = await passengerDb.collection('Kovelipay').get();
+                const docs = [];
+                snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+
+                // filter by date
+                const filteredByDate = docs.filter(d => {
+                    if (!d.submissionDateTime) return false;
+                    const docDate = extractDateFromDateTimeField(d.submissionDateTime);
+                    return docDate === selectedDate;
+                });
+
+                // filter by shift
+                let filtered = filteredByDate;
+                if (shiftFilter !== 'ALL') {
+                    filtered = filteredByDate.filter(d => d.shift === shiftFilter);
+                }
+
+                filtered.sort((a,b) => (b.submissionDateTime || '').localeCompare(a.submissionDateTime || ''));
+                allTransactions = filtered;
+                renderAll();
+                footGen.innerText = `updated: ${new Date().toLocaleString()}  |  ${filtered.length} receipts`;
+            } catch (err) {
+                console.error(err);
+                tableBody.innerHTML = '<tr><td colspan="9">error loading</td></tr>';
+                noncashBody.innerHTML = '<tr><td colspan="4">error</td></tr>';
+            }
+        }
+
+        // ----- render everything -----
+        function renderAll() {
+            // totals for cash / non-cash by currency
+            let cashUSD = 0, cashMVR = 0;
+            let noncashUSD = 0, noncashMVR = 0;
+            let totalAdults = 0, totalChildren = 0;
+
+            // detailed non-cash breakdown (per method) – includes Amex, Visa, Master, Unionpay, etc.
+            const noncashMap = new Map(); // key: method name -> { usd, mvr, count }
+
+            allTransactions.forEach(tx => {
+                const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
+                const curr = (tx.currency || 'USD').toUpperCase();
+                const amt = tx.totalAmount || 0;
+                totalAdults += tx.adult || 0;
+                totalChildren += tx.children || 0;
+
+                // classify cash vs non-cash
+                if (method === 'CASH' || method.includes('CASH')) {
+                    if (curr === 'USD') cashUSD += amt;
+                    else cashMVR += amt;
+                } else {
+                    // non-cash: card, transfer, voucher, mobile, Amex, Visa, Master, Unionpay, etc.
+                    if (curr === 'USD') noncashUSD += amt;
+                    else noncashMVR += amt;
+
+                    // update map for non-cash breakdown (preserve exact method name)
+                    let entry = noncashMap.get(method) || { usd: 0, mvr: 0, count: 0 };
+                    if (curr === 'USD') entry.usd += amt;
+                    else entry.mvr += amt;
+                    entry.count += 1;
+                    noncashMap.set(method, entry);
+                }
+            });
+
+            // update summary blocks
+            cashUSDspan.innerText = cashUSD.toFixed(2);
+            cashMVRspan.innerText = cashMVR.toFixed(2);
+            noncashUSDspan.innerText = noncashUSD.toFixed(2);
+            noncashMVRspan.innerText = noncashMVR.toFixed(2);
+            totalReceiptsSpan.innerText = allTransactions.length;
+            totalAdultsSpan.innerText = totalAdults;
+            totalChildrenSpan.innerText = totalChildren;
+
+            // build non-cash breakdown table – shows every method that appeared (Amex, Visa, Master, Unionpay, etc)
+            let noncashHtml = '';
+            if (noncashMap.size === 0) {
+                noncashHtml = '<tr><td colspan="4" style="text-align:center;">— no non‑cash transactions —</td></tr>';
+            } else {
+                // sort alphabetically for consistency
+                const sortedMethods = Array.from(noncashMap.entries()).sort((a,b) => a[0].localeCompare(b[0]));
+                for (let [method, val] of sortedMethods) {
+                    noncashHtml += `<tr><td>${method}</td><td>USD ${val.usd.toFixed(2)}</td><td>MVR ${val.mvr.toFixed(2)}</td><td>${val.count}</td></tr>`;
+                }
+            }
+            noncashBody.innerHTML = noncashHtml;
+
+            // transaction list (full detail)
+            let listHtml = '';
+            allTransactions.forEach(tx => {
+                listHtml += `<tr>
+                    <td>${tx.receiptNo || tx.id || ''}</td>
+                    <td>${tx.submissionDateTime ? tx.submissionDateTime.substring(0,16) : ''}</td>
+                    <td>${tx.shift || '-'}</td>
+                    <td>${(tx.passengerName || '').substring(0,18)}</td>
+                    <td>${tx.flightNo || '-'}</td>
+                    <td>${tx.adult || 0}/${tx.children || 0}</td>
+                    <td>${tx.currency || 'USD'}</td>
+                    <td>${(tx.totalAmount || 0).toFixed(2)}</td>
+                    <td>${(tx.paymentMethod || 'CASH').substring(0,12)}</td>
+                </tr>`;
+            });
+            if (listHtml === '') listHtml = '<tr><td colspan="9">no transactions</td></tr>';
+            tableBody.innerHTML = listHtml;
+        }
+
+        // print
+        function printReport() { window.print(); }
+
+        loadBtn.addEventListener('click', fetchReportData);
+        printBtn.addEventListener('click', printReport);
+        setTimeout(() => fetchReportData(), 300);
+    })();
+</script>
+</body>
+</html>
