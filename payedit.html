@@ -8,6 +8,15 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     
+    <!-- Your combined firebase config file -->
+    <script src="fireshift.js"></script>
+    
+    <!-- External rate.js file with pricing data -->
+    <script src="rate.js"></script>
+    
+    <!-- External Co.js file with company header -->
+    <script src="Co.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -557,8 +566,6 @@
                     <option value="CARD">Card</option>
                     <option value="BANK TRANSFER">Bank Transfer</option>
                     <option value="MOBILE PAYMENT">Mobile Payment</option>
-                    <option value="VOUCHER">Voucher</option>
-                    <option value="QR">QR Payment</option>
                 </select>
                 <select class="filter-select" id="statusFilter">
                     <option value="ALL">All Status</option>
@@ -579,7 +586,7 @@
                     <div class="value" id="totalCash">0</div>
                 </div>
                 <div class="stat-card">
-                    <div class="label">CARD + QR</div>
+                    <div class="label">CARD</div>
                     <div class="value" id="totalCard">0</div>
                 </div>
                 <div class="stat-card">
@@ -627,7 +634,7 @@
             <input type="hidden" id="editReceiptNo">
             <input type="hidden" id="editOriginalPaymentMethod">
             
-            <!-- Boarding Pass Details - EDITABLE -->
+            <!-- Boarding Pass Details - NOW EDITABLE -->
             <div class="grid-3">
                 <div class="form-group">
                     <label>PASSENGER NAME *</label>
@@ -675,7 +682,7 @@
                         <option value="BANK TRANSFER">BANK TRANSFER</option>
                         <option value="MOBILE PAYMENT">MOBILE PAYMENT</option>
                         <option value="VOUCHER">VOUCHER</option>
-                        <option value="QR">QR PAYMENT</option>
+                        <option value="OTHER">OTHER</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -683,7 +690,7 @@
                     <input type="text" id="editApprovalCode" placeholder="For non-cash payments">
                 </div>
                 <div class="form-group">
-                    <label>BATCH / REF NO</label>
+                    <label>BATCH NO</label>
                     <input type="text" id="editBatchNo" placeholder="For non-cash payments">
                 </div>
                 <div class="form-group">
@@ -743,52 +750,20 @@
     </div>
 
 <script>
-// ========== FIREBASE CONFIGURATION ==========
-// Replace with your Firebase configuration
-const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
-};
-
-// Initialize Firebase
-const app = firebase.initializeApp(firebaseConfig);
-const passengerDb = firebase.firestore(app);
-
-// ========== RATES CONFIGURATION ==========
-const rates = {
-    AdultAUSD: { price: 50, GST: 8 },
-    AdultAMVR: { price: 800, GST: 8 },
-    AdultBUSD: { price: 45, GST: 8 },
-    AdultBMVR: { price: 720, GST: 8 },
-    KidsAUSD: { price: 25, GST: 8 },
-    KidsAMVR: { price: 400, GST: 8 },
-    KidsBUSD: { price: 22, GST: 8 },
-    KidsBMVR: { price: 360, GST: 8 }
-};
-
-// ========== COMPANY INFORMATION ==========
-const companyInfo = {
-    name: 'KOVELI LOUNGE',
-    address: 'Velana International Airport, Maldives',
-    phone: '+960 304 6677',
-    email: 'info@koveli.mv',
-    gst: 'REG-12345678'
-};
-
-// ========== GLOBAL VARIABLES ==========
 let allReceipts = [];
 let filteredReceipts = [];
 let currentEditReceipt = null;
 
 // ========== LOAD RECEIPTS ==========
+
 async function loadReceipts() {
     try {
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = '<tr><td colspan="9" class="loading">Loading receipts...</td></tr>';
+        
+        if (typeof passengerDb === 'undefined') {
+            throw new Error('passengerDb not initialized');
+        }
         
         const kovelipayRef = passengerDb.collection('Kovelipay');
         const snapshot = await kovelipayRef.orderBy('submissionDateTime', 'desc').get();
@@ -812,21 +787,16 @@ async function loadReceipts() {
 }
 
 // ========== UPDATE STATISTICS ==========
+
 function updateStats() {
     document.getElementById('totalReceipts').textContent = allReceipts.length;
-    
-    // Cash count
     document.getElementById('totalCash').textContent = allReceipts.filter(r => r.paymentMethod === 'CASH').length;
-    
-    // Card + QR count (combined for display)
-    const cardQRCount = allReceipts.filter(r => r.paymentMethod === 'CARD' || r.paymentMethod === 'QR').length;
-    document.getElementById('totalCard').textContent = cardQRCount;
-    
-    // Bank transfer count
+    document.getElementById('totalCard').textContent = allReceipts.filter(r => r.paymentMethod === 'CARD').length;
     document.getElementById('totalBank').textContent = allReceipts.filter(r => r.paymentMethod === 'BANK TRANSFER').length;
 }
 
 // ========== FILTER FUNCTIONS ==========
+
 function applyFilters() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
     const paymentFilter = document.getElementById('paymentFilter').value;
@@ -836,8 +806,7 @@ function applyFilters() {
         const matchesSearch = searchTerm === '' || 
             receipt.receiptNo?.toLowerCase().includes(searchTerm) ||
             receipt.passengerName?.toLowerCase().includes(searchTerm) ||
-            receipt.flightNo?.toLowerCase().includes(searchTerm) ||
-            receipt.seatNo?.toLowerCase().includes(searchTerm);
+            receipt.flightNo?.toLowerCase().includes(searchTerm);
         
         const matchesPayment = paymentFilter === 'ALL' || receipt.paymentMethod === paymentFilter;
         const matchesStatus = statusFilter === 'ALL' || receipt.paymentStatus === statusFilter;
@@ -883,6 +852,7 @@ function renderTable() {
 }
 
 // ========== EDIT MODAL FUNCTIONS ==========
+
 function openEditModal(receiptNo) {
     const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
     if (!receipt) return;
@@ -894,7 +864,7 @@ function openEditModal(receiptNo) {
     document.getElementById('editReceiptNo').value = receiptNo;
     document.getElementById('editOriginalPaymentMethod').value = receipt.paymentMethod;
     
-    // Editable fields
+    // Now these are editable fields - remove readonly attribute
     document.getElementById('editPName').value = receipt.passengerName || '';
     document.getElementById('editFlightNo').value = receipt.flightNo || '';
     document.getElementById('editSeatNo').value = receipt.seatNo || '';
@@ -944,17 +914,20 @@ function handleEditPaymentMethodChange() {
         batchNo.disabled = true;
         approvalCode.placeholder = 'Not required for cash';
         batchNo.placeholder = 'Not required for cash';
-        approvalCode.value = '';
-        batchNo.value = '';
     } else {
         approvalCode.disabled = false;
         batchNo.disabled = false;
         approvalCode.placeholder = 'Enter approval code';
-        batchNo.placeholder = 'Enter batch/reference no';
+        batchNo.placeholder = 'Enter batch no';
     }
 }
 
 function calculateEditPrices() {
+    if (typeof rates === 'undefined') {
+        console.error('rates not loaded');
+        return;
+    }
+    
     const adult = parseInt(document.getElementById('editAdult').value) || 0;
     const children = parseInt(document.getElementById('editChildren').value) || 0;
     const currency = document.getElementById('editCurrency').value;
@@ -995,6 +968,7 @@ function calculateEditPrices() {
 }
 
 // ========== SAVE EDIT ==========
+
 async function saveEdit() {
     // Validate required fields
     const passengerName = document.getElementById('editPName').value.trim();
@@ -1016,7 +990,7 @@ async function saveEdit() {
         const batchNo = document.getElementById('editBatchNo').value.trim();
         
         if (!approvalCode || !batchNo) {
-            alert('Please enter both Approval Code and Batch/Reference No for non-cash payments');
+            alert('Please enter both Approval Code and Batch No for non-cash payments');
             return;
         }
     }
@@ -1050,16 +1024,18 @@ async function saveEdit() {
         // Determine payment status
         let paymentStatus = 'COMPLETED';
         if (!isCash) {
-            // For non-cash, check if approval fields are filled
+            // If it's non-cash and no approval codes yet, keep pending
             const approvalCode = document.getElementById('editApprovalCode').value.trim();
             const batchNo = document.getElementById('editBatchNo').value.trim();
             paymentStatus = (approvalCode && batchNo) ? 'COMPLETED' : 'PENDING_APPROVAL';
         }
         
         const updateData = {
+            // Add the newly editable fields
             passengerName: passengerName,
             flightNo: flightNo,
             seatNo: seatNo,
+            
             adult: adult,
             children: children,
             currency: currency,
@@ -1077,7 +1053,7 @@ async function saveEdit() {
             batchNo: document.getElementById('editBatchNo').value.trim() || '',
             paymentStatus: paymentStatus,
             editedAt: new Date().toISOString(),
-            editedBy: 'user'
+            editedBy: 'user' // You can add user info here
         };
         
         const kovelipayRef = passengerDb.collection('Kovelipay').doc(receiptNo);
@@ -1100,6 +1076,7 @@ async function saveEdit() {
 }
 
 // ========== PRINT FUNCTIONS ==========
+
 function printReceipt(receiptNo) {
     const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
     if (!receipt) return;
@@ -1113,9 +1090,11 @@ function printEditedReceipt() {
     // Create updated receipt object with current form values
     const updatedReceipt = {
         ...currentEditReceipt,
+        // Get the editable field values from the form
         passengerName: document.getElementById('editPName').value,
         flightNo: document.getElementById('editFlightNo').value,
         seatNo: document.getElementById('editSeatNo').value,
+        
         adult: parseInt(document.getElementById('editAdult').value) || 0,
         children: parseInt(document.getElementById('editChildren').value) || 0,
         currency: document.getElementById('editCurrency').value,
@@ -1139,14 +1118,17 @@ function printEditedReceipt() {
 
 function printReceiptContent(receipt) {
     // Get company header
-    let companyHeader = `
-        <div style="text-align: center; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 10px;">
-            <h1 style="margin: 0; font-size: 18px; font-weight: bold;">${companyInfo.name}</h1>
-            <p style="margin: 3px 0; font-size: 11px;">${companyInfo.address}</p>
-            <p style="margin: 3px 0; font-size: 11px;">Tel: ${companyInfo.phone}</p>
-            <p style="margin: 5px 0 0 0; font-size: 10px;">GST: ${companyInfo.gst}</p>
-        </div>
-    `;
+    let companyHeader = '';
+    if (typeof companyInfo !== 'undefined') {
+        companyHeader = `
+            <div style="text-align: center; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 10px;">
+                <h1 style="margin: 0; font-size: 18px; font-weight: bold;">${companyInfo.name || 'Koveli Lounge'}</h1>
+                <p style="margin: 3px 0; font-size: 11px;">${companyInfo.address || 'Velana International Airport'}</p>
+                <p style="margin: 3px 0; font-size: 11px;">Tel: ${companyInfo.phone || '+960 304 6677'}</p>
+                <p style="margin: 5px 0 0 0; font-size: 10px;">GST Registered</p>
+            </div>
+        `;
+    }
     
     // Check if edited
     const editedNote = receipt.editedAt ? 
@@ -1159,7 +1141,7 @@ function printReceiptContent(receipt) {
             <div style="margin-bottom: 10px;">
                 <p><strong>Receipt #:</strong> ${receipt.receiptNo}</p>
                 <p><strong>Date/Time:</strong> ${receipt.submissionDateTime}</p>
-                <p><strong>Shift:</strong> ${receipt.shift || 'N/A'} - ${receipt.date || 'N/A'}</p>
+                <p><strong>Shift:</strong> ${receipt.shift} - ${receipt.date}</p>
                 ${editedNote}
             </div>
             
@@ -1190,7 +1172,7 @@ function printReceiptContent(receipt) {
                         <td style="text-align: right;">${receipt.currency} ${receipt.subtotal?.toFixed(2)}</td>
                     </tr>
                     <tr>
-                        <td>GST (${receipt.gstRate || 8}%):</td>
+                        <td>GST (${receipt.gstRate}%):</td>
                         <td style="text-align: right;">${receipt.currency} ${receipt.gstAmount?.toFixed(2)}</td>
                     </tr>
                     <tr>
@@ -1203,8 +1185,8 @@ function printReceiptContent(receipt) {
             <div style="margin: 10px 0;">
                 <p><strong>Payment:</strong> ${receipt.paymentMethod}</p>
                 ${receipt.approvalCode ? `<p><strong>Approval:</strong> ${receipt.approvalCode}</p>` : ''}
-                ${receipt.batchNo ? `<p><strong>Ref No:</strong> ${receipt.batchNo}</p>` : ''}
-                <p><strong>Valid Until:</strong> ${receipt.expiryDateTime || 'N/A'}</p>
+                ${receipt.batchNo ? `<p><strong>Batch:</strong> ${receipt.batchNo}</p>` : ''}
+                <p><strong>Valid Until:</strong> ${receipt.expiryDateTime}</p>
             </div>
             
             <div style="border-top: 1px dashed #000; padding-top: 10px; text-align: center;">
@@ -1235,6 +1217,7 @@ function printReceiptContent(receipt) {
 }
 
 // ========== INITIALIZATION ==========
+
 document.addEventListener('DOMContentLoaded', function() {
     loadReceipts();
     
