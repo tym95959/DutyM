@@ -204,7 +204,7 @@
         
         .table-container {
             overflow-x: auto;
-            max-height: 300px;
+            max-height: 400px;
             overflow-y: auto;
         }
         
@@ -244,6 +244,24 @@
             border-radius: 12px;
             font-size: 10px;
             font-weight: 600;
+        }
+        
+        .status-incomplete {
+            background: #c68b5e;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        
+        .missing-badge {
+            background: #b63e3e;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+            margin-left: 5px;
         }
         
         .select-btn {
@@ -445,6 +463,19 @@
         .info-item span {
             color: #6b8e23;
             font-weight: 600;
+        }
+        
+        .missing-fields {
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(198, 139, 94, 0.1);
+            border-radius: 4px;
+            font-size: 11px;
+            color: #c68b5e;
+        }
+        
+        .missing-fields strong {
+            color: #b63e3e;
         }
         
         .action-buttons {
@@ -677,7 +708,7 @@
             <!-- Pending Approvals Section -->
             <div class="pending-section">
                 <div class="section-title">
-                    <span>PENDING APPROVALS - NON-CASH TRANSACTIONS</span>
+                    <span>INCOMPLETE NON-CASH TRANSACTIONS</span>
                     <button id="refreshDataBtn" class="refresh-data-btn">
                         <span>↻</span> REFRESH DATA
                     </button>
@@ -695,13 +726,13 @@
                                 <th>AMOUNT</th>
                                 <th>CURRENCY</th>
                                 <th>PAYMENT METHOD</th>
-                                <th>STATUS</th>
+                                <th>MISSING FIELDS</th>
                             </tr>
                         </thead>
                         <tbody id="pendingTableBody">
                             <tr>
                                 <td colspan="9" style="text-align: center; padding: 30px;">
-                                    Loading pending approvals...
+                                    Loading incomplete transactions...
                                 </td>
                             </tr>
                         </tbody>
@@ -731,6 +762,9 @@
                         <strong>Payment Method:</strong>
                         <span id="selectedPayment">-</span>
                     </div>
+                </div>
+                <div class="missing-fields" id="missingFields">
+                    <strong>Missing:</strong> <span id="missingFieldsList"></span>
                 </div>
             </div>
 
@@ -1045,43 +1079,64 @@ function showCardTypeSection(show) {
 async function fetchPendingTransactions() {
     try {
         const tableBody = document.getElementById('pendingTableBody');
-        tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 30px;">Loading pending approvals...</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 30px;">Loading incomplete transactions...</td></tr>';
         
         if (typeof passengerDb === 'undefined') {
             tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 30px; color: #c68b5e;">Database not initialized</td></tr>';
             return;
         }
         
-        // Fetch non-cash transactions that don't have approval code or batch number
+        // Get ALL non-cash transactions
         const kovelipayRef = passengerDb.collection('Kovelipay');
-        
-        // Query for non-cash payments without approval code OR without batch number
-        const snapshot = await kovelipayRef
-            .where('paymentMethod', '!=', 'CASH')
-            .get();
+        const snapshot = await kovelipayRef.get();
         
         pendingTransactions = [];
         
         snapshot.forEach(doc => {
             const data = doc.data();
+            const paymentMethod = data.paymentMethod || '';
             
-            // Check if transaction needs approval (missing approvalCode or batchNo)
-            const needsApproval = !data.approvalCode || !data.batchNo || 
-                                 data.approvalCode === '' || data.batchNo === '';
+            // Skip CASH transactions
+            if (paymentMethod === 'CASH') {
+                return;
+            }
             
-            if (needsApproval) {
+            // Check if transaction is complete (has all required fields)
+            const hasApprovalCode = data.approvalCode && data.approvalCode.trim() !== '';
+            const hasBatchNo = data.batchNo && data.batchNo.trim() !== '';
+            
+            // For CARD payments, also check if card type exists
+            let isComplete = false;
+            if (paymentMethod === 'CARD') {
+                const hasCardType = data.cardType && data.cardType.trim() !== '';
+                isComplete = hasApprovalCode && hasBatchNo && hasCardType;
+            } else {
+                isComplete = hasApprovalCode && hasBatchNo;
+            }
+            
+            // If NOT complete, add to pending list
+            if (!isComplete) {
+                // Determine missing fields
+                const missingFields = [];
+                if (!hasApprovalCode) missingFields.push('Approval Code');
+                if (!hasBatchNo) missingFields.push('Batch No');
+                if (paymentMethod === 'CARD' && (!data.cardType || data.cardType.trim() === '')) {
+                    missingFields.push('Card Type');
+                }
+                
                 pendingTransactions.push({
                     id: doc.id,
                     receiptNo: data.receiptNo || doc.id,
-                    dateTime: data.submissionDateTime || data.createdAt || 'N/A',
+                    dateTime: data.submissionDateTime || data.createdAt || data.timestamp || 'N/A',
                     passengerName: data.passengerName || 'N/A',
                     flightNo: data.flightNo || 'N/A',
                     totalAmount: data.totalAmount || 0,
                     currency: data.currency || 'USD',
-                    paymentMethod: data.paymentMethod || 'CARD',
+                    paymentMethod: paymentMethod,
                     approvalCode: data.approvalCode || '',
                     batchNo: data.batchNo || '',
-                    cardType: data.cardType || '' // Include existing card type if any
+                    cardType: data.cardType || '',
+                    missingFields: missingFields
                 });
             }
         });
@@ -1107,7 +1162,7 @@ function displayPendingTransactions() {
     const selectedInfo = document.getElementById('selectedInfo');
     
     if (pendingTransactions.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 30px;">No pending approvals found</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 30px;">All non-cash transactions are complete ✓</td></tr>';
         selectedInfo.style.display = 'none';
         document.getElementById('updateBtn').disabled = true;
         return;
@@ -1119,6 +1174,11 @@ function displayPendingTransactions() {
         const isSelected = selectedTransaction && selectedTransaction.receiptNo === transaction.receiptNo;
         const formattedAmount = typeof transaction.totalAmount === 'number' ? 
             transaction.totalAmount.toFixed(2) : transaction.totalAmount;
+        
+        // Create missing fields display
+        const missingDisplay = transaction.missingFields.map(field => 
+            `<span class="missing-badge">${field}</span>`
+        ).join(' ');
         
         html += `
             <tr class="${isSelected ? 'selected' : ''}">
@@ -1134,7 +1194,7 @@ function displayPendingTransactions() {
                 <td>${formattedAmount}</td>
                 <td>${transaction.currency}</td>
                 <td>${transaction.paymentMethod}</td>
-                <td><span class="status-pending">PENDING</span></td>
+                <td>${missingDisplay || '<span class="status-pending">INCOMPLETE</span>'}</td>
             </tr>
         `;
     });
@@ -1145,13 +1205,28 @@ function displayPendingTransactions() {
 function formatDateTime(dateTimeStr) {
     if (!dateTimeStr || dateTimeStr === 'N/A') return 'N/A';
     try {
+        // Handle Firestore timestamp
+        if (dateTimeStr && typeof dateTimeStr === 'object' && dateTimeStr.toDate) {
+            const date = dateTimeStr.toDate();
+            return date.toLocaleString('en-US', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+        
+        // Handle string date
         const date = new Date(dateTimeStr);
-        return date.toLocaleString('en-US', {
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        if (!isNaN(date.getTime())) {
+            return date.toLocaleString('en-US', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+        return dateTimeStr;
     } catch (e) {
         return dateTimeStr;
     }
@@ -1170,9 +1245,12 @@ function selectTransaction(index) {
             `${selectedTransaction.currency} ${selectedTransaction.totalAmount.toFixed(2)}`;
         document.getElementById('selectedPayment').textContent = selectedTransaction.paymentMethod;
         
+        // Show missing fields
+        const missingList = selectedTransaction.missingFields.join(', ');
+        document.getElementById('missingFieldsList').textContent = missingList || 'All fields missing';
         document.getElementById('selectedInfo').style.display = 'block';
         
-        // Clear and enable form
+        // Fill form with existing data
         document.getElementById('approvalCode').value = selectedTransaction.approvalCode || '';
         document.getElementById('batchNo').value = selectedTransaction.batchNo || '';
         document.getElementById('paymentMethod').value = selectedTransaction.paymentMethod;
