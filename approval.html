@@ -348,13 +348,6 @@
             padding: 10px;
         }
         
-        /* Card type groups in dropdown */
-        .card-category {
-            font-weight: bold;
-            color: #8b6913;
-            background: #fff2d7;
-        }
-        
         .selected-info {
             background: rgba(107, 142, 35, 0.1);
             padding: 15px;
@@ -759,7 +752,7 @@ let currentUser = {
 let selectedTransaction = null;
 let pendingTransactions = [];
 
-// List of all non-cash payment methods
+// List of all non-cash payment methods (including all card types)
 const nonCashMethods = [
     'VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 
     'QRCODE', 'ALIPAY', 'WECHATPAY',
@@ -988,11 +981,11 @@ async function fetchPendingTransactions() {
                 return;
             }
             
-            // Check if transaction is complete (has all required fields)
+            // Check if transaction has approval code and batch number
             const hasApprovalCode = data.approvalCode && data.approvalCode.toString().trim() !== '';
             const hasBatchNo = data.batchNo && data.batchNo.toString().trim() !== '';
             
-            // For non-cash transactions, we need BOTH approvalCode AND batchNo
+            // For non-cash transactions, we need BOTH approvalCode AND batchNo to be complete
             const isComplete = hasApprovalCode && hasBatchNo;
             
             // If NOT complete, add to pending list
@@ -1004,24 +997,26 @@ async function fetchPendingTransactions() {
                 if (!hasApprovalCode) missingFields.push('Approval Code');
                 if (!hasBatchNo) missingFields.push('Batch No');
                 
-                // Format the data properly
+                // Format the date properly
                 let dateTimeValue = data.submissionDateTime || data.createdAt || data.timestamp;
                 let formattedDateTime = 'N/A';
                 
                 if (dateTimeValue) {
                     try {
+                        // Handle Firestore timestamp
                         if (dateTimeValue && typeof dateTimeValue === 'object' && dateTimeValue.toDate) {
-                            // Firestore timestamp
                             const date = dateTimeValue.toDate();
                             formattedDateTime = date.toLocaleString('en-US', {
                                 year: 'numeric',
                                 month: '2-digit',
                                 day: '2-digit',
                                 hour: '2-digit',
-                                minute: '2-digit'
+                                minute: '2-digit',
+                                hour12: false
                             });
-                        } else {
-                            // String date
+                        } 
+                        // Handle string date
+                        else {
                             const date = new Date(dateTimeValue);
                             if (!isNaN(date.getTime())) {
                                 formattedDateTime = date.toLocaleString('en-US', {
@@ -1029,7 +1024,8 @@ async function fetchPendingTransactions() {
                                     month: '2-digit',
                                     day: '2-digit',
                                     hour: '2-digit',
-                                    minute: '2-digit'
+                                    minute: '2-digit',
+                                    hour12: false
                                 });
                             } else {
                                 formattedDateTime = dateTimeValue;
@@ -1057,6 +1053,7 @@ async function fetchPendingTransactions() {
         });
         
         console.log(`Total transactions: ${totalCount}, Incomplete non-cash: ${incompleteCount}`);
+        console.log('Pending transactions:', pendingTransactions);
         
         // Sort by date (newest first)
         pendingTransactions.sort((a, b) => {
@@ -1110,8 +1107,10 @@ function displayPendingTransactions() {
         }
         
         // Show approval code and batch number status
-        const approvalCodeDisplay = transaction.approvalCode || '<span style="color: #c68b5e;">MISSING</span>';
-        const batchNoDisplay = transaction.batchNo || '<span style="color: #c68b5e;">MISSING</span>';
+        const approvalCodeDisplay = transaction.approvalCode ? 
+            transaction.approvalCode : '<span style="color: #c68b5e; font-weight: bold;">MISSING</span>';
+        const batchNoDisplay = transaction.batchNo ? 
+            transaction.batchNo : '<span style="color: #c68b5e; font-weight: bold;">MISSING</span>';
         
         html += `
             <tr class="${isSelected ? 'selected' : ''}">
@@ -1231,6 +1230,8 @@ async function updateTransaction() {
             approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
             approvalDateTime: new Date().toISOString()
         };
+        
+        console.log('Updating transaction:', selectedTransaction.id, updateData);
         
         // Update the document with approval details
         await docRef.update(updateData);
