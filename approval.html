@@ -788,7 +788,12 @@
                     <div class="approval-field">
                         <label>PAYMENT METHOD</label>
                         <select id="paymentMethod">
-                            <option value="CARD">CARD</option>
+                            <option value="AMEX">AMEX</option>
+                            <option value="VISA">VISA</option>
+                            <option value="MASTER">MASTER</option>
+                            <option value="UNIONPAY">UNIONPAY</option>
+                            <option value="WECHATPAY">WECHAT PAY</option>
+                            <option value="QRPAY">QR PAY</option>
                             <option value="BANK TRANSFER">BANK TRANSFER</option>
                             <option value="MOBILE PAYMENT">MOBILE PAYMENT</option>
                             <option value="VOUCHER">VOUCHER</option>
@@ -796,7 +801,7 @@
                     </div>
                 </div>
 
-                <!-- Card Type Selection - Shows only when CARD is selected -->
+                <!-- Card Type Section - Shows only when CARD is selected (legacy support) -->
                 <div class="card-type-section" id="cardTypeSection">
                     <div class="card-type-title">SELECT CARD TYPE</div>
                     <div class="card-type-grid">
@@ -1105,9 +1110,10 @@ async function fetchPendingTransactions() {
             const hasApprovalCode = data.approvalCode && data.approvalCode.trim() !== '';
             const hasBatchNo = data.batchNo && data.batchNo.trim() !== '';
             
-            // For CARD payments, also check if card type exists
+            // For card payments, also check if card type exists
             let isComplete = false;
-            if (paymentMethod === 'CARD') {
+            const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
+            if (cardPayments.includes(paymentMethod)) {
                 const hasCardType = data.cardType && data.cardType.trim() !== '';
                 isComplete = hasApprovalCode && hasBatchNo && hasCardType;
             } else {
@@ -1120,7 +1126,7 @@ async function fetchPendingTransactions() {
                 const missingFields = [];
                 if (!hasApprovalCode) missingFields.push('Approval Code');
                 if (!hasBatchNo) missingFields.push('Batch No');
-                if (paymentMethod === 'CARD' && (!data.cardType || data.cardType.trim() === '')) {
+                if (cardPayments.includes(paymentMethod) && (!data.cardType || data.cardType.trim() === '')) {
                     missingFields.push('Card Type');
                 }
                 
@@ -1255,8 +1261,9 @@ function selectTransaction(index) {
         document.getElementById('batchNo').value = selectedTransaction.batchNo || '';
         document.getElementById('paymentMethod').value = selectedTransaction.paymentMethod;
         
-        // Show/hide card type section based on payment method
-        if (selectedTransaction.paymentMethod === 'CARD') {
+        // Show/hide card type section based on payment method (legacy CARD support)
+        const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
+        if (cardPayments.includes(selectedTransaction.paymentMethod)) {
             showCardTypeSection(true);
             
             // If there's an existing card type, select it
@@ -1307,8 +1314,9 @@ async function updateTransaction() {
         return;
     }
     
-    // If payment method is CARD, validate card type selection
-    if (paymentMethod === 'CARD') {
+    // For card payments, validate card type selection
+    const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
+    if (cardPayments.includes(paymentMethod)) {
         const cardType = document.getElementById('cardType').value;
         if (!cardType) {
             showStatus('Please select a card type', 'error');
@@ -1338,8 +1346,8 @@ async function updateTransaction() {
             status: 'APPROVED'
         };
         
-        // Add card type if payment method is CARD
-        if (paymentMethod === 'CARD') {
+        // Add card type if payment method is card
+        if (cardPayments.includes(paymentMethod)) {
             updateData.cardType = document.getElementById('cardType').value;
         }
         
@@ -1356,7 +1364,7 @@ async function updateTransaction() {
         document.getElementById('selectedInfo').style.display = 'none';
         document.getElementById('approvalCode').value = '';
         document.getElementById('batchNo').value = '';
-        document.getElementById('paymentMethod').value = 'CARD';
+        document.getElementById('paymentMethod').value = 'AMEX';
         showCardTypeSection(false);
         document.getElementById('updateBtn').disabled = true;
         
@@ -1385,7 +1393,7 @@ function showStatus(message, type) {
 function clearForm() {
     document.getElementById('approvalCode').value = '';
     document.getElementById('batchNo').value = '';
-    document.getElementById('paymentMethod').value = 'CARD';
+    document.getElementById('paymentMethod').value = 'AMEX';
     showCardTypeSection(false);
     document.getElementById('statusMessage').textContent = '';
     document.getElementById('statusMessage').className = 'status-message';
@@ -1412,7 +1420,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Setup payment method change handler
     const paymentMethodSelect = document.getElementById('paymentMethod');
     paymentMethodSelect.addEventListener('change', function() {
-        if (this.value === 'CARD') {
+        const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
+        if (cardPayments.includes(this.value)) {
             showCardTypeSection(true);
         } else {
             showCardTypeSection(false);
