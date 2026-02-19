@@ -1220,26 +1220,33 @@ async function fetchShiftData() {
         if (shiftDoc && shiftDoc.exists) {
             const data = shiftDoc.data();
             
-            currentShiftData.date = data.date || '';
+            // Log the raw data to see what we're getting
+            console.log('Raw shift data from Firebase:', data);
             
+            // Store the shift date - this is what we need for transactions
+            currentShiftData.date = data.date || '';
+            currentShiftData.openTime = data.updated || data.openTime || '';
+            
+            // Determine shift type
             if (data.morning === 'open') {
                 currentShiftData.shift = 'MORNING';
                 currentShiftData.status = 'OPEN';
-                currentShiftData.openTime = data.updated || '';
             } 
             else if (data.evening === 'open') {
                 currentShiftData.shift = 'EVENING';
                 currentShiftData.status = 'OPEN';
-                currentShiftData.openTime = data.updated || '';
             } 
             else {
                 currentShiftData.shift = 'NO OPEN SHIFT';
                 currentShiftData.status = 'CLOSED';
             }
+            
+            console.log('Processed shift data:', currentShiftData);
         } else {
             currentShiftData.date = '';
             currentShiftData.shift = 'NO SHIFT DATA';
             currentShiftData.status = 'NOT FOUND';
+            console.warn('No shift document found');
         }
         
         updateShiftDisplay();
@@ -1549,15 +1556,13 @@ function clearAllFields() {
     document.getElementById('code').focus();
 }
 
-// ========== SUBMIT FUNCTION ==========
-
-// ========== SUBMIT FUNCTION ==========
+// ========== SUBMIT FUNCTION - FIXED TO USE SHIFT DATE ==========
 
 async function submitForm() {
     // Check if user is logged in
     if (!currentUser.username) {
         alert('Please log in first');
-        window.location.href = 'index.html'; // Redirect to login
+        window.location.href = 'index.html';
         return;
     }
     
@@ -1566,9 +1571,14 @@ async function submitForm() {
         return;
     }
     
-    // Check if shift is open
+    // Check if shift is open and has a date
     if (currentShiftData.status !== 'OPEN') {
         alert('No open shift found. Please open a shift first.');
+        return;
+    }
+    
+    if (!currentShiftData.date) {
+        alert('Shift date is missing. Please refresh shift data.');
         return;
     }
     
@@ -1582,12 +1592,33 @@ async function submitForm() {
         document.getElementById('receiptNo').value = receiptNo;
         document.getElementById('receiptNoDisplay').textContent = receiptNo;
         
+        // Log what shift date we're using
+        console.log('Using shift date for transaction:', currentShiftData.date);
+        
+        // IMPORTANT: Use shift date for all date fields that should be based on shift
+        const shiftDate = currentShiftData.date;
+        
+        // Parse shift date to ensure consistent format
+        let formattedShiftDate = shiftDate;
+        // If shift date is in DD/MM/YYYY format, keep it as is for display
+        // But also create a standardized version for queries
+        let standardizedDate = shiftDate;
+        
+        // Try to create a standardized date format (YYYY-MM-DD) for easy querying
+        if (shiftDate.includes('/')) {
+            const parts = shiftDate.split('/');
+            if (parts.length === 3) {
+                // Assuming DD/MM/YYYY
+                standardizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+        }
+        
         const boardingPassData = {
             passengerName: document.getElementById('pName').value,
             flightNo: document.getElementById('flightNo').value,
             seatNo: document.getElementById('seatNo').value,
-            // Use shift date instead of current system date
-            date: currentShiftData.date, // This is the shift date from Firebase
+            // Use shift date, NOT current date
+            date: shiftDate,
             shift: currentShiftData.shift,
             shiftOpenTime: currentShiftData.openTime
         };
@@ -1624,7 +1655,7 @@ async function submitForm() {
             exchangeRateData.exchangeRateUsed = currentExchangeRate;
         }
         
-        // User data from localStorage - matching login page structure
+        // User data from localStorage
         const userData = {
             username: currentUser.username || 'Unknown',
             level: currentUser.level || 'N/A',
@@ -1632,65 +1663,73 @@ async function submitForm() {
             loginTime: new Date().toISOString()
         };
         
-        // Create a date object from the shift date for consistent formatting
-        let shiftDateObj;
-        if (currentShiftData.date) {
-            // If shift date is in format DD/MM/YYYY, parse it
-            const dateParts = currentShiftData.date.split('/');
-            if (dateParts.length === 3) {
-                // Assuming format DD/MM/YYYY
-                shiftDateObj = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`);
-            } else {
-                shiftDateObj = new Date(currentShiftData.date);
-            }
-        } else {
-            shiftDateObj = new Date(); // Fallback to current date if no shift date
-        }
-        
-        // Format shift date for display
-        const shiftDateFormatted = shiftDateObj.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        });
-        
+        // CRITICAL FIX: Create the complete data object with shift date as the primary date
         const completeData = {
             receiptNo: receiptNo,
             ...boardingPassData,
             ...paymentData,
             ...exchangeRateData,
             user: userData,
-            // Use shift date for transaction date
-            transactionDate: shiftDateFormatted, // This will be used for daily reports
-            shiftDate: currentShiftData.date, // Original shift date format
-            submissionDateTime: document.getElementById('currentDateTime').value, // Keep actual submission time for reference
+            
+            // PRIMARY DATE FIELDS - all based on shift date
+            transactionDate: shiftDate,                    // This is what reports should use
+            shiftDate: shiftDate,                           // Original shift date
+            date: shiftDate,                                 // Generic date field
+            shiftDateStandardized: standardizedDate,        // Standardized format for queries
+            
+            // METADATA - keep submission time for audit but NOT for reporting
+            submissionDateTime: document.getElementById('currentDateTime').value,
+            submissionTimestamp: new Date().toISOString(),
             expiryDateTime: document.getElementById('expiryTime').value,
+            
+            // SHIFT INFORMATION
+            shiftName: currentShiftData.shift,
+            shiftStatus: currentShiftData.status,
+            shiftOpenTimestamp: currentShiftData.openTime,
+            
+            // COMPANY INFO
             companyInfo: companyInfoData,
+            
+            // TIMESTAMPS
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
             createdAt: new Date().toISOString(),
-            // Add metadata about shift
+            
+            // COMPLETE SHIFT METADATA
             shiftMetadata: {
-                date: currentShiftData.date,
+                date: shiftDate,
                 shift: currentShiftData.shift,
                 openTime: currentShiftData.openTime,
-                status: currentShiftData.status
+                status: currentShiftData.status,
+                usedForTransaction: true
             }
         };
         
-        console.log('Saving to Firebase with shift date:', shiftDateFormatted);
-        console.log('Complete data:', completeData);
+        // Log what we're saving to verify shift date is used
+        console.log('=== VERIFYING SHIFT DATE ===');
+        console.log('Shift date from Firebase:', currentShiftData.date);
+        console.log('Transaction date being saved:', completeData.transactionDate);
+        console.log('Submission time (for reference only):', completeData.submissionDateTime);
+        console.log('Complete data being saved:', completeData);
+        
+        // Double-check that we're not accidentally using current date
+        const currentDateStr = new Date().toLocaleDateString();
+        if (completeData.transactionDate !== currentDateStr && !completeData.transactionDate.includes(new Date().getFullYear().toString())) {
+            console.log('✅ Using shift date correctly:', completeData.transactionDate);
+        } else {
+            console.warn('⚠️ Warning: Transaction date matches current date - check shift data');
+        }
         
         await saveToFirebase(completeData);
         
         const statusMsg = document.getElementById('statusMessage');
         if (statusMsg) {
-            statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED (Shift: ${currentShiftData.date} ${currentShiftData.shift})`;
+            statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED (Shift: ${shiftDate} ${currentShiftData.shift})`;
             setTimeout(() => {
                 statusMsg.textContent = '';
             }, 5000);
         }
         
-        alert(`Receipt #${receiptNo} saved by ${currentUser.username || 'User'}!\nShift: ${currentShiftData.date} ${currentShiftData.shift}\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
+        alert(`Receipt #${receiptNo} saved!\nShift Date: ${shiftDate} ${currentShiftData.shift}\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
         
         return completeData;
         
@@ -1768,9 +1807,10 @@ function generateReceiptContent() {
             
             <div style="margin-bottom: 5px;">
                 <p><strong>Receipt #:</strong> ${receiptNo}</p>
-                <p><strong>Date/Time:</strong> ${currentDateTime}</p>
-                <p><strong>Shift:</strong> ${shift} - ${shiftDate}</p>
-                <p><strong>Cashier:</strong> ${userName} </p>
+                <p><strong>Shift Date:</strong> ${shiftDate}</p>
+                <p><strong>Shift:</strong> ${shift}</p>
+                <p><strong>Cashier:</strong> ${userName}</p>
+                <p><strong>Submission Time:</strong> ${currentDateTime}</p>
             </div>
             
             <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 5px 0; margin-bottom: 5px;">
@@ -1815,11 +1855,11 @@ function generateReceiptContent() {
                 <p><strong>Payment:</strong> ${paymentMethod}</p>
                 ${exchangeRateText}
                 <p><strong>Valid Until:</strong> ${expiryDateTime}</p>
-                <p><em>Valid for 3 hours</em></p>
+                <p><em>Valid for 3 hours from submission</em></p>
             </div>
             
             <div style="border-top: 1px dashed #000; padding-top: 5px; text-align: center; font-size: 8px;">
-                <p>Thank you! </p>
+                <p>Thank you!</p>
                 <p>${new Date().toLocaleDateString()}</p>
             </div>
         </div>
@@ -1950,6 +1990,27 @@ function parseAndAddToList() {
     }
 }
 
+// ========== ADD DEBUG FUNCTION TO CHECK SHIFT DATA ==========
+
+function debugShiftData() {
+    console.log('=== CURRENT SHIFT DATA DEBUG ===');
+    console.log('currentShiftData:', currentShiftData);
+    console.log('Date:', currentShiftData.date);
+    console.log('Shift:', currentShiftData.shift);
+    console.log('Status:', currentShiftData.status);
+    console.log('Open Time:', currentShiftData.openTime);
+    
+    const dateElement = document.getElementById('currentDate');
+    const shiftElement = document.getElementById('currentShift');
+    const statusBadge = document.getElementById('shiftStatus');
+    
+    console.log('Displayed Date:', dateElement ? dateElement.textContent : 'N/A');
+    console.log('Displayed Shift:', shiftElement ? shiftElement.textContent : 'N/A');
+    console.log('Displayed Status:', statusBadge ? statusBadge.textContent : 'N/A');
+    
+    alert(`Shift Data:\nDate: ${currentShiftData.date}\nShift: ${currentShiftData.shift}\nStatus: ${currentShiftData.status}`);
+}
+
 // ========== INITIALIZATION ==========
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1985,11 +2046,18 @@ document.addEventListener('DOMContentLoaded', function() {
     
     setupNumberInputs();
     
+    // Fetch shift data immediately and then again after a short delay
+    fetchShiftData();
+    
+    // Also fetch after 2 seconds to ensure Firebase is ready
     setTimeout(() => {
         fetchShiftData();
         // Fetch pending transactions count after shift data
         fetchPendingTransactionsCount();
-    }, 1000);
+    }, 2000);
+    
+    // Refresh shift data every 30 seconds to keep it current
+    setInterval(fetchShiftData, 30000);
     
     updateDateTime();
     
@@ -2044,8 +2112,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     if (refreshShiftBtn) {
-        refreshShiftBtn.addEventListener('click', fetchShiftData);
+        refreshShiftBtn.addEventListener('click', function() {
+            fetchShiftData();
+            alert('Shift data refreshed');
+        });
     }
+    
+    // Optional: Add debug key combination (Ctrl+Shift+D) to show shift data
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+            e.preventDefault();
+            debugShiftData();
+        }
+    });
 });
 </script>
 </body>
