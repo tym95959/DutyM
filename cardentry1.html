@@ -1947,6 +1947,7 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
 }
 
 // ========== FIXED FLIGHT STATUS CHECK FUNCTION ==========
+// ========== FIXED FLIGHT STATUS CHECK FUNCTION ==========
 async function isFlightOpen(flightNo, date) {
     try {
         console.log(`🔍 Checking flight status for ${flightNo} on ${date}`);
@@ -1969,13 +1970,14 @@ async function isFlightOpen(flightNo, date) {
         
         const snapshot = await query.get();
         
+        // If flight not found in system - ALLOW SAVE (not registered is OK)
         if (snapshot.empty) {
-            console.log(`❌ Flight ${flightNo} on ${date} not found in flights collection - BLOCKING SAVE`);
+            console.log(`✅ Flight ${flightNo} on ${date} not found in system - ALLOWING SAVE (not registered)`);
             return { 
-                isOpen: false, 
-                error: 'FLIGHT_NOT_FOUND', 
-                status: 'NOT_FOUND',
-                message: `Flight ${flightNo} on ${date} is not registered in the system`
+                isOpen: true, 
+                error: null, 
+                status: 'NOT_REGISTERED',
+                message: `Flight ${flightNo} on ${date} not registered - allowing save`
             };
         }
         
@@ -1986,12 +1988,12 @@ async function isFlightOpen(flightNo, date) {
         });
         
         if (!flightData) {
-            console.log(`❌ Flight ${flightNo} on ${date} data is empty - BLOCKING SAVE`);
+            console.log(`⚠️ Flight ${flightNo} on ${date} has no data - ALLOWING SAVE`);
             return { 
-                isOpen: false, 
-                error: 'FLIGHT_NOT_FOUND', 
+                isOpen: true, 
+                error: null, 
                 status: 'NO_DATA',
-                message: `Flight ${flightNo} on ${date} has no valid data`
+                message: `Flight ${flightNo} on ${date} has no data - allowing save`
             };
         }
         
@@ -2022,7 +2024,7 @@ async function isFlightOpen(flightNo, date) {
             };
         }
         
-        // If status is OPEN or any other value (or undefined), allow the save
+        // For any other status (OPEN, SCHEDULED, etc.) or if status field doesn't exist - ALLOW SAVE
         console.log(`✅✅✅ Flight ${flightNo} on ${date} is ${status || 'OPEN'} - ALLOWING SAVE`);
         return { 
             isOpen: true, 
@@ -2033,12 +2035,13 @@ async function isFlightOpen(flightNo, date) {
         
     } catch (error) {
         console.error('❌ Error checking flight status:', error);
-        // In case of error, we block the save to be safe
+        // In case of error, we allow save to prevent blocking everything
+        console.log(`⚠️ Database error but allowing save: ${error.message}`);
         return { 
-            isOpen: false, 
+            isOpen: true, 
             error: 'DATABASE_ERROR', 
             status: 'ERROR',
-            message: `Database error: ${error.message} - BLOCKING SAVE`
+            message: `Database error but allowing save: ${error.message}`
         };
     }
 }
@@ -2057,24 +2060,23 @@ async function saveEntryToFirebase(entry) {
             };
         }
         
-        // CRITICAL: Check if flight is closed BEFORE attempting to save
+        // CRITICAL: Check if flight is CLOSED before attempting to save
+        // If flight not found, we ALLOW save
         if (entry.flightNo && entry.date) {
             console.log(`🔍 Checking flight status before save for ${entry.flightNo} on ${entry.date}`);
             const flightStatus = await isFlightOpen(entry.flightNo, entry.date);
             
-            if (!flightStatus.isOpen) {
-                console.error(`❌❌❌ Cannot save entry: ${flightStatus.message}`);
+            // Only block if flight is explicitly CLOSED
+            // If NOT_FOUND or any other status, allow save
+            if (!flightStatus.isOpen && flightStatus.error === 'FLIGHT_CLOSED') {
+                console.error(`❌❌❌ Cannot save entry: Flight is CLOSED`);
                 
-                // Get the appropriate error code
-                let reason = flightStatus.error || 'FLIGHT_CLOSED';
-                
-                // Return detailed error
                 return { 
                     success: false, 
                     error: flightStatus.message, 
-                    reason: reason,
+                    reason: 'FLIGHT_CLOSED',
                     flightStatus: flightStatus.status,
-                    errorCode: ERROR_CODES[reason] || ERROR_CODES['UNKNOWN']
+                    errorCode: ERROR_CODES['FLIGHT_CLOSED']
                 };
             }
             
@@ -2188,8 +2190,6 @@ async function backgroundSaveToFirebase(entry) {
                 showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}`, 'error');
             } else if (saveResult.reason === 'FLIGHT_CLOSED') {
                 showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${errorMsg}`, 'error');
-            } else if (saveResult.reason === 'FLIGHT_NOT_FOUND') {
-                showTemporaryNotification(`❌ [${errorCode}] FLIGHT NOT FOUND: ${errorMsg}`, 'error');
             } else {
                 showTemporaryNotification(`❌ [${errorCode}] Save failed: ${errorMsg}`, 'error');
             }
@@ -2244,21 +2244,27 @@ async function approveEntry(id) {
         
         const flightStatus = await isFlightOpen(flightNoToUse, dateToUse);
         
-        if (!flightStatus.isOpen) {
-            // Flight is closed - show error and don't move to saved tab
-            const errorCode = getErrorCode(flightStatus.error);
+        // Only block if flight is explicitly CLOSED
+        // If NOT_FOUND or any other status, allow save
+        if (!flightStatus.isOpen && flightStatus.error === 'FLIGHT_CLOSED') {
+            // Flight is CLOSED - show error and don't move to saved tab
+            const errorCode = getErrorCode('FLIGHT_CLOSED');
             const errorMsg = flightStatus.message;
             
             showTemporaryNotification(`❌ [${errorCode}] ${errorMsg}`, 'error');
             
-            // Optionally mark the entry with a temporary warning
+            // Mark the entry with a warning
             entry.flightCheckFailed = true;
             entry.flightCheckMessage = flightStatus.message;
             renderTables();
             return;
         }
         
-        // Flight is open - proceed with PAX validation
+        // Clear any previous flight check warnings
+        entry.flightCheckFailed = false;
+        entry.flightCheckMessage = null;
+        
+        // Flight is either OPEN or NOT FOUND - proceed with PAX validation
         const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
         
