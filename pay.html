@@ -1551,6 +1551,8 @@ function clearAllFields() {
 
 // ========== SUBMIT FUNCTION ==========
 
+// ========== SUBMIT FUNCTION ==========
+
 async function submitForm() {
     // Check if user is logged in
     if (!currentUser.username) {
@@ -1561,6 +1563,12 @@ async function submitForm() {
     
     if (!document.getElementById('pName').value) {
         alert('Please scan a boarding pass first');
+        return;
+    }
+    
+    // Check if shift is open
+    if (currentShiftData.status !== 'OPEN') {
+        alert('No open shift found. Please open a shift first.');
         return;
     }
     
@@ -1578,8 +1586,10 @@ async function submitForm() {
             passengerName: document.getElementById('pName').value,
             flightNo: document.getElementById('flightNo').value,
             seatNo: document.getElementById('seatNo').value,
-            date: currentShiftData.date,
-            shift: currentShiftData.shift
+            // Use shift date instead of current system date
+            date: currentShiftData.date, // This is the shift date from Firebase
+            shift: currentShiftData.shift,
+            shiftOpenTime: currentShiftData.openTime
         };
         
         const paymentData = {
@@ -1618,35 +1628,69 @@ async function submitForm() {
         const userData = {
             username: currentUser.username || 'Unknown',
             level: currentUser.level || 'N/A',
-            rcno: currentUser.rcno || 'N/A',  // Note: field name is rcno (all lowercase)
+            rcno: currentUser.rcno || 'N/A',
             loginTime: new Date().toISOString()
         };
+        
+        // Create a date object from the shift date for consistent formatting
+        let shiftDateObj;
+        if (currentShiftData.date) {
+            // If shift date is in format DD/MM/YYYY, parse it
+            const dateParts = currentShiftData.date.split('/');
+            if (dateParts.length === 3) {
+                // Assuming format DD/MM/YYYY
+                shiftDateObj = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`);
+            } else {
+                shiftDateObj = new Date(currentShiftData.date);
+            }
+        } else {
+            shiftDateObj = new Date(); // Fallback to current date if no shift date
+        }
+        
+        // Format shift date for display
+        const shiftDateFormatted = shiftDateObj.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
         
         const completeData = {
             receiptNo: receiptNo,
             ...boardingPassData,
             ...paymentData,
             ...exchangeRateData,
-            user: userData,  // Save complete user information
-            submissionDateTime: document.getElementById('currentDateTime').value,
+            user: userData,
+            // Use shift date for transaction date
+            transactionDate: shiftDateFormatted, // This will be used for daily reports
+            shiftDate: currentShiftData.date, // Original shift date format
+            submissionDateTime: document.getElementById('currentDateTime').value, // Keep actual submission time for reference
             expiryDateTime: document.getElementById('expiryTime').value,
             companyInfo: companyInfoData,
             timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            // Add metadata about shift
+            shiftMetadata: {
+                date: currentShiftData.date,
+                shift: currentShiftData.shift,
+                openTime: currentShiftData.openTime,
+                status: currentShiftData.status
+            }
         };
         
-        console.log('Saving to Firebase:', completeData);
+        console.log('Saving to Firebase with shift date:', shiftDateFormatted);
+        console.log('Complete data:', completeData);
+        
         await saveToFirebase(completeData);
         
         const statusMsg = document.getElementById('statusMessage');
         if (statusMsg) {
-            statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED BY ${currentUser.username || 'USER'}`;
+            statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED (Shift: ${currentShiftData.date} ${currentShiftData.shift})`;
             setTimeout(() => {
                 statusMsg.textContent = '';
             }, 5000);
         }
         
-        alert(`Receipt #${receiptNo} saved by ${currentUser.username || 'User'}!\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
+        alert(`Receipt #${receiptNo} saved by ${currentUser.username || 'User'}!\nShift: ${currentShiftData.date} ${currentShiftData.shift}\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
         
         return completeData;
         
