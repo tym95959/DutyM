@@ -838,8 +838,8 @@
                         </div>
                         
                         <div class="form-group">
-                            <label>EXPIRY TIME (+3 HRS)</label>
-                            <input type="text" id="expiryTime" class="expiry-field" readonly>
+                            <label>EXPIRY TIME</label>
+                            <input type="text" id="expiryTime" class="expiry-field" readonly placeholder="HH:MM:SS">
                         </div>
                     </div>
                     
@@ -891,7 +891,7 @@
                     <div class="exchange-rate-note" id="exchangeRateInfo"></div>
                     
                     <div class="validity-note" id="validityNote">
-                        Receipt #<span id="receiptNoDisplay">______</span> valid until <span id="expiryTimeDisplay">Not submitted</span>
+                        Receipt #<span id="receiptNoDisplay">______</span> valid until <span id="expiryTimeDisplay">--:--:--</span>
                     </div>
                 </div>
             </div>
@@ -1355,6 +1355,8 @@ function updateDateTime() {
     document.getElementById('currentDateTime').value = dateTimeString;
 }
 
+// ========== UPDATED EXPIRY TIME FUNCTION - TIME ONLY ==========
+
 function calculateExpiryTime() {
     if (!submissionTime) {
         submissionTime = new Date();
@@ -1362,7 +1364,14 @@ function calculateExpiryTime() {
     
     expiryTime = new Date(submissionTime.getTime() + (3 * 60 * 60 * 1000));
     
-    const expiryString = expiryTime.toLocaleString('en-US', { 
+    // Format time only (HH:MM:SS) in 24-hour format
+    const hours = expiryTime.getHours().toString().padStart(2, '0');
+    const minutes = expiryTime.getMinutes().toString().padStart(2, '0');
+    const seconds = expiryTime.getSeconds().toString().padStart(2, '0');
+    const timeOnlyString = `${hours}:${minutes}:${seconds}`;
+    
+    // Also keep full expiry datetime for database storage
+    const fullExpiryString = expiryTime.toLocaleString('en-US', { 
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -1372,10 +1381,16 @@ function calculateExpiryTime() {
         hour12: false
     });
     
-    document.getElementById('expiryTime').value = expiryString;
-    document.getElementById('expiryTimeDisplay').textContent = expiryString;
+    // Display time only in the field
+    document.getElementById('expiryTime').value = timeOnlyString;
+    document.getElementById('expiryTimeDisplay').textContent = timeOnlyString;
     
-    return expiryTime;
+    // Return both formats - time only for display, full for storage
+    return {
+        display: timeOnlyString,
+        full: fullExpiryString,
+        timestamp: expiryTime
+    };
 }
 
 setInterval(updateDateTime, 1000);
@@ -1540,7 +1555,7 @@ function clearAllFields() {
     expiryTime = null;
     currentReceiptNo = '';
     document.getElementById('expiryTime').value = '';
-    document.getElementById('expiryTimeDisplay').textContent = 'Not submitted yet';
+    document.getElementById('expiryTimeDisplay').textContent = '--:--:--';
     document.getElementById('receiptNoDisplay').textContent = '______';
     
     updateTotalPassengers();
@@ -1641,7 +1656,7 @@ async function submitForm() {
         };
         
         submissionTime = new Date();
-        const expiryTime = calculateExpiryTime();
+        const expiryResult = calculateExpiryTime();
         
         const companyInfoData = typeof companyInfo !== 'undefined' ? companyInfo : {
             name: 'Koveli Lounge',
@@ -1680,7 +1695,8 @@ async function submitForm() {
             // METADATA - keep submission time for audit but NOT for reporting
             submissionDateTime: document.getElementById('currentDateTime').value,
             submissionTimestamp: new Date().toISOString(),
-            expiryDateTime: document.getElementById('expiryTime').value,
+            expiryDateTime: expiryResult.full,               // Full expiry datetime for storage
+            expiryTime: expiryResult.display,                // Time only for display
             
             // SHIFT INFORMATION
             shiftName: currentShiftData.shift,
@@ -1708,6 +1724,8 @@ async function submitForm() {
         console.log('=== VERIFYING SHIFT DATE ===');
         console.log('Shift date from Firebase:', currentShiftData.date);
         console.log('Transaction date being saved:', completeData.transactionDate);
+        console.log('Expiry time (display):', completeData.expiryTime);
+        console.log('Expiry time (full):', completeData.expiryDateTime);
         console.log('Submission time (for reference only):', completeData.submissionDateTime);
         console.log('Complete data being saved:', completeData);
         
@@ -1729,7 +1747,7 @@ async function submitForm() {
             }, 5000);
         }
         
-        alert(`Receipt #${receiptNo} saved!\nShift Date: ${shiftDate} ${currentShiftData.shift}\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
+        alert(`Receipt #${receiptNo} saved!\nShift Date: ${shiftDate} ${currentShiftData.shift}\nExpires at: ${expiryResult.display}\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
         
         return completeData;
         
@@ -1745,7 +1763,7 @@ async function submitForm() {
     }
 }
 
-// ========== RECEIPT PRINTING ==========
+// ========== RECEIPT PRINTING - UPDATED TO SHOW TIME ONLY ==========
 
 function generateReceiptContent() {
     let companyHeader = '';
@@ -1786,7 +1804,7 @@ function generateReceiptContent() {
     const gstRate = document.getElementById('gstRate').value;
     const totalAmount = document.getElementById('totalAmount').textContent;
     const currentDateTime = document.getElementById('currentDateTime').value;
-    const expiryDateTime = document.getElementById('expiryTime').value || 'Not set';
+    const expiryTimeOnly = document.getElementById('expiryTime').value || '--:--:--';
     
     const shiftDate = currentShiftData.date || 'N/A';
     const shift = currentShiftData.shift || 'N/A';
@@ -1854,7 +1872,7 @@ function generateReceiptContent() {
             <div style="margin-bottom: 5px;">
                 <p><strong>Payment:</strong> ${paymentMethod}</p>
                 ${exchangeRateText}
-                <p><strong>Valid Until:</strong> ${expiryDateTime}</p>
+                <p><strong>Valid Until:</strong> ${expiryTimeOnly}</p>
                 <p><em>Valid for 3 hours from submission</em></p>
             </div>
             
