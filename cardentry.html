@@ -1149,9 +1149,9 @@
         }
 
         #savedTable th:last-child, #savedTable td:last-child {
-            min-width: 180px;
-            max-width: 180px;
-            width: 180px;
+            min-width: 220px;
+            max-width: 220px;
+            width: 220px;
         }
 
         /* Error Details Popup */
@@ -1338,9 +1338,9 @@
             }
             
             #savedTable th:last-child, #savedTable td:last-child {
-                min-width: 170px;
-                max-width: 170px;
-                width: 170px;
+                min-width: 210px;
+                max-width: 210px;
+                width: 210px;
             }
         }
 
@@ -1362,9 +1362,9 @@
             }
             
             #savedTable th:last-child, #savedTable td:last-child {
-                min-width: 160px;
-                max-width: 160px;
-                width: 160px;
+                min-width: 200px;
+                max-width: 200px;
+                width: 200px;
             }
         }
     </style>
@@ -3294,7 +3294,7 @@ function renderPendingTable() {
     });
 }
 
-// ========== ENHANCED RENDER SAVED TABLE WITH DELETE, RETRY, AND ERROR REASONS ==========
+// ========== ENHANCED RENDER SAVED TABLE WITH SYNC BUTTON, DELETE BUTTON, AND ERROR REASONS ==========
 function renderSavedTable() {
     const tbody = document.getElementById('savedTableBody');
     if (!tbody) return;
@@ -3329,45 +3329,6 @@ function renderSavedTable() {
             fqtvClass = 'guest-indicator';
         }
         
-        // Enhanced error display
-        let statusIndicator = '';
-        let statusColor = '';
-        let errorTooltip = '';
-        let errorCodeSpan = '';
-        let errorReasonBadge = '';
-        let errorMessageDisplay = '';
-        
-        if (entry.firebaseError) {
-            const errorCode = entry.errorCode || getErrorCode(entry.firebaseReason);
-            const errorMsg = entry.errorMessage || getErrorMessage(entry.firebaseReason);
-            statusIndicator = '❌';
-            statusColor = '#c68b5e';
-            
-            let reasonClass = 'error-reason-database';
-            if (entry.firebaseReason === 'DUPLICATE') {
-                reasonClass = 'error-reason-duplicate';
-            } else if (entry.firebaseReason === 'FLIGHT_CLOSED' || entry.firebaseReason === 'FLIGHT_NOT_FOUND') {
-                reasonClass = 'error-reason-flight-closed';
-            }
-            
-            errorTooltip = ` data-error="${entry.firebaseError.replace(/"/g, '&quot;')}"`;
-            errorCodeSpan = `<span class="error-code">${errorCode}</span>`;
-            errorReasonBadge = `<span class="error-reason-badge ${reasonClass}">${entry.firebaseReason || 'ERROR'}</span>`;
-            errorMessageDisplay = `<div style="font-size: 10px; color: #c68b5e; margin-top: 2px;"><i class="fas fa-exclamation-circle"></i> ${errorMsg}</div>`;
-        } else if (entry.firebaseStatus === 'saving') {
-            statusIndicator = '⏳';
-            statusColor = '#e6b800';
-            statusIndicator = '⏳ SAVING...';
-        } else if (entry.firebaseStatus === 'pending') {
-            statusIndicator = '⏳';
-            statusColor = '#e6b800';
-            statusIndicator = '⏳ PENDING...';
-        } else {
-            statusIndicator = '✓';
-            statusColor = '#6b8e23';
-            statusIndicator = '✓ SYNCED';
-        }
-        
         const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', true);
         const flightCell = createEditableCell(entry.flightNo || '—', entry.id, 'flightNo', true);
         const seatCell = createEditableCell(entry.seatNo || '—', entry.id, 'seatNo', true);
@@ -3395,27 +3356,79 @@ function renderSavedTable() {
         actionsCell.style.minWidth = '220px';
         actionsCell.style.padding = '8px 4px';
         
+        // Determine status and error details
+        let statusIcon = '';
+        let statusText = '';
+        let statusColor = '';
+        let errorTooltip = '';
+        let errorCodeSpan = '';
+        let errorReasonBadge = '';
+        let errorMessageDisplay = '';
+        
         if (entry.firebaseError) {
-            // Error state - show error details, retry button, edit button, and delete button
+            const errorCode = entry.errorCode || getErrorCode(entry.firebaseReason);
+            const errorMsg = entry.errorMessage || getErrorMessage(entry.firebaseReason);
+            statusIcon = '❌';
+            statusText = 'SYNC FAILED';
+            statusColor = '#c68b5e';
+            
+            let reasonClass = 'error-reason-database';
+            let reasonText = 'DATABASE ERROR';
+            
+            if (entry.firebaseReason === 'DUPLICATE') {
+                reasonClass = 'error-reason-duplicate';
+                reasonText = 'DUPLICATE';
+            } else if (entry.firebaseReason === 'FLIGHT_CLOSED') {
+                reasonClass = 'error-reason-flight-closed';
+                reasonText = 'FLIGHT CLOSED';
+            } else if (entry.firebaseReason === 'FLIGHT_NOT_FOUND') {
+                reasonClass = 'error-reason-flight-closed';
+                reasonText = 'FLIGHT NOT FOUND';
+            } else if (entry.firebaseReason === 'DB_NOT_INITIALIZED') {
+                reasonClass = 'error-reason-database';
+                reasonText = 'DB NOT INIT';
+            }
+            
+            errorTooltip = ` data-error="${entry.firebaseError.replace(/"/g, '&quot;')}"`;
+            errorCodeSpan = `<span class="error-code">${errorCode}</span>`;
+            errorReasonBadge = `<span class="error-reason-badge ${reasonClass}">${reasonText}</span>`;
+            errorMessageDisplay = `<div style="font-size: 10px; color: #c68b5e; margin-top: 2px;"><i class="fas fa-exclamation-circle"></i> ${errorMsg}</div>`;
+        } else if (entry.firebaseStatus === 'saving') {
+            statusIcon = '⏳';
+            statusText = 'SAVING...';
+            statusColor = '#e6b800';
+        } else if (entry.firebaseStatus === 'pending') {
+            statusIcon = '⏳';
+            statusText = 'PENDING...';
+            statusColor = '#e6b800';
+        } else {
+            statusIcon = '✓';
+            statusText = 'SYNCED';
+            statusColor = '#6b8e23';
+        }
+        
+        // Build the actions cell content
+        if (entry.firebaseError) {
+            // Error state - show error details, sync button, edit button, and delete button
             actionsCell.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
-                    <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-                        <span class="firebase-error-tooltip"${errorTooltip} style="color: ${statusColor}; font-weight: bold; cursor: help;">
-                            ${statusIndicator}
+                <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap; background: #fff9e6; padding: 6px; border-radius: 4px;">
+                        <span class="firebase-error-tooltip"${errorTooltip} style="color: ${statusColor}; font-weight: bold; cursor: help; font-size: 11px;">
+                            ${statusIcon}
                         </span>
                         ${errorCodeSpan}
                         ${errorReasonBadge}
                     </div>
                     ${errorMessageDisplay}
-                    <div style="display: flex; gap: 4px; justify-content: flex-start; margin-top: 2px;">
-                        <button class="edit-btn" onclick="editErrorEntry('${entry.id}')" style="padding: 4px 8px; font-size: 10px;">
-                            <i class="fas fa-edit"></i> EDIT
+                    <div style="display: flex; gap: 6px; justify-content: space-between; margin-top: 2px;">
+                        <button class="retry-btn" onclick="retrySave('${entry.id}')" style="padding: 4px 12px; font-size: 11px; flex: 1;">
+                            <i class="fas fa-sync-alt"></i> SYNC
                         </button>
-                        <button class="retry-btn" onclick="retrySave('${entry.id}')" style="padding: 4px 8px; font-size: 10px;">
-                            <i class="fas fa-sync-alt"></i> RETRY
+                        <button class="edit-btn" onclick="editErrorEntry('${entry.id}')" style="padding: 4px 8px; font-size: 11px;">
+                            <i class="fas fa-edit"></i>
                         </button>
-                        <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 10px;">
-                            <i class="fas fa-trash"></i> DEL
+                        <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 11px;">
+                            <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 </div>
@@ -3423,30 +3436,30 @@ function renderSavedTable() {
         } else if (entry.firebaseStatus === 'saving' || entry.firebaseStatus === 'pending') {
             // Saving or pending state
             actionsCell.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="status-indicator status-pending" style="color: ${statusColor};">
-                            ${statusIndicator}
+                <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 8px; background: #fff9e6; padding: 6px; border-radius: 4px;">
+                        <span class="status-indicator status-pending" style="color: ${statusColor}; font-size: 11px;">
+                            ${statusIcon} ${statusText}
                         </span>
                     </div>
-                    <div style="display: flex; gap: 4px; justify-content: flex-start;">
-                        <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 10px;">
+                    <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                        <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 11px;">
                             <i class="fas fa-trash"></i> DEL
                         </button>
                     </div>
                 </div>
             `;
         } else {
-            // Success state
+            // Success state - just show synced and delete button
             actionsCell.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="status-indicator status-success" style="color: ${statusColor};">
-                            ${statusIndicator}
+                <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 8px; background: #e8f5e8; padding: 6px; border-radius: 4px;">
+                        <span class="status-indicator status-success" style="color: ${statusColor}; font-size: 11px;">
+                            ${statusIcon} ${statusText}
                         </span>
                     </div>
-                    <div style="display: flex; gap: 4px; justify-content: flex-start;">
-                        <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 10px;">
+                    <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                        <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 11px;">
                             <i class="fas fa-trash"></i> DEL
                         </button>
                     </div>
