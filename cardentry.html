@@ -1089,7 +1089,7 @@
             width: 120px;
         }
 
-        /* Saved Table Column Widths */
+        /* Saved Table Column Widths - FIX: Ensure actions column is visible */
 #savedTable th:nth-child(1), #savedTable td:nth-child(1) {
     min-width: 100px;
     max-width: 100px;
@@ -1155,12 +1155,14 @@
     display: none;
 }
 
-/* Actions column (column 13) - MAKE IT VISIBLE */
+/* Actions column (column 13) - FORCE VISIBLE with generous width */
 #savedTable th:nth-child(13), #savedTable td:nth-child(13) {
-    min-width: 220px;
-    max-width: 220px;
-    width: 220px;
-    display: table-cell !important; /* Force visibility */
+    min-width: 260px;      /* Increased to accommodate error messages + buttons */
+    max-width: 300px;
+    width: 260px;
+    display: table-cell !important; /* Critical override */
+    white-space: normal;    /* Allow error message to wrap */
+    padding: 8px 6px;
 }
 
 /* Responsive Adjustments */
@@ -1170,9 +1172,9 @@
     }
     
     #savedTable th:nth-child(13), #savedTable td:nth-child(13) {
-        min-width: 210px;
-        max-width: 210px;
-        width: 210px;
+        min-width: 240px;
+        max-width: 260px;
+        width: 240px;
     }
 }
 
@@ -1194,9 +1196,9 @@
     }
     
     #savedTable th:nth-child(13), #savedTable td:nth-child(13) {
-        min-width: 200px;
-        max-width: 200px;
-        width: 200px;
+        min-width: 220px;
+        max-width: 240px;
+        width: 220px;
     }
 }
 
@@ -1374,43 +1376,6 @@
             
             td {
                 border-bottom: 1px solid #ddd;
-            }
-        }
-
-        /* Responsive Adjustments */
-        @media screen and (max-width: 1400px) {
-            .main-content {
-                padding: 15px 20px;
-            }
-            
-            #savedTable th:last-child, #savedTable td:last-child {
-                min-width: 210px;
-                max-width: 210px;
-                width: 210px;
-            }
-        }
-
-        @media screen and (max-width: 1200px) {
-            body {
-                padding: 70px 10px 10px 10px;
-            }
-            
-            .header h2 {
-                font-size: 18px;
-            }
-            
-            .user-details {
-                font-size: 11px;
-            }
-            
-            .shift-info div {
-                font-size: 12px;
-            }
-            
-            #savedTable th:last-child, #savedTable td:last-child {
-                min-width: 200px;
-                max-width: 200px;
-                width: 200px;
             }
         }
     </style>
@@ -1981,14 +1946,23 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
     }
 }
 
-// ========== FLIGHT STATUS CHECK FUNCTION ==========
+// ========== FIXED FLIGHT STATUS CHECK FUNCTION ==========
+// ========== FIXED FLIGHT STATUS CHECK FUNCTION ==========
 async function isFlightOpen(flightNo, date) {
     try {
+        console.log(`🔍 Checking flight status for ${flightNo} on ${date}`);
+        
         if (typeof db === 'undefined') {
-            console.error('db not initialized');
-            return { isOpen: false, error: 'Database not initialized', status: null, message: 'Database not initialized' };
+            console.error('❌ db not initialized');
+            return { 
+                isOpen: false, 
+                error: 'DB_NOT_INITIALIZED', 
+                status: null, 
+                message: 'Database not initialized - BLOCKING SAVE' 
+            };
         }
         
+        // Check if flight exists in the flights collection
         const flightsRef = db.collection('flights');
         const query = flightsRef
             .where('flightNo', '==', flightNo)
@@ -1996,12 +1970,13 @@ async function isFlightOpen(flightNo, date) {
         
         const snapshot = await query.get();
         
+        // If flight not found in system - ALLOW SAVE (not registered is OK)
         if (snapshot.empty) {
-            console.log(`Flight ${flightNo} on ${date} not found - ALLOWING SAVE`);
+            console.log(`✅ Flight ${flightNo} on ${date} not found in system - ALLOWING SAVE (not registered)`);
             return { 
                 isOpen: true, 
                 error: null, 
-                status: 'NOT_FOUND',
+                status: 'NOT_REGISTERED',
                 message: `Flight ${flightNo} on ${date} not registered - allowing save`
             };
         }
@@ -2009,45 +1984,380 @@ async function isFlightOpen(flightNo, date) {
         let flightData = null;
         snapshot.forEach(doc => {
             flightData = doc.data();
+            console.log('📄 Flight document data:', flightData);
         });
         
         if (!flightData) {
+            console.log(`⚠️ Flight ${flightNo} on ${date} has no data - ALLOWING SAVE`);
             return { 
                 isOpen: true, 
                 error: null, 
-                status: 'UNKNOWN',
-                message: `Flight data error but allowing save`
+                status: 'NO_DATA',
+                message: `Flight ${flightNo} on ${date} has no data - allowing save`
             };
         }
         
-        const status = (flightData.status || flightData.flightStatus || '').toUpperCase();
+        // Check various possible field names for flight status
+        // Common field names: 'status', 'flightStatus', 'FlightStatus'
+        const status = (flightData.flightStatus || flightData.status || flightData.FlightStatus || '').toString().toUpperCase();
+        console.log(`📊 Flight status for ${flightNo}: "${status}"`);
         
+        // If status is explicitly CLOSED, block the save
         if (status === 'CLOSED') {
-            console.log(`Flight ${flightNo} on ${date} is CLOSED - blocking save`);
+            console.log(`❌❌❌ Flight ${flightNo} on ${date} is CLOSED - BLOCKING SAVE`);
             return { 
                 isOpen: false, 
                 error: 'FLIGHT_CLOSED', 
-                status: status,
-                message: `Flight ${flightNo} on ${date} is CLOSED`
+                status: 'CLOSED',
+                message: `Flight ${flightNo} on ${date} is CLOSED - cannot add passengers`
             };
         }
         
-        console.log(`Flight ${flightNo} on ${date} status: ${status || 'UNKNOWN'} - allowing save`);
+        // Also check if there's a boolean isOpen field
+        if (flightData.isOpen === false) {
+            console.log(`❌❌❌ Flight ${flightNo} on ${date} is marked as closed (isOpen=false) - BLOCKING SAVE`);
+            return { 
+                isOpen: false, 
+                error: 'FLIGHT_CLOSED', 
+                status: 'CLOSED',
+                message: `Flight ${flightNo} on ${date} is CLOSED - cannot add passengers`
+            };
+        }
+        
+        // For any other status (OPEN, SCHEDULED, etc.) or if status field doesn't exist - ALLOW SAVE
+        console.log(`✅✅✅ Flight ${flightNo} on ${date} is ${status || 'OPEN'} - ALLOWING SAVE`);
         return { 
             isOpen: true, 
             error: null, 
-            status: status || 'UNKNOWN',
-            message: `Flight is ${status || 'not closed'} - allowing save`
+            status: status || 'OPEN',
+            message: `Flight is ${status || 'OPEN'} - allowing save`
         };
         
     } catch (error) {
-        console.error('Error checking flight status:', error);
+        console.error('❌ Error checking flight status:', error);
+        // In case of error, we allow save to prevent blocking everything
+        console.log(`⚠️ Database error but allowing save: ${error.message}`);
         return { 
             isOpen: true, 
             error: 'DATABASE_ERROR', 
             status: 'ERROR',
             message: `Database error but allowing save: ${error.message}`
         };
+    }
+}
+
+// ========== FIXED SAVE ENTRY TO FIREBASE FUNCTION ==========
+async function saveEntryToFirebase(entry) {
+    try {
+        console.log('📤 Saving entry to Firebase:', entry);
+        
+        if (typeof db === 'undefined') {
+            console.error('❌ db not initialized');
+            return { 
+                success: false, 
+                error: 'Database not initialized', 
+                reason: 'DB_NOT_INITIALIZED' 
+            };
+        }
+        
+        // CRITICAL: Check if flight is CLOSED before attempting to save
+        // If flight not found, we ALLOW save
+        if (entry.flightNo && entry.date) {
+            console.log(`🔍 Checking flight status before save for ${entry.flightNo} on ${entry.date}`);
+            const flightStatus = await isFlightOpen(entry.flightNo, entry.date);
+            
+            // Only block if flight is explicitly CLOSED
+            // If NOT_FOUND or any other status, allow save
+            if (!flightStatus.isOpen && flightStatus.error === 'FLIGHT_CLOSED') {
+                console.error(`❌❌❌ Cannot save entry: Flight is CLOSED`);
+                
+                return { 
+                    success: false, 
+                    error: flightStatus.message, 
+                    reason: 'FLIGHT_CLOSED',
+                    flightStatus: flightStatus.status,
+                    errorCode: ERROR_CODES['FLIGHT_CLOSED']
+                };
+            }
+            
+            console.log(`✅ Flight check passed: ${flightStatus.message}`);
+        }
+        
+        // Check for duplicates (only for non-guest entries)
+        if (!entry.isGuest) {
+            const checkResult = await checkPassengerExists(
+                entry.flightNo,
+                entry.date,
+                entry.seatNo || '',
+                entry.pName || '',
+                false
+            );
+            
+            if (checkResult.exists) {
+                const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
+                console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
+                return { 
+                    success: false, 
+                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists`,
+                    reason: 'DUPLICATE',
+                    duplicates: checkResult.matches
+                };
+            }
+        }
+        
+        // If all checks pass, save to Firebase
+        const collectionRef = db.collection('KoveliPass');
+        
+        const firebaseData = { ...entry };
+        delete firebaseData.id;
+        delete firebaseData.firebaseStatus;
+        delete firebaseData.firebaseSaved;
+        delete firebaseData.firebaseRetry;
+        delete firebaseData.firebaseError;
+        delete firebaseData.firebaseReason;
+        
+        firebaseData.savedAt = firebase.firestore.FieldValue.serverTimestamp();
+        
+        const docRef = await collectionRef.add(firebaseData);
+        console.log('✅ Entry saved to Firebase with ID:', docRef.id);
+        
+        return { success: true, docId: docRef.id };
+        
+    } catch (error) {
+        console.error('❌ Error saving to Firebase:', error);
+        return { 
+            success: false, 
+            error: error.message,
+            reason: 'DATABASE_ERROR'
+        };
+    }
+}
+
+// ========== FIXED BACKGROUND SAVE FUNCTION ==========
+async function backgroundSaveToFirebase(entry) {
+    try {
+        console.log('🔄 Starting background save for entry:', entry.id);
+        
+        const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+        if (savedIndex !== -1) {
+            savedPasses[savedIndex].firebaseStatus = 'saving';
+            savedPasses[savedIndex].firebaseError = null;
+            savedPasses[savedIndex].firebaseReason = null;
+            savedPasses[savedIndex].firebaseSaved = false;
+            savedPasses[savedIndex].errorCode = null;
+            savedPasses[savedIndex].errorMessage = null;
+            savedPasses[savedIndex].errorTimestamp = null;
+            saveSavedToLocalStorage();
+            renderTables();
+            updateErrorSummary();
+        }
+        
+        const saveResult = await saveEntryToFirebase(entry);
+        
+        if (saveResult.success) {
+            console.log('✅ Background save successful');
+            
+            if (savedIndex !== -1) {
+                savedPasses.splice(savedIndex, 1);
+                saveSavedToLocalStorage();
+                renderTables();
+                updateErrorSummary();
+            }
+            
+            showTemporaryNotification(`✅ Entry saved to Firebase`, 'success');
+            
+        } else {
+            console.error('❌ Background save failed:', saveResult.error);
+            
+            if (savedIndex !== -1) {
+                savedPasses[savedIndex].firebaseError = saveResult.error;
+                savedPasses[savedIndex].firebaseReason = saveResult.reason || 'UNKNOWN';
+                savedPasses[savedIndex].firebaseStatus = 'error';
+                savedPasses[savedIndex].firebaseRetry = true;
+                savedPasses[savedIndex].firebaseSaved = false;
+                savedPasses[savedIndex].errorCode = getErrorCode(saveResult.reason);
+                savedPasses[savedIndex].errorMessage = getErrorMessage(saveResult.reason);
+                savedPasses[savedIndex].errorTimestamp = new Date().toISOString();
+                saveSavedToLocalStorage();
+                renderTables();
+                updateErrorSummary();
+            }
+            
+            const errorCode = getErrorCode(saveResult.reason);
+            const errorMsg = getErrorMessage(saveResult.reason);
+            
+            if (saveResult.reason === 'DUPLICATE') {
+                showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}`, 'error');
+            } else if (saveResult.reason === 'FLIGHT_CLOSED') {
+                showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${errorMsg}`, 'error');
+            } else {
+                showTemporaryNotification(`❌ [${errorCode}] Save failed: ${errorMsg}`, 'error');
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Background save error:', error);
+        
+        const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+        if (savedIndex !== -1) {
+            savedPasses[savedIndex].firebaseError = error.message;
+            savedPasses[savedIndex].firebaseReason = 'EXCEPTION';
+            savedPasses[savedIndex].firebaseStatus = 'error';
+            savedPasses[savedIndex].firebaseRetry = true;
+            savedPasses[savedIndex].firebaseSaved = false;
+            savedPasses[savedIndex].errorCode = getErrorCode('EXCEPTION');
+            savedPasses[savedIndex].errorMessage = getErrorMessage('EXCEPTION');
+            savedPasses[savedIndex].errorTimestamp = new Date().toISOString();
+            saveSavedToLocalStorage();
+            renderTables();
+            updateErrorSummary();
+        }
+        
+        showTemporaryNotification(`❌ [ERR-SYS-001] Save error: ${error.message}`, 'error');
+    }
+}
+
+// ========== FIXED APPROVE ENTRY FUNCTION ==========
+async function approveEntry(id) {
+    try {
+        const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
+        if (entryIndex === -1) return;
+        
+        const entry = pendingPasses[entryIndex];
+        
+        // Validate required fields
+        const dateToUse = entry.date || currentShiftData.date || '';
+        const flightNoToUse = entry.flightNo || '';
+        
+        if (!dateToUse) {
+            showTemporaryNotification('❌ Missing date', 'warning');
+            return;
+        }
+        
+        if (!flightNoToUse) {
+            showTemporaryNotification('❌ Missing flight number', 'warning');
+            return;
+        }
+        
+        // CHECK FLIGHT STATUS BEFORE MOVING TO SAVED TAB
+        showTemporaryNotification(`🔍 Checking flight status for ${flightNoToUse}...`, 'info');
+        
+        const flightStatus = await isFlightOpen(flightNoToUse, dateToUse);
+        
+        // Only block if flight is explicitly CLOSED
+        // If NOT_FOUND or any other status, allow save
+        if (!flightStatus.isOpen && flightStatus.error === 'FLIGHT_CLOSED') {
+            // Flight is CLOSED - show error and don't move to saved tab
+            const errorCode = getErrorCode('FLIGHT_CLOSED');
+            const errorMsg = flightStatus.message;
+            
+            showTemporaryNotification(`❌ [${errorCode}] ${errorMsg}`, 'error');
+            
+            // Mark the entry with a warning
+            entry.flightCheckFailed = true;
+            entry.flightCheckMessage = flightStatus.message;
+            renderTables();
+            return;
+        }
+        
+        // Clear any previous flight check warnings
+        entry.flightCheckFailed = false;
+        entry.flightCheckMessage = null;
+        
+        // Flight is either OPEN or NOT FOUND - proceed with PAX validation
+        const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
+        const currentPax = parseInt(entry.pax) || 0;
+        
+        if (!entry.isGuest) {
+            if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && calculatedPax > 0 && currentPax !== calculatedPax) {
+                const confirmUpdate = confirm(`Seat "${entry.seatNo}" contains ${calculatedPax} letters = ${calculatedPax} PAX, but current PAX is ${currentPax}. Update PAX to ${calculatedPax}?`);
+                if (confirmUpdate) {
+                    entry.pax = calculatedPax.toString();
+                } else {
+                    const continueAnyway = confirm(`Continue saving with mismatched PAX (${currentPax} vs ${calculatedPax})?`);
+                    if (!continueAnyway) {
+                        showTemporaryNotification('Save cancelled', 'warning');
+                        return;
+                    }
+                }
+            }
+            
+            if ((!entry.seatNo || entry.seatNo.trim() === '' || entry.seatNo === '-') && currentPax > 0 && !entry.flightNo?.startsWith('SQ')) {
+                const confirmNoSeat = confirm(`No seat number entered but PAX is ${currentPax}. Continue?`);
+                if (!confirmNoSeat) {
+                    showTemporaryNotification('Save cancelled', 'warning');
+                    return;
+                }
+            }
+            
+            if (currentPax === 0) {
+                const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}`);
+                if (!confirmZeroPax) {
+                    showTemporaryNotification('Save cancelled - PAX is 0', 'warning');
+                    return;
+                }
+            }
+        }
+        
+        const shiftToUse = entry.shift || (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING' ? currentShiftData.shift : '');
+        const hiddenCode = document.getElementById('hiddenCode')?.value || '';
+        
+        if (!entry.enteredBy) {
+            entry.enteredBy = currentUser.name || currentUser.username || 'UNKNOWN';
+            entry.enteredByUsername = currentUser.username || 'UNKNOWN';
+            entry.enteredByRCNo = currentUser.rcno || 'N/A';
+            entry.enteredByLevel = currentUser.level || 'OPERATOR';
+            entry.enteredAt = new Date().toISOString();
+        }
+        
+        const approvedEntry = { 
+            ...entry, 
+            date: dateToUse,
+            shift: shiftToUse,
+            approved: true, 
+            firebaseStatus: 'pending',
+            firebaseSaved: false,
+            firebaseRetry: false,
+            firebaseError: null,
+            firebaseReason: null,
+            errorCode: null,
+            errorMessage: null,
+            errorTimestamp: null,
+            hiddenCode: hiddenCode,
+            isGuest: entry.isGuest === true ? true : false,
+            mainPassengerId: entry.mainPassengerId || '',
+            mainPassengerName: entry.mainPassengerName || '',
+            mainPassengerSeat: entry.mainPassengerSeat || '',
+            enteredBy: entry.enteredBy || currentUser.name || currentUser.username || 'UNKNOWN',
+            enteredByUsername: entry.enteredByUsername || currentUser.username || 'UNKNOWN',
+            enteredByRCNo: entry.enteredByRCNo || currentUser.rcno || 'N/A',
+            enteredByLevel: entry.enteredByLevel || currentUser.level || 'OPERATOR',
+            enteredAt: entry.enteredAt || new Date().toISOString()
+        };
+        
+        savedPasses.push(approvedEntry);
+        pendingPasses.splice(entryIndex, 1);
+        
+        savePendingToLocalStorage();
+        saveSavedToLocalStorage();
+        
+        showTemporaryNotification('✓ Entry moved to saved tab - attempting to save to Firebase...', 'info');
+        
+        renderTables();
+        
+        setTimeout(() => {
+            backgroundSaveToFirebase(approvedEntry);
+        }, 100);
+        
+        if (hiddenCode && flightNoToUse) {
+            setTimeout(() => {
+                saveHiddenCodeToCardDB(hiddenCode, flightNoToUse, dateToUse);
+            }, 200);
+        }
+        
+    } catch (error) {
+        console.error('Error in approveEntry:', error);
+        showTemporaryNotification('Error: ' + error.message, 'error');
     }
 }
 
@@ -2632,164 +2942,6 @@ function updateShiftDisplay() {
     }
 }
 
-// ========== FIREBASE SAVE FUNCTIONS ==========
-async function saveEntryToFirebase(entry) {
-    try {
-        console.log('Saving entry to Firebase:', entry);
-        
-        if (typeof db === 'undefined') {
-            console.error('db not initialized');
-            return { 
-                success: false, 
-                error: 'Database not initialized', 
-                reason: 'DB_NOT_INITIALIZED' 
-            };
-        }
-        
-        if (!entry.isGuest) {
-            const checkResult = await checkPassengerExists(
-                entry.flightNo,
-                entry.date,
-                entry.seatNo || '',
-                entry.pName || '',
-                false
-            );
-            
-            if (checkResult.exists) {
-                const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
-                console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
-                return { 
-                    success: false, 
-                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists`,
-                    reason: 'DUPLICATE',
-                    duplicates: checkResult.matches
-                };
-            }
-        }
-        
-        if (entry.flightNo && entry.date) {
-            const flightStatus = await isFlightOpen(entry.flightNo, entry.date);
-            
-            if (!flightStatus.isOpen) {
-                console.error(`❌ Cannot save entry: ${flightStatus.message}`);
-                return { 
-                    success: false, 
-                    error: flightStatus.message, 
-                    reason: flightStatus.error || 'FLIGHT_CLOSED',
-                    flightStatus: flightStatus.status
-                };
-            }
-        }
-        
-        const collectionRef = db.collection('KoveliPass');
-        
-        const firebaseData = { ...entry };
-        delete firebaseData.id;
-        delete firebaseData.firebaseStatus;
-        delete firebaseData.firebaseSaved;
-        delete firebaseData.firebaseRetry;
-        delete firebaseData.firebaseError;
-        delete firebaseData.firebaseReason;
-        
-        firebaseData.savedAt = firebase.firestore.FieldValue.serverTimestamp();
-        
-        const docRef = await collectionRef.add(firebaseData);
-        console.log('✅ Entry saved to Firebase with ID:', docRef.id);
-        
-        return { success: true, docId: docRef.id };
-        
-    } catch (error) {
-        console.error('❌ Error saving to Firebase:', error);
-        return { 
-            success: false, 
-            error: error.message,
-            reason: 'DATABASE_ERROR'
-        };
-    }
-}
-
-async function backgroundSaveToFirebase(entry) {
-    try {
-        console.log('Starting background save for entry:', entry.id);
-        
-        const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
-        if (savedIndex !== -1) {
-            savedPasses[savedIndex].firebaseStatus = 'saving';
-            savedPasses[savedIndex].firebaseError = null;
-            savedPasses[savedIndex].firebaseReason = null;
-            savedPasses[savedIndex].firebaseSaved = false;
-            saveSavedToLocalStorage();
-            renderTables();
-            updateErrorSummary();
-        }
-        
-        const saveResult = await saveEntryToFirebase(entry);
-        
-        if (saveResult.success) {
-            console.log('✅ Background save successful');
-            
-            if (savedIndex !== -1) {
-                savedPasses.splice(savedIndex, 1);
-                saveSavedToLocalStorage();
-                renderTables();
-                updateErrorSummary();
-            }
-            
-            showTemporaryNotification(`✅ Entry saved to Firebase`, 'success');
-            
-        } else {
-            console.error('❌ Background save failed:', saveResult.error);
-            
-            if (savedIndex !== -1) {
-                savedPasses[savedIndex].firebaseError = saveResult.error;
-                savedPasses[savedIndex].firebaseReason = saveResult.reason || 'UNKNOWN';
-                savedPasses[savedIndex].firebaseStatus = 'error';
-                savedPasses[savedIndex].firebaseRetry = true;
-                savedPasses[savedIndex].firebaseSaved = false;
-                savedPasses[savedIndex].errorCode = getErrorCode(saveResult.reason);
-                savedPasses[savedIndex].errorMessage = getErrorMessage(saveResult.reason);
-                savedPasses[savedIndex].errorTimestamp = new Date().toISOString();
-                saveSavedToLocalStorage();
-                renderTables();
-                updateErrorSummary();
-            }
-            
-            const errorCode = getErrorCode(saveResult.reason);
-            const errorMsg = getErrorMessage(saveResult.reason);
-            
-            if (saveResult.reason === 'DUPLICATE') {
-                showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}`, 'error');
-            } else if (saveResult.reason === 'FLIGHT_CLOSED') {
-                showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${errorMsg}`, 'error');
-            } else if (saveResult.reason === 'FLIGHT_NOT_FOUND') {
-                showTemporaryNotification(`❌ [${errorCode}] FLIGHT NOT FOUND: ${errorMsg}`, 'error');
-            } else {
-                showTemporaryNotification(`❌ [${errorCode}] Save failed: ${errorMsg}`, 'error');
-            }
-        }
-        
-    } catch (error) {
-        console.error('❌ Background save error:', error);
-        
-        const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
-        if (savedIndex !== -1) {
-            savedPasses[savedIndex].firebaseError = error.message;
-            savedPasses[savedIndex].firebaseReason = 'EXCEPTION';
-            savedPasses[savedIndex].firebaseStatus = 'error';
-            savedPasses[savedIndex].firebaseRetry = true;
-            savedPasses[savedIndex].firebaseSaved = false;
-            savedPasses[savedIndex].errorCode = getErrorCode('EXCEPTION');
-            savedPasses[savedIndex].errorMessage = getErrorMessage('EXCEPTION');
-            savedPasses[savedIndex].errorTimestamp = new Date().toISOString();
-            saveSavedToLocalStorage();
-            renderTables();
-            updateErrorSummary();
-        }
-        
-        showTemporaryNotification(`❌ [ERR-SYS-001] Save error: ${error.message}`, 'error');
-    }
-}
-
 // ========== ERROR SUMMARY FUNCTIONS ==========
 function updateErrorSummary() {
     const errorSummary = document.getElementById('errorSummary');
@@ -2957,123 +3109,6 @@ function clearAllErrors() {
         updateErrorSummary();
         closeErrorPopup();
         showTemporaryNotification('✅ All failed transactions cleared', 'success');
-    }
-}
-
-// ========== APPROVE ENTRY FUNCTION ==========
-async function approveEntry(id) {
-    try {
-        const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
-        if (entryIndex === -1) return;
-        
-        const entry = pendingPasses[entryIndex];
-        
-        const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
-        const currentPax = parseInt(entry.pax) || 0;
-        
-        if (!entry.isGuest) {
-            if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && calculatedPax > 0 && currentPax !== calculatedPax) {
-                const confirmUpdate = confirm(`Seat "${entry.seatNo}" contains ${calculatedPax} letters = ${calculatedPax} PAX, but current PAX is ${currentPax}. Update PAX to ${calculatedPax}?`);
-                if (confirmUpdate) {
-                    entry.pax = calculatedPax.toString();
-                } else {
-                    const continueAnyway = confirm(`Continue saving with mismatched PAX (${currentPax} vs ${calculatedPax})?`);
-                    if (!continueAnyway) {
-                        showTemporaryNotification('Save cancelled', 'warning');
-                        return;
-                    }
-                }
-            }
-            
-            if ((!entry.seatNo || entry.seatNo.trim() === '' || entry.seatNo === '-') && currentPax > 0 && !entry.flightNo?.startsWith('SQ')) {
-                const confirmNoSeat = confirm(`No seat number entered but PAX is ${currentPax}. Continue?`);
-                if (!confirmNoSeat) {
-                    showTemporaryNotification('Save cancelled', 'warning');
-                    return;
-                }
-            }
-            
-            if (currentPax === 0) {
-                const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}`);
-                if (!confirmZeroPax) {
-                    showTemporaryNotification('Save cancelled - PAX is 0', 'warning');
-                    return;
-                }
-            }
-        }
-        
-        const dateToUse = entry.date || currentShiftData.date || '';
-        const flightNoToUse = entry.flightNo || '';
-        const shiftToUse = entry.shift || (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING' ? currentShiftData.shift : '');
-        
-        if (!dateToUse) {
-            showTemporaryNotification('Missing date', 'warning');
-            return;
-        }
-        
-        if (!flightNoToUse) {
-            showTemporaryNotification('Missing flight number', 'warning');
-            return;
-        }
-        
-        const hiddenCode = document.getElementById('hiddenCode')?.value || '';
-        
-        if (!entry.enteredBy) {
-            entry.enteredBy = currentUser.name || currentUser.username || 'UNKNOWN';
-            entry.enteredByUsername = currentUser.username || 'UNKNOWN';
-            entry.enteredByRCNo = currentUser.rcno || 'N/A';
-            entry.enteredByLevel = currentUser.level || 'OPERATOR';
-            entry.enteredAt = new Date().toISOString();
-        }
-        
-        const approvedEntry = { 
-            ...entry, 
-            date: dateToUse,
-            shift: shiftToUse,
-            approved: true, 
-            firebaseStatus: 'pending',
-            firebaseSaved: false,
-            firebaseRetry: false,
-            firebaseError: null,
-            firebaseReason: null,
-            errorCode: null,
-            errorMessage: null,
-            errorTimestamp: null,
-            hiddenCode: hiddenCode,
-            isGuest: entry.isGuest === true ? true : false,
-            mainPassengerId: entry.mainPassengerId || '',
-            mainPassengerName: entry.mainPassengerName || '',
-            mainPassengerSeat: entry.mainPassengerSeat || '',
-            enteredBy: entry.enteredBy || currentUser.name || currentUser.username || 'UNKNOWN',
-            enteredByUsername: entry.enteredByUsername || currentUser.username || 'UNKNOWN',
-            enteredByRCNo: entry.enteredByRCNo || currentUser.rcno || 'N/A',
-            enteredByLevel: entry.enteredByLevel || currentUser.level || 'OPERATOR',
-            enteredAt: entry.enteredAt || new Date().toISOString()
-        };
-        
-        savedPasses.push(approvedEntry);
-        pendingPasses.splice(entryIndex, 1);
-        
-        savePendingToLocalStorage();
-        saveSavedToLocalStorage();
-        
-        showTemporaryNotification('✓ Entry moved to saved tab - attempting to save to Firebase...', 'info');
-        
-        renderTables();
-        
-        setTimeout(() => {
-            backgroundSaveToFirebase(approvedEntry);
-        }, 100);
-        
-        if (hiddenCode && flightNoToUse) {
-            setTimeout(() => {
-                saveHiddenCodeToCardDB(hiddenCode, flightNoToUse, dateToUse);
-            }, 200);
-        }
-        
-    } catch (error) {
-        console.error('Error in approveEntry:', error);
-        showTemporaryNotification('Error: ' + error.message, 'error');
     }
 }
 
@@ -3273,6 +3308,10 @@ function renderPendingTable() {
             row.classList.add('guest-row');
         }
         
+        if (entry.flightCheckFailed) {
+            row.classList.add('flight-closed-warning');
+        }
+        
         let displayFQTV = entry.FQTV || '—';
         
         const guestCell = document.createElement('td');
@@ -3316,8 +3355,15 @@ function renderPendingTable() {
         const actionsCell = document.createElement('td');
         actionsCell.className = 'action-buttons';
         
+        let approveButton = `<button class="approve-btn" onclick="approveEntry('${entry.id}')">${entry.isGuest ? 'SAVE' : 'Approve'}</button>`;
+        
+        // If flight check failed, show warning on button
+        if (entry.flightCheckFailed) {
+            approveButton = `<button class="approve-btn" style="background: #c68b5e;" onclick="approveEntry('${entry.id}')" title="${entry.flightCheckMessage || 'Flight may be closed'}">⚠️ Check</button>`;
+        }
+        
         actionsCell.innerHTML = `
-            <button class="approve-btn" onclick="approveEntry('${entry.id}')">${entry.isGuest ? 'SAVE' : 'Approve'}</button>
+            ${approveButton}
             <button class="delete-btn" onclick="deleteEntry('${entry.id}', false)">DEL</button>
         `;
         
@@ -3340,7 +3386,6 @@ function renderPendingTable() {
     });
 }
 
-// ========== ENHANCED RENDER SAVED TABLE WITH SYNC BUTTON, DELETE BUTTON, AND ERROR REASONS ==========
 function renderSavedTable() {
     const tbody = document.getElementById('savedTableBody');
     if (!tbody) return;
@@ -3399,8 +3444,8 @@ function renderSavedTable() {
         
         const actionsCell = document.createElement('td');
         actionsCell.className = 'action-buttons';
-        actionsCell.style.minWidth = '220px';
-        actionsCell.style.padding = '8px 4px';
+        actionsCell.style.minWidth = '260px';
+        actionsCell.style.padding = '8px 6px';
         
         // Determine status and error details
         let statusIcon = '';
@@ -3658,7 +3703,9 @@ function addToTable(data) {
     const newEntry = {
         id: generateId(),
         ...upperData,
-        approved: false
+        approved: false,
+        flightCheckFailed: false,
+        flightCheckMessage: null
     };
     
     pendingPasses.push(newEntry);
