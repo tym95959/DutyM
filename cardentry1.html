@@ -1596,6 +1596,7 @@ const ERROR_CODES = {
     'FLIGHT_NOT_FOUND': 'ERR-FLT-002',
     'DB_NOT_INITIALIZED': 'ERR-DB-001',
     'DATABASE_ERROR': 'ERR-DB-002',
+    'VALIDATION_ERROR': 'ERR-VAL-001',
     'EXCEPTION': 'ERR-SYS-001',
     'UNKNOWN': 'ERR-UNK-001'
 };
@@ -1607,6 +1608,7 @@ const ERROR_MESSAGES = {
     'FLIGHT_NOT_FOUND': 'Flight not found in system',
     'DB_NOT_INITIALIZED': 'Database connection error',
     'DATABASE_ERROR': 'Database error occurred',
+    'VALIDATION_ERROR': 'Missing required fields (flight number or date)',
     'EXCEPTION': 'System error occurred',
     'UNKNOWN': 'Unknown error occurred'
 };
@@ -1809,8 +1811,19 @@ function logout() {
     window.location.href = 'login.html';
 }
 
-// ========== DUMMY ENTRY FUNCTION ==========
+// ========== DUMMY ENTRY FUNCTION WITH DATE VALIDATION ==========
 function createDummyEntry() {
+    // Ensure we have date and shift data
+    if (!currentShiftData.date) {
+        showTemporaryNotification('⚠️ Please wait for shift data to load (date missing)', 'warning');
+        return;
+    }
+    
+    if (!currentShiftData.shift || (currentShiftData.shift !== 'MORNING' && currentShiftData.shift !== 'EVENING')) {
+        showTemporaryNotification('⚠️ Please wait for valid shift data to load', 'warning');
+        return;
+    }
+    
     const entryTime = getCurrentEntryTime();
     
     const dummyEntry = {
@@ -1823,8 +1836,8 @@ function createDummyEntry() {
         pax: '1',
         serialNo: 'DUMMY' + Math.floor(Math.random() * 1000),
         remarks: 'DUMMY ENTRY',
-        date: currentShiftData.date || '',
-        shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
+        date: currentShiftData.date,
+        shift: currentShiftData.shift,
         entryTime: entryTime,
         hiddenCode: 'DUMMY' + Date.now(),
         isGuest: false,
@@ -1894,6 +1907,11 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
             return { exists: false, matches: [], error: 'Database not initialized' };
         }
         
+        if (!flightNo || !date) {
+            console.error('Flight number or date missing for duplicate check');
+            return { exists: false, matches: [], error: 'Flight number or date missing' };
+        }
+        
         const collectionRef = db.collection('KoveliPass');
         let query = collectionRef
             .where('flightNo', '==', flightNo)
@@ -1946,10 +1964,20 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
     }
 }
 
-// ========== FIXED FLIGHT STATUS CHECK FUNCTION ==========
+// ========== FLIGHT STATUS CHECK FUNCTION ==========
 async function isFlightOpen(flightNo, date) {
     try {
         console.log(`🔍 Checking flight status for ${flightNo} on ${date}`);
+        
+        if (!flightNo || !date) {
+            console.error('Flight number or date missing for flight status check');
+            return { 
+                isOpen: true, 
+                error: null, 
+                status: 'MISSING_DATA',
+                message: 'Flight number or date missing - allowing save'
+            };
+        }
         
         if (typeof db === 'undefined') {
             console.error('❌ db not initialized');
@@ -2117,9 +2145,18 @@ function validateEntryForSave(entry) {
         errors.push('Date is required');
     }
     
+    if (!entry.pName || entry.pName.trim() === '') {
+        errors.push('Passenger name is required');
+    }
+    
+    if (!entry.seatNo || entry.seatNo.trim() === '') {
+        errors.push('Seat number is required');
+    }
+    
     return {
         isValid: errors.length === 0,
-        errors: errors
+        errors: errors,
+        errorMessage: errors.join(', ')
     };
 }
 
@@ -2128,13 +2165,13 @@ async function saveEntryToFirebase(entry) {
     try {
         console.log('📤 Saving entry to Firebase:', entry);
         
-        // Validate entry has required fields
+        // Validate entry has required fields (especially flight number and date)
         const validation = validateEntryForSave(entry);
         if (!validation.isValid) {
             console.error('Entry validation failed:', validation.errors);
             return { 
                 success: false, 
-                error: `Validation failed: ${validation.errors.join(', ')}`, 
+                error: `Validation failed: ${validation.errorMessage}`, 
                 reason: 'VALIDATION_ERROR',
                 validationErrors: validation.errors
             };
@@ -2175,7 +2212,7 @@ async function saveEntryToFirebase(entry) {
                 console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
                 return { 
                     success: false, 
-                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists`,
+                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists for flight ${entry.flightNo} on ${entry.date}`,
                     reason: 'DUPLICATE',
                     duplicates: checkResult.matches
                 };
@@ -2206,7 +2243,7 @@ async function saveEntryToFirebase(entry) {
         delete firebaseData.errorTimestamp;
         delete firebaseData.targetDatabase;
         
-        // Ensure flight number and date are present
+        // Ensure flight number and date are present (they should be from validation)
         firebaseData.flightNo = entry.flightNo;
         firebaseData.date = entry.date;
         
@@ -2264,7 +2301,24 @@ async function backgroundSaveToFirebase(entry) {
         const validation = validateEntryForSave(entry);
         if (!validation.isValid) {
             console.error('Entry validation failed in background save:', validation.errors);
-            showTemporaryNotification(`❌ Cannot save: ${validation.errors.join(', ')}`, 'error');
+            
+            // Update the entry with validation error
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses[savedIndex].firebaseError = `Validation failed: ${validation.errorMessage}`;
+                savedPasses[savedIndex].firebaseReason = 'VALIDATION_ERROR';
+                savedPasses[savedIndex].firebaseStatus = 'error';
+                savedPasses[savedIndex].firebaseRetry = true;
+                savedPasses[savedIndex].firebaseSaved = false;
+                savedPasses[savedIndex].errorCode = getErrorCode('VALIDATION_ERROR');
+                savedPasses[savedIndex].errorMessage = getErrorMessage('VALIDATION_ERROR');
+                savedPasses[savedIndex].errorTimestamp = new Date().toISOString();
+                saveSavedToLocalStorage();
+                renderTables();
+                updateErrorSummary();
+            }
+            
+            showTemporaryNotification(`❌ Cannot save: ${validation.errorMessage}`, 'error');
             return;
         }
         
@@ -2294,7 +2348,7 @@ async function backgroundSaveToFirebase(entry) {
                 updateErrorSummary();
             }
             
-            showTemporaryNotification(`✅ Entry saved to ${saveResult.database || 'Firebase'} (Flight: ${saveResult.flightNo})`, 'success');
+            showTemporaryNotification(`✅ Entry saved to ${saveResult.database || 'Firebase'} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'success');
             
         } else {
             console.error('❌ Background save failed:', saveResult.error);
@@ -2320,15 +2374,15 @@ async function backgroundSaveToFirebase(entry) {
             let dbName = saveResult.database ? ` [${saveResult.database}]` : '';
             
             if (saveResult.reason === 'DUPLICATE') {
-                showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo})`, 'error');
+                showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'error');
             } else if (saveResult.reason === 'FLIGHT_CLOSED') {
-                showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo})`, 'error');
+                showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'error');
             } else if (saveResult.reason === 'FLIGHT_NOT_FOUND') {
-                showTemporaryNotification(`❌ [${errorCode}] FLIGHT NOT FOUND: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo})`, 'error');
+                showTemporaryNotification(`❌ [${errorCode}] FLIGHT NOT FOUND: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'error');
             } else if (saveResult.reason === 'VALIDATION_ERROR') {
                 showTemporaryNotification(`❌ Validation Error: ${saveResult.error}`, 'error');
             } else {
-                showTemporaryNotification(`❌ [${errorCode}] Save failed: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo})`, 'error');
+                showTemporaryNotification(`❌ [${errorCode}] Save failed: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'error');
             }
         }
         
@@ -2354,7 +2408,7 @@ async function backgroundSaveToFirebase(entry) {
     }
 }
 
-// ========== FIXED APPROVE ENTRY FUNCTION WITH MULTI-DATABASE SUPPORT ==========
+// ========== FIXED APPROVE ENTRY FUNCTION WITH MULTI-DATABASE SUPPORT AND VALIDATION ==========
 async function approveEntry(id) {
     try {
         const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
@@ -2366,28 +2420,32 @@ async function approveEntry(id) {
         const dateToUse = entry.date || currentShiftData.date || '';
         const flightNoToUse = entry.flightNo || '';
         
+        // Check for missing date
         if (!dateToUse) {
             showTemporaryNotification('❌ Missing date - please wait for shift data to load', 'warning');
             return;
         }
         
+        // Check for missing flight number
         if (!flightNoToUse) {
             showTemporaryNotification('❌ Missing flight number', 'warning');
             return;
         }
         
+        // Check for missing passenger name
         if (!entry.pName || entry.pName.trim() === '') {
             showTemporaryNotification('❌ Missing passenger name', 'warning');
             return;
         }
         
+        // Check for missing seat number
         if (!entry.seatNo || entry.seatNo.trim() === '') {
             showTemporaryNotification('❌ Missing seat number', 'warning');
             return;
         }
         
         // CHECK FLIGHT STATUS BEFORE MOVING TO SAVED TAB
-        showTemporaryNotification(`🔍 Checking flight status for ${flightNoToUse}...`, 'info');
+        showTemporaryNotification(`🔍 Checking flight status for ${flightNoToUse} on ${dateToUse}...`, 'info');
         
         const flightStatus = await isFlightOpen(flightNoToUse, dateToUse);
         
@@ -2438,7 +2496,7 @@ async function approveEntry(id) {
             }
             
             if (currentPax === 0) {
-                const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}`);
+                const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}\nDate: ${dateToUse}`);
                 if (!confirmZeroPax) {
                     showTemporaryNotification('Save cancelled - PAX is 0', 'warning');
                     return;
@@ -2507,33 +2565,6 @@ async function approveEntry(id) {
         console.error('Error in approveEntry:', error);
         showTemporaryNotification('Error: ' + error.message, 'error');
     }
-}
-
-// ========== RETRY SAVE FUNCTION ==========
-async function retrySave(id) {
-    const entryIndex = savedPasses.findIndex(e => e.id === id);
-    if (entryIndex === -1) return;
-    
-    const entry = savedPasses[entryIndex];
-    
-    savedPasses[entryIndex].firebaseError = null;
-    savedPasses[entryIndex].firebaseReason = null;
-    savedPasses[entryIndex].firebaseStatus = 'pending';
-    savedPasses[entryIndex].firebaseRetry = false;
-    savedPasses[entryIndex].firebaseSaved = false;
-    savedPasses[entryIndex].errorCode = null;
-    savedPasses[entryIndex].errorMessage = null;
-    savedPasses[entryIndex].errorTimestamp = null;
-    saveSavedToLocalStorage();
-    renderTables();
-    updateErrorSummary();
-    
-    const dbName = getFirestoreNameForFlight(entry.flightNo);
-    showTemporaryNotification(`🔄 Retrying save to ${dbName}...`, 'info');
-    
-    setTimeout(() => {
-        backgroundSaveToFirebase(entry);
-    }, 100);
 }
 
 // ========== GET ERROR CODE FUNCTION ==========
@@ -2831,6 +2862,10 @@ async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
     }
     
     if (!flightNo || !flightNo.trim()) {
+        return false;
+    }
+    
+    if (!date || !date.trim()) {
         return false;
     }
     
@@ -3600,6 +3635,9 @@ function renderSavedTable() {
             } else if (entry.firebaseReason === 'DUPLICATE') {
                 row.classList.add('duplicate-warning');
                 row.classList.add('unsynced-row');
+            } else if (entry.firebaseReason === 'VALIDATION_ERROR') {
+                row.classList.add('database-error-warning');
+                row.classList.add('unsynced-row');
             } else {
                 row.classList.add('database-error-warning');
                 row.classList.add('unsynced-row');
@@ -3779,6 +3817,33 @@ function renderSavedTable() {
     });
 }
 
+// ========== RETRY SAVE FUNCTION ==========
+async function retrySave(id) {
+    const entryIndex = savedPasses.findIndex(e => e.id === id);
+    if (entryIndex === -1) return;
+    
+    const entry = savedPasses[entryIndex];
+    
+    savedPasses[entryIndex].firebaseError = null;
+    savedPasses[entryIndex].firebaseReason = null;
+    savedPasses[entryIndex].firebaseStatus = 'pending';
+    savedPasses[entryIndex].firebaseRetry = false;
+    savedPasses[entryIndex].firebaseSaved = false;
+    savedPasses[entryIndex].errorCode = null;
+    savedPasses[entryIndex].errorMessage = null;
+    savedPasses[entryIndex].errorTimestamp = null;
+    saveSavedToLocalStorage();
+    renderTables();
+    updateErrorSummary();
+    
+    const dbName = getFirestoreNameForFlight(entry.flightNo);
+    showTemporaryNotification(`🔄 Retrying save to ${dbName}...`, 'info');
+    
+    setTimeout(() => {
+        backgroundSaveToFirebase(entry);
+    }, 100);
+}
+
 // ========== PRINT ROW FUNCTION ==========
 function printRow(id, isSaved = false) {
     const entryArray = isSaved ? savedPasses : pendingPasses;
@@ -3859,6 +3924,17 @@ function addToTable(data) {
         } else {
             upperData[key] = data[key];
         }
+    }
+    
+    // Ensure date is present
+    if (!upperData.date || upperData.date === '') {
+        upperData.date = currentShiftData.date || '';
+    }
+    
+    // Ensure flight number is present
+    if (!upperData.flightNo || upperData.flightNo === '') {
+        showTemporaryNotification('⚠️ Flight number is missing', 'warning');
+        return;
     }
     
     if (!upperData.pax || upperData.pax === '') {
@@ -4262,6 +4338,21 @@ function parseAndAddToList() {
             };
         }
         
+        // Ensure date is set
+        if (!parsedEntry.date || parsedEntry.date === '') {
+            parsedEntry.date = currentShiftData.date || '';
+            if (!parsedEntry.date) {
+                showTemporaryNotification('⚠️ Date is missing - please wait for shift data', 'warning');
+                return false;
+            }
+        }
+        
+        // Ensure flight number is set
+        if (!parsedEntry.flightNo || parsedEntry.flightNo === '') {
+            showTemporaryNotification('⚠️ Flight number could not be parsed', 'warning');
+            return false;
+        }
+        
         if (guestModeActive && selectedGuestPassengerId) {
             const result = addGuestToPassenger(selectedGuestPassengerId, parsedEntry);
             cancelGuestMode();
@@ -4331,6 +4422,7 @@ window.getFirestoreForFlight = getFirestoreForFlight;
 window.getFirestoreNameForFlight = getFirestoreNameForFlight;
 window.saveEntryToFirebase = saveEntryToFirebase;
 window.backgroundSaveToFirebase = backgroundSaveToFirebase;
+window.validateEntryForSave = validateEntryForSave;
 window.testFlightDatabaseMapping = testFlightDatabaseMapping;
 </script>
 </body>   
