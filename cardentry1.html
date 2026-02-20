@@ -1565,7 +1565,6 @@
         </div>
     </div>
 
-<script>
 // ========== GLOBAL VARIABLES ==========
 let pendingPasses = [];
 let savedPasses = [];
@@ -1902,8 +1901,9 @@ function calculatePaxFromSeat(seatNo, flightNo = '') {
 // ========== CHECK PASSENGER EXISTS ==========
 async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = false, excludeId = null) {
     try {
-        if (typeof db === 'undefined') {
-            console.error('db not initialized');
+        // Use passengerDb for checking existing passengers
+        if (typeof passengerDb === 'undefined') {
+            console.error('passengerDb not initialized');
             return { exists: false, matches: [], error: 'Database not initialized' };
         }
         
@@ -1912,7 +1912,10 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
             return { exists: false, matches: [], error: 'Flight number or date missing' };
         }
         
-        const collectionRef = db.collection('KoveliPass');
+        console.log(`🔍 Checking for duplicate: ${pName} on flight ${flightNo} date ${date}`);
+        
+        // Use passengerDb (atten-14f76) for checking duplicates
+        const collectionRef = passengerDb.collection('KoveliPass');
         let query = collectionRef
             .where('flightNo', '==', flightNo)
             .where('date', '==', date);
@@ -1920,6 +1923,7 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
         const snapshot = await query.get();
         
         if (snapshot.empty) {
+            console.log('✅ No duplicates found');
             return { exists: false, matches: [] };
         }
         
@@ -1953,9 +1957,11 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
         });
         
         if (matches.length > 0) {
+            console.warn('⚠️ DUPLICATE FOUND:', matches);
             return { exists: true, matches };
         }
         
+        console.log('✅ No matching duplicates found');
         return { exists: false, matches: [] };
         
     } catch (error) {
@@ -1964,7 +1970,7 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
     }
 }
 
-// ========== FLIGHT STATUS CHECK FUNCTION ==========
+// ========== FIXED FLIGHT STATUS CHECK FUNCTION - CHECKS RESPECTIVE DATABASE ==========
 async function isFlightOpen(flightNo, date) {
     try {
         console.log(`🔍 Checking flight status for ${flightNo} on ${date}`);
@@ -1979,84 +1985,125 @@ async function isFlightOpen(flightNo, date) {
             };
         }
         
-        if (typeof db === 'undefined') {
-            console.error('❌ db not initialized');
+        // Get the appropriate database for this flight
+        const targetDb = getFirestoreForFlight(flightNo);
+        
+        if (!targetDb) {
+            console.error(`❌ Target database not initialized for flight ${flightNo}`);
             return { 
-                isOpen: false, 
+                isOpen: true, 
                 error: 'DB_NOT_INITIALIZED', 
-                status: null, 
-                message: 'Database not initialized - BLOCKING SAVE' 
+                status: 'ERROR',
+                message: `Target database not initialized for flight ${flightNo} - allowing save`
             };
         }
         
-        // Check if flight exists in the flights collection
-        const flightsRef = db.collection('flights');
-        const query = flightsRef
-            .where('flightNo', '==', flightNo)
-            .where('date', '==', date);
+        // Format date to match document ID format (YYYY-MM-DD)
+        // If date is in different format, convert it
+        let formattedDate = date;
+        if (date.includes('/')) {
+            // Convert from DD/MM/YYYY or MM/DD/YYYY to YYYY-MM-DD
+            const parts = date.split('/');
+            if (parts.length === 3) {
+                // Assume YYYY/MM/DD or DD/MM/YYYY - need to detect format
+                if (parts[0].length === 4) {
+                    // Already YYYY/MM/DD format
+                    formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                } else {
+                    // Assume DD/MM/YYYY
+                    formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
+            }
+        } else if (date.includes('-')) {
+            // Already has hyphens, ensure it's in YYYY-MM-DD format
+            const parts = date.split('-');
+            if (parts.length === 3) {
+                if (parts[0].length === 4) {
+                    // Already YYYY-MM-DD
+                    formattedDate = date;
+                } else {
+                    // Assume DD-MM-YYYY
+                    formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
+            }
+        } else {
+            // Just numbers, try to format as YYYY-MM-DD
+            const cleanDate = date.replace(/[^0-9]/g, '');
+            if (cleanDate.length === 8) {
+                // Assume YYYYMMDD
+                formattedDate = `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
+            } else if (cleanDate.length === 6) {
+                // Assume DDMMYY
+                const day = cleanDate.substring(0,2);
+                const month = cleanDate.substring(2,4);
+                const year = `20${cleanDate.substring(4,6)}`;
+                formattedDate = `${year}-${month}-${day}`;
+            }
+        }
         
-        const snapshot = await query.get();
+        console.log(`📅 Formatted date for document ID: ${formattedDate}`);
         
-        // If flight not found in system - ALLOW SAVE (not registered is OK)
-        if (snapshot.empty) {
-            console.log(`✅ Flight ${flightNo} on ${date} not found in system - ALLOWING SAVE (not registered)`);
+        // Document ID is flightNo_date (e.g., "AZ0777_2026-02-16")
+        const docId = `${flightNo}_${formattedDate}`;
+        console.log(`🔍 Looking for flight report document: ${docId} in ${getFirestoreNameForFlight(flightNo)}`);
+        
+        // Check if flight exists in the FlightReports collection
+        const flightReportRef = targetDb.collection('FlightReports').doc(docId);
+        const flightDoc = await flightReportRef.get();
+        
+        // If flight report document doesn't exist - ALLOW SAVE (flight not closed yet)
+        if (!flightDoc.exists) {
+            console.log(`✅ Flight ${flightNo} on ${date} has no flight report - FLIGHT IS OPEN (not closed)`);
             return { 
                 isOpen: true, 
                 error: null, 
-                status: 'NOT_REGISTERED',
-                message: `Flight ${flightNo} on ${date} not registered - allowing save`
+                status: 'OPEN',
+                message: `Flight ${flightNo} on ${date} is OPEN (no flight report found)`
             };
         }
         
-        let flightData = null;
-        snapshot.forEach(doc => {
-            flightData = doc.data();
-            console.log('📄 Flight document data:', flightData);
-        });
+        // Get the flight report data
+        const flightData = flightDoc.data();
+        console.log('📄 Flight report data:', flightData);
         
-        if (!flightData) {
-            console.log(`⚠️ Flight ${flightNo} on ${date} has no data - ALLOWING SAVE`);
-            return { 
-                isOpen: true, 
-                error: null, 
-                status: 'NO_DATA',
-                message: `Flight ${flightNo} on ${date} has no data - allowing save`
-            };
-        }
-        
-        // Check various possible field names for flight status
-        const status = (flightData.flightStatus || flightData.status || flightData.FlightStatus || '').toString().toUpperCase();
-        console.log(`📊 Flight status for ${flightNo}: "${status}"`);
-        
-        // If status is explicitly CLOSED, block the save
-        if (status === 'CLOSED') {
-            console.log(`❌❌❌ Flight ${flightNo} on ${date} is CLOSED - BLOCKING SAVE`);
+        // Check the isClosed field - this is a boolean
+        // When flight is closed, isClosed = true
+        if (flightData.isClosed === true) {
+            console.log(`❌❌❌ Flight ${flightNo} on ${date} is CLOSED (isClosed=true) - BLOCKING SAVE`);
+            
+            // Format a detailed message with flight report data
+            let detailMessage = `Flight ${flightNo} on ${date} is CLOSED. `;
+            if (flightData.totalPax !== undefined) detailMessage += `Total PAX: ${flightData.totalPax}. `;
+            if (flightData.lastPax) detailMessage += `Last passenger at: ${flightData.lastPax}. `;
+            if (flightData.firstPax) detailMessage += `First passenger at: ${flightData.firstPax}. `;
+            if (flightData.std) detailMessage += `STD: ${flightData.std}. `;
+            if (flightData.airline) detailMessage += `Airline: ${flightData.airline}.`;
+            
             return { 
                 isOpen: false, 
                 error: 'FLIGHT_CLOSED', 
                 status: 'CLOSED',
-                message: `Flight ${flightNo} on ${date} is CLOSED - cannot add passengers`
+                message: detailMessage,
+                flightData: {
+                    airline: flightData.airline,
+                    firstPax: flightData.firstPax,
+                    lastPax: flightData.lastPax,
+                    totalPax: flightData.totalPax,
+                    std: flightData.std,
+                    shift: flightData.shift,
+                    updatedAt: flightData.updatedAt
+                }
             };
         }
         
-        // Also check if there's a boolean isOpen field
-        if (flightData.isOpen === false) {
-            console.log(`❌❌❌ Flight ${flightNo} on ${date} is marked as closed (isOpen=false) - BLOCKING SAVE`);
-            return { 
-                isOpen: false, 
-                error: 'FLIGHT_CLOSED', 
-                status: 'CLOSED',
-                message: `Flight ${flightNo} on ${date} is CLOSED - cannot add passengers`
-            };
-        }
-        
-        // For any other status (OPEN, SCHEDULED, etc.) or if status field doesn't exist - ALLOW SAVE
-        console.log(`✅✅✅ Flight ${flightNo} on ${date} is ${status || 'OPEN'} - ALLOWING SAVE`);
+        // If isClosed is false or undefined - FLIGHT IS OPEN
+        console.log(`✅✅✅ Flight ${flightNo} on ${date} is OPEN (isClosed=${flightData.isClosed})`);
         return { 
             isOpen: true, 
             error: null, 
-            status: status || 'OPEN',
-            message: `Flight is ${status || 'OPEN'} - allowing save`
+            status: 'OPEN',
+            message: `Flight ${flightNo} on ${date} is OPEN`,
+            flightData: flightData
         };
         
     } catch (error) {
@@ -2177,13 +2224,12 @@ async function saveEntryToFirebase(entry) {
             };
         }
         
-        // CRITICAL: Check if flight is CLOSED before attempting to save
+        // CRITICAL: Check if flight is CLOSED in its respective database before attempting to save
         console.log(`🔍 Checking flight status before save for ${entry.flightNo} on ${entry.date}`);
         const flightStatus = await isFlightOpen(entry.flightNo, entry.date);
         
-        // Only block if flight is explicitly CLOSED
-        // If NOT_FOUND or any other status, allow save
-        if (!flightStatus.isOpen && flightStatus.error === 'FLIGHT_CLOSED') {
+        // Block if flight is explicitly CLOSED (isClosed = true)
+        if (!flightStatus.isOpen) {
             console.error(`❌❌❌ Cannot save entry: Flight is CLOSED`);
             
             return { 
@@ -2197,7 +2243,7 @@ async function saveEntryToFirebase(entry) {
         
         console.log(`✅ Flight check passed: ${flightStatus.message}`);
         
-        // Check for duplicates (only for non-guest entries)
+        // Check for duplicates (using passengerDb for duplicate checking across all flights)
         if (!entry.isGuest) {
             const checkResult = await checkPassengerExists(
                 entry.flightNo,
@@ -2242,13 +2288,24 @@ async function saveEntryToFirebase(entry) {
         delete firebaseData.errorMessage;
         delete firebaseData.errorTimestamp;
         delete firebaseData.targetDatabase;
+        delete firebaseData.flightCheckFailed;
+        delete firebaseData.flightCheckMessage;
         
-        // Ensure flight number and date are present (they should be from validation)
+        // ENSURE flight number and date are present (they should be from validation)
         firebaseData.flightNo = entry.flightNo;
         firebaseData.date = entry.date;
         
         // Add server timestamp
         firebaseData.savedAt = firebase.firestore.FieldValue.serverTimestamp();
+        
+        // Log the exact data being saved
+        console.log('📝 Data being saved to Firebase:', {
+            database: getFirestoreNameForFlight(entry.flightNo),
+            collection: 'KoveliPass',
+            flightNo: firebaseData.flightNo,
+            date: firebaseData.date,
+            pName: firebaseData.pName
+        });
         
         // Save to the appropriate collection (using 'KoveliPass' as collection name)
         const collectionRef = targetDb.collection('KoveliPass');
@@ -2263,6 +2320,8 @@ async function saveEntryToFirebase(entry) {
             try {
                 await cardDb.collection('QrCards').doc(`${entry.date}_${entry.flightNo}`).set({
                     code: entry.hiddenCode,
+                    flightNo: entry.flightNo,
+                    date: entry.date,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
                 console.log('✅ Hidden code saved to cardDb');
@@ -2376,7 +2435,7 @@ async function backgroundSaveToFirebase(entry) {
             if (saveResult.reason === 'DUPLICATE') {
                 showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'error');
             } else if (saveResult.reason === 'FLIGHT_CLOSED') {
-                showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'error');
+                showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${saveResult.error}`, 'error');
             } else if (saveResult.reason === 'FLIGHT_NOT_FOUND') {
                 showTemporaryNotification(`❌ [${errorCode}] FLIGHT NOT FOUND: ${errorMsg}${dbName} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'error');
             } else if (saveResult.reason === 'VALIDATION_ERROR') {
@@ -2444,19 +2503,17 @@ async function approveEntry(id) {
             return;
         }
         
-        // CHECK FLIGHT STATUS BEFORE MOVING TO SAVED TAB
-        showTemporaryNotification(`🔍 Checking flight status for ${flightNoToUse} on ${dateToUse}...`, 'info');
+        // CHECK FLIGHT STATUS IN RESPECTIVE DATABASE BEFORE MOVING TO SAVED TAB
+        showTemporaryNotification(`🔍 Checking flight status for ${flightNoToUse} in ${getFirestoreNameForFlight(flightNoToUse)}...`, 'info');
         
         const flightStatus = await isFlightOpen(flightNoToUse, dateToUse);
         
-        // Only block if flight is explicitly CLOSED
-        // If NOT_FOUND or any other status, allow save
-        if (!flightStatus.isOpen && flightStatus.error === 'FLIGHT_CLOSED') {
+        // Block if flight is explicitly CLOSED (isClosed = true)
+        if (!flightStatus.isOpen) {
             // Flight is CLOSED - show error and don't move to saved tab
             const errorCode = getErrorCode('FLIGHT_CLOSED');
-            const errorMsg = flightStatus.message;
             
-            showTemporaryNotification(`❌ [${errorCode}] ${errorMsg}`, 'error');
+            showTemporaryNotification(`❌ [${errorCode}] ${flightStatus.message}`, 'error');
             
             // Mark the entry with a warning
             entry.flightCheckFailed = true;
@@ -2469,7 +2526,7 @@ async function approveEntry(id) {
         entry.flightCheckFailed = false;
         entry.flightCheckMessage = null;
         
-        // Flight is either OPEN or NOT FOUND - proceed with PAX validation
+        // Flight is OPEN - proceed with PAX validation
         const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
         
@@ -4423,6 +4480,8 @@ window.getFirestoreNameForFlight = getFirestoreNameForFlight;
 window.saveEntryToFirebase = saveEntryToFirebase;
 window.backgroundSaveToFirebase = backgroundSaveToFirebase;
 window.validateEntryForSave = validateEntryForSave;
+window.isFlightOpen = isFlightOpen;
+window.checkPassengerExists = checkPassengerExists;
 window.testFlightDatabaseMapping = testFlightDatabaseMapping;
 </script>
 </body>   
