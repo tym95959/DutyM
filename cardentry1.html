@@ -1898,13 +1898,12 @@ function calculatePaxFromSeat(seatNo, flightNo = '') {
     return letterCount;
 }
 
-// ========== CHECK PASSENGER EXISTS ==========
-async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = false, excludeId = null) {
+// ========== MULTI-DATABASE DUPLICATE CHECK FUNCTION ==========
+async function checkPassengerExistsInDatabase(db, flightNo, date, seatNo, pName, isGuest = false, excludeId = null) {
     try {
-        // Use passengerDb for checking existing passengers
-        if (typeof passengerDb === 'undefined') {
-            console.error('passengerDb not initialized');
-            return { exists: false, matches: [], error: 'Database not initialized' };
+        if (!db) {
+            console.error('Database not provided for duplicate check');
+            return { exists: false, matches: [], error: 'Database not provided' };
         }
         
         if (!flightNo || !date) {
@@ -1912,10 +1911,9 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
             return { exists: false, matches: [], error: 'Flight number or date missing' };
         }
         
-        console.log(`🔍 Checking for duplicate: ${pName} on flight ${flightNo} date ${date}`);
+        console.log(`🔍 Checking for duplicate in ${getFirestoreNameForFlight(flightNo)}: ${pName} on flight ${flightNo} date ${date}`);
         
-        // Use passengerDb (atten-14f76) for checking duplicates
-        const collectionRef = passengerDb.collection('KoveliPass');
+        const collectionRef = db.collection('KoveliPass');
         let query = collectionRef
             .where('flightNo', '==', flightNo)
             .where('date', '==', date);
@@ -2207,7 +2205,7 @@ function validateEntryForSave(entry) {
     };
 }
 
-// ========== FIXED SAVE ENTRY TO FIREBASE FUNCTION WITH MULTI-DATABASE SUPPORT ==========
+// ========== FIXED SAVE ENTRY TO FIREBASE FUNCTION WITH MULTI-DATABASE SUPPORT AND DUPLICATE CHECKING ==========
 async function saveEntryToFirebase(entry) {
     try {
         console.log('📤 Saving entry to Firebase:', entry);
@@ -2243,28 +2241,6 @@ async function saveEntryToFirebase(entry) {
         
         console.log(`✅ Flight check passed: ${flightStatus.message}`);
         
-        // Check for duplicates (using passengerDb for duplicate checking across all flights)
-        if (!entry.isGuest) {
-            const checkResult = await checkPassengerExists(
-                entry.flightNo,
-                entry.date,
-                entry.seatNo || '',
-                entry.pName || '',
-                false
-            );
-            
-            if (checkResult.exists) {
-                const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
-                console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
-                return { 
-                    success: false, 
-                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists for flight ${entry.flightNo} on ${entry.date}`,
-                    reason: 'DUPLICATE',
-                    duplicates: checkResult.matches
-                };
-            }
-        }
-        
         // Get the appropriate database for this flight
         const targetDb = getFirestoreForFlight(entry.flightNo);
         
@@ -2274,6 +2250,31 @@ async function saveEntryToFirebase(entry) {
                 error: 'Target database not initialized',
                 reason: 'DB_NOT_INITIALIZED'
             };
+        }
+        
+        // Check for duplicates using the same database that will be used for saving
+        if (!entry.isGuest) {
+            const checkResult = await checkPassengerExistsInDatabase(
+                targetDb, // Use the same database for duplicate checking
+                entry.flightNo,
+                entry.date,
+                entry.seatNo || '',
+                entry.pName || '',
+                false,
+                null // No exclude ID for new entries
+            );
+            
+            if (checkResult.exists) {
+                const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
+                console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
+                return { 
+                    success: false, 
+                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists for flight ${entry.flightNo} on ${entry.date} in ${getFirestoreNameForFlight(entry.flightNo)}`,
+                    reason: 'DUPLICATE',
+                    duplicates: checkResult.matches,
+                    database: getFirestoreNameForFlight(entry.flightNo)
+                };
+            }
         }
         
         // Prepare the data (remove local-only fields)
@@ -4481,7 +4482,7 @@ window.saveEntryToFirebase = saveEntryToFirebase;
 window.backgroundSaveToFirebase = backgroundSaveToFirebase;
 window.validateEntryForSave = validateEntryForSave;
 window.isFlightOpen = isFlightOpen;
-window.checkPassengerExists = checkPassengerExists;
+window.checkPassengerExistsInDatabase = checkPassengerExistsInDatabase;
 window.testFlightDatabaseMapping = testFlightDatabaseMapping;
 </script>
 </body>   
