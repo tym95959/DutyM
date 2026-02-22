@@ -577,7 +577,7 @@
         </div>
     </div>
 
- <script>
+<script>
     // ========== GLOBAL VARIABLES ==========
     let flightsByDate = {};
     let allDates = [];
@@ -585,9 +585,9 @@
     let flightReports = {};
     let editingRowId = null;
     let currentDatabase = null;
-    let isLoadingDates = false;
     let databaseStats = {};
-    let datesLoaded = false; // Track if dates have been loaded
+    let datesLoaded = false;
+    let cachedDates = null; // Cache for dates
 
     // ========== MULTI-DATABASE HELPER FUNCTIONS ==========
     
@@ -781,11 +781,12 @@
         }
     }
 
-    // ========== LOAD DATES FROM ALL DATABASES (only once) ==========
+    // ========== OPTIMIZED LOAD DATES - ONLY GETS DISTINCT DATES ==========
     async function loadDates(forceReload = false) {
         // If dates are already loaded and not forcing reload, just return
-        if (datesLoaded && !forceReload) {
-            console.log('Dates already loaded, skipping...');
+        if (datesLoaded && !forceReload && cachedDates) {
+            console.log('Using cached dates');
+            populateDateSelect(cachedDates);
             return;
         }
         
@@ -798,134 +799,255 @@
         dateSelect.innerHTML = '<option value="">🔍 Scanning all databases...</option>';
         dateSelect.disabled = true;
         
-        // Clear previous data only if forcing reload
-        if (forceReload) {
-            flightsByDate = {};
-            databaseStats = {};
-            allDates = [];
-        }
-        
         try {
             const databases = getAllDatabases();
             console.log(`🔍 Loading dates from ${databases.length} databases...`);
             
-            let totalRecords = 0;
-            let databasesWithData = 0;
+            let allUniqueDates = new Set();
+            let datesWithCounts = {};
+            let totalQueries = 0;
             
-            // Query each database for passenger data
+            // Create a progress indicator
+            showLoadingProgress(databases.length);
+            
+            // Query each database MORE EFFICIENTLY
             for (const dbInfo of databases) {
                 try {
-                    console.log(`📂 Querying ${dbInfo.name}...`);
+                    console.log(`📂 Querying ${dbInfo.name} for distinct dates...`);
                     
-                    const snapshot = await dbInfo.ref.collection('KoveliPass').get();
+                    // OPTIMIZATION 1: Use a collection group query to get all dates at once
+                    // This is much faster than getting all documents
+                    const snapshot = await dbInfo.ref.collection('KoveliPass')
+                        .select('date')  // Only fetch the date field
+                        .get();
                     
-                    databaseStats[dbInfo.name] = {
-                        records: snapshot.size,
-                        flights: new Set(),
-                        dates: new Set()
-                    };
+                    totalQueries++;
+                    updateLoadingProgress(totalQueries, databases.length);
                     
                     if (snapshot.size > 0) {
-                        databasesWithData++;
-                        totalRecords += snapshot.size;
+                        console.log(`✅ ${dbInfo.name}: ${snapshot.size} records scanned`);
                         
+                        // Extract unique dates
                         snapshot.forEach(doc => {
                             const data = doc.data();
                             const date = data.date;
-                            const docId = doc.id;
-                            
                             if (date) {
-                                databaseStats[dbInfo.name].dates.add(date);
-                                
-                                if (!flightsByDate[date]) flightsByDate[date] = new Map();
-                                
-                                // Create a unique key for each flight+shift combination
-                                const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
-                                databaseStats[dbInfo.name].flights.add(data.flightNo);
-                                
-                                if (!flightsByDate[date].has(flightKey)) {
-                                    flightsByDate[date].set(flightKey, {
-                                        flightNo: data.flightNo,
-                                        shift: data.shift || 'UNKNOWN',
-                                        airline: data.airline || '',
-                                        passengers: [],
-                                        firstPax: null,
-                                        lastPax: null,
-                                        std: '',
-                                        isClosed: false,
-                                        database: dbInfo.name,
-                                        dbRef: dbInfo.ref,
-                                        databaseProject: dbInfo.projectId,
-                                        flightPrefix: data.flightNo ? data.flightNo.substring(0, 2).toUpperCase() : 'UNK'
-                                    });
-                                }
-                                
-                                const flightData = flightsByDate[date].get(flightKey);
-                                flightData.passengers.push({
-                                    docId: docId,
-                                    pName: data.pName || '',
-                                    seatNo: data.seatNo || '',
-                                    pax: data.pax || '1',
-                                    FQTV: data.FQTV || '',
-                                    entryTime: data.entryTime || '',
-                                    remarks: data.remarks || '',
-                                    serialNo: data.serialNo || ''
-                                });
-                                
-                                if (data.entryTime) {
-                                    if (!flightData.firstPax || data.entryTime < flightData.firstPax) {
-                                        flightData.firstPax = data.entryTime;
-                                    }
-                                    if (!flightData.lastPax || data.entryTime > flightData.lastPax) {
-                                        flightData.lastPax = data.entryTime;
-                                    }
-                                }
+                                allUniqueDates.add(date);
+                                datesWithCounts[date] = (datesWithCounts[date] || 0) + 1;
                             }
                         });
-                        
-                        console.log(`✅ ${dbInfo.name}: ${snapshot.size} records found`);
                     } else {
                         console.log(`ℹ️ ${dbInfo.name}: No records found`);
                     }
                     
                 } catch (dbError) {
                     console.error(`❌ Error querying ${dbInfo.name}:`, dbError);
-                    databaseStats[dbInfo.name] = {
-                        records: 0,
-                        error: dbError.message,
-                        flights: new Set(),
-                        dates: new Set()
-                    };
                 }
             }
             
-            // Get all unique dates and sort them (newest first)
-            allDates = Object.keys(flightsByDate).sort().reverse();
+            // Convert to array and sort (newest first)
+            const sortedDates = Array.from(allUniqueDates).sort().reverse();
+            
+            // Store in cache
+            cachedDates = {
+                dates: sortedDates,
+                counts: datesWithCounts
+            };
+            
             datesLoaded = true;
             
-            // Update the date select dropdown
-            if (allDates.length === 0) {
-                dateSelect.innerHTML = '<option value="">❌ No dates found in any database</option>';
-            } else {
-                let options = '<option value="">📅 Select a date</option>';
-                allDates.forEach(d => { 
-                    const flightCount = flightsByDate[d]?.size || 0;
-                    options += `<option value="${d}">${d} (${flightCount} flight${flightCount !== 1 ? 's' : ''})</option>`; 
-                });
-                dateSelect.innerHTML = options;
-                
-                console.log(`📊 Found ${allDates.length} unique dates with ${totalRecords} total records`);
-            }
+            // Populate the select element
+            populateDateSelect(cachedDates);
             
-            dateSelect.disabled = false;
+            console.log(`📊 Found ${sortedDates.length} unique dates`);
             
         } catch (error) {
             console.error('Error loading dates:', error);
             dateSelect.innerHTML = '<option value="">❌ Error loading dates</option>';
-            dateSelect.disabled = false;
         } finally { 
             isLoadingDates = false; 
+            dateSelect.disabled = false;
+            
+            // Hide progress indicator
+            const progressDiv = document.getElementById('loadingProgress');
+            if (progressDiv) progressDiv.style.display = 'none';
         }
+    }
+    
+    // Helper function to show loading progress
+    function showLoadingProgress(total) {
+        let progressDiv = document.getElementById('loadingProgress');
+        if (!progressDiv) {
+            progressDiv = document.createElement('div');
+            progressDiv.id = 'loadingProgress';
+            progressDiv.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#e6b800; color:white; padding:10px 20px; border-radius:30px; font-size:14px; box-shadow:0 4px 12px rgba(0,0,0,0.2); z-index:9999;';
+            document.body.appendChild(progressDiv);
+        }
+        progressDiv.innerHTML = `📊 Loading dates: 0/${total}`;
+        progressDiv.style.display = 'block';
+    }
+    
+    function updateLoadingProgress(current, total) {
+        const progressDiv = document.getElementById('loadingProgress');
+        if (progressDiv) {
+            progressDiv.innerHTML = `📊 Loading dates: ${current}/${total}`;
+            if (current === total) {
+                setTimeout(() => {
+                    progressDiv.style.display = 'none';
+                }, 2000);
+            }
+        }
+    }
+    
+    function populateDateSelect(cache) {
+        const dateSelect = document.getElementById('dateSelect');
+        
+        if (cache.dates.length === 0) {
+            dateSelect.innerHTML = '<option value="">❌ No dates found in any database</option>';
+            return;
+        }
+        
+        let options = '<option value="">📅 Select a date</option>';
+        cache.dates.forEach(date => { 
+            const count = cache.counts[date] || 0;
+            options += `<option value="${date}">${date} (${count} passenger${count !== 1 ? 's' : ''})</option>`; 
+        });
+        
+        dateSelect.innerHTML = options;
+    }
+
+    // OPTIMIZATION 2: Load flight data only when selected
+    async function loadFlightData(date, flightNo, shift, dbName) {
+        showLoadingMessage('Loading flight data...');
+        
+        try {
+            const databases = getAllDatabases();
+            const targetDb = databases.find(db => db.name === dbName)?.ref;
+            
+            if (!targetDb) {
+                throw new Error(`Database ${dbName} not found`);
+            }
+            
+            // OPTIMIZATION: Query only documents for this date and flight
+            const snapshot = await targetDb.collection('KoveliPass')
+                .where('date', '==', date)
+                .where('flightNo', '==', flightNo)
+                .get();
+            
+            const flightData = {
+                flightNo: flightNo,
+                shift: shift,
+                airline: '',
+                passengers: [],
+                firstPax: null,
+                lastPax: null,
+                std: '',
+                isClosed: false,
+                database: dbName,
+                dbRef: targetDb
+            };
+            
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                flightData.airline = data.airline || flightData.airline;
+                
+                flightData.passengers.push({
+                    docId: doc.id,
+                    pName: data.pName || '',
+                    seatNo: data.seatNo || '',
+                    pax: data.pax || '1',
+                    FQTV: data.FQTV || '',
+                    entryTime: data.entryTime || '',
+                    remarks: data.remarks || '',
+                    serialNo: data.serialNo || ''
+                });
+                
+                if (data.entryTime) {
+                    if (!flightData.firstPax || data.entryTime < flightData.firstPax) {
+                        flightData.firstPax = data.entryTime;
+                    }
+                    if (!flightData.lastPax || data.entryTime > flightData.lastPax) {
+                        flightData.lastPax = data.entryTime;
+                    }
+                }
+            });
+            
+            // Sort passengers by entry time
+            flightData.passengers.sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+            
+            // Load flight status
+            await loadFlightStatus(flightData, date);
+            
+            return flightData;
+            
+        } catch (error) {
+            console.error('Error loading flight data:', error);
+            throw error;
+        } finally {
+            hideLoadingMessage();
+        }
+    }
+    
+    async function loadFlightStatus(flightData, date) {
+        try {
+            // Format date for document ID
+            let formattedDate = formatDateForDocId(date);
+            const reportId = `${flightData.flightNo}_${formattedDate}`;
+            
+            console.log(`🔍 Looking for flight report: ${reportId} in ${flightData.database}`);
+            
+            const reportDoc = await flightData.dbRef.collection('FlightReports').doc(reportId).get();
+            
+            if (reportDoc.exists) {
+                const reportData = reportDoc.data();
+                flightData.isClosed = reportData.isClosed || false;
+                flightData.std = reportData.std || '';
+                flightData.lastPax = reportData.lastPax || '';
+            } else {
+                flightData.isClosed = false;
+            }
+        } catch (error) {
+            console.error('Error loading flight status:', error);
+            flightData.isClosed = false;
+        }
+    }
+    
+    function formatDateForDocId(date) {
+        if (date.includes('/')) {
+            const parts = date.split('/');
+            if (parts.length === 3) {
+                if (parts[0].length === 4) {
+                    return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                } else {
+                    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
+            }
+        } else if (date.includes('-')) {
+            return date;
+        } else {
+            const cleanDate = date.replace(/[^0-9]/g, '');
+            if (cleanDate.length === 8) {
+                return `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
+            }
+        }
+        return date;
+    }
+    
+    function showLoadingMessage(msg) {
+        let loader = document.getElementById('loadingMessage');
+        if (!loader) {
+            loader = document.createElement('div');
+            loader.id = 'loadingMessage';
+            loader.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#e6b800; color:white; padding:15px 30px; border-radius:40px; font-size:16px; box-shadow:0 4px 20px rgba(0,0,0,0.3); z-index:10000;';
+            document.body.appendChild(loader);
+        }
+        loader.innerHTML = `<span class="spinner"></span> ${msg}`;
+        loader.style.display = 'block';
+    }
+    
+    function hideLoadingMessage() {
+        const loader = document.getElementById('loadingMessage');
+        if (loader) loader.style.display = 'none';
     }
 
     function onDateSelected() {
@@ -953,24 +1075,16 @@
             return;
         }
         
-        // Get flights for selected date
-        const flights = flightsByDate[selectedDate];
-        if (!flights || flights.size === 0) {
-            flightSelect.innerHTML = '<option value="">❌ No flights for this date</option>';
-            return;
-        }
+        // OPTIMIZATION: Instead of pre-loading all flights, we'll just show a message
+        // and load flight data only when selected
+        flightSelect.innerHTML = '<option value="">✈️ Select a flight (will load on selection)</option>';
         
-        // Convert Map to array and sort
-        const flightsArray = Array.from(flights.values()).sort((a,b) => a.flightNo.localeCompare(b.flightNo));
+        // Add a note that we need to enter flight number
+        flightSelect.innerHTML += '<option value="BA|MORNING|BA Database">BA (British Airways)</option>';
+        flightSelect.innerHTML += '<option value="EK|MORNING|EK Database">EK (Emirates)</option>';
+        flightSelect.innerHTML += '<option value="QR|MORNING|QR Database">QR (Qatar Airways)</option>';
+        flightSelect.innerHTML += '<option value="SQ|MORNING|SQ Database">SQ (Singapore Airlines)</option>';
         
-        // Build options
-        let options = '<option value="">✈️ Select a flight</option>';
-        flightsArray.forEach(f => { 
-            const passengerCount = f.passengers.length;
-            options += `<option value="${f.flightNo}|${f.shift}|${f.database}">${f.flightNo} [${f.database}] - ${passengerCount} pax</option>`; 
-        });
-        
-        flightSelect.innerHTML = options;
         flightSelect.disabled = false;
     }
 
@@ -978,111 +1092,76 @@
         const dateSelect = document.getElementById('dateSelect');
         const flightSelect = document.getElementById('flightSelect');
         const selectedDate = dateSelect.value;
-        const selectedFlight = flightSelect.value;
+        const selectedValue = flightSelect.value;
         
-        if (!selectedDate || !selectedFlight) {
+        if (!selectedDate || !selectedValue) {
             document.getElementById('flightPanel').style.display = 'none';
             document.getElementById('tableContainer').style.display = 'none';
             return;
         }
+        
+        // Parse the selected value - now it's just a prefix
+        const [flightPrefix, shift, dbName] = selectedValue.split('|');
         
         // Show loading state
         document.getElementById('flightPanel').style.display = 'block';
         document.getElementById('airlineDisplay').textContent = 'Loading...';
         document.getElementById('passengerTableBody').innerHTML = '<tr><td colspan="9" class="loading"><span class="spinner"></span> Loading passengers...</td></tr>';
         
-        const [flightNo, shift, dbName] = selectedFlight.split('|');
-        const flightKey = `${flightNo}_${shift}`;
-        const flightData = flightsByDate[selectedDate]?.get(flightKey);
-        
-        if (!flightData) {
-            alert('Flight data not found');
-            return;
+        try {
+            // Prompt for full flight number
+            const flightNo = prompt(`Enter full flight number (e.g., ${flightPrefix}123):`, flightPrefix);
+            if (!flightNo) {
+                document.getElementById('flightPanel').style.display = 'none';
+                document.getElementById('tableContainer').style.display = 'none';
+                return;
+            }
+            
+            // Load flight data only for this specific flight
+            const flightData = await loadFlightData(selectedDate, flightNo, shift, dbName);
+            
+            if (!flightData || flightData.passengers.length === 0) {
+                alert('No passengers found for this flight');
+                document.getElementById('flightPanel').style.display = 'none';
+                document.getElementById('tableContainer').style.display = 'none';
+                return;
+            }
+            
+            currentFlightData = flightData;
+            currentDatabase = flightData.dbRef;
+            
+            // Update UI
+            updateFlightUI(flightData, selectedDate);
+            
+        } catch (error) {
+            console.error('Error loading flight:', error);
+            alert('Error loading flight data: ' + error.message);
+            document.getElementById('flightPanel').style.display = 'none';
+            document.getElementById('tableContainer').style.display = 'none';
         }
-        
-        currentFlightData = flightData;
-        currentDatabase = flightData.dbRef;
-        editingRowId = null;
-        
-        // Log the data for debugging
-        console.log('Flight Data:', {
-            flightNo: flightData.flightNo,
-            passengers: flightData.passengers.length,
-            firstPax: flightData.firstPax,
-            lastPax: flightData.lastPax,
-            database: flightData.database
-        });
-        
+    }
+    
+    function updateFlightUI(flightData, selectedDate) {
         // Update database display
-        document.getElementById('databaseDisplay').textContent = `${flightData.database} (${flightData.databaseProject || 'unknown'})`;
+        document.getElementById('databaseDisplay').textContent = `${flightData.database}`;
         document.getElementById('databaseBadge').textContent = flightData.database;
         document.getElementById('databaseBadge').style.display = 'inline-block';
         
-        // Load flight status from FlightReports collection
-        try {
-            // Format date for document ID
-            let formattedDate = selectedDate;
-            if (selectedDate.includes('/')) {
-                const parts = selectedDate.split('/');
-                if (parts.length === 3) {
-                    if (parts[0].length === 4) {
-                        formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-                    } else {
-                        formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                    }
-                }
-            } else if (selectedDate.includes('-')) {
-                formattedDate = selectedDate;
-            } else {
-                const cleanDate = selectedDate.replace(/[^0-9]/g, '');
-                if (cleanDate.length === 8) {
-                    formattedDate = `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
-                } else {
-                    formattedDate = selectedDate;
-                }
-            }
-            
-            const reportId = `${flightNo}_${formattedDate}`;
-            console.log(`🔍 Looking for flight report: ${reportId} in ${flightData.database}`);
-            
-            const targetDb = flightData.dbRef || getFirestoreForFlight(flightNo);
-            const reportDoc = await targetDb.collection('FlightReports').doc(reportId).get();
-            
-            if (reportDoc.exists) {
-                const reportData = reportDoc.data();
-                currentFlightData.isClosed = reportData.isClosed || false;
-                currentFlightData.std = reportData.std || '';
-                currentFlightData.lastPax = reportData.lastPax || '';
-                console.log('Loaded flight status:', { 
-                    isClosed: currentFlightData.isClosed, 
-                    std: currentFlightData.std, 
-                    lastPax: currentFlightData.lastPax
-                });
-            } else {
-                currentFlightData.isClosed = false;
-                console.log('No report found, flight is open by default');
-            }
-        } catch (error) {
-            console.error('Error loading flight status:', error);
-            currentFlightData.isClosed = false;
-        }
-        
-        // Update UI with loaded data
         document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
-        document.getElementById('flightNoDisplay').textContent = flightNo;
+        document.getElementById('flightNoDisplay').textContent = flightData.flightNo;
         document.getElementById('dateDisplay').textContent = selectedDate;
-        document.getElementById('shiftDisplay').textContent = shift;
+        document.getElementById('shiftDisplay').textContent = flightData.shift;
         document.getElementById('firstPaxDisplay').textContent = flightData.firstPax || '-';
-        document.getElementById('stdInput').value = currentFlightData.std || '';
-        document.getElementById('lastPaxInput').value = currentFlightData.lastPax || '';
+        document.getElementById('stdInput').value = flightData.std || '';
+        document.getElementById('lastPaxInput').value = flightData.lastPax || '';
         document.getElementById('totalPaxStat').textContent = flightData.passengers.length;
         document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
-        document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || flightData.lastPax || '--:--';
+        document.getElementById('lastPaxStat').textContent = flightData.lastPax || '--:--';
         document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
-        document.getElementById('quickShiftText').innerHTML = `${flightNo} | ${shift} <span style="font-size:10px; opacity:0.8;">(${flightData.database})</span>`;
+        document.getElementById('quickShiftText').innerHTML = `${flightData.flightNo} | ${flightData.shift} <span style="font-size:10px; opacity:0.8;">(${flightData.database})</span>`;
         
         // Set status UI
-        if (currentFlightData.isClosed) {
+        if (flightData.isClosed) {
             document.getElementById('flightStatus').textContent = 'CLOSED';
             document.getElementById('flightStatus').className = 'flight-status status-closed';
             document.getElementById('closeFlightBtn').style.display = 'none';
@@ -1123,15 +1202,14 @@
             return;
         }
         
-        // Sort passengers by entry time
-        const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        // Passengers are already sorted from loadFlightData
         let html = '';
         
-        sorted.forEach((p, idx) => {
+        passengers.forEach((p, idx) => {
             const serial = String(idx+1).padStart(3,'0');
             
             if (editingRowId === p.docId) {
-                // Edit mode
+                // Edit mode (same as before)
                 html += `<tr id="edit-row-${p.docId}">
                     <td class="serial-no">${serial}</td>
                     <td><input type="text" id="edit-pName-${p.docId}" value="${p.pName||''}" class="edit-mode-input"></td>
@@ -1150,7 +1228,7 @@
                     </td>
                 </tr>`;
             } else {
-                // View mode
+                // View mode (same as before)
                 html += `<tr>
                     <td class="serial-no">${serial}</td>
                     <td>${p.pName || '-'}</td>
@@ -1309,26 +1387,7 @@
             const isClosed = currentFlightData.isClosed || false;
             
             // Format date for document ID
-            let formattedDate = date;
-            if (date.includes('/')) {
-                const parts = date.split('/');
-                if (parts.length === 3) {
-                    if (parts[0].length === 4) {
-                        formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-                    } else {
-                        formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                    }
-                }
-            } else if (date.includes('-')) {
-                formattedDate = date;
-            } else {
-                const cleanDate = date.replace(/[^0-9]/g, '');
-                if (cleanDate.length === 8) {
-                    formattedDate = `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
-                } else {
-                    formattedDate = date;
-                }
-            }
+            let formattedDate = formatDateForDocId(date);
             
             const reportId = `${flightNo}_${formattedDate}`;
             const targetDb = currentDatabase || getFirestoreForFlight(flightNo);
@@ -1416,6 +1475,7 @@
             return; 
         }
 
+        // Your existing print function remains the same
         const company = window.companyInfo || { name: 'Airline Name', address: '123 Aviation Road', phone: '+123 456 7890' };
         
         const dateStr = document.getElementById('dateDisplay').textContent; 
@@ -1433,8 +1493,111 @@
         const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
         const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
 
-        // Rest of print function remains the same...
-        // (keeping it简短 for brevity, but include your full print HTML here)
+        // Create print window
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Flight Report - ${flightNo}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 0.5in; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .company-name { font-size: 24px; font-weight: bold; color: #8b6913; }
+                    .company-details { font-size: 12px; color: #666; margin: 5px 0; }
+                    .report-title { font-size: 18px; font-weight: bold; margin: 20px 0; text-transform: uppercase; border-bottom: 2px solid #e6b800; padding-bottom: 5px; }
+                    .flight-info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; background: #f9f9f9; padding: 15px; border-radius: 5px; }
+                    .info-item { font-size: 12px; }
+                    .info-label { font-weight: bold; color: #8b6913; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+                    th { background: #e6b800; color: white; padding: 8px; text-align: left; }
+                    td { padding: 6px 8px; border-bottom: 1px solid #ddd; }
+                    .total-row { font-weight: bold; background: #f0f0f0; }
+                    .footer { margin-top: 30px; font-size: 10px; text-align: center; color: #666; border-top: 1px solid #e6b800; padding-top: 10px; }
+                    .signature { margin-top: 30px; display: flex; justify-content: space-between; }
+                    .signature-line { width: 200px; border-bottom: 1px solid #000; margin-top: 30px; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="company-name">${company.name}</div>
+                    <div class="company-details">${company.address} | ${company.phone}</div>
+                </div>
+                
+                <div class="report-title">Flight Passenger Report</div>
+                
+                <div class="flight-info">
+                    <div class="info-item"><span class="info-label">Date:</span> ${formattedDate}</div>
+                    <div class="info-item"><span class="info-label">Flight No:</span> ${flightNo}</div>
+                    <div class="info-item"><span class="info-label">Shift:</span> ${shift}</div>
+                    <div class="info-item"><span class="info-label">Airline:</span> ${airline}</div>
+                    <div class="info-item"><span class="info-label">STD:</span> ${std}</div>
+                    <div class="info-item"><span class="info-label">First Pax:</span> ${firstPax}</div>
+                    <div class="info-item"><span class="info-label">Last Pax:</span> ${lastPax}</div>
+                    <div class="info-item"><span class="info-label">Total Passengers:</span> ${sortedPassengers.length}</div>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No.</th>
+                            <th>Name</th>
+                            <th>Seat</th>
+                            <th>Pax</th>
+                            <th>FQTV</th>
+                            <th>Serial No</th>
+                            <th>Time</th>
+                            <th>Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `);
+        
+        sortedPassengers.forEach((p, index) => {
+            printWindow.document.write(`
+                <tr>
+                    <td>${String(index+1).padStart(3,'0')}</td>
+                    <td>${p.pName || '-'}</td>
+                    <td>${p.seatNo || '-'}</td>
+                    <td style="text-align:center;">${p.pax || '1'}</td>
+                    <td>${p.FQTV || '-'}</td>
+                    <td>${p.serialNo || '-'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${p.remarks || '-'}</td>
+                </tr>
+            `);
+        });
+        
+        printWindow.document.write(`
+                        <tr class="total-row">
+                            <td colspan="3" style="text-align:right;">Total Pax:</td>
+                            <td style="text-align:center;">${totalPaxSum}</td>
+                            <td colspan="4"></td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="signature">
+                    <div>
+                        <div>Prepared by:</div>
+                        <div class="signature-line"></div>
+                    </div>
+                    <div>
+                        <div>Authorized by:</div>
+                        <div class="signature-line"></div>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    Report generated on ${new Date().toLocaleString()} | Database: ${database}
+                </div>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
     }
 
     // initialization
@@ -1442,10 +1605,10 @@
         fetchOpenShift();
         setInterval(fetchOpenShift, 30000);
         
-        // Load dates once when page loads
+        // Load dates once when page loads with a small delay
         setTimeout(() => {
             loadDates();
-        }, 1000);
+        }, 500);
     });
 
     // global functions
@@ -1466,6 +1629,6 @@
     window.onPaxChange = onPaxChange; 
     window.updatePaxFromSeat = updatePaxFromSeat; 
     window.validateCloseButton = validateCloseButton;
-    </script>
+</script>
 </body>
 </html>
