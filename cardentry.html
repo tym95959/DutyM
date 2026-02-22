@@ -3761,102 +3761,80 @@ function parseAndAddToList() {
         return false;
     }
     
-    // Modified MLE validation - find MLE in any 8-character segment
+    // Modified MLE validation - find the right MLE occurrence to use
     if (!codeInput.includes('MLE')) {
         alert('MUST CONTAIN MLE');
         return false;
     }
     
-    // Find all occurrences of "MLE" and check if any are part of an 8-character segment
-    let foundValidMLEFormat = false;
+    // Find all MLE occurrences and determine which one to use
+    let selectedMlePosition = -1;
     let mleIndex = -1;
     let lastIndex = 0;
+    let mleOccurrences = [];
     
-    // Find all occurrences of "MLE" in the string
+    // Collect all MLE occurrences with their context
     while ((mleIndex = codeInput.indexOf('MLE', lastIndex)) !== -1) {
-        // Check if we can extract an 8-character segment containing this MLE
-        // Look for the word/segment boundaries (spaces, start/end of string)
-        
-        // Find the start of the word containing this MLE
+        // Find the word containing this MLE
         let wordStart = mleIndex;
         while (wordStart > 0 && codeInput[wordStart - 1] !== ' ') {
             wordStart--;
         }
         
-        // Find the end of the word containing this MLE
-        let wordEnd = mleIndex + 2; // +2 because MLE is 3 chars, so index+2 is last char
+        let wordEnd = mleIndex + 2;
         while (wordEnd < codeInput.length - 1 && codeInput[wordEnd + 1] !== ' ') {
             wordEnd++;
         }
         
-        // Get the full word containing MLE
         const fullWord = codeInput.substring(wordStart, wordEnd + 1);
         
-        // Check if this word is exactly 8 characters
+        // Check if this MLE is part of an 8-character segment
+        let isValidFormat = false;
+        
+        // Check if the full word is exactly 8 chars
         if (fullWord.length === 8 && fullWord.includes('MLE')) {
-            foundValidMLEFormat = true;
-            break;
-        }
-        
-        // Also check for any 8-character segment around MLE (not necessarily word boundaries)
-        // This looks for any continuous 8-character chunk that contains MLE
-        const startPos = Math.max(0, mleIndex - 5); // Go back up to 5 chars to potentially get 8 total
-        const endPos = Math.min(codeInput.length, mleIndex + 8); // Go forward to get up to 8 chars after
-        
-        for (let i = startPos; i <= mleIndex; i++) {
-            if (i + 8 <= codeInput.length) {
-                const segment = codeInput.substring(i, i + 8);
-                if (segment.includes('MLE')) {
-                    foundValidMLEFormat = true;
-                    break;
+            isValidFormat = true;
+        } else {
+            // Check for any 8-char segment containing this MLE
+            const startPos = Math.max(0, mleIndex - 5);
+            const endPos = Math.min(codeInput.length, mleIndex + 8);
+            
+            for (let i = startPos; i <= mleIndex; i++) {
+                if (i + 8 <= codeInput.length) {
+                    const segment = codeInput.substring(i, i + 8);
+                    if (segment.includes('MLE')) {
+                        isValidFormat = true;
+                        break;
+                    }
                 }
             }
         }
         
-        if (foundValidMLEFormat) break;
+        mleOccurrences.push({
+            position: mleIndex,
+            word: fullWord,
+            isValidFormat: isValidFormat
+        });
         
         lastIndex = mleIndex + 1;
     }
     
-    // If still not found, check for MLE in any position and see if we can extract 8 chars total
-    if (!foundValidMLEFormat) {
-        // Get all words/segments from the input
-        const words = codeInput.split(/\s+/);
-        
-        for (const word of words) {
-            if (word.includes('MLE')) {
-                // Check if this word is exactly 8 chars
-                if (word.length === 8) {
-                    foundValidMLEFormat = true;
-                    break;
-                }
-                
-                // If word is longer than 8, check if any 8-char substring contains MLE
-                if (word.length > 8) {
-                    for (let i = 0; i <= word.length - 8; i++) {
-                        const segment = word.substring(i, i + 8);
-                        if (segment.includes('MLE')) {
-                            foundValidMLEFormat = true;
-                            break;
-                        }
-                    }
-                }
-                
-                // If word is shorter than 8, combine with adjacent words? 
-                // This is more complex - for now, we'll just check the word itself
-                if (foundValidMLEFormat) break;
-            }
-        }
-    }
+    // Select which MLE occurrence to use
+    // First, try to find the first occurrence with valid 8-char format
+    const validOccurrence = mleOccurrences.find(occ => occ.isValidFormat);
     
-    // If still no valid format found, show warning but continue? 
-    // Or reject? Based on your description "if no 8 letters then look for the next and"
-    // I'll make it show a warning but continue processing
-    if (!foundValidMLEFormat) {
-        console.warn('MLE not found in standard 8-character format, but continuing with parsing');
-        // You can change this to alert and return false if you want to strictly enforce
-        // alert('MLE MUST BE PART OF AN 8-CHARACTER CODE SEGMENT');
-        // return false;
+    if (validOccurrence) {
+        // Use the first valid occurrence
+        selectedMlePosition = validOccurrence.position;
+        console.log(`Using MLE at position ${selectedMlePosition} with valid 8-char format`);
+    } else if (mleOccurrences.length > 0) {
+        // If no valid format found, use the last occurrence as fallback
+        // Or you can use the first occurrence - choose based on your needs
+        selectedMlePosition = mleOccurrences[mleOccurrences.length - 1].position;
+        console.log(`No valid 8-char MLE format found, using last MLE at position ${selectedMlePosition}`);
+    } else {
+        alert('MUST CONTAIN MLE');
+        return false;
     }
     
     try {
@@ -3865,7 +3843,6 @@ function parseAndAddToList() {
         
         if (isTKVCPO) {
             const tk07Position = codeInput.indexOf('TK07');
-            const mlePosition = codeInput.indexOf('MLE'); // Use first MLE occurrence
             
             if (tk07Position === -1) {
                 alert('TKVCPO CODE MUST CONTAIN TK07');
@@ -3888,16 +3865,17 @@ function parseAndAddToList() {
             let seatNo = '';
             let classChar = '';
             
-            if (mlePosition !== -1 && codeInput.length > mlePosition + 11) {
-                const tenthChar = codeInput.charAt(mlePosition + 9);
-                const eleventhChar = codeInput.charAt(mlePosition + 10);
+            // Use the selected MLE position instead of the first one
+            if (selectedMlePosition !== -1 && codeInput.length > selectedMlePosition + 11) {
+                const tenthChar = codeInput.charAt(selectedMlePosition + 9);
+                const eleventhChar = codeInput.charAt(selectedMlePosition + 10);
                 
                 if (tenthChar && eleventhChar) {
                     seatNo = tenthChar + eleventhChar;
                 }
                 
-                if (codeInput.length > mlePosition + 11) {
-                    classChar = codeInput.charAt(mlePosition + 11) || '';
+                if (codeInput.length > selectedMlePosition + 11) {
+                    classChar = codeInput.charAt(selectedMlePosition + 11) || '';
                 }
             }
             
@@ -3929,12 +3907,10 @@ function parseAndAddToList() {
             };
             
         } else {
-            // Find the MLE position - use the first occurrence for parsing
-            const mlePosition = codeInput.indexOf('MLE');
             const isM1orM2 = codeInput.startsWith('M1') || codeInput.startsWith('M2');
             
-            // If MLE position is -1, we already checked earlier, but just in case
-            if (mlePosition === -1) {
+            // Use the selected MLE position instead of the first one
+            if (selectedMlePosition === -1) {
                 alert('MUST CONTAIN MLE');
                 return false;
             }
@@ -3942,7 +3918,7 @@ function parseAndAddToList() {
             let namePart = '';
             
             if (isM1orM2) {
-                namePart = codeInput.substring(2, mlePosition + 3);
+                namePart = codeInput.substring(2, selectedMlePosition + 3);
                 
                 const withoutSpaces = namePart.replace(/\s/g, '');
                 if (withoutSpaces.length > 7) {
@@ -3960,14 +3936,14 @@ function parseAndAddToList() {
                     namePart = namePart.substring(0, cutPosition);
                 }
             } else {
-                namePart = codeInput.substring(1, mlePosition);
+                namePart = codeInput.substring(1, selectedMlePosition);
             }
             
             namePart = namePart.trim();
             
             let flightNoPart = '';
-            if (codeInput.length > mlePosition + 3) {
-                flightNoPart = codeInput.substring(mlePosition + 3, mlePosition + 3 + 10);
+            if (codeInput.length > selectedMlePosition + 3) {
+                flightNoPart = codeInput.substring(selectedMlePosition + 3, selectedMlePosition + 3 + 10);
                 flightNoPart = flightNoPart.substring(3).replace(/\s/g, '');
             }
             
@@ -3981,8 +3957,8 @@ function parseAndAddToList() {
             let seatNo = '';
             let classChar = '';
             
-            if (isM1orM2 && codeInput.length > mlePosition + 3) {
-                const afterMLE = codeInput.substring(mlePosition + 3);
+            if (isM1orM2 && codeInput.length > selectedMlePosition + 3) {
+                const afterMLE = codeInput.substring(selectedMlePosition + 3);
                 const parts = afterMLE.split(' ').filter(p => p.trim() !== '');
                 
                 let seatString = '';
@@ -4013,7 +3989,7 @@ function parseAndAddToList() {
             const paxCount = calculatePaxFromSeat(seatNo, flightNoPart);
             
             let fqtvValue = '';
-            if (isM1orM2 && flightNoPart && codeInput.length > mlePosition + 30) {
+            if (isM1orM2 && flightNoPart && codeInput.length > selectedMlePosition + 30) {
                 const trimmedCode = codeInput.trim();
                 const words = trimmedCode.split(' ').filter(w => w.trim() !== '');
                 
