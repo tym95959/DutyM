@@ -1613,6 +1613,9 @@ const ERROR_MESSAGES = {
     'UNKNOWN': 'Unknown error occurred'
 };
 
+// Airlines that don't require seat numbers
+const NO_SEAT_REQUIRED_AIRLINES = ['SQ', 'UL'];
+
 // ========== CHECK LOGIN AND INITIALIZATION ==========
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM fully loaded');
@@ -1828,11 +1831,11 @@ function createDummyEntry() {
     
     const dummyEntry = {
         pName: 'TEST PASSENGER',
-        flightNo: 'BA123',  // Using BA as example
-        seatNo: '12A',
+        flightNo: 'SQ123',  // Using SQ as example
+        seatNo: '',  // Empty seat number for SQ
         class: 'Y',
-        airline: 'BRITISH AIRWAYS',
-        FQTV: 'BA-1234567/G',
+        airline: 'SINGAPORE AIRLINES',
+        FQTV: 'SQ-1234567/G',
         pax: '1',
         serialNo: 'DUMMY' + Math.floor(Math.random() * 1000),
         remarks: 'DUMMY ENTRY',
@@ -1881,7 +1884,8 @@ function createDummyEntry() {
 
 // ========== PAX CALCULATION FUNCTION ==========
 function calculatePaxFromSeat(seatNo, flightNo = '') {
-    if (flightNo && flightNo.startsWith('SQ')) {
+    // For SQ and UL flights, always return 1 regardless of seat
+    if (flightNo && (flightNo.startsWith('SQ') || flightNo.startsWith('UL'))) {
         return 1;
     }
     
@@ -1898,6 +1902,13 @@ function calculatePaxFromSeat(seatNo, flightNo = '') {
     }
     
     return letterCount;
+}
+
+// ========== CHECK IF SEAT NUMBER IS REQUIRED ==========
+function isSeatRequired(flightNo) {
+    if (!flightNo) return true;
+    const flightPrefix = flightNo.substring(0, 2).toUpperCase();
+    return !NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix);
 }
 
 // ========== MULTI-DATABASE FUNCTIONS ==========
@@ -1932,6 +1943,10 @@ function getFirestoreForFlight(flightNo) {
             console.log(`✈️ SQ flight detected (${flightNo}) - using SQ database`);
             return window.sqDb;
             
+        case 'UL':
+            console.log(`✈️ UL flight detected (${flightNo}) - using UL database (default)`);
+            return window.defaultCardDb;
+            
         default:
             console.log(`✈️ Other flight detected (${flightNo}) - using default database`);
             return window.defaultCardDb;
@@ -1953,6 +1968,7 @@ function getFirestoreNameForFlight(flightNo) {
         case 'EK': return "EK Database (cardentryek)";
         case 'QR': return "QR Database (cardentryqr)";
         case 'SQ': return "SQ Database (dcleeli)";
+        case 'UL': return "Default Database (cardentry-7bad1)";
         default: return "Default Database (cardentry-7bad1)";
     }
 }
@@ -1977,8 +1993,10 @@ function validateEntryForSave(entry) {
         errors.push('Passenger name is required');
     }
     
-    if (!entry.seatNo || entry.seatNo.trim() === '') {
-        errors.push('Seat number is required');
+    // Check if seat number is required for this airline
+    const seatRequired = isSeatRequired(entry.flightNo);
+    if (seatRequired && (!entry.seatNo || entry.seatNo.trim() === '')) {
+        errors.push('Seat number is required for this airline');
     }
     
     return {
@@ -2027,11 +2045,22 @@ async function checkPassengerExistsInDatabase(db, flightNo, date, seatNo, pName,
                 const nameMatch = data.pName && data.pName.toUpperCase() === pName.toUpperCase();
                 const seatMatch = data.seatNo && data.seatNo.toUpperCase() === seatNo.toUpperCase();
                 
-                if (nameMatch && seatMatch) {
-                    matches.push({
-                        id: doc.id,
-                        ...data
-                    });
+                // For SQ and UL, only match by name if seat is empty
+                const flightPrefix = flightNo.substring(0, 2).toUpperCase();
+                if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
+                    if (nameMatch) {
+                        matches.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    }
+                } else {
+                    if (nameMatch && seatMatch) {
+                        matches.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    }
                 }
             } else {
                 if (data.pName && data.pName.toUpperCase() === pName.toUpperCase() && 
@@ -2276,6 +2305,13 @@ async function saveEntryToFirebase(entry) {
         firebaseData.flightNo = entry.flightNo;
         firebaseData.date = entry.date;
         
+        // Ensure PAX is 1 for SQ and UL flights
+        const flightPrefix = entry.flightNo.substring(0, 2).toUpperCase();
+        if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
+            firebaseData.pax = '1';
+            console.log(`✅ Setting PAX to 1 for ${flightPrefix} flight`);
+        }
+        
         // Add server timestamp
         firebaseData.savedAt = firebase.firestore.FieldValue.serverTimestamp();
         
@@ -2285,7 +2321,9 @@ async function saveEntryToFirebase(entry) {
             collection: 'KoveliPass',
             flightNo: firebaseData.flightNo,
             date: firebaseData.date,
-            pName: firebaseData.pName
+            pName: firebaseData.pName,
+            seatNo: firebaseData.seatNo || '(no seat)',
+            pax: firebaseData.pax
         });
         
         // Save to the appropriate collection (using 'KoveliPass' as collection name)
@@ -2294,7 +2332,7 @@ async function saveEntryToFirebase(entry) {
         
         const dbName = getFirestoreNameForFlight(entry.flightNo);
         console.log(`✅ Entry saved to ${dbName} with ID:`, docRef.id);
-        console.log(`   Flight: ${entry.flightNo}, Date: ${entry.date}`);
+        console.log(`   Flight: ${entry.flightNo}, Date: ${entry.date}, Seat: ${entry.seatNo || 'none'}, PAX: ${firebaseData.pax}`);
         
         // Also save hidden code to cardDb if needed
         if (entry.hiddenCode && entry.flightNo && entry.date && typeof cardDb !== 'undefined') {
@@ -2472,8 +2510,10 @@ async function approveEntry(id) {
             return;
         }
         
-        if (!entry.seatNo || entry.seatNo.trim() === '') {
-            showTemporaryNotification('❌ Missing seat number', 'warning');
+        // Check if seat number is required for this airline
+        const seatRequired = isSeatRequired(flightNoToUse);
+        if (seatRequired && (!entry.seatNo || entry.seatNo.trim() === '')) {
+            showTemporaryNotification('❌ Seat number is required for this airline', 'warning');
             return;
         }
         
@@ -2498,36 +2538,46 @@ async function approveEntry(id) {
         entry.flightCheckMessage = null;
         
         // Flight is OPEN - proceed with PAX validation
+        const flightPrefix = flightNoToUse.substring(0, 2).toUpperCase();
         const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
         
         if (!entry.isGuest) {
-            if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && calculatedPax > 0 && currentPax !== calculatedPax) {
-                const confirmUpdate = confirm(`Seat "${entry.seatNo}" contains ${calculatedPax} letters = ${calculatedPax} PAX, but current PAX is ${currentPax}. Update PAX to ${calculatedPax}?`);
-                if (confirmUpdate) {
-                    entry.pax = calculatedPax.toString();
-                } else {
-                    const continueAnyway = confirm(`Continue saving with mismatched PAX (${currentPax} vs ${calculatedPax})?`);
-                    if (!continueAnyway) {
+            // For SQ and UL flights, always ensure PAX is 1
+            if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
+                if (currentPax !== 1) {
+                    entry.pax = '1';
+                    showTemporaryNotification(`✓ Setting PAX to 1 for ${flightPrefix} flight`, 'info');
+                }
+            } else {
+                // For other airlines, do normal PAX validation
+                if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && calculatedPax > 0 && currentPax !== calculatedPax) {
+                    const confirmUpdate = confirm(`Seat "${entry.seatNo}" contains ${calculatedPax} letters = ${calculatedPax} PAX, but current PAX is ${currentPax}. Update PAX to ${calculatedPax}?`);
+                    if (confirmUpdate) {
+                        entry.pax = calculatedPax.toString();
+                    } else {
+                        const continueAnyway = confirm(`Continue saving with mismatched PAX (${currentPax} vs ${calculatedPax})?`);
+                        if (!continueAnyway) {
+                            showTemporaryNotification('Save cancelled', 'warning');
+                            return;
+                        }
+                    }
+                }
+                
+                if ((!entry.seatNo || entry.seatNo.trim() === '' || entry.seatNo === '-') && currentPax > 0) {
+                    const confirmNoSeat = confirm(`No seat number entered but PAX is ${currentPax}. Continue?`);
+                    if (!confirmNoSeat) {
                         showTemporaryNotification('Save cancelled', 'warning');
                         return;
                     }
                 }
-            }
-            
-            if ((!entry.seatNo || entry.seatNo.trim() === '' || entry.seatNo === '-') && currentPax > 0 && !entry.flightNo?.startsWith('SQ')) {
-                const confirmNoSeat = confirm(`No seat number entered but PAX is ${currentPax}. Continue?`);
-                if (!confirmNoSeat) {
-                    showTemporaryNotification('Save cancelled', 'warning');
-                    return;
-                }
-            }
-            
-            if (currentPax === 0) {
-                const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}\nDate: ${dateToUse}`);
-                if (!confirmZeroPax) {
-                    showTemporaryNotification('Save cancelled - PAX is 0', 'warning');
-                    return;
+                
+                if (currentPax === 0) {
+                    const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}\nDate: ${dateToUse}`);
+                    if (!confirmZeroPax) {
+                        showTemporaryNotification('Save cancelled - PAX is 0', 'warning');
+                        return;
+                    }
                 }
             }
         }
@@ -2784,15 +2834,24 @@ function saveInlineEdit(input) {
         const calculatedPax = calculatePaxFromSeat(newValue, entry.flightNo);
         
         if (!entry.isGuest) {
-            if (newValue === '' || newValue === '-') {
-                entry.pax = calculatedPax.toString();
-                showTemporaryNotification(`✓ Seat ${newValue === '-' ? 'set to -' : 'removed'} - PAX set to ${calculatedPax}`, 'info');
+            // Check if this is SQ or UL flight
+            const flightPrefix = entry.flightNo ? entry.flightNo.substring(0, 2).toUpperCase() : '';
+            
+            if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
+                // For SQ and UL, PAX should always be 1
+                entry.pax = '1';
+                showTemporaryNotification(`✓ ${flightPrefix} flight - PAX set to 1`, 'info');
             } else {
-                const oldPax = entry.pax || '0';
-                entry.pax = calculatedPax.toString();
-                
-                if (oldPax !== calculatedPax.toString()) {
-                    showTemporaryNotification(`✓ PAX auto-updated from ${oldPax} to ${calculatedPax}`, 'success');
+                if (newValue === '' || newValue === '-') {
+                    entry.pax = calculatedPax.toString();
+                    showTemporaryNotification(`✓ Seat ${newValue === '-' ? 'set to -' : 'removed'} - PAX set to ${calculatedPax}`, 'info');
+                } else {
+                    const oldPax = entry.pax || '0';
+                    entry.pax = calculatedPax.toString();
+                    
+                    if (oldPax !== calculatedPax.toString()) {
+                        showTemporaryNotification(`✓ PAX auto-updated from ${oldPax} to ${calculatedPax}`, 'success');
+                    }
                 }
             }
         } else {
@@ -2802,14 +2861,13 @@ function saveInlineEdit(input) {
     else if (field === 'flightNo') {
         entry.flightNo = newValue;
         
-        if (newValue.startsWith('SQ') && !entry.isGuest) {
-            if (!entry.seatNo || entry.seatNo === '' || entry.seatNo === '-') {
-                entry.pax = '1';
-                showTemporaryNotification('✓ SQ flight detected - PAX set to 1', 'success');
-            } else {
-                const calculatedPax = calculatePaxFromSeat(entry.seatNo, newValue);
-                entry.pax = calculatedPax.toString();
-            }
+        // Check if this is SQ or UL flight
+        const flightPrefix = newValue.substring(0, 2).toUpperCase();
+        
+        if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
+            // For SQ and UL, PAX should always be 1
+            entry.pax = '1';
+            showTemporaryNotification(`✓ ${flightPrefix} flight detected - PAX set to 1`, 'success');
         } else if (!entry.isGuest) {
             const calculatedPax = calculatePaxFromSeat(entry.seatNo, newValue);
             entry.pax = calculatedPax.toString();
@@ -2826,21 +2884,33 @@ function saveInlineEdit(input) {
                 entry.pax = '1';
             }
         } else {
-            if (paxNum === 0) {
-                const confirmZero = confirm(`Set PAX to 0? This means no passengers. Continue?`);
-                if (!confirmZero) {
-                    cancelEditing();
-                    return;
-                }
-                entry.pax = '0';
-            } else {
-                entry.pax = paxNum.toString();
-            }
+            // Check if this is SQ or UL flight
+            const flightPrefix = entry.flightNo ? entry.flightNo.substring(0, 2).toUpperCase() : '';
             
-            if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-' && !entry.flightNo?.startsWith('SQ')) {
-                const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
-                if (calculatedPax > 0 && paxNum !== calculatedPax) {
-                    showTemporaryNotification(`⚠ PAX (${paxNum}) does not match seat (${calculatedPax})`, 'warning');
+            if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
+                if (paxNum !== 1) {
+                    alert(`${flightPrefix} flights must have PAX = 1. Setting back to 1.`);
+                    entry.pax = '1';
+                } else {
+                    entry.pax = '1';
+                }
+            } else {
+                if (paxNum === 0) {
+                    const confirmZero = confirm(`Set PAX to 0? This means no passengers. Continue?`);
+                    if (!confirmZero) {
+                        cancelEditing();
+                        return;
+                    }
+                    entry.pax = '0';
+                } else {
+                    entry.pax = paxNum.toString();
+                }
+                
+                if (entry.seatNo && entry.seatNo.trim() !== '' && entry.seatNo !== '-') {
+                    const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
+                    if (calculatedPax > 0 && paxNum !== calculatedPax) {
+                        showTemporaryNotification(`⚠ PAX (${paxNum}) does not match seat (${calculatedPax})`, 'warning');
+                    }
                 }
             }
         }
@@ -3957,7 +4027,8 @@ function addToTable(data) {
     }
     
     if (!upperData.pax || upperData.pax === '') {
-        if (upperData.flightNo?.startsWith('SQ')) {
+        const flightPrefix = upperData.flightNo.substring(0, 2).toUpperCase();
+        if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
             upperData.pax = '1';
         } else if (upperData.seatNo && upperData.seatNo.trim() !== '' && upperData.seatNo !== '-') {
             upperData.pax = calculatePaxFromSeat(upperData.seatNo, upperData.flightNo).toString();
@@ -3987,7 +4058,8 @@ function addToTable(data) {
     renderTables();
     
     const dbName = getFirestoreNameForFlight(newEntry.flightNo);
-    showTemporaryNotification(`✓ BOARDING PASS ADDED - Will save to ${dbName} when approved`, 'success');
+    const seatInfo = newEntry.seatNo ? `Seat: ${newEntry.seatNo}` : 'No seat number (SQ/UL flight)';
+    showTemporaryNotification(`✓ BOARDING PASS ADDED - ${seatInfo}, PAX: ${newEntry.pax} - Will save to ${dbName} when approved`, 'success');
 }
 
 function deleteEntry(id, isSaved = false) {
@@ -4370,6 +4442,13 @@ function parseAndAddToList() {
             return false;
         }
         
+        // For SQ and UL flights, ensure PAX is 1 even if seat number is missing
+        const flightPrefix = parsedEntry.flightNo.substring(0, 2).toUpperCase();
+        if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
+            parsedEntry.pax = '1';
+            console.log(`✅ Setting PAX to 1 for ${flightPrefix} flight`);
+        }
+        
         if (guestModeActive && selectedGuestPassengerId) {
             const result = addGuestToPassenger(selectedGuestPassengerId, parsedEntry);
             cancelGuestMode();
@@ -4445,3 +4524,4 @@ window.testFlightDatabaseMapping = testFlightDatabaseMapping;
 </script>
 </body>   
 </html>
+
