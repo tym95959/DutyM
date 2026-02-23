@@ -1596,6 +1596,7 @@ const ERROR_CODES = {
     'FLIGHT_NOT_FOUND': 'ERR-FLT-002',
     'DB_NOT_INITIALIZED': 'ERR-DB-001',
     'DATABASE_ERROR': 'ERR-DB-002',
+    'VALIDATION_ERROR': 'ERR-VAL-001',
     'EXCEPTION': 'ERR-SYS-001',
     'UNKNOWN': 'ERR-UNK-001'
 };
@@ -1607,6 +1608,7 @@ const ERROR_MESSAGES = {
     'FLIGHT_NOT_FOUND': 'Flight not found in system',
     'DB_NOT_INITIALIZED': 'Database connection error',
     'DATABASE_ERROR': 'Database error occurred',
+    'VALIDATION_ERROR': 'Missing required fields (flight number or date)',
     'EXCEPTION': 'System error occurred',
     'UNKNOWN': 'Unknown error occurred'
 };
@@ -1809,22 +1811,33 @@ function logout() {
     window.location.href = 'login.html';
 }
 
-// ========== DUMMY ENTRY FUNCTION ==========
+// ========== DUMMY ENTRY FUNCTION WITH DATE VALIDATION ==========
 function createDummyEntry() {
+    // Ensure we have date and shift data
+    if (!currentShiftData.date) {
+        showTemporaryNotification('⚠️ Please wait for shift data to load (date missing)', 'warning');
+        return;
+    }
+    
+    if (!currentShiftData.shift || (currentShiftData.shift !== 'MORNING' && currentShiftData.shift !== 'EVENING')) {
+        showTemporaryNotification('⚠️ Please wait for valid shift data to load', 'warning');
+        return;
+    }
+    
     const entryTime = getCurrentEntryTime();
     
     const dummyEntry = {
         pName: 'TEST PASSENGER',
-        flightNo: 'EK123',
+        flightNo: 'BA123',  // Using BA as example
         seatNo: '12A',
         class: 'Y',
-        airline: 'EMIRATES',
-        FQTV: 'EK-1234567/G',
+        airline: 'BRITISH AIRWAYS',
+        FQTV: 'BA-1234567/G',
         pax: '1',
         serialNo: 'DUMMY' + Math.floor(Math.random() * 1000),
         remarks: 'DUMMY ENTRY',
-        date: currentShiftData.date || '',
-        shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
+        date: currentShiftData.date,
+        shift: currentShiftData.shift,
         entryTime: entryTime,
         hiddenCode: 'DUMMY' + Date.now(),
         isGuest: false,
@@ -1848,7 +1861,8 @@ function createDummyEntry() {
     savePendingToLocalStorage();
     renderTables();
     
-    showTemporaryNotification('✓ DUMMY ENTRY CREATED - Click any field to edit', 'success');
+    const dbName = getFirestoreNameForFlight(dummyEntry.flightNo);
+    showTemporaryNotification(`✓ DUMMY ENTRY CREATED - Will save to ${dbName} when approved`, 'success');
     
     document.getElementById('hiddenCode').value = dummyEntry.hiddenCode;
     document.getElementById('pName').value = dummyEntry.pName;
@@ -1886,13 +1900,108 @@ function calculatePaxFromSeat(seatNo, flightNo = '') {
     return letterCount;
 }
 
-// ========== CHECK PASSENGER EXISTS ==========
-async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = false, excludeId = null) {
+// ========== MULTI-DATABASE FUNCTIONS ==========
+
+/**
+ * Returns the appropriate Firestore database based on flight number
+ * @param {string} flightNo - The flight number (e.g., "BA123", "EK456")
+ * @returns {Object} - The Firestore database instance
+ */
+function getFirestoreForFlight(flightNo) {
+    if (!flightNo || typeof flightNo !== 'string') {
+        console.log("No valid flight number provided, using default database");
+        return window.defaultCardDb || window.db;
+    }
+
+    const flightPrefix = flightNo.substring(0, 2).toUpperCase();
+    
+    switch(flightPrefix) {
+        case 'BA':
+            console.log(`✈️ BA flight detected (${flightNo}) - using BA database`);
+            return window.baDb;
+            
+        case 'EK':
+            console.log(`✈️ EK flight detected (${flightNo}) - using EK database`);
+            return window.ekDb;
+            
+        case 'QR':
+            console.log(`✈️ QR flight detected (${flightNo}) - using QR database`);
+            return window.qrDb;
+            
+        case 'SQ':
+            console.log(`✈️ SQ flight detected (${flightNo}) - using SQ database`);
+            return window.sqDb;
+            
+        default:
+            console.log(`✈️ Other flight detected (${flightNo}) - using default database`);
+            return window.defaultCardDb;
+    }
+}
+
+/**
+ * Gets the friendly name of the database for a flight
+ * @param {string} flightNo - The flight number
+ * @returns {string} - The database name
+ */
+function getFirestoreNameForFlight(flightNo) {
+    if (!flightNo || typeof flightNo !== 'string') return "Default Database";
+    
+    const flightPrefix = flightNo.substring(0, 2).toUpperCase();
+    
+    switch(flightPrefix) {
+        case 'BA': return "BA Database (cardentryba)";
+        case 'EK': return "EK Database (cardentryek)";
+        case 'QR': return "QR Database (cardentryqr)";
+        case 'SQ': return "SQ Database (dcleeli)";
+        default: return "Default Database (cardentry-7bad1)";
+    }
+}
+
+/**
+ * Validates that entry has required flight number and date
+ * @param {Object} entry - The entry to validate
+ * @returns {Object} - Validation result
+ */
+function validateEntryForSave(entry) {
+    const errors = [];
+    
+    if (!entry.flightNo || entry.flightNo.trim() === '') {
+        errors.push('Flight number is required');
+    }
+    
+    if (!entry.date || entry.date.trim() === '') {
+        errors.push('Date is required');
+    }
+    
+    if (!entry.pName || entry.pName.trim() === '') {
+        errors.push('Passenger name is required');
+    }
+    
+    if (!entry.seatNo || entry.seatNo.trim() === '') {
+        errors.push('Seat number is required');
+    }
+    
+    return {
+        isValid: errors.length === 0,
+        errors: errors,
+        errorMessage: errors.join(', ')
+    };
+}
+
+// ========== MULTI-DATABASE DUPLICATE CHECK FUNCTION ==========
+async function checkPassengerExistsInDatabase(db, flightNo, date, seatNo, pName, isGuest = false, excludeId = null) {
     try {
-        if (typeof db === 'undefined') {
-            console.error('db not initialized');
-            return { exists: false, matches: [], error: 'Database not initialized' };
+        if (!db) {
+            console.error('Database not provided for duplicate check');
+            return { exists: false, matches: [], error: 'Database not provided' };
         }
+        
+        if (!flightNo || !date) {
+            console.error('Flight number or date missing for duplicate check');
+            return { exists: false, matches: [], error: 'Flight number or date missing' };
+        }
+        
+        console.log(`🔍 Checking for duplicate in ${getFirestoreNameForFlight(flightNo)}: ${pName} on flight ${flightNo} date ${date}`);
         
         const collectionRef = db.collection('KoveliPass');
         let query = collectionRef
@@ -1902,6 +2011,7 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
         const snapshot = await query.get();
         
         if (snapshot.empty) {
+            console.log('✅ No duplicates found');
             return { exists: false, matches: [] };
         }
         
@@ -1935,9 +2045,11 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
         });
         
         if (matches.length > 0) {
+            console.warn('⚠️ DUPLICATE FOUND:', matches);
             return { exists: true, matches };
         }
         
+        console.log('✅ No matching duplicates found');
         return { exists: false, matches: [] };
         
     } catch (error) {
@@ -1946,94 +2058,124 @@ async function checkPassengerExists(flightNo, date, seatNo, pName, isGuest = fal
     }
 }
 
-// ========== FIXED FLIGHT STATUS CHECK FUNCTION ==========
+// ========== FIXED FLIGHT STATUS CHECK FUNCTION - CHECKS RESPECTIVE DATABASE ==========
 async function isFlightOpen(flightNo, date) {
     try {
         console.log(`🔍 Checking flight status for ${flightNo} on ${date}`);
         
-        if (typeof db === 'undefined') {
-            console.error('❌ db not initialized');
+        if (!flightNo || !date) {
+            console.error('Flight number or date missing for flight status check');
             return { 
-                isOpen: false, 
+                isOpen: true, 
+                error: null, 
+                status: 'MISSING_DATA',
+                message: 'Flight number or date missing - allowing save'
+            };
+        }
+        
+        // Get the appropriate database for this flight
+        const targetDb = getFirestoreForFlight(flightNo);
+        
+        if (!targetDb) {
+            console.error(`❌ Target database not initialized for flight ${flightNo}`);
+            return { 
+                isOpen: true, 
                 error: 'DB_NOT_INITIALIZED', 
-                status: null, 
-                message: 'Database not initialized - BLOCKING SAVE' 
+                status: 'ERROR',
+                message: `Target database not initialized for flight ${flightNo} - allowing save`
             };
         }
         
-        // Check if flight exists in the flights collection
-        const flightsRef = db.collection('flights');
-        const query = flightsRef
-            .where('flightNo', '==', flightNo)
-            .where('date', '==', date);
+        // Format date to match document ID format (YYYY-MM-DD)
+        let formattedDate = date;
+        if (date.includes('/')) {
+            const parts = date.split('/');
+            if (parts.length === 3) {
+                if (parts[0].length === 4) {
+                    formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                } else {
+                    formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
+            }
+        } else if (date.includes('-')) {
+            const parts = date.split('-');
+            if (parts.length === 3) {
+                if (parts[0].length === 4) {
+                    formattedDate = date;
+                } else {
+                    formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
+            }
+        } else {
+            const cleanDate = date.replace(/[^0-9]/g, '');
+            if (cleanDate.length === 8) {
+                formattedDate = `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
+            } else if (cleanDate.length === 6) {
+                const day = cleanDate.substring(0,2);
+                const month = cleanDate.substring(2,4);
+                const year = `20${cleanDate.substring(4,6)}`;
+                formattedDate = `${year}-${month}-${day}`;
+            }
+        }
         
-        const snapshot = await query.get();
+        console.log(`📅 Formatted date for document ID: ${formattedDate}`);
         
-        // If flight not found in system - ALLOW SAVE (not registered is OK)
-        if (snapshot.empty) {
-            console.log(`✅ Flight ${flightNo} on ${date} not found in system - ALLOWING SAVE (not registered)`);
+        // Document ID is flightNo_date (e.g., "BA123_2026-02-23")
+        const docId = `${flightNo}_${formattedDate}`;
+        console.log(`🔍 Looking for flight report document: ${docId} in ${getFirestoreNameForFlight(flightNo)}`);
+        
+        // Check if flight exists in the FlightReports collection
+        const flightReportRef = targetDb.collection('FlightReports').doc(docId);
+        const flightDoc = await flightReportRef.get();
+        
+        // If flight report document doesn't exist - ALLOW SAVE (flight not closed yet)
+        if (!flightDoc.exists) {
+            console.log(`✅ Flight ${flightNo} on ${date} has no flight report - FLIGHT IS OPEN (not closed)`);
             return { 
                 isOpen: true, 
                 error: null, 
-                status: 'NOT_REGISTERED',
-                message: `Flight ${flightNo} on ${date} not registered - allowing save`
+                status: 'OPEN',
+                message: `Flight ${flightNo} on ${date} is OPEN (no flight report found)`
             };
         }
         
-        let flightData = null;
-        snapshot.forEach(doc => {
-            flightData = doc.data();
-            console.log('📄 Flight document data:', flightData);
-        });
+        // Get the flight report data
+        const flightData = flightDoc.data();
+        console.log('📄 Flight report data:', flightData);
         
-        if (!flightData) {
-            console.log(`⚠️ Flight ${flightNo} on ${date} has no data - ALLOWING SAVE`);
-            return { 
-                isOpen: true, 
-                error: null, 
-                status: 'NO_DATA',
-                message: `Flight ${flightNo} on ${date} has no data - allowing save`
-            };
-        }
-        
-        // Check various possible field names for flight status
-        const status = (flightData.flightStatus || flightData.status || flightData.FlightStatus || '').toString().toUpperCase();
-        console.log(`📊 Flight status for ${flightNo}: "${status}"`);
-        
-        // If status is explicitly CLOSED, block the save
-        if (status === 'CLOSED') {
-            console.log(`❌❌❌ Flight ${flightNo} on ${date} is CLOSED - BLOCKING SAVE`);
+        // Check the isClosed field - this is a boolean
+        // When flight is closed, isClosed = true
+        if (flightData.isClosed === true) {
+            console.log(`❌❌❌ Flight ${flightNo} on ${date} is CLOSED (isClosed=true) - BLOCKING SAVE`);
+            
+            let detailMessage = `Flight ${flightNo} on ${date} is CLOSED. `;
+            if (flightData.totalPax !== undefined) detailMessage += `Total PAX: ${flightData.totalPax}. `;
+            if (flightData.lastPax) detailMessage += `Last passenger at: ${flightData.lastPax}. `;
+            if (flightData.firstPax) detailMessage += `First passenger at: ${flightData.firstPax}. `;
+            if (flightData.std) detailMessage += `STD: ${flightData.std}. `;
+            if (flightData.airline) detailMessage += `Airline: ${flightData.airline}.`;
+            
             return { 
                 isOpen: false, 
                 error: 'FLIGHT_CLOSED', 
                 status: 'CLOSED',
-                message: `Flight ${flightNo} on ${date} is CLOSED - cannot add passengers`
+                message: detailMessage,
+                flightData: flightData
             };
         }
         
-        // Also check if there's a boolean isOpen field
-        if (flightData.isOpen === false) {
-            console.log(`❌❌❌ Flight ${flightNo} on ${date} is marked as closed (isOpen=false) - BLOCKING SAVE`);
-            return { 
-                isOpen: false, 
-                error: 'FLIGHT_CLOSED', 
-                status: 'CLOSED',
-                message: `Flight ${flightNo} on ${date} is CLOSED - cannot add passengers`
-            };
-        }
-        
-        // For any other status (OPEN, SCHEDULED, etc.) or if status field doesn't exist - ALLOW SAVE
-        console.log(`✅✅✅ Flight ${flightNo} on ${date} is ${status || 'OPEN'} - ALLOWING SAVE`);
+        // If isClosed is false or undefined - FLIGHT IS OPEN
+        console.log(`✅✅✅ Flight ${flightNo} on ${date} is OPEN (isClosed=${flightData.isClosed})`);
         return { 
             isOpen: true, 
             error: null, 
-            status: status || 'OPEN',
-            message: `Flight is ${status || 'OPEN'} - allowing save`
+            status: 'OPEN',
+            message: `Flight ${flightNo} on ${date} is OPEN`,
+            flightData: flightData
         };
         
     } catch (error) {
         console.error('❌ Error checking flight status:', error);
-        // In case of error, we allow save to prevent blocking everything
         console.log(`⚠️ Database error but allowing save: ${error.message}`);
         return { 
             isOpen: true, 
@@ -2044,49 +2186,62 @@ async function isFlightOpen(flightNo, date) {
     }
 }
 
-// ========== FIXED SAVE ENTRY TO FIREBASE FUNCTION ==========
+// ========== FIXED SAVE ENTRY TO FIREBASE FUNCTION WITH MULTI-DATABASE SUPPORT AND DUPLICATE CHECKING ==========
 async function saveEntryToFirebase(entry) {
     try {
         console.log('📤 Saving entry to Firebase:', entry);
         
-        if (typeof db === 'undefined') {
-            console.error('❌ db not initialized');
+        // Validate entry has required fields
+        const validation = validateEntryForSave(entry);
+        if (!validation.isValid) {
+            console.error('Entry validation failed:', validation.errors);
             return { 
                 success: false, 
-                error: 'Database not initialized', 
-                reason: 'DB_NOT_INITIALIZED' 
+                error: `Validation failed: ${validation.errorMessage}`, 
+                reason: 'VALIDATION_ERROR',
+                validationErrors: validation.errors
             };
         }
         
-        // CRITICAL: Check if flight is CLOSED before attempting to save
-        if (entry.flightNo && entry.date) {
-            console.log(`🔍 Checking flight status before save for ${entry.flightNo} on ${entry.date}`);
-            const flightStatus = await isFlightOpen(entry.flightNo, entry.date);
-            
-            // Only block if flight is explicitly CLOSED
-            if (!flightStatus.isOpen && flightStatus.error === 'FLIGHT_CLOSED') {
-                console.error(`❌❌❌ Cannot save entry: Flight is CLOSED`);
-                
-                return { 
-                    success: false, 
-                    error: flightStatus.message, 
-                    reason: 'FLIGHT_CLOSED',
-                    flightStatus: flightStatus.status,
-                    errorCode: ERROR_CODES['FLIGHT_CLOSED']
-                };
-            }
-            
-            console.log(`✅ Flight check passed: ${flightStatus.message}`);
+        // CRITICAL: Check if flight is CLOSED in its respective database before attempting to save
+        console.log(`🔍 Checking flight status before save for ${entry.flightNo} on ${entry.date}`);
+        const flightStatus = await isFlightOpen(entry.flightNo, entry.date);
+        
+        // Block if flight is explicitly CLOSED (isClosed = true)
+        if (!flightStatus.isOpen) {
+            console.error(`❌❌❌ Cannot save entry: Flight is CLOSED`);
+            return { 
+                success: false, 
+                error: flightStatus.message, 
+                reason: 'FLIGHT_CLOSED',
+                flightStatus: flightStatus.status,
+                errorCode: ERROR_CODES['FLIGHT_CLOSED']
+            };
         }
         
-        // Check for duplicates (only for non-guest entries)
+        console.log(`✅ Flight check passed: ${flightStatus.message}`);
+        
+        // Get the appropriate database for this flight
+        const targetDb = getFirestoreForFlight(entry.flightNo);
+        
+        if (!targetDb) {
+            return { 
+                success: false, 
+                error: 'Target database not initialized',
+                reason: 'DB_NOT_INITIALIZED'
+            };
+        }
+        
+        // Check for duplicates using the same database that will be used for saving
         if (!entry.isGuest) {
-            const checkResult = await checkPassengerExists(
+            const checkResult = await checkPassengerExistsInDatabase(
+                targetDb,
                 entry.flightNo,
                 entry.date,
                 entry.seatNo || '',
                 entry.pName || '',
-                false
+                false,
+                null
             );
             
             if (checkResult.exists) {
@@ -2094,16 +2249,15 @@ async function saveEntryToFirebase(entry) {
                 console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
                 return { 
                     success: false, 
-                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists`,
+                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists for flight ${entry.flightNo} on ${entry.date} in ${getFirestoreNameForFlight(entry.flightNo)}`,
                     reason: 'DUPLICATE',
-                    duplicates: checkResult.matches
+                    duplicates: checkResult.matches,
+                    database: getFirestoreNameForFlight(entry.flightNo)
                 };
             }
         }
         
-        // If all checks pass, save to Firebase
-        const collectionRef = db.collection('KoveliPass');
-        
+        // Prepare the data (remove local-only fields)
         const firebaseData = { ...entry };
         delete firebaseData.id;
         delete firebaseData.firebaseStatus;
@@ -2111,28 +2265,101 @@ async function saveEntryToFirebase(entry) {
         delete firebaseData.firebaseRetry;
         delete firebaseData.firebaseError;
         delete firebaseData.firebaseReason;
+        delete firebaseData.errorCode;
+        delete firebaseData.errorMessage;
+        delete firebaseData.errorTimestamp;
+        delete firebaseData.targetDatabase;
+        delete firebaseData.flightCheckFailed;
+        delete firebaseData.flightCheckMessage;
         
+        // ENSURE flight number and date are present
+        firebaseData.flightNo = entry.flightNo;
+        firebaseData.date = entry.date;
+        
+        // Add server timestamp
         firebaseData.savedAt = firebase.firestore.FieldValue.serverTimestamp();
         
-        const docRef = await collectionRef.add(firebaseData);
-        console.log('✅ Entry saved to Firebase with ID:', docRef.id);
+        // Log the exact data being saved
+        console.log('📝 Data being saved to Firebase:', {
+            database: getFirestoreNameForFlight(entry.flightNo),
+            collection: 'KoveliPass',
+            flightNo: firebaseData.flightNo,
+            date: firebaseData.date,
+            pName: firebaseData.pName
+        });
         
-        return { success: true, docId: docRef.id };
+        // Save to the appropriate collection (using 'KoveliPass' as collection name)
+        const collectionRef = targetDb.collection('KoveliPass');
+        const docRef = await collectionRef.add(firebaseData);
+        
+        const dbName = getFirestoreNameForFlight(entry.flightNo);
+        console.log(`✅ Entry saved to ${dbName} with ID:`, docRef.id);
+        console.log(`   Flight: ${entry.flightNo}, Date: ${entry.date}`);
+        
+        // Also save hidden code to cardDb if needed
+        if (entry.hiddenCode && entry.flightNo && entry.date && typeof cardDb !== 'undefined') {
+            try {
+                await cardDb.collection('QrCards').doc(`${entry.date}_${entry.flightNo}`).set({
+                    code: entry.hiddenCode,
+                    flightNo: entry.flightNo,
+                    date: entry.date,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                console.log('✅ Hidden code saved to cardDb');
+            } catch (codeError) {
+                console.error('Error saving hidden code:', codeError);
+            }
+        }
+        
+        return { 
+            success: true, 
+            docId: docRef.id,
+            database: dbName,
+            flightNo: entry.flightNo,
+            date: entry.date
+        };
         
     } catch (error) {
         console.error('❌ Error saving to Firebase:', error);
         return { 
             success: false, 
             error: error.message,
-            reason: 'DATABASE_ERROR'
+            reason: 'DATABASE_ERROR',
+            database: entry?.flightNo ? getFirestoreNameForFlight(entry.flightNo) : 'Unknown',
+            flightNo: entry?.flightNo,
+            date: entry?.date
         };
     }
 }
 
-// ========== FIXED BACKGROUND SAVE FUNCTION ==========
+// ========== FIXED BACKGROUND SAVE FUNCTION WITH MULTI-DATABASE SUPPORT ==========
 async function backgroundSaveToFirebase(entry) {
     try {
         console.log('🔄 Starting background save for entry:', entry.id);
+        
+        // Validate entry has required fields before attempting save
+        const validation = validateEntryForSave(entry);
+        if (!validation.isValid) {
+            console.error('Entry validation failed in background save:', validation.errors);
+            
+            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
+            if (savedIndex !== -1) {
+                savedPasses[savedIndex].firebaseError = `Validation failed: ${validation.errorMessage}`;
+                savedPasses[savedIndex].firebaseReason = 'VALIDATION_ERROR';
+                savedPasses[savedIndex].firebaseStatus = 'error';
+                savedPasses[savedIndex].firebaseRetry = true;
+                savedPasses[savedIndex].firebaseSaved = false;
+                savedPasses[savedIndex].errorCode = getErrorCode('VALIDATION_ERROR');
+                savedPasses[savedIndex].errorMessage = getErrorMessage('VALIDATION_ERROR');
+                savedPasses[savedIndex].errorTimestamp = new Date().toISOString();
+                saveSavedToLocalStorage();
+                renderTables();
+                updateErrorSummary();
+            }
+            
+            showTemporaryNotification(`❌ Cannot save: ${validation.errorMessage}`, 'error');
+            return;
+        }
         
         const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
         if (savedIndex !== -1) {
@@ -2160,7 +2387,7 @@ async function backgroundSaveToFirebase(entry) {
                 updateErrorSummary();
             }
             
-            showTemporaryNotification(`✅ Entry saved to Firebase`, 'success');
+            showTemporaryNotification(`✅ Entry saved to ${saveResult.database || 'Firebase'} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'success');
             
         } else {
             console.error('❌ Background save failed:', saveResult.error);
@@ -2174,6 +2401,7 @@ async function backgroundSaveToFirebase(entry) {
                 savedPasses[savedIndex].errorCode = getErrorCode(saveResult.reason);
                 savedPasses[savedIndex].errorMessage = getErrorMessage(saveResult.reason);
                 savedPasses[savedIndex].errorTimestamp = new Date().toISOString();
+                savedPasses[savedIndex].targetDatabase = saveResult.database || 'Unknown';
                 saveSavedToLocalStorage();
                 renderTables();
                 updateErrorSummary();
@@ -2182,12 +2410,16 @@ async function backgroundSaveToFirebase(entry) {
             const errorCode = getErrorCode(saveResult.reason);
             const errorMsg = getErrorMessage(saveResult.reason);
             
+            let dbName = saveResult.database ? ` [${saveResult.database}]` : '';
+            
             if (saveResult.reason === 'DUPLICATE') {
-                showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}`, 'error');
+                showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}${dbName}`, 'error');
             } else if (saveResult.reason === 'FLIGHT_CLOSED') {
-                showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${errorMsg}`, 'error');
+                showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${saveResult.error}`, 'error');
+            } else if (saveResult.reason === 'VALIDATION_ERROR') {
+                showTemporaryNotification(`❌ Validation Error: ${saveResult.error}`, 'error');
             } else {
-                showTemporaryNotification(`❌ [${errorCode}] Save failed: ${errorMsg}`, 'error');
+                showTemporaryNotification(`❌ [${errorCode}] Save failed: ${errorMsg}${dbName}`, 'error');
             }
         }
         
@@ -2213,7 +2445,7 @@ async function backgroundSaveToFirebase(entry) {
     }
 }
 
-// ========== FIXED APPROVE ENTRY FUNCTION ==========
+// ========== FIXED APPROVE ENTRY FUNCTION WITH MULTI-DATABASE SUPPORT AND VALIDATION ==========
 async function approveEntry(id) {
     try {
         const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
@@ -2226,7 +2458,7 @@ async function approveEntry(id) {
         const flightNoToUse = entry.flightNo || '';
         
         if (!dateToUse) {
-            showTemporaryNotification('❌ Missing date', 'warning');
+            showTemporaryNotification('❌ Missing date - please wait for shift data to load', 'warning');
             return;
         }
         
@@ -2235,20 +2467,26 @@ async function approveEntry(id) {
             return;
         }
         
-        // CHECK FLIGHT STATUS BEFORE MOVING TO SAVED TAB
-        showTemporaryNotification(`🔍 Checking flight status for ${flightNoToUse}...`, 'info');
+        if (!entry.pName || entry.pName.trim() === '') {
+            showTemporaryNotification('❌ Missing passenger name', 'warning');
+            return;
+        }
+        
+        if (!entry.seatNo || entry.seatNo.trim() === '') {
+            showTemporaryNotification('❌ Missing seat number', 'warning');
+            return;
+        }
+        
+        // CHECK FLIGHT STATUS IN RESPECTIVE DATABASE BEFORE MOVING TO SAVED TAB
+        showTemporaryNotification(`🔍 Checking flight status for ${flightNoToUse} in ${getFirestoreNameForFlight(flightNoToUse)}...`, 'info');
         
         const flightStatus = await isFlightOpen(flightNoToUse, dateToUse);
         
-        // Only block if flight is explicitly CLOSED
-        if (!flightStatus.isOpen && flightStatus.error === 'FLIGHT_CLOSED') {
-            // Flight is CLOSED - show error and don't move to saved tab
+        // Block if flight is explicitly CLOSED (isClosed = true)
+        if (!flightStatus.isOpen) {
             const errorCode = getErrorCode('FLIGHT_CLOSED');
-            const errorMsg = flightStatus.message;
+            showTemporaryNotification(`❌ [${errorCode}] ${flightStatus.message}`, 'error');
             
-            showTemporaryNotification(`❌ [${errorCode}] ${errorMsg}`, 'error');
-            
-            // Mark the entry with a warning
             entry.flightCheckFailed = true;
             entry.flightCheckMessage = flightStatus.message;
             renderTables();
@@ -2259,7 +2497,7 @@ async function approveEntry(id) {
         entry.flightCheckFailed = false;
         entry.flightCheckMessage = null;
         
-        // Flight is either OPEN or NOT FOUND - proceed with PAX validation
+        // Flight is OPEN - proceed with PAX validation
         const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
         
@@ -2286,7 +2524,7 @@ async function approveEntry(id) {
             }
             
             if (currentPax === 0) {
-                const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}`);
+                const confirmZeroPax = confirm(`PAX is 0. Save anyway?\n\nPassenger: ${entry.pName}\nFlight: ${entry.flightNo}\nDate: ${dateToUse}`);
                 if (!confirmZeroPax) {
                     showTemporaryNotification('Save cancelled - PAX is 0', 'warning');
                     return;
@@ -2295,7 +2533,7 @@ async function approveEntry(id) {
         }
         
         const shiftToUse = entry.shift || (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING' ? currentShiftData.shift : '');
-        const hiddenCode = document.getElementById('hiddenCode')?.value || '';
+        const hiddenCode = document.getElementById('hiddenCode')?.value || entry.hiddenCode || '';
         
         if (!entry.enteredBy) {
             entry.enteredBy = currentUser.name || currentUser.username || 'UNKNOWN';
@@ -2336,7 +2574,8 @@ async function approveEntry(id) {
         savePendingToLocalStorage();
         saveSavedToLocalStorage();
         
-        showTemporaryNotification('✓ Entry moved to saved tab - attempting to save to Firebase...', 'info');
+        const dbName = getFirestoreNameForFlight(approvedEntry.flightNo);
+        showTemporaryNotification(`✓ Entry moved to saved tab - attempting to save to ${dbName}...`, 'info');
         
         renderTables();
         
@@ -2344,7 +2583,7 @@ async function approveEntry(id) {
             backgroundSaveToFirebase(approvedEntry);
         }, 100);
         
-        if (hiddenCode && flightNoToUse) {
+        if (hiddenCode && flightNoToUse && dateToUse) {
             setTimeout(() => {
                 saveHiddenCodeToCardDB(hiddenCode, flightNoToUse, dateToUse);
             }, 200);
@@ -2654,6 +2893,10 @@ async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
         return false;
     }
     
+    if (!date || !date.trim()) {
+        return false;
+    }
+    
     if (typeof cardDb === 'undefined') {
         console.error('❌ cardDb not initialized');
         return false;
@@ -2678,6 +2921,8 @@ async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
     try {
         await cardDb.collection('QrCards').doc(docId).set({
             code: cleanHiddenCode,
+            flightNo: cleanFlightNo,
+            date: cleanDate,
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
         
@@ -2707,7 +2952,7 @@ function toggleGuestMode(passengerId, checked) {
             guestModeActive = true;
             selectedGuestPassengerId = passengerId;
             guestIndicator.classList.add('visible');
-            guestModeText.textContent = `ADDING GUEST FOR: ${passenger.pName} (${passenger.seatNo || 'no seat'})`;
+            guestModeText.textContent = `ADDING GUEST FOR: ${passenger.pName} (${passenger.seatNo || 'no seat'}) - Flight: ${passenger.flightNo}`;
             showTemporaryNotification(`✓ Guest mode activated for ${passenger.pName}`, 'success');
             
             if (codeField) {
@@ -2760,6 +3005,14 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         
         const guestPax = 1;
         
+        if (!guestData.flightNo) {
+            guestData.flightNo = mainPassenger.flightNo;
+        }
+        
+        if (!guestData.date) {
+            guestData.date = mainPassenger.date || currentShiftData.date;
+        }
+        
         const guestEntry = {
             ...guestData,
             id: generateId(),
@@ -2771,15 +3024,15 @@ function addGuestToPassenger(mainPassengerId, guestData) {
             approved: false,
             
             pName: guestData.pName || '',
-            flightNo: guestData.flightNo || '',
+            flightNo: guestData.flightNo || mainPassenger.flightNo,
             seatNo: guestData.seatNo || '',
             class: guestData.class || '',
             airline: guestData.airline || '',
             pax: guestPax.toString(),
             serialNo: guestData.serialNo || '',
             remarks: guestData.remarks || '',
-            date: guestData.date || '',
-            shift: guestData.shift || '',
+            date: guestData.date || mainPassenger.date || currentShiftData.date,
+            shift: guestData.shift || mainPassenger.shift || currentShiftData.shift,
             entryTime: guestData.entryTime || '',
             hiddenCode: guestData.hiddenCode || '',
             enteredBy: currentUser.name || currentUser.username || 'UNKNOWN',
@@ -2796,7 +3049,7 @@ function addGuestToPassenger(mainPassengerId, guestData) {
         
         document.getElementById('code').value = '';
         
-        showTemporaryNotification(`✅ Guest added for ${mainPassenger.pName}`, 'success');
+        showTemporaryNotification(`✅ Guest added for ${mainPassenger.pName} (Flight: ${guestEntry.flightNo})`, 'success');
         
         renderTables();
         
@@ -2952,12 +3205,12 @@ function updateErrorSummary() {
         
         const duplicateCount = errorEntries.filter(e => e.firebaseReason === 'DUPLICATE').length;
         const flightClosedCount = errorEntries.filter(e => e.firebaseReason === 'FLIGHT_CLOSED' || e.firebaseReason === 'FLIGHT_NOT_FOUND').length;
-        const databaseErrorCount = errorEntries.filter(e => e.firebaseReason === 'DATABASE_ERROR' || e.firebaseReason === 'DB_NOT_INITIALIZED').length;
+        const databaseErrorCount = errorEntries.filter(e => e.firebaseReason === 'DATABASE_ERROR' || e.firebaseReason === 'DB_NOT_INITIALIZED' || e.firebaseReason === 'VALIDATION_ERROR').length;
         
         let message = `${errorCount} transaction${errorCount > 1 ? 's' : ''} failed to sync`;
         if (duplicateCount > 0) message += ` • ${duplicateCount} duplicate${duplicateCount > 1 ? 's' : ''}`;
         if (flightClosedCount > 0) message += ` • ${flightClosedCount} flight closed`;
-        if (databaseErrorCount > 0) message += ` • ${databaseErrorCount} db error${databaseErrorCount > 1 ? 's' : ''}`;
+        if (databaseErrorCount > 0) message += ` • ${databaseErrorCount} db/validation error${databaseErrorCount > 1 ? 's' : ''}`;
         errorSummaryMessage.textContent = message;
     } else {
         errorSummary.style.display = 'none';
@@ -2984,10 +3237,14 @@ function showErrorDetails() {
         } else if (entry.firebaseReason === 'FLIGHT_CLOSED' || entry.firebaseReason === 'FLIGHT_NOT_FOUND') {
             errorClass = 'flight-closed';
             errorIcon = 'fa-plane-slash';
+        } else if (entry.firebaseReason === 'VALIDATION_ERROR') {
+            errorClass = 'database';
+            errorIcon = 'fa-exclamation-triangle';
         }
         
         const timestamp = entry.errorTimestamp || entry.enteredAt;
         const formattedTime = timestamp ? new Date(timestamp).toLocaleString() : 'Unknown time';
+        const targetDb = entry.targetDatabase || getFirestoreNameForFlight(entry.flightNo) || 'Unknown';
         
         html += `
             <div class="error-detail-item ${errorClass}" style="margin-bottom: 12px; padding: 12px;">
@@ -3002,7 +3259,10 @@ function showErrorDetails() {
                 <div style="font-size: 12px; margin-left: 24px; margin-bottom: 8px;">
                     <div style="display: grid; grid-template-columns: 80px 1fr; gap: 4px;">
                         <span style="color: #8b6913;">Flight:</span>
-                        <span>${entry.flightNo || '—'}</span>
+                        <span>${entry.flightNo || '—'} <span style="font-size: 10px; color: #666;">[${targetDb}]</span></span>
+                        
+                        <span style="color: #8b6913;">Date:</span>
+                        <span>${entry.date || '—'}</span>
                         
                         <span style="color: #8b6913;">Seat:</span>
                         <span>${entry.seatNo || '—'}</span>
@@ -3352,7 +3612,6 @@ function renderPendingTable() {
         
         let approveButton = `<button class="approve-btn" onclick="approveEntry('${entry.id}')">${entry.isGuest ? 'SAVE' : 'Approve'}</button>`;
         
-        // If flight check failed, show warning on button
         if (entry.flightCheckFailed) {
             approveButton = `<button class="approve-btn" style="background: #c68b5e;" onclick="approveEntry('${entry.id}')" title="${entry.flightCheckMessage || 'Flight may be closed'}">⚠️ Check</button>`;
         }
@@ -3402,6 +3661,9 @@ function renderSavedTable() {
             } else if (entry.firebaseReason === 'DUPLICATE') {
                 row.classList.add('duplicate-warning');
                 row.classList.add('unsynced-row');
+            } else if (entry.firebaseReason === 'VALIDATION_ERROR') {
+                row.classList.add('database-error-warning');
+                row.classList.add('unsynced-row');
             } else {
                 row.classList.add('database-error-warning');
                 row.classList.add('unsynced-row');
@@ -3442,7 +3704,6 @@ function renderSavedTable() {
         actionsCell.style.minWidth = '260px';
         actionsCell.style.padding = '8px 6px';
         
-        // Determine status and error details
         let statusIcon = '';
         let statusText = '';
         let statusColor = '';
@@ -3450,6 +3711,10 @@ function renderSavedTable() {
         let errorCodeSpan = '';
         let errorReasonBadge = '';
         let errorMessageDisplay = '';
+        let targetDbDisplay = '';
+        
+        const targetDb = getFirestoreNameForFlight(entry.flightNo);
+        targetDbDisplay = `<span style="font-size: 9px; color: #666; margin-left: 4px;">[${targetDb}]</span>`;
         
         if (entry.firebaseError) {
             const errorCode = entry.errorCode || getErrorCode(entry.firebaseReason);
@@ -3473,6 +3738,9 @@ function renderSavedTable() {
             } else if (entry.firebaseReason === 'DB_NOT_INITIALIZED') {
                 reasonClass = 'error-reason-database';
                 reasonText = 'DB NOT INIT';
+            } else if (entry.firebaseReason === 'VALIDATION_ERROR') {
+                reasonClass = 'error-reason-database';
+                reasonText = 'VALIDATION ERROR';
             }
             
             errorTooltip = ` data-error="${entry.firebaseError.replace(/"/g, '&quot;')}"`;
@@ -3493,7 +3761,6 @@ function renderSavedTable() {
             statusColor = '#6b8e23';
         }
         
-        // Build the actions cell content
         if (entry.firebaseError) {
             actionsCell.innerHTML = `
                 <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
@@ -3503,6 +3770,7 @@ function renderSavedTable() {
                         </span>
                         ${errorCodeSpan}
                         ${errorReasonBadge}
+                        ${targetDbDisplay}
                     </div>
                     ${errorMessageDisplay}
                     <div style="display: flex; gap: 6px; justify-content: space-between; margin-top: 2px;">
@@ -3525,6 +3793,7 @@ function renderSavedTable() {
                         <span class="status-indicator status-pending" style="color: ${statusColor}; font-size: 11px;">
                             ${statusIcon} ${statusText}
                         </span>
+                        ${targetDbDisplay}
                     </div>
                     <div style="display: flex; gap: 6px; justify-content: flex-end;">
                         <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 11px;">
@@ -3540,6 +3809,7 @@ function renderSavedTable() {
                         <span class="status-indicator status-success" style="color: ${statusColor}; font-size: 11px;">
                             ${statusIcon} ${statusText}
                         </span>
+                        ${targetDbDisplay}
                     </div>
                     <div style="display: flex; gap: 6px; justify-content: flex-end;">
                         <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 11px;">
@@ -3587,7 +3857,8 @@ async function retrySave(id) {
     renderTables();
     updateErrorSummary();
     
-    showTemporaryNotification('🔄 Retrying save to Firebase...', 'info');
+    const dbName = getFirestoreNameForFlight(entry.flightNo);
+    showTemporaryNotification(`🔄 Retrying save to ${dbName}...`, 'info');
     
     setTimeout(() => {
         backgroundSaveToFirebase(entry);
@@ -3602,13 +3873,15 @@ function printRow(id, isSaved = false) {
     if (!entry) return;
     
     const printContent = document.createElement('div');
+    const targetDb = getFirestoreNameForFlight(entry.flightNo);
+    
     printContent.innerHTML = `
         <div style="font-family: Arial, sans-serif; padding: 20px;">
             <h2 style="text-align: center; color: #8b6913;">BOARDING PASS RECORD</h2>
             <hr>
             <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Passenger Name:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.pName || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Flight Number:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.flightNo || '—'}</td></tr>
+                <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Flight Number:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.flightNo || '—'} <span style="font-size: 10px; color: #666;">[${targetDb}]</span></td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Seat Number:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.seatNo || '—'}</td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Class:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.class || '—'}</td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Airline:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.airline || '—'}</td></tr>
@@ -3674,6 +3947,15 @@ function addToTable(data) {
         }
     }
     
+    if (!upperData.date || upperData.date === '') {
+        upperData.date = currentShiftData.date || '';
+    }
+    
+    if (!upperData.flightNo || upperData.flightNo === '') {
+        showTemporaryNotification('⚠️ Flight number is missing', 'warning');
+        return;
+    }
+    
     if (!upperData.pax || upperData.pax === '') {
         if (upperData.flightNo?.startsWith('SQ')) {
             upperData.pax = '1';
@@ -3704,7 +3986,8 @@ function addToTable(data) {
     savePendingToLocalStorage();
     renderTables();
     
-    showTemporaryNotification('✓ BOARDING PASS ADDED', 'success');
+    const dbName = getFirestoreNameForFlight(newEntry.flightNo);
+    showTemporaryNotification(`✓ BOARDING PASS ADDED - Will save to ${dbName} when approved`, 'success');
 }
 
 function deleteEntry(id, isSaved = false) {
@@ -3753,88 +4036,8 @@ function parseAndAddToList() {
         return false;
     }
     
-    // Modified MLE validation - find the actual MLE marker (not the one in names)
     if (!codeInput.includes('MLE')) {
         alert('MUST CONTAIN MLE');
-        return false;
-    }
-    
-    // Find all MLE occurrences and determine which one is the actual marker
-    let selectedMlePosition = -1;
-    let mleIndex = -1;
-    let lastIndex = 0;
-    let mleOccurrences = [];
-    
-    // Collect all MLE occurrences with their context
-    while ((mleIndex = codeInput.indexOf('MLE', lastIndex)) !== -1) {
-        // Find the word containing this MLE
-        let wordStart = mleIndex;
-        while (wordStart > 0 && codeInput[wordStart - 1] !== ' ' && codeInput[wordStart - 1] !== '/') {
-            wordStart--;
-        }
-        
-        let wordEnd = mleIndex + 2;
-        while (wordEnd < codeInput.length - 1 && codeInput[wordEnd + 1] !== ' ' && codeInput[wordEnd + 1] !== '/') {
-            wordEnd++;
-        }
-        
-        const fullWord = codeInput.substring(wordStart, wordEnd + 1);
-        
-        // Check if this MLE is likely the actual marker (not part of a name)
-        const isLikelyActualMarker = (
-            (mleIndex === 0 || codeInput[mleIndex - 1] === ' ' || codeInput[mleIndex - 1] === '/') &&
-            (codeInput.length > mleIndex + 3 && /[0-9A-Z]/.test(codeInput[mleIndex + 3])) &&
-            fullWord.length <= 5 &&
-            !fullWord.match(/[AEIOU]{2,}/)
-        );
-        
-        const isLikelyPartOfName = (
-            fullWord.length > 5 &&
-            fullWord.match(/[AEIOU]{2,}/) &&
-            mleIndex > wordStart + 2
-        );
-        
-        mleOccurrences.push({
-            position: mleIndex,
-            word: fullWord,
-            wordStart: wordStart,
-            wordEnd: wordEnd,
-            isLikelyActualMarker: isLikelyActualMarker,
-            isLikelyPartOfName: isLikelyPartOfName
-        });
-        
-        lastIndex = mleIndex + 1;
-    }
-    
-    // Strategy: Skip MLE occurrences that are part of names, find the actual marker
-    const actualMarker = mleOccurrences.find(occ => occ.isLikelyActualMarker);
-    
-    if (actualMarker) {
-        selectedMlePosition = actualMarker.position;
-        console.log(`Using actual MLE marker at position ${selectedMlePosition} (word: ${actualMarker.word})`);
-    } else {
-        const nonNameMLE = mleOccurrences.find(occ => !occ.isLikelyPartOfName);
-        
-        if (nonNameMLE) {
-            selectedMlePosition = nonNameMLE.position;
-            console.log(`Using non-name MLE at position ${selectedMlePosition}`);
-        } else {
-            selectedMlePosition = mleOccurrences[mleOccurrences.length - 1].position;
-            console.log(`Using last MLE at position ${selectedMlePosition} as fallback`);
-        }
-    }
-    
-    const selectedOccurrence = mleOccurrences.find(occ => occ.position === selectedMlePosition);
-    if (selectedOccurrence && selectedOccurrence.isLikelyPartOfName) {
-        const nextValidMLE = mleOccurrences.find(occ => occ.position > selectedMlePosition && !occ.isLikelyPartOfName);
-        if (nextValidMLE) {
-            selectedMlePosition = nextValidMLE.position;
-            console.log(`Adjusted to next valid MLE at position ${selectedMlePosition}`);
-        }
-    }
-    
-    if (selectedMlePosition === -1) {
-        alert('COULD NOT IDENTIFY VALID MLE MARKER IN BOARDING PASS');
         return false;
     }
     
@@ -3844,6 +4047,7 @@ function parseAndAddToList() {
         
         if (isTKVCPO) {
             const tk07Position = codeInput.indexOf('TK07');
+            const mlePosition = codeInput.indexOf('MLE');
             
             if (tk07Position === -1) {
                 alert('TKVCPO CODE MUST CONTAIN TK07');
@@ -3866,16 +4070,16 @@ function parseAndAddToList() {
             let seatNo = '';
             let classChar = '';
             
-            if (selectedMlePosition !== -1 && codeInput.length > selectedMlePosition + 11) {
-                const tenthChar = codeInput.charAt(selectedMlePosition + 9);
-                const eleventhChar = codeInput.charAt(selectedMlePosition + 10);
+            if (mlePosition !== -1 && codeInput.length > mlePosition + 11) {
+                const tenthChar = codeInput.charAt(mlePosition + 9);
+                const eleventhChar = codeInput.charAt(mlePosition + 10);
                 
                 if (tenthChar && eleventhChar) {
                     seatNo = tenthChar + eleventhChar;
                 }
                 
-                if (codeInput.length > selectedMlePosition + 11) {
-                    classChar = codeInput.charAt(selectedMlePosition + 11) || '';
+                if (codeInput.length > mlePosition + 11) {
+                    classChar = codeInput.charAt(mlePosition + 11) || '';
                 }
             }
             
@@ -3907,21 +4111,13 @@ function parseAndAddToList() {
             };
             
         } else {
+            const mlePosition = codeInput.indexOf('MLE');
             const isM1orM2 = codeInput.startsWith('M1') || codeInput.startsWith('M2');
-            
-            if (selectedMlePosition === -1) {
-                alert('MUST CONTAIN VALID MLE MARKER');
-                return false;
-            }
             
             let namePart = '';
             
             if (isM1orM2) {
-                namePart = codeInput.substring(2, selectedMlePosition + 3);
-                
-                if (namePart.endsWith('MLE')) {
-                    namePart = namePart.substring(0, namePart.length - 3);
-                }
+                namePart = codeInput.substring(2, mlePosition + 3);
                 
                 const withoutSpaces = namePart.replace(/\s/g, '');
                 if (withoutSpaces.length > 7) {
@@ -3939,14 +4135,14 @@ function parseAndAddToList() {
                     namePart = namePart.substring(0, cutPosition);
                 }
             } else {
-                namePart = codeInput.substring(1, selectedMlePosition);
+                namePart = codeInput.substring(1, mlePosition);
             }
             
             namePart = namePart.trim();
             
             let flightNoPart = '';
-            if (codeInput.length > selectedMlePosition + 3) {
-                flightNoPart = codeInput.substring(selectedMlePosition + 3, selectedMlePosition + 3 + 10);
+            if (codeInput.length > mlePosition + 3) {
+                flightNoPart = codeInput.substring(mlePosition + 3, mlePosition + 3 + 10);
                 flightNoPart = flightNoPart.substring(3).replace(/\s/g, '');
             }
             
@@ -3960,8 +4156,8 @@ function parseAndAddToList() {
             let seatNo = '';
             let classChar = '';
             
-            if (isM1orM2 && codeInput.length > selectedMlePosition + 3) {
-                const afterMLE = codeInput.substring(selectedMlePosition + 3);
+            if (isM1orM2 && codeInput.length > mlePosition + 3) {
+                const afterMLE = codeInput.substring(mlePosition + 3);
                 const parts = afterMLE.split(' ').filter(p => p.trim() !== '');
                 
                 let seatString = '';
@@ -3991,9 +4187,8 @@ function parseAndAddToList() {
             
             const paxCount = calculatePaxFromSeat(seatNo, flightNoPart);
             
-            // ========== UPDATED FQTV PARSING WITH BA FIX ==========
             let fqtvValue = '';
-            if (isM1orM2 && flightNoPart && codeInput.length > selectedMlePosition + 30) {
+            if (isM1orM2 && flightNoPart && codeInput.length > mlePosition + 30) {
                 const trimmedCode = codeInput.trim();
                 const words = trimmedCode.split(' ').filter(w => w.trim() !== '');
                 
@@ -4011,118 +4206,103 @@ function parseAndAddToList() {
                     let fqtvNumber = '';
                     let shouldProcess = false;
                     
-                    // ===== FIXED BA HANDLING =====
-                    if (flightNoPrefix === 'BA') {
-                        // Try to find BA FQTV pattern
-                        if (thirdLastWord && thirdLastWord.length === 2) {
+                    if (flightNoPrefix) {
+                        if (flightNoPrefix === 'EK') {
+                            if (fourthLastWord === 'EK') {
+                                fqtvNumber = fourthLastWord + '-' + thirdLastWord;
+                            } else if (thirdLastWord === 'EK') {
+                                fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            }
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'AZ' && thirdLastWord === 'AZ') {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
-                        } else if (fourthLastWord && fourthLastWord.length === 2) {
-                            fqtvNumber = fourthLastWord + '-' + thirdLastWord;
-                            shouldProcess = true;
-                        } else {
-                            // If no FQTV pattern found, just use the airline code
-                            fqtvNumber = flightNoPrefix;
-                            shouldProcess = true;
-                            console.log('BA flight detected - using airline code as FQTV');
                         }
-                    }
-                    else if (flightNoPrefix === 'EK') {
-                        if (fourthLastWord === 'EK') {
+                        else if (flightNoPrefix === 'AI' && fourthLastWord && fourthLastWord.length === 2) {
                             fqtvNumber = fourthLastWord + '-' + thirdLastWord;
-                        } else if (thirdLastWord === 'EK') {
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'OS' && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
                         }
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'AZ' && thirdLastWord === 'AZ') {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'AI' && fourthLastWord && fourthLastWord.length === 2) {
-                        fqtvNumber = fourthLastWord + '-' + thirdLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'OS' && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'OS' && fourthLastWord.length === 2) {
-                        fqtvNumber = fourthLastWord + '-' + thirdLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'SV' && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'MH' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'WK' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'FZ' && secondLastWord && secondLastWord.length === 2) {
-                        fqtvNumber = secondLastWord + '-' + lastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'QR' && thirdLastWord && thirdLastWord.length === 2 && 
-                            ['N1', 'N2', 'N3'].includes(lastWord)) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'EY' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'SQ' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'TG' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'AF' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'LH' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'SU' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'UL' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === '3K' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'AK' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'FD' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    else if (flightNoPrefix === 'QZ' && thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
-                    }
-                    // Generic handler for any other airline
-                    else if (thirdLastWord && thirdLastWord.length === 2) {
-                        fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                        shouldProcess = true;
+                        else if (flightNoPrefix === 'OS' && fourthLastWord.length === 2) {
+                            fqtvNumber = fourthLastWord + '-' + thirdLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'SV' && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'MH' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'WK' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'FZ' && secondLastWord && secondLastWord.length === 2) {
+                            fqtvNumber = secondLastWord + '-' + lastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'QR' && thirdLastWord && thirdLastWord.length === 2 && 
+                                ['N1', 'N2', 'N3'].includes(lastWord)) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'EY' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'SQ' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'TG' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'BA' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'AF' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'LH' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'SU' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'UL' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === '3K' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'AK' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'FD' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
+                        else if (flightNoPrefix === 'QZ' && thirdLastWord && thirdLastWord.length === 2) {
+                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
+                            shouldProcess = true;
+                        }
                     }
                     
-                    if (shouldProcess && fqtvNumber) {
+                    if (shouldProcess) {
                         if (validSuffixes.includes(lastWord)) {
                             const suffixMap = {
                                 'N1': 'P',
@@ -4147,11 +4327,6 @@ function parseAndAddToList() {
                         }
                     }
                 }
-            }
-            
-            // Ensure we always have SOME value for FQTV (even if just airline code)
-            if (!fqtvValue && iataCode) {
-                fqtvValue = iataCode;
             }
             
             let displayFQTV = fqtvValue;
@@ -4180,6 +4355,19 @@ function parseAndAddToList() {
                 enteredByLevel: currentUser.level || 'OPERATOR',
                 enteredAt: new Date().toISOString()
             };
+        }
+        
+        if (!parsedEntry.date || parsedEntry.date === '') {
+            parsedEntry.date = currentShiftData.date || '';
+            if (!parsedEntry.date) {
+                showTemporaryNotification('⚠️ Date is missing - please wait for shift data', 'warning');
+                return false;
+            }
+        }
+        
+        if (!parsedEntry.flightNo || parsedEntry.flightNo === '') {
+            showTemporaryNotification('⚠️ Flight number could not be parsed', 'warning');
+            return false;
         }
         
         if (guestModeActive && selectedGuestPassengerId) {
@@ -4216,6 +4404,18 @@ function parseAndAddToList() {
     }
 }
 
+// ========== TEST FUNCTION ==========
+function testFlightDatabaseMapping() {
+    console.log("Testing flight database mapping:");
+    console.log("BA123 ->", getFirestoreNameForFlight("BA123"));
+    console.log("EK456 ->", getFirestoreNameForFlight("EK456"));
+    console.log("QR789 ->", getFirestoreNameForFlight("QR789"));
+    console.log("SQ001 ->", getFirestoreNameForFlight("SQ001"));
+    console.log("UL123 ->", getFirestoreNameForFlight("UL123"));
+}
+
+setTimeout(testFlightDatabaseMapping, 2000);
+
 // Make functions global
 window.switchTab = switchTab;
 window.deleteEntry = deleteEntry;
@@ -4234,6 +4434,14 @@ window.closeErrorPopup = closeErrorPopup;
 window.editErrorEntry = editErrorEntry;
 window.retryAllErrors = retryAllErrors;
 window.clearAllErrors = clearAllErrors;
+window.getFirestoreForFlight = getFirestoreForFlight;
+window.getFirestoreNameForFlight = getFirestoreNameForFlight;
+window.saveEntryToFirebase = saveEntryToFirebase;
+window.backgroundSaveToFirebase = backgroundSaveToFirebase;
+window.validateEntryForSave = validateEntryForSave;
+window.isFlightOpen = isFlightOpen;
+window.checkPassengerExistsInDatabase = checkPassengerExistsInDatabase;
+window.testFlightDatabaseMapping = testFlightDatabaseMapping;
 </script>
 </body>   
 </html>
