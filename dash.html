@@ -569,6 +569,28 @@
             box-shadow: 0 4px 12px rgba(230, 184, 0, 0.3);
         }
 
+        .manual-refresh-btn i {
+            transition: transform 0.3s;
+        }
+
+        .manual-refresh-btn:active i {
+            transform: rotate(180deg);
+        }
+
+        /* Last Updated Timestamp */
+        .last-updated {
+            font-size: 11px;
+            color: #8b6913;
+            margin-top: 5px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .last-updated i {
+            font-size: 10px;
+        }
+
         /* Responsive */
         @media (max-width: 1024px) {
             .stats-grid, .dashboard-grid {
@@ -671,10 +693,14 @@
     <div class="main-container">
         <!-- Welcome Section -->
         <div class="welcome-section">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                 <div>
                     <h1 class="welcome-title" id="welcomeMessage">Welcome back, <span id="welcomeName">User</span>!</h1>
                     <p class="welcome-subtitle" id="shiftMessage">No active shift</p>
+                    <div class="last-updated" id="lastUpdated" style="display: none;">
+                        <i class="far fa-clock"></i>
+                        <span>Last updated: <span id="lastUpdatedTime">--</span></span>
+                    </div>
                 </div>
                 <button class="manual-refresh-btn" onclick="manualRefresh()" id="refreshBtn" style="display: none;">
                     <i class="fas fa-sync-alt"></i> REFRESH DATA
@@ -808,6 +834,9 @@
         let lastActivity = Date.now();
         let isShiftActive = false;
         
+        // Flag to track if initial load has been done
+        let initialLoadDone = false;
+        
         // Database references
         const DATABASES = {
             'BA': window.baDb,
@@ -884,6 +913,7 @@
             const noShiftMessage = document.getElementById('noShiftMessage');
             const flightStats = document.getElementById('flightStats');
             const refreshBtn = document.getElementById('refreshBtn');
+            const lastUpdated = document.getElementById('lastUpdated');
             
             if (!isShiftActive) {
                 cards.forEach(card => {
@@ -894,6 +924,7 @@
                 
                 if (flightStats) flightStats.classList.add('disabled');
                 if (refreshBtn) refreshBtn.style.display = 'none';
+                if (lastUpdated) lastUpdated.style.display = 'none';
                 
                 document.getElementById('todayEntries').textContent = 'Start shift to view';
                 document.getElementById('flightCount').textContent = 'Shift required';
@@ -908,6 +939,12 @@
                 
                 if (flightStats) flightStats.classList.remove('disabled');
                 if (refreshBtn) refreshBtn.style.display = 'flex';
+                
+                // Only load data on initial shift activation if not already loaded
+                if (!initialLoadDone) {
+                    loadAllDashboardData();
+                    initialLoadDone = true;
+                }
             }
         }
 
@@ -1088,9 +1125,6 @@
                         shiftDetails.style.display = 'flex';
                         detailShiftDate.textContent = date;
                         detailShiftType.textContent = shiftTypeText;
-                        
-                        // Load dashboard data only when shift is active
-                        await loadAllDashboardData();
                     } else {
                         shiftDetails.style.display = 'none';
                     }
@@ -1230,6 +1264,20 @@
                 
                 // Update UI with all data
                 updateDashboardUI();
+                
+                // Update last updated timestamp
+                const lastUpdatedDiv = document.getElementById('lastUpdated');
+                const lastUpdatedTime = document.getElementById('lastUpdatedTime');
+                if (lastUpdatedDiv && lastUpdatedTime) {
+                    const now = new Date();
+                    const timeString = now.toLocaleTimeString('en-US', { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                    lastUpdatedTime.textContent = timeString;
+                    lastUpdatedDiv.style.display = 'flex';
+                }
                 
                 showTemporaryNotification('Dashboard data refreshed successfully', 'success');
                 
@@ -1415,17 +1463,14 @@
             }
         }
 
-        // ========== PAGE VISIBILITY HANDLER ==========
-        document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'visible' && checkSession() && isShiftActive) {
-                console.log('Tab became visible - refreshing dashboard data');
-                loadAllDashboardData();
-            }
-        });
+        // ========== REMOVED PAGE VISIBILITY HANDLER ==========
+        // The visibilitychange event listener has been removed
+        // Data only loads when refresh button is pressed
 
         // ========== INITIALIZATION ==========
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Dashboard loading with multi-database support...');
+            console.log('Data will ONLY refresh when REFRESH button is pressed');
             
             const userLoaded = loadUserFromStorage();
             
@@ -1462,10 +1507,10 @@
                 }
             });
             
-            // Initial data load - only when dashboard is opened
-            fetchShiftData(); // This will call loadAllDashboardData() if shift is active
+            // Initial data load - only when dashboard is opened and shift is active
+            fetchShiftData(); // This will call loadAllDashboardData() only once if shift is active
             
-            console.log('Dashboard initialized - data will load only when page is opened');
+            console.log('Dashboard initialized - data will load ONLY when REFRESH button is pressed');
         });
 
         // Make functions globally available
