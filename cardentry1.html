@@ -801,6 +801,34 @@
             transform: scale(1.05);
         }
 
+        /* Loading Spinner */
+        .loading-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+            margin-right: 6px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .saving-indicator {
+            background: #e6b800;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
         /* Error Summary */
         .error-summary {
             background: linear-gradient(135deg, #fff2f0, #fff9f0);
@@ -1572,6 +1600,8 @@ let savedPasses = [];
 let editingCell = null;
 let guestModeActive = false;
 let selectedGuestPassengerId = null;
+let saveQueue = new Map(); // Track entries being saved
+let saveTimeouts = new Map(); // Track save timeouts
 
 // User data from local storage
 let currentUser = {
@@ -2370,134 +2400,139 @@ async function saveEntryToFirebase(entry) {
     }
 }
 
-// ========== FIXED BACKGROUND SAVE FUNCTION WITH PROPER DELETION ==========
+// ========== OPTIMIZED BACKGROUND SAVE FUNCTION WITH IMMEDIATE UI UPDATE ==========
 async function backgroundSaveToFirebase(entry) {
-    try {
-        console.log('🔄 Starting background save for entry:', entry.id);
-        
-        // Validate entry has required fields before attempting save
-        const validation = validateEntryForSave(entry);
-        if (!validation.isValid) {
-            console.error('Entry validation failed in background save:', validation.errors);
-            
-            const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
-            if (savedIndex !== -1) {
-                savedPasses[savedIndex].firebaseError = `Validation failed: ${validation.errorMessage}`;
-                savedPasses[savedIndex].firebaseReason = 'VALIDATION_ERROR';
-                savedPasses[savedIndex].firebaseStatus = 'error';
-                savedPasses[savedIndex].firebaseRetry = true;
-                savedPasses[savedIndex].firebaseSaved = false;
-                savedPasses[savedIndex].errorCode = getErrorCode('VALIDATION_ERROR');
-                savedPasses[savedIndex].errorMessage = getErrorMessage('VALIDATION_ERROR');
-                savedPasses[savedIndex].errorTimestamp = new Date().toISOString();
-                saveSavedToLocalStorage();
-                renderTables();
-                updateErrorSummary();
+    const entryId = entry.id;
+    
+    // Clear any existing timeout for this entry
+    if (saveTimeouts.has(entryId)) {
+        clearTimeout(saveTimeouts.get(entryId));
+        saveTimeouts.delete(entryId);
+    }
+    
+    // Mark as saving in UI immediately
+    const savedIndex = savedPasses.findIndex(e => e.id === entryId);
+    if (savedIndex !== -1) {
+        savedPasses[savedIndex].firebaseStatus = 'saving';
+        savedPasses[savedIndex].firebaseError = null;
+        savedPasses[savedIndex].firebaseReason = null;
+        renderTables();
+    }
+    
+    // Add to save queue
+    saveQueue.set(entryId, entry);
+    
+    // Set timeout to process save
+    const timeoutId = setTimeout(async () => {
+        try {
+            // Check if entry still exists in savedPasses
+            const currentIndex = savedPasses.findIndex(e => e.id === entryId);
+            if (currentIndex === -1) {
+                saveQueue.delete(entryId);
+                saveTimeouts.delete(entryId);
+                return;
             }
             
-            showTemporaryNotification(`❌ Cannot save: ${validation.errorMessage}`, 'error');
-            return;
-        }
-        
-        const savedIndex = savedPasses.findIndex(e => e.id === entry.id);
-        if (savedIndex !== -1) {
-            savedPasses[savedIndex].firebaseStatus = 'saving';
-            savedPasses[savedIndex].firebaseError = null;
-            savedPasses[savedIndex].firebaseReason = null;
-            savedPasses[savedIndex].firebaseSaved = false;
-            savedPasses[savedIndex].errorCode = null;
-            savedPasses[savedIndex].errorMessage = null;
-            savedPasses[savedIndex].errorTimestamp = null;
-            saveSavedToLocalStorage();
-            renderTables();
-            updateErrorSummary();
-        }
-        
-        const saveResult = await saveEntryToFirebase(entry);
-        
-        if (saveResult.success) {
-            console.log('✅ Background save successful');
+            const currentEntry = savedPasses[currentIndex];
             
-            // Find the index again (it might have changed during the async operation)
-            const currentIndex = savedPasses.findIndex(e => e.id === entry.id);
-            
-            if (currentIndex !== -1) {
-                // Remove the entry from savedPasses array
-                savedPasses.splice(currentIndex, 1);
+            // Validate entry has required fields before attempting save
+            const validation = validateEntryForSave(currentEntry);
+            if (!validation.isValid) {
+                console.error('Entry validation failed in background save:', validation.errors);
                 
-                // Save the updated savedPasses array to localStorage
-                saveSavedToLocalStorage();
-                
-                // Re-render tables to reflect the change
-                renderTables();
-                
-                // Update error summary (in case there were other errors)
-                updateErrorSummary();
-                
-                console.log(`✅ Entry ${entry.id} removed from saved tab and localStorage`);
-            }
-            
-            showTemporaryNotification(`✅ Entry saved to ${saveResult.database || 'Firebase'} (Flight: ${saveResult.flightNo}, Date: ${saveResult.date})`, 'success');
-            
-        } else {
-            console.error('❌ Background save failed:', saveResult.error);
-            
-            // Find the index again (it might have changed)
-            const currentIndex = savedPasses.findIndex(e => e.id === entry.id);
-            
-            if (currentIndex !== -1) {
-                savedPasses[currentIndex].firebaseError = saveResult.error;
-                savedPasses[currentIndex].firebaseReason = saveResult.reason || 'UNKNOWN';
+                savedPasses[currentIndex].firebaseError = `Validation failed: ${validation.errorMessage}`;
+                savedPasses[currentIndex].firebaseReason = 'VALIDATION_ERROR';
                 savedPasses[currentIndex].firebaseStatus = 'error';
                 savedPasses[currentIndex].firebaseRetry = true;
                 savedPasses[currentIndex].firebaseSaved = false;
-                savedPasses[currentIndex].errorCode = getErrorCode(saveResult.reason);
-                savedPasses[currentIndex].errorMessage = getErrorMessage(saveResult.reason);
+                savedPasses[currentIndex].errorCode = getErrorCode('VALIDATION_ERROR');
+                savedPasses[currentIndex].errorMessage = getErrorMessage('VALIDATION_ERROR');
                 savedPasses[currentIndex].errorTimestamp = new Date().toISOString();
-                savedPasses[currentIndex].targetDatabase = saveResult.database || 'Unknown';
+                saveSavedToLocalStorage();
+                renderTables();
+                updateErrorSummary();
+                
+                showTemporaryNotification(`❌ Cannot save: ${validation.errorMessage}`, 'error');
+                saveQueue.delete(entryId);
+                saveTimeouts.delete(entryId);
+                return;
+            }
+            
+            const saveResult = await saveEntryToFirebase(currentEntry);
+            
+            if (saveResult.success) {
+                console.log('✅ Background save successful');
+                
+                // Remove from savedPasses
+                const removeIndex = savedPasses.findIndex(e => e.id === entryId);
+                if (removeIndex !== -1) {
+                    savedPasses.splice(removeIndex, 1);
+                    saveSavedToLocalStorage();
+                    renderTables();
+                    updateErrorSummary();
+                    
+                    showTemporaryNotification(`✅ Saved to ${saveResult.database} (${saveResult.flightNo})`, 'success');
+                }
+                
+            } else {
+                console.error('❌ Background save failed:', saveResult.error);
+                
+                const errorIndex = savedPasses.findIndex(e => e.id === entryId);
+                if (errorIndex !== -1) {
+                    savedPasses[errorIndex].firebaseError = saveResult.error;
+                    savedPasses[errorIndex].firebaseReason = saveResult.reason || 'UNKNOWN';
+                    savedPasses[errorIndex].firebaseStatus = 'error';
+                    savedPasses[errorIndex].firebaseRetry = true;
+                    savedPasses[errorIndex].firebaseSaved = false;
+                    savedPasses[errorIndex].errorCode = getErrorCode(saveResult.reason);
+                    savedPasses[errorIndex].errorMessage = getErrorMessage(saveResult.reason);
+                    savedPasses[errorIndex].errorTimestamp = new Date().toISOString();
+                    savedPasses[errorIndex].targetDatabase = saveResult.database || 'Unknown';
+                    saveSavedToLocalStorage();
+                    renderTables();
+                    updateErrorSummary();
+                }
+                
+                const errorCode = getErrorCode(saveResult.reason);
+                const errorMsg = getErrorMessage(saveResult.reason);
+                let dbName = saveResult.database ? ` [${saveResult.database}]` : '';
+                
+                if (saveResult.reason === 'DUPLICATE') {
+                    showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}${dbName}`, 'error');
+                } else if (saveResult.reason === 'FLIGHT_CLOSED') {
+                    showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${saveResult.error}`, 'error');
+                } else {
+                    showTemporaryNotification(`❌ [${errorCode}] Save failed: ${errorMsg}${dbName}`, 'error');
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Background save error:', error);
+            
+            const errorIndex = savedPasses.findIndex(e => e.id === entryId);
+            if (errorIndex !== -1) {
+                savedPasses[errorIndex].firebaseError = error.message;
+                savedPasses[errorIndex].firebaseReason = 'EXCEPTION';
+                savedPasses[errorIndex].firebaseStatus = 'error';
+                savedPasses[errorIndex].firebaseRetry = true;
+                savedPasses[errorIndex].firebaseSaved = false;
+                savedPasses[errorIndex].errorCode = getErrorCode('EXCEPTION');
+                savedPasses[errorIndex].errorMessage = getErrorMessage('EXCEPTION');
+                savedPasses[errorIndex].errorTimestamp = new Date().toISOString();
                 saveSavedToLocalStorage();
                 renderTables();
                 updateErrorSummary();
             }
             
-            const errorCode = getErrorCode(saveResult.reason);
-            const errorMsg = getErrorMessage(saveResult.reason);
+            showTemporaryNotification(`❌ [ERR-SYS-001] Save error: ${error.message}`, 'error');
             
-            let dbName = saveResult.database ? ` [${saveResult.database}]` : '';
-            
-            if (saveResult.reason === 'DUPLICATE') {
-                showTemporaryNotification(`❌ [${errorCode}] DUPLICATE: ${errorMsg}${dbName}`, 'error');
-            } else if (saveResult.reason === 'FLIGHT_CLOSED') {
-                showTemporaryNotification(`❌ [${errorCode}] FLIGHT CLOSED: ${saveResult.error}`, 'error');
-            } else if (saveResult.reason === 'VALIDATION_ERROR') {
-                showTemporaryNotification(`❌ Validation Error: ${saveResult.error}`, 'error');
-            } else {
-                showTemporaryNotification(`❌ [${errorCode}] Save failed: ${errorMsg}${dbName}`, 'error');
-            }
+        } finally {
+            saveQueue.delete(entryId);
+            saveTimeouts.delete(entryId);
         }
-        
-    } catch (error) {
-        console.error('❌ Background save error:', error);
-        
-        // Find the index again (it might have changed)
-        const currentIndex = savedPasses.findIndex(e => e.id === entry.id);
-        
-        if (currentIndex !== -1) {
-            savedPasses[currentIndex].firebaseError = error.message;
-            savedPasses[currentIndex].firebaseReason = 'EXCEPTION';
-            savedPasses[currentIndex].firebaseStatus = 'error';
-            savedPasses[currentIndex].firebaseRetry = true;
-            savedPasses[currentIndex].firebaseSaved = false;
-            savedPasses[currentIndex].errorCode = getErrorCode('EXCEPTION');
-            savedPasses[currentIndex].errorMessage = getErrorMessage('EXCEPTION');
-            savedPasses[currentIndex].errorTimestamp = new Date().toISOString();
-            saveSavedToLocalStorage();
-            renderTables();
-            updateErrorSummary();
-        }
-        
-        showTemporaryNotification(`❌ [ERR-SYS-001] Save error: ${error.message}`, 'error');
-    }
+    }, 500); // Small delay to prevent multiple rapid saves
+    
+    saveTimeouts.set(entryId, timeoutId);
 }
 
 // ========== GET ERROR CODE FUNCTION ==========
@@ -2782,6 +2817,11 @@ function saveInlineEdit(input) {
         entry.firebaseReason = null;
         entry.firebaseStatus = 'pending';
         entry.firebaseRetry = false;
+        
+        // If this is a saved entry that was edited, retry saving immediately
+        if (isSaved && !saveQueue.has(entryId)) {
+            backgroundSaveToFirebase(entry);
+        }
     }
     
     if (isSaved) {
@@ -3264,7 +3304,7 @@ function retryAllErrors() {
     errorEntries.forEach(entry => {
         entry.firebaseError = null;
         entry.firebaseReason = null;
-        entry.firebaseStatus = 'pending';
+        entry.firebaseStatus = 'saving';
         entry.firebaseRetry = false;
         entry.firebaseSaved = false;
     });
@@ -3593,6 +3633,8 @@ function renderSavedTable() {
                 row.classList.add('database-error-warning');
                 row.classList.add('unsynced-row');
             }
+        } else if (entry.firebaseStatus === 'saving') {
+            row.classList.add('unsynced-row');
         }
         
         let displayFQTV = entry.FQTV || '—';
@@ -3637,6 +3679,7 @@ function renderSavedTable() {
         let errorReasonBadge = '';
         let errorMessageDisplay = '';
         let targetDbDisplay = '';
+        let savingIndicator = '';
         
         const targetDb = getFirestoreNameForFlight(entry.flightNo);
         targetDbDisplay = `<span style="font-size: 9px; color: #666; margin-left: 4px;">[${targetDb}]</span>`;
@@ -3676,10 +3719,12 @@ function renderSavedTable() {
             statusIcon = '⏳';
             statusText = 'SAVING...';
             statusColor = '#e6b800';
+            savingIndicator = '<span class="saving-indicator"><span class="loading-spinner"></span>SAVING</span>';
         } else if (entry.firebaseStatus === 'pending') {
             statusIcon = '⏳';
             statusText = 'PENDING...';
             statusColor = '#e6b800';
+            savingIndicator = '<span class="saving-indicator"><span class="loading-spinner"></span>PENDING</span>';
         } else {
             statusIcon = '✓';
             statusText = 'SYNCED';
@@ -3772,7 +3817,7 @@ async function retrySave(id) {
     
     savedPasses[entryIndex].firebaseError = null;
     savedPasses[entryIndex].firebaseReason = null;
-    savedPasses[entryIndex].firebaseStatus = 'pending';
+    savedPasses[entryIndex].firebaseStatus = 'saving';
     savedPasses[entryIndex].firebaseRetry = false;
     savedPasses[entryIndex].firebaseSaved = false;
     savedPasses[entryIndex].errorCode = null;
@@ -3790,7 +3835,7 @@ async function retrySave(id) {
     }, 100);
 }
 
-// ========== FIXED APPROVE ENTRY FUNCTION WITH MULTI-DATABASE SUPPORT AND VALIDATION ==========
+// ========== OPTIMIZED APPROVE ENTRY FUNCTION - MOVES IMMEDIATELY ==========
 async function approveEntry(id) {
     try {
         const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
@@ -3823,26 +3868,6 @@ async function approveEntry(id) {
             showTemporaryNotification('❌ Seat number is required for this airline', 'warning');
             return;
         }
-        
-        // CHECK FLIGHT STATUS IN RESPECTIVE DATABASE BEFORE MOVING TO SAVED TAB
-        showTemporaryNotification(`🔍 Checking flight status for ${flightNoToUse} in ${getFirestoreNameForFlight(flightNoToUse)}...`, 'info');
-        
-        const flightStatus = await isFlightOpen(flightNoToUse, dateToUse);
-        
-        // Block if flight is explicitly CLOSED (isClosed = true)
-        if (!flightStatus.isOpen) {
-            const errorCode = getErrorCode('FLIGHT_CLOSED');
-            showTemporaryNotification(`❌ [${errorCode}] ${flightStatus.message}`, 'error');
-            
-            entry.flightCheckFailed = true;
-            entry.flightCheckMessage = flightStatus.message;
-            renderTables();
-            return;
-        }
-        
-        // Clear any previous flight check warnings
-        entry.flightCheckFailed = false;
-        entry.flightCheckMessage = null;
         
         // Flight is OPEN - proceed with PAX validation
         const flightPrefix = flightNoToUse.substring(0, 2).toUpperCase();
@@ -3905,7 +3930,7 @@ async function approveEntry(id) {
             date: dateToUse,
             shift: shiftToUse,
             approved: true, 
-            firebaseStatus: 'pending',
+            firebaseStatus: 'saving', // Set to saving immediately
             firebaseSaved: false,
             firebaseRetry: false,
             firebaseError: null,
@@ -3925,6 +3950,7 @@ async function approveEntry(id) {
             enteredAt: entry.enteredAt || new Date().toISOString()
         };
         
+        // IMMEDIATELY move to saved tab
         savedPasses.push(approvedEntry);
         pendingPasses.splice(entryIndex, 1);
         
@@ -3932,13 +3958,12 @@ async function approveEntry(id) {
         saveSavedToLocalStorage();
         
         const dbName = getFirestoreNameForFlight(approvedEntry.flightNo);
-        showTemporaryNotification(`✓ Entry moved to saved tab - attempting to save to ${dbName}...`, 'info');
+        showTemporaryNotification(`✓ Entry moved to saved tab - saving to ${dbName}...`, 'success');
         
         renderTables();
         
-        setTimeout(() => {
-            backgroundSaveToFirebase(approvedEntry);
-        }, 100);
+        // Start background save immediately (no delay)
+        backgroundSaveToFirebase(approvedEntry);
         
         if (hiddenCode && flightNoToUse && dateToUse) {
             setTimeout(() => {
