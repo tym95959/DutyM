@@ -970,7 +970,8 @@
                                     FQTV: data.FQTV || '',
                                     entryTime: data.entryTime || '',
                                     remarks: data.remarks || '',
-                                    serialNo: data.serialNo || ''
+                                    serialNo: data.serialNo || '',
+                                    hiddenCode: data.hiddenCode || '' // Added hiddenCode field for PNR extraction
                                 });
                                 
                                 if (data.entryTime) {
@@ -1294,6 +1295,55 @@
         return currentFlightData && 
                currentFlightData.flightNo && 
                currentFlightData.flightNo.toUpperCase().startsWith('SQ');
+    }
+
+    /**
+     * Check if current flight is FZ (Flydubai)
+     * @returns {boolean} - True if current flight is FZ
+     */
+    function isFZFlight() {
+        return currentFlightData && 
+               currentFlightData.flightNo && 
+               currentFlightData.flightNo.toUpperCase().startsWith('FZ');
+    }
+
+    /**
+     * Extract PNR from hiddenCode for FZ flights
+     * Looks for a string containing 'MLE' and exactly 8 letters, then extracts the 7 letters before 'MLE'
+     * @param {string} hiddenCode - The hidden code from Firebase
+     * @returns {string} - Extracted PNR or empty string if not found
+     */
+    function extractPNRFromHiddenCode(hiddenCode) {
+        if (!hiddenCode || typeof hiddenCode !== 'string') return '';
+        
+        console.log('Extracting PNR from hiddenCode:', hiddenCode);
+        
+        // Look for pattern: 7 letters followed by 'MLE' (total 10 characters)
+        // The pattern should be exactly 7 letters + 'MLE'
+        const pattern = /([A-Za-z]{7})MLE/;
+        const match = hiddenCode.match(pattern);
+        
+        if (match && match[1]) {
+            const pnr = match[1].toUpperCase();
+            console.log('Found PNR:', pnr);
+            return pnr;
+        }
+        
+        // Alternative: Look for any 8-letter string containing MLE, then extract 7 letters before MLE
+        // This is more flexible
+        const mleIndex = hiddenCode.toUpperCase().indexOf('MLE');
+        if (mleIndex >= 7) {
+            // Get the 7 characters before MLE
+            const possiblePNR = hiddenCode.substring(mleIndex - 7, mleIndex);
+            // Check if it contains only letters (A-Za-z)
+            if (/^[A-Za-z]+$/.test(possiblePNR)) {
+                console.log('Found PNR (alternative method):', possiblePNR.toUpperCase());
+                return possiblePNR.toUpperCase();
+            }
+        }
+        
+        console.log('No valid PNR found in hiddenCode');
+        return '';
     }
 
     // Modified displayPassengerTable function with duplicate highlighting and SQ-specific labels
@@ -1799,6 +1849,7 @@
         }
 
         const isSQ = isSQFlight();
+        const isFZ = isFZFlight();
         const company = window.companyInfo || { 
             name: 'MACL', 
             address: '123 Aviation Road', 
@@ -1822,6 +1873,39 @@
 
         // Create print window
         const printWindow = window.open('', '_blank');
+        
+        // Determine table headers based on flight type
+        let tableHeaders = '';
+        if (isFZ) {
+            // FZ flights need PNR column
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>Name</th>
+                    <th>PNR</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
+        } else {
+            // Regular flights (including SQ which already has Voucher No. handling)
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
+        }
         
         // Generate HTML for print
         printWindow.document.write(`
@@ -2024,16 +2108,7 @@
                 
                 <table>
                     <thead>
-                        <tr>
-                            <th>No.</th>
-                            <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
-                            <th>Seat</th>
-                            <th>Pax</th>
-                            <th>FQTV</th>
-                            <th>Serial No</th>
-                            <th>Time</th>
-                            <th>Remarks</th>
-                        </tr>
+                        ${tableHeaders}
                     </thead>
                     <tbody>
         `);
@@ -2041,18 +2116,38 @@
         // Add passenger rows
         sortedPassengers.forEach((p, idx) => {
             const serial = String(idx+1).padStart(3,'0');
-            printWindow.document.write(`
-                <tr>
-                    <td>${serial}</td>
-                    <td>${escapeHtml(p.pName) || '-'}</td>
-                    <td>${escapeHtml(p.seatNo) || '-'}</td>
-                    <td style="text-align:center;">${p.pax || '1'}</td>
-                    <td>${escapeHtml(p.FQTV) || '-'}</td>
-                    <td>${escapeHtml(p.serialNo) || '-'}</td>
-                    <td>${p.entryTime || '-'}</td>
-                    <td>${escapeHtml(p.remarks) || '-'}</td>
-                </tr>
-            `);
+            
+            if (isFZ) {
+                // For FZ flights, include PNR column
+                const pnr = extractPNRFromHiddenCode(p.hiddenCode);
+                printWindow.document.write(`
+                    <tr>
+                        <td>${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'}</td>
+                        <td>${pnr || '-'}</td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td>${escapeHtml(p.serialNo) || '-'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                    </tr>
+                `);
+            } else {
+                // Regular flights (including SQ)
+                printWindow.document.write(`
+                    <tr>
+                        <td>${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'}</td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td>${escapeHtml(p.serialNo) || '-'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                    </tr>
+                `);
+            }
         });
         
         printWindow.document.write(`
@@ -2127,6 +2222,8 @@
     window.dismissDuplicateWarning = dismissDuplicateWarning;
     window.escapeHtml = escapeHtml;
     window.isSQFlight = isSQFlight;
+    window.isFZFlight = isFZFlight;
+    window.extractPNRFromHiddenCode = extractPNRFromHiddenCode;
     </script>
 </body>
 </html>
