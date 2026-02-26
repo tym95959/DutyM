@@ -430,10 +430,69 @@
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(230,184,0,0.3); border-radius: 50%; border-top-color: #e6b800; animation: spin 1s infinite; margin-right: 6px; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* NEW: Double entry warning styles */
+        .double-entry-warning {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+        
+        .warning-icon {
+            color: #856404;
+            font-size: 18px;
+            margin-right: 10px;
+        }
+        
+        .warning-text {
+            color: #856404;
+            flex-grow: 1;
+        }
+        
+        .resolve-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        
+        .resolve-btn:hover {
+            background: #c82333;
+        }
+        
+        .duplicate-row {
+            background-color: rgba(255, 193, 7, 0.1) !important;
+        }
+        
+        .duplicate-row:hover td {
+            background-color: rgba(255, 193, 7, 0.2) !important;
+        }
+        
+        .duplicate-badge {
+            background: #ffc107;
+            color: #856404;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: 600;
+            margin-left: 5px;
+            white-space: nowrap;
+        }
+        
         /* print-specific styles - header only on first page */
         @media print {
             body { background: white; padding: 0; margin: 0.5in; }
-            .shift-ribbon, .card .selection-flight-row, .action-buttons-vertical, .edit-btn, .table-action-btn, .refresh-shift, .quick-shift-box, .database-badge { display: none; }
+            .shift-ribbon, .card .selection-flight-row, .action-buttons-vertical, .edit-btn, .table-action-btn, .refresh-shift, .quick-shift-box, .database-badge, .double-entry-warning, .duplicate-badge { display: none; }
             .card { border: none; box-shadow: none; padding: 0; background: transparent; }
             .flight-panel-revised { display: block; }
             .left-details-block, .right-ops-block { background: transparent; border: none; padding: 0; }
@@ -564,6 +623,12 @@
                 <h3>✈ PASSENGER LIST</h3>
                 <span class="passenger-count" id="passengerCount">0</span>
             </div>
+            <!-- Double entry warning container -->
+            <div id="doubleEntryWarning" class="double-entry-warning" style="display: none;">
+                <span class="warning-icon">⚠️</span>
+                <span class="warning-text" id="doubleEntryMessage"></span>
+                <button class="resolve-btn" onclick="showDuplicatesForResolution()">Resolve Duplicates</button>
+            </div>
             <div class="table-wrapper">
                 <table>
                     <thead>
@@ -576,938 +641,1375 @@
             </div>
         </div>
     </div>
-<script>
-// ========== REPORT.JS - FIXED VERSION ==========
 
-// Global variables
-let allPassengers = [];
-let filteredPassengers = [];
-let currentUser = {
-    name: '',
-    rcno: '',
-    level: '',
-    username: ''
-};
-let currentShiftData = {
-    date: '',
-    shift: '',
-    status: '',
-    openTime: ''
-};
-let selectedDb = 'all'; // 'all', 'ba', 'ek', 'qr', 'sq', 'default'
-let isLoading = false;
+    <!-- Duplicate Resolution Modal -->
+    <div id="duplicateModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: white; border-radius: 16px; padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
+            <h3 style="color: #856404; margin-bottom: 15px; border-bottom: 2px solid #ffc107; padding-bottom: 10px;">⚠️ Duplicate Entries Detected</h3>
+            <div id="duplicateList"></div>
+            <div style="margin-top: 20px; text-align: right;">
+                <button onclick="closeDuplicateModal()" style="padding: 8px 20px; background: #6c757d; color: white; border: none; border-radius: 20px; cursor: pointer; margin-right: 10px;">Cancel</button>
+                <button onclick="deleteAllDuplicates()" style="padding: 8px 20px; background: #dc3545; color: white; border: none; border-radius: 20px; cursor: pointer;">Delete All Duplicates</button>
+            </div>
+        </div>
+    </div>
 
-// ========== CHECK LOGIN AND INITIALIZATION ==========
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM fully loaded');
+ <script>
+    // ========== GLOBAL VARIABLES ==========
+    let flightsByDate = {};
+    let allDates = [];
+    let currentFlightData = null;
+    let flightReports = {};
+    let editingRowId = null;
+    let currentDatabase = null;
+    let isLoadingDates = false;
+    let databaseStats = {};
+    let datesLoaded = false; // Track if dates have been loaded
     
-    const isLoggedIn = checkLoginStatus();
-    if (!isLoggedIn) {
-        window.location.href = 'login.html';
-        return;
+    // NEW: Track duplicates
+    let duplicateEntries = [];
+    let duplicateGroups = {};
+
+    // ========== MULTI-DATABASE HELPER FUNCTIONS ==========
+    
+    /**
+     * Returns the appropriate Firestore database based on flight number
+     * @param {string} flightNo - The flight number (e.g., "BA123", "EK456")
+     * @returns {Object} - The Firestore database instance
+     */
+    function getFirestoreForFlight(flightNo) {
+        if (!flightNo || typeof flightNo !== 'string') {
+            console.log("No valid flight number provided, using default database");
+            return window.defaultCardDb || window.db;
+        }
+
+        const flightPrefix = flightNo.substring(0, 2).toUpperCase();
+        
+        switch(flightPrefix) {
+            case 'BA':
+                return window.baDb;
+            case 'EK':
+                return window.ekDb;
+            case 'QR':
+                return window.qrDb;
+            case 'SQ':
+                return window.sqDb;
+            default:
+                return window.defaultCardDb;
+        }
     }
-    
-    loadUserData();
-    
-    // Set up event listeners
-    document.getElementById('searchBtn').addEventListener('click', function() {
-        searchPassengers();
-    });
-    
-    document.getElementById('clearBtn').addEventListener('click', function() {
-        clearSearch();
-    });
-    
-    document.getElementById('exportBtn').addEventListener('click', function() {
-        exportToCSV();
-    });
-    
-    document.getElementById('printBtn').addEventListener('click', function() {
-        printReport();
-    });
-    
-    document.getElementById('databaseSelect').addEventListener('change', function(e) {
-        selectedDb = e.target.value;
-        if (selectedDb === 'all') {
-            document.getElementById('dateSelect').style.display = 'inline-block';
-            document.getElementById('flightInput').style.display = 'inline-block';
-        } else {
-            document.getElementById('dateSelect').style.display = 'inline-block';
-            document.getElementById('flightInput').style.display = 'inline-block';
-        }
-    });
-    
-    document.getElementById('refreshBtn').addEventListener('click', function() {
-        loadDates();
-    });
-    
-    // Load available dates
-    loadDates();
-});
 
-// ========== LOGIN CHECK FUNCTION ==========
-function checkLoginStatus() {
-    try {
-        const username = localStorage.getItem('username');
-        const level = localStorage.getItem('level');
-        const rcno = localStorage.getItem('rcno');
-        const loggedInUser = localStorage.getItem('loggedInUser');
+    /**
+     * Gets the friendly name of the database for a flight
+     * @param {string} flightNo - The flight number
+     * @returns {string} - The database name
+     */
+    function getFirestoreNameForFlight(flightNo) {
+        if (!flightNo || typeof flightNo !== 'string') return "Default Database";
         
-        if (username && (level || rcno)) {
-            return true;
+        const flightPrefix = flightNo.substring(0, 2).toUpperCase();
+        
+        switch(flightPrefix) {
+            case 'BA': return "BA Database";
+            case 'EK': return "EK Database";
+            case 'QR': return "QR Database";
+            case 'SQ': return "SQ Database";
+            default: return "Default Database";
+        }
+    }
+
+    /**
+     * Gets all available databases for loading passenger data
+     * @returns {Array} - Array of database objects with name and reference
+     */
+    function getAllDatabases() {
+        const databases = [];
+        
+        if (window.baDb) {
+            databases.push({ 
+                name: 'BA Database', 
+                ref: window.baDb, 
+                prefix: 'BA',
+                projectId: 'cardentryba'
+            });
         }
         
-        if (loggedInUser) {
-            try {
-                const userData = JSON.parse(loggedInUser);
-                if (userData && userData.username) {
-                    return true;
+        if (window.ekDb) {
+            databases.push({ 
+                name: 'EK Database', 
+                ref: window.ekDb, 
+                prefix: 'EK',
+                projectId: 'cardentryek'
+            });
+        }
+        
+        if (window.qrDb) {
+            databases.push({ 
+                name: 'QR Database', 
+                ref: window.qrDb, 
+                prefix: 'QR',
+                projectId: 'cardentryqr'
+            });
+        }
+        
+        if (window.sqDb) {
+            databases.push({ 
+                name: 'SQ Database', 
+                ref: window.sqDb, 
+                prefix: 'SQ',
+                projectId: 'dcleeli'
+            });
+        }
+        
+        if (window.defaultCardDb) {
+            databases.push({ 
+                name: 'Default Database', 
+                ref: window.defaultCardDb, 
+                prefix: 'OTHER',
+                projectId: 'cardentry-7bad1'
+            });
+        }
+        
+        return databases;
+    }
+
+    // ========== UTILS ==========
+    function calculatePaxFromSeat(seatNo) {
+        if (!seatNo) return 1;
+        const letters = seatNo.toString().match(/[A-Za-z]/g);
+        return letters ? letters.length : 1;
+    }
+
+    function onSeatChange(docId) {
+        const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+        const paxInput = document.getElementById(`edit-pax-${docId}`);
+        const warningDiv = document.getElementById(`pax-warning-${docId}`);
+        if (seatInput && paxInput) {
+            const calculated = calculatePaxFromSeat(seatInput.value);
+            paxInput.value = calculated;
+            if (warningDiv) {
+                warningDiv.textContent = '✓ auto-updated';
+                warningDiv.style.color = '#6b8e23';
+                setTimeout(() => { if(warningDiv) warningDiv.textContent = ''; }, 2000);
+            }
+        }
+    }
+
+    function onPaxChange(docId) {
+        const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+        const paxInput = document.getElementById(`edit-pax-${docId}`);
+        const warningDiv = document.getElementById(`pax-warning-${docId}`);
+        if (seatInput && paxInput) {
+            const calculated = calculatePaxFromSeat(seatInput.value);
+            const entered = parseInt(paxInput.value) || 0;
+            if (entered !== calculated) {
+                if (warningDiv) {
+                    warningDiv.innerHTML = `⚠ mismatch (seat->${calculated}) <button onclick="updatePaxFromSeat('${docId}')" style="background:none; border:1px solid #c68b5e; border-radius:12px; padding:2px 6px; font-size:9px; cursor:pointer;">fix</button>`;
+                    warningDiv.style.color = '#c68b5e';
                 }
-            } catch (e) {
-                console.error('Error parsing loggedInUser:', e);
+            } else {
+                if (warningDiv) warningDiv.textContent = '';
             }
         }
-        
-        return false;
-    } catch (error) {
-        console.error('Error checking login status:', error);
-        return false;
     }
-}
 
-// ========== USER DATA FUNCTIONS ==========
-function loadUserData() {
-    try {
-        console.log('Loading user data from localStorage...');
-        
-        const storedUsername = localStorage.getItem('username');
-        const storedLevel = localStorage.getItem('level');
-        const storedRcno = localStorage.getItem('rcno');
-        const loggedInUser = localStorage.getItem('loggedInUser');
-        
-        if (loggedInUser) {
-            try {
-                const parsedUser = JSON.parse(loggedInUser);
-                currentUser.username = parsedUser.username || storedUsername || '';
-                currentUser.name = parsedUser.name || parsedUser.username || storedUsername || '';
-                currentUser.rcno = parsedUser.rcno || storedRcno || '';
-                currentUser.level = parsedUser.level || storedLevel || '';
-            } catch (e) {
-                console.error('Error parsing loggedInUser:', e);
-            }
+    function updatePaxFromSeat(docId) {
+        const seatInput = document.getElementById(`edit-seatNo-${docId}`);
+        const paxInput = document.getElementById(`edit-pax-${docId}`);
+        const warningDiv = document.getElementById(`pax-warning-${docId}`);
+        if (seatInput && paxInput) {
+            paxInput.value = calculatePaxFromSeat(seatInput.value);
+            if (warningDiv) warningDiv.textContent = '';
+        }
+    }
+
+    function showNotification(msg, type = 'info') { 
+        console.log(msg); 
+    }
+
+    // ========== SHIFT ==========
+    async function fetchOpenShift() {
+        try {
+            const shiftBadge = document.getElementById('shiftBadge');
+            const ribbonDate = document.getElementById('ribbonDate');
+            const ribbon = document.getElementById('shiftRibbon');
+            shiftBadge.textContent = 'LOADING...';
+            ribbonDate.textContent = '--';
+            if (typeof passengerDb === 'undefined') throw new Error('no passengerDb');
+            const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+            if (shiftDoc.exists) {
+                const data = shiftDoc.data();
+                const date = data.date || 'No date';
+                const morning = data.morning || 'closed';
+                const evening = data.evening || 'closed';
+                if (morning === 'open') {
+                    shiftBadge.textContent = 'MORNING SHIFT';
+                    ribbonDate.textContent = date;
+                    ribbon.style.background = 'linear-gradient(135deg, #6b8e23, #8b6913)';
+                } else if (evening === 'open') {
+                    shiftBadge.textContent = 'EVENING SHIFT';
+                    ribbonDate.textContent = date;
+                    ribbon.style.background = 'linear-gradient(135deg, #c68b5e, #8b6913)';
+                } else {
+                    shiftBadge.textContent = 'NO OPEN SHIFT';
+                    ribbonDate.textContent = date;
+                    ribbon.style.background = 'linear-gradient(135deg, #7f8c8d, #5e4a1a)';
+                }
+            } else throw new Error('shift missing');
+        } catch (error) {
+            document.getElementById('shiftBadge').textContent = 'ERROR';
+            document.getElementById('ribbonDate').textContent = '--';
+        }
+    }
+
+    // ========== LOAD DATES FROM ALL DATABASES (only once) ==========
+    async function loadDates(forceReload = false) {
+        // If dates are already loaded and not forcing reload, just return
+        if (datesLoaded && !forceReload) {
+            console.log('Dates already loaded, skipping...');
+            return;
         }
         
-        if (storedUsername) currentUser.username = storedUsername;
-        if (!currentUser.name && storedUsername) currentUser.name = storedUsername;
-        if (storedRcno) currentUser.rcno = storedRcno;
-        if (storedLevel) currentUser.level = storedLevel;
+        if (isLoadingDates) return;
         
-        if (!currentUser.username) {
-            console.warn('No user data found in localStorage');
-            currentUser.username = 'UNKNOWN';
-            currentUser.name = 'UNKNOWN';
-            currentUser.rcno = 'N/A';
-            currentUser.level = 'OPERATOR';
-        }
-        
-        if (!currentUser.name) {
-            currentUser.name = currentUser.username;
-        }
-        
-        console.log('Final currentUser object:', currentUser);
-        updateUserDisplay();
-        
-    } catch (error) {
-        console.error('Error loading user data:', error);
-        currentUser = {
-            username: 'UNKNOWN',
-            name: 'UNKNOWN',
-            rcno: 'N/A',
-            level: 'OPERATOR'
-        };
-        updateUserDisplay();
-    }
-}
-
-function updateUserDisplay() {
-    const userNameDisplay = document.getElementById('userNameDisplay');
-    const userRcnoDisplay = document.getElementById('userRcnoDisplay');
-    const userLevelDisplay = document.getElementById('userLevelDisplay');
-    
-    if (userNameDisplay) userNameDisplay.textContent = currentUser.name || currentUser.username || 'N/A';
-    if (userRcnoDisplay) userRcnoDisplay.textContent = currentUser.rcno || 'N/A';
-    if (userLevelDisplay) userLevelDisplay.textContent = currentUser.level || 'N/A';
-}
-
-function logout() {
-    localStorage.removeItem('username');
-    localStorage.removeItem('level');
-    localStorage.removeItem('rcno');
-    localStorage.removeItem('loggedInUser');
-    
-    window.location.href = 'login.html';
-}
-
-// ========== MULTI-DATABASE FUNCTIONS ==========
-
-/**
- * Returns the appropriate Firestore database based on flight number
- * @param {string} flightNo - The flight number (e.g., "BA123", "EK456")
- * @returns {Object} - The Firestore database instance and info
- */
-function getFirestoreForFlight(flightNo) {
-    if (!flightNo || typeof flightNo !== 'string') {
-        console.log("No valid flight number provided, using default database");
-        return {
-            db: window.defaultCardDb || window.db,
-            name: "Default Database (cardentry-7bad1)"
-        };
-    }
-
-    const flightPrefix = flightNo.substring(0, 2).toUpperCase();
-    
-    switch(flightPrefix) {
-        case 'BA':
-            console.log(`✈️ BA flight detected (${flightNo}) - using BA database`);
-            return {
-                db: window.baDb,
-                name: "BA Database (cardentryba)"
-            };
-            
-        case 'EK':
-            console.log(`✈️ EK flight detected (${flightNo}) - using EK database`);
-            return {
-                db: window.ekDb,
-                name: "EK Database (cardentryek)"
-            };
-            
-        case 'QR':
-            console.log(`✈️ QR flight detected (${flightNo}) - using QR database`);
-            return {
-                db: window.qrDb,
-                name: "QR Database (cardentryqr)"
-            };
-            
-        case 'SQ':
-            console.log(`✈️ SQ flight detected (${flightNo}) - using SQ database`);
-            return {
-                db: window.sqDb,
-                name: "SQ Database (dcleeli)"
-            };
-            
-        default:
-            console.log(`✈️ Other flight detected (${flightNo}) - using default database`);
-            return {
-                db: window.defaultCardDb,
-                name: "Default Database (cardentry-7bad1)"
-            };
-    }
-}
-
-/**
- * Gets all available database configurations
- * @returns {Array} - Array of database objects with db reference and name
- */
-function getAllDatabases() {
-    const databases = [];
-    
-    if (window.baDb) {
-        databases.push({
-            db: window.baDb,
-            name: "BA Database (cardentryba)",
-            prefix: 'BA'
-        });
-    }
-    
-    if (window.ekDb) {
-        databases.push({
-            db: window.ekDb,
-            name: "EK Database (cardentryek)",
-            prefix: 'EK'
-        });
-    }
-    
-    if (window.qrDb) {
-        databases.push({
-            db: window.qrDb,
-            name: "QR Database (cardentryqr)",
-            prefix: 'QR'
-        });
-    }
-    
-    if (window.sqDb) {
-        databases.push({
-            db: window.sqDb,
-            name: "SQ Database (dcleeli)",
-            prefix: 'SQ'
-        });
-    }
-    
-    if (window.defaultCardDb) {
-        databases.push({
-            db: window.defaultCardDb,
-            name: "Default Database (cardentry-7bad1)",
-            prefix: 'OTHER'
-        });
-    }
-    
-    return databases;
-}
-
-// ========== LOAD DATES FUNCTION ==========
-async function loadDates() {
-    try {
         const dateSelect = document.getElementById('dateSelect');
-        dateSelect.innerHTML = '<option value="">Loading dates...</option>';
+        isLoadingDates = true;
         
-        const databases = getAllDatabases();
-        const allDates = new Set();
+        // Show loading message
+        dateSelect.innerHTML = '<option value="">🔍 Scanning all databases...</option>';
+        dateSelect.disabled = true;
         
-        // Show loading state
-        document.getElementById('resultsCount').textContent = 'Loading dates from all databases...';
+        // Clear previous data only if forcing reload
+        if (forceReload) {
+            flightsByDate = {};
+            databaseStats = {};
+            allDates = [];
+        }
         
-        // Query each database for distinct dates
-        for (const dbInfo of databases) {
-            try {
-                console.log(`Loading dates from ${dbInfo.name}`);
-                
-                // Get all documents from KoveliPass collection
-                const snapshot = await dbInfo.db.collection('KoveliPass')
-                    .orderBy('date', 'desc')
-                    .get();
-                
-                if (!snapshot.empty) {
-                    snapshot.forEach(doc => {
-                        const data = doc.data();
-                        if (data.date) {
-                            allDates.add(data.date);
-                        }
-                    });
+        try {
+            const databases = getAllDatabases();
+            console.log(`🔍 Loading dates from ${databases.length} databases...`);
+            
+            let totalRecords = 0;
+            let databasesWithData = 0;
+            
+            // Query each database for passenger data
+            for (const dbInfo of databases) {
+                try {
+                    console.log(`📂 Querying ${dbInfo.name}...`);
+                    
+                    const snapshot = await dbInfo.ref.collection('KoveliPass').get();
+                    
+                    databaseStats[dbInfo.name] = {
+                        records: snapshot.size,
+                        flights: new Set(),
+                        dates: new Set()
+                    };
+                    
+                    if (snapshot.size > 0) {
+                        databasesWithData++;
+                        totalRecords += snapshot.size;
+                        
+                        snapshot.forEach(doc => {
+                            const data = doc.data();
+                            const date = data.date;
+                            const docId = doc.id;
+                            
+                            if (date) {
+                                databaseStats[dbInfo.name].dates.add(date);
+                                
+                                if (!flightsByDate[date]) flightsByDate[date] = new Map();
+                                
+                                // Create a unique key for each flight+shift combination
+                                const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
+                                databaseStats[dbInfo.name].flights.add(data.flightNo);
+                                
+                                if (!flightsByDate[date].has(flightKey)) {
+                                    flightsByDate[date].set(flightKey, {
+                                        flightNo: data.flightNo,
+                                        shift: data.shift || 'UNKNOWN',
+                                        airline: data.airline || '',
+                                        passengers: [],
+                                        firstPax: null,
+                                        lastPax: null,
+                                        std: '',
+                                        isClosed: false,
+                                        database: dbInfo.name,
+                                        dbRef: dbInfo.ref,
+                                        databaseProject: dbInfo.projectId,
+                                        flightPrefix: data.flightNo ? data.flightNo.substring(0, 2).toUpperCase() : 'UNK'
+                                    });
+                                }
+                                
+                                const flightData = flightsByDate[date].get(flightKey);
+                                flightData.passengers.push({
+                                    docId: docId,
+                                    pName: data.pName || '',
+                                    seatNo: data.seatNo || '',
+                                    pax: data.pax || '1',
+                                    FQTV: data.FQTV || '',
+                                    entryTime: data.entryTime || '',
+                                    remarks: data.remarks || '',
+                                    serialNo: data.serialNo || ''
+                                });
+                                
+                                if (data.entryTime) {
+                                    if (!flightData.firstPax || data.entryTime < flightData.firstPax) {
+                                        flightData.firstPax = data.entryTime;
+                                    }
+                                    if (!flightData.lastPax || data.entryTime > flightData.lastPax) {
+                                        flightData.lastPax = data.entryTime;
+                                    }
+                                }
+                            }
+                        });
+                        
+                        console.log(`✅ ${dbInfo.name}: ${snapshot.size} records found`);
+                    } else {
+                        console.log(`ℹ️ ${dbInfo.name}: No records found`);
+                    }
+                    
+                } catch (dbError) {
+                    console.error(`❌ Error querying ${dbInfo.name}:`, dbError);
+                    databaseStats[dbInfo.name] = {
+                        records: 0,
+                        error: dbError.message,
+                        flights: new Set(),
+                        dates: new Set()
+                    };
                 }
+            }
+            
+            // Get all unique dates and sort them (newest first)
+            allDates = Object.keys(flightsByDate).sort().reverse();
+            datesLoaded = true;
+            
+            // Update the date select dropdown
+            if (allDates.length === 0) {
+                dateSelect.innerHTML = '<option value="">❌ No dates found in any database</option>';
+            } else {
+                let options = '<option value="">📅 Select a date</option>';
+                allDates.forEach(d => { 
+                    const flightCount = flightsByDate[d]?.size || 0;
+                    options += `<option value="${d}">${d} (${flightCount} flight${flightCount !== 1 ? 's' : ''})</option>`; 
+                });
+                dateSelect.innerHTML = options;
                 
-                console.log(`Found ${snapshot.size} documents in ${dbInfo.name}`);
-                
-            } catch (error) {
-                console.error(`❌ Error querying ${dbInfo.name}:`, error);
+                console.log(`📊 Found ${allDates.length} unique dates with ${totalRecords} total records`);
+            }
+            
+            dateSelect.disabled = false;
+            
+        } catch (error) {
+            console.error('Error loading dates:', error);
+            dateSelect.innerHTML = '<option value="">❌ Error loading dates</option>';
+            dateSelect.disabled = false;
+        } finally { 
+            isLoadingDates = false; 
+        }
+    }
+
+    function onDateSelected() {
+        const dateSelect = document.getElementById('dateSelect');
+        const flightSelect = document.getElementById('flightSelect');
+        const selectedDate = dateSelect.value;
+        
+        // Reset flight select
+        flightSelect.innerHTML = '<option value="">⏳ Loading flights...</option>';
+        flightSelect.disabled = true;
+        
+        // Hide panels
+        document.getElementById('flightPanel').style.display = 'none';
+        document.getElementById('tableContainer').style.display = 'none';
+        document.getElementById('quickShiftText').innerText = 'Select flight';
+        document.getElementById('databaseBadge').style.display = 'none';
+        
+        // Reset current data
+        editingRowId = null;
+        currentDatabase = null;
+        currentFlightData = null;
+        
+        if (!selectedDate) {
+            flightSelect.innerHTML = '<option value="">-- Select date first --</option>';
+            return;
+        }
+        
+        // Get flights for selected date
+        const flights = flightsByDate[selectedDate];
+        if (!flights || flights.size === 0) {
+            flightSelect.innerHTML = '<option value="">❌ No flights for this date</option>';
+            return;
+        }
+        
+        // Convert Map to array and sort
+        const flightsArray = Array.from(flights.values()).sort((a,b) => a.flightNo.localeCompare(b.flightNo));
+        
+        // Build options
+        let options = '<option value="">✈️ Select a flight</option>';
+        flightsArray.forEach(f => { 
+            const passengerCount = f.passengers.length;
+            options += `<option value="${f.flightNo}|${f.shift}|${f.database}">${f.flightNo} [${f.database}] - ${passengerCount} pax</option>`; 
+        });
+        
+        flightSelect.innerHTML = options;
+        flightSelect.disabled = false;
+    }
+
+    // NEW: Function to check for duplicate entries based on Serial No
+    function checkForDuplicates(passengers) {
+        duplicateGroups = {};
+        const serialMap = new Map();
+        
+        // Group passengers by serial number
+        passengers.forEach((p, index) => {
+            if (p.serialNo && p.serialNo.trim() !== '') {
+                const serial = p.serialNo.trim();
+                if (!serialMap.has(serial)) {
+                    serialMap.set(serial, []);
+                }
+                serialMap.get(serial).push({...p, arrayIndex: index});
+            }
+        });
+        
+        // Filter groups with more than one entry
+        duplicateEntries = [];
+        for (const [serial, entries] of serialMap.entries()) {
+            if (entries.length > 1) {
+                duplicateGroups[serial] = entries;
+                duplicateEntries.push(...entries);
             }
         }
         
-        // Convert set to array and sort (newest first)
-        const sortedDates = Array.from(allDates).sort().reverse();
+        return duplicateEntries.length > 0;
+    }
+
+    // NEW: Display duplicate warning
+    function displayDuplicateWarning() {
+        const warningDiv = document.getElementById('doubleEntryWarning');
+        const messageSpan = document.getElementById('doubleEntryMessage');
         
-        // Populate the select dropdown
-        dateSelect.innerHTML = '<option value="">Select Date</option>';
-        
-        if (sortedDates.length === 0) {
-            dateSelect.innerHTML += '<option value="" disabled>No dates found</option>';
-            document.getElementById('resultsCount').textContent = 'No data found in any database';
+        if (duplicateEntries.length > 0) {
+            const duplicateCount = duplicateEntries.length;
+            const groupCount = Object.keys(duplicateGroups).length;
+            messageSpan.innerHTML = `Found <strong>${duplicateCount}</strong> duplicate entries across <strong>${groupCount}</strong> serial numbers. Please resolve before closing the flight.`;
+            warningDiv.style.display = 'flex';
+            
+            // Disable close button if duplicates exist
+            document.getElementById('closeFlightBtn').disabled = true;
         } else {
-            sortedDates.forEach(date => {
-                const option = document.createElement('option');
-                option.value = date;
-                option.textContent = date;
-                dateSelect.appendChild(option);
+            warningDiv.style.display = 'none';
+            validateCloseButton();
+        }
+    }
+
+    // NEW: Show duplicates in modal for resolution
+    function showDuplicatesForResolution() {
+        const modal = document.getElementById('duplicateModal');
+        const duplicateList = document.getElementById('duplicateList');
+        
+        let html = '';
+        for (const [serial, entries] of Object.entries(duplicateGroups)) {
+            html += `<div style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 8px;">`;
+            html += `<h4 style="color: #856404; margin-bottom: 10px;">Serial No: ${serial}</h4>`;
+            
+            entries.forEach((entry, idx) => {
+                html += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; margin: 5px 0; background: white; border-radius: 4px; border-left: 3px solid #ffc107;">
+                        <div style="flex: 1;">
+                            <strong>${entry.pName || 'Unknown'}</strong><br>
+                            <small>Seat: ${entry.seatNo || '-'} | Time: ${entry.entryTime || '-'}</small>
+                        </div>
+                        <button onclick="deleteDuplicate('${entry.docId}')" style="background: #dc3545; color: white; border: none; padding: 5px 15px; border-radius: 20px; cursor: pointer; font-size: 12px;">
+                            Delete
+                        </button>
+                    </div>
+                `;
             });
             
-            document.getElementById('resultsCount').textContent = `Found ${sortedDates.length} dates across all databases`;
+            html += `</div>`;
         }
         
-    } catch (error) {
-        console.error('Error loading dates:', error);
-        document.getElementById('dateSelect').innerHTML = '<option value="">Error loading dates</option>';
-        document.getElementById('resultsCount').textContent = 'Error loading dates';
+        duplicateList.innerHTML = html;
+        modal.style.display = 'flex';
     }
-}
 
-// ========== SEARCH PASSENGERS FUNCTION ==========
-async function searchPassengers() {
-    try {
-        // Get search criteria
-        const date = document.getElementById('dateSelect').value;
-        const flightNo = document.getElementById('flightInput').value.trim().toUpperCase();
-        const passengerName = document.getElementById('nameInput').value.trim().toUpperCase();
-        const seatNo = document.getElementById('seatInput').value.trim().toUpperCase();
-        const selectedDb = document.getElementById('databaseSelect').value;
+    // NEW: Close duplicate modal
+    function closeDuplicateModal() {
+        document.getElementById('duplicateModal').style.display = 'none';
+    }
+
+    // NEW: Delete single duplicate
+    async function deleteDuplicate(docId) {
+        if (!confirm('Delete this duplicate entry?')) return;
         
-        if (!date && !flightNo && !passengerName && !seatNo) {
-            alert('Please enter at least one search criteria');
+        try {
+            const targetDb = currentDatabase || getFirestoreForFlight(currentFlightData.flightNo);
+            await targetDb.collection('KoveliPass').doc(docId).delete();
+            
+            // Remove from local data
+            const idx = currentFlightData.passengers.findIndex(p => p.docId === docId);
+            if (idx !== -1) currentFlightData.passengers.splice(idx, 1);
+            
+            // Recheck duplicates
+            checkForDuplicates(currentFlightData.passengers);
+            displayDuplicateWarning();
+            displayPassengerTable(currentFlightData.passengers);
+            
+            // Update modal if open
+            if (document.getElementById('duplicateModal').style.display === 'flex') {
+                showDuplicatesForResolution();
+            }
+            
+            alert('✅ Duplicate deleted');
+        } catch (error) {
+            alert('❌ Error: ' + error.message);
+        }
+    }
+
+    // NEW: Delete all duplicates
+    async function deleteAllDuplicates() {
+        if (!confirm('Delete ALL duplicate entries? This cannot be undone.')) return;
+        
+        try {
+            const targetDb = currentDatabase || getFirestoreForFlight(currentFlightData.flightNo);
+            const batch = targetDb.batch();
+            
+            // Collect all duplicate document IDs
+            const duplicateDocIds = duplicateEntries.map(entry => entry.docId);
+            
+            // Add delete operations to batch
+            duplicateDocIds.forEach(docId => {
+                const docRef = targetDb.collection('KoveliPass').doc(docId);
+                batch.delete(docRef);
+            });
+            
+            // Execute batch delete
+            await batch.commit();
+            
+            // Remove duplicates from local data
+            currentFlightData.passengers = currentFlightData.passengers.filter(p => 
+                !duplicateDocIds.includes(p.docId)
+            );
+            
+            // Recheck duplicates (should be none now)
+            checkForDuplicates(currentFlightData.passengers);
+            displayDuplicateWarning();
+            displayPassengerTable(currentFlightData.passengers);
+            
+            // Close modal
+            closeDuplicateModal();
+            
+            alert(`✅ Deleted ${duplicateDocIds.length} duplicate entries`);
+        } catch (error) {
+            alert('❌ Error: ' + error.message);
+        }
+    }
+
+    async function onFlightSelected() {
+        const dateSelect = document.getElementById('dateSelect');
+        const flightSelect = document.getElementById('flightSelect');
+        const selectedDate = dateSelect.value;
+        const selectedFlight = flightSelect.value;
+        
+        if (!selectedDate || !selectedFlight) {
+            document.getElementById('flightPanel').style.display = 'none';
+            document.getElementById('tableContainer').style.display = 'none';
             return;
         }
         
         // Show loading state
-        isLoading = true;
-        document.getElementById('resultsCount').textContent = 'Searching...';
-        document.getElementById('passengerTableBody').innerHTML = `
-            <tr>
-                <td colspan="14" style="text-align: center; padding: 40px;">
-                    <i class="fas fa-spinner fa-spin" style="font-size: 24px; color: #e6b800;"></i>
-                    <br>Searching across databases...
-                </td>
-            </tr>
-        `;
+        document.getElementById('flightPanel').style.display = 'block';
+        document.getElementById('airlineDisplay').textContent = 'Loading...';
+        document.getElementById('passengerTableBody').innerHTML = '<tr><td colspan="9" class="loading"><span class="spinner"></span> Loading passengers...</td></tr>';
         
-        allPassengers = [];
+        const [flightNo, shift, dbName] = selectedFlight.split('|');
+        const flightKey = `${flightNo}_${shift}`;
+        const flightData = flightsByDate[selectedDate]?.get(flightKey);
         
-        // Determine which databases to search
-        let databasesToSearch = [];
-        
-        if (selectedDb === 'all') {
-            databasesToSearch = getAllDatabases();
-        } else {
-            // Search only the selected database
-            let targetDb = null;
-            let dbName = '';
-            
-            switch(selectedDb) {
-                case 'ba':
-                    targetDb = window.baDb;
-                    dbName = "BA Database (cardentryba)";
-                    break;
-                case 'ek':
-                    targetDb = window.ekDb;
-                    dbName = "EK Database (cardentryek)";
-                    break;
-                case 'qr':
-                    targetDb = window.qrDb;
-                    dbName = "QR Database (cardentryqr)";
-                    break;
-                case 'sq':
-                    targetDb = window.sqDb;
-                    dbName = "SQ Database (dcleeli)";
-                    break;
-                default:
-                    targetDb = window.defaultCardDb;
-                    dbName = "Default Database (cardentry-7bad1)";
-            }
-            
-            if (targetDb) {
-                databasesToSearch.push({
-                    db: targetDb,
-                    name: dbName,
-                    prefix: selectedDb.toUpperCase()
-                });
-            }
+        if (!flightData) {
+            alert('Flight data not found');
+            return;
         }
         
-        // Search each database
-        for (const dbInfo of databasesToSearch) {
-            try {
-                console.log(`Searching ${dbInfo.name}...`);
-                
-                // Build query
-                let query = dbInfo.db.collection('KoveliPass');
-                
-                // Apply filters based on criteria
-                if (date) {
-                    query = query.where('date', '==', date);
-                }
-                
-                // Execute the query
-                const snapshot = await query.get();
-                
-                if (!snapshot.empty) {
-                    snapshot.forEach(doc => {
-                        const data = doc.data();
-                        
-                        // Apply additional client-side filtering for fields that can't be filtered in query
-                        let matches = true;
-                        
-                        if (flightNo && data.flightNo) {
-                            matches = matches && data.flightNo.toUpperCase().includes(flightNo);
-                        }
-                        
-                        if (passengerName && data.pName) {
-                            matches = matches && data.pName.toUpperCase().includes(passengerName);
-                        }
-                        
-                        if (seatNo && data.seatNo) {
-                            matches = matches && data.seatNo.toUpperCase().includes(seatNo);
-                        }
-                        
-                        if (matches) {
-                            allPassengers.push({
-                                id: doc.id,
-                                ...data,
-                                sourceDb: dbInfo.name,
-                                sourceDbPrefix: dbInfo.prefix
-                            });
-                        }
-                    });
-                }
-                
-                console.log(`Found ${snapshot.size} documents in ${dbInfo.name}, ${allPassengers.length} match after filtering`);
-                
-            } catch (error) {
-                console.error(`❌ Error searching ${dbInfo.name}:`, error);
-            }
-        }
+        currentFlightData = flightData;
+        currentDatabase = flightData.dbRef;
+        editingRowId = null;
         
-        // Sort results (by date, then flight, then name)
-        allPassengers.sort((a, b) => {
-            if (a.date !== b.date) return (b.date || '').localeCompare(a.date || '');
-            if (a.flightNo !== b.flightNo) return (a.flightNo || '').localeCompare(b.flightNo || '');
-            return (a.pName || '').localeCompare(b.pName || '');
+        // Log the data for debugging
+        console.log('Flight Data:', {
+            flightNo: flightData.flightNo,
+            passengers: flightData.passengers.length,
+            firstPax: flightData.firstPax,
+            lastPax: flightData.lastPax,
+            database: flightData.database
         });
         
-        filteredPassengers = [...allPassengers];
+        // Update database display
+        document.getElementById('databaseDisplay').textContent = `${flightData.database} (${flightData.databaseProject || 'unknown'})`;
+        document.getElementById('databaseBadge').textContent = flightData.database;
+        document.getElementById('databaseBadge').style.display = 'inline-block';
         
-        // Update results count
-        document.getElementById('resultsCount').textContent = `Found ${filteredPassengers.length} passenger(s)`;
-        
-        // Render results
-        renderResults();
-        
-        isLoading = false;
-        
-    } catch (error) {
-        console.error('Error searching passengers:', error);
-        document.getElementById('resultsCount').textContent = 'Error searching';
-        document.getElementById('passengerTableBody').innerHTML = `
-            <tr>
-                <td colspan="14" style="text-align: center; padding: 20px; color: #c68b5e;">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <br>Error: ${error.message}
-                </td>
-            </tr>
-        `;
-        isLoading = false;
-    }
-}
-
-// ========== RENDER RESULTS FUNCTION ==========
-function renderResults() {
-    const tbody = document.getElementById('passengerTableBody');
-    tbody.innerHTML = '';
-    
-    if (filteredPassengers.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="14" style="text-align: center; padding: 20px;">
-                    <i class="fas fa-search" style="font-size: 24px; color: #ccc;"></i>
-                    <br>No passengers found
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    filteredPassengers.forEach((passenger, index) => {
-        const row = document.createElement('tr');
-        
-        // Add class based on source database
-        if (passenger.sourceDbPrefix === 'BA') {
-            row.classList.add('ba-row');
-        } else if (passenger.sourceDbPrefix === 'EK') {
-            row.classList.add('ek-row');
-        } else if (passenger.sourceDbPrefix === 'QR') {
-            row.classList.add('qr-row');
-        } else if (passenger.sourceDbPrefix === 'SQ') {
-            row.classList.add('sq-row');
+        // Load flight status from FlightReports collection
+        try {
+            // Format date for document ID
+            let formattedDate = selectedDate;
+            if (selectedDate.includes('/')) {
+                const parts = selectedDate.split('/');
+                if (parts.length === 3) {
+                    if (parts[0].length === 4) {
+                        formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                    } else {
+                        formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    }
+                }
+            } else if (selectedDate.includes('-')) {
+                formattedDate = selectedDate;
+            } else {
+                const cleanDate = selectedDate.replace(/[^0-9]/g, '');
+                if (cleanDate.length === 8) {
+                    formattedDate = `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
+                } else {
+                    formattedDate = selectedDate;
+                }
+            }
+            
+            const reportId = `${flightNo}_${formattedDate}`;
+            console.log(`🔍 Looking for flight report: ${reportId} in ${flightData.database}`);
+            
+            const targetDb = flightData.dbRef || getFirestoreForFlight(flightNo);
+            const reportDoc = await targetDb.collection('FlightReports').doc(reportId).get();
+            
+            if (reportDoc.exists) {
+                const reportData = reportDoc.data();
+                currentFlightData.isClosed = reportData.isClosed || false;
+                currentFlightData.std = reportData.std || '';
+                currentFlightData.lastPax = reportData.lastPax || '';
+                console.log('Loaded flight status:', { 
+                    isClosed: currentFlightData.isClosed, 
+                    std: currentFlightData.std, 
+                    lastPax: currentFlightData.lastPax
+                });
+            } else {
+                currentFlightData.isClosed = false;
+                console.log('No report found, flight is open by default');
+            }
+        } catch (error) {
+            console.error('Error loading flight status:', error);
+            currentFlightData.isClosed = false;
         }
         
-        // Serial number
-        const serialCell = document.createElement('td');
-        serialCell.textContent = index + 1;
+        // Update UI with loaded data
+        document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
+        document.getElementById('flightNoDisplay').textContent = flightNo;
+        document.getElementById('dateDisplay').textContent = selectedDate;
+        document.getElementById('shiftDisplay').textContent = shift;
+        document.getElementById('firstPaxDisplay').textContent = flightData.firstPax || '-';
+        document.getElementById('stdInput').value = currentFlightData.std || '';
+        document.getElementById('lastPaxInput').value = currentFlightData.lastPax || '';
+        document.getElementById('totalPaxStat').textContent = flightData.passengers.length;
+        document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
+        document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || flightData.lastPax || '--:--';
+        document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
+        document.getElementById('quickShiftText').innerHTML = `${flightNo} | ${shift} <span style="font-size:10px; opacity:0.8;">(${flightData.database})</span>`;
         
-        // Database source
-        const dbCell = document.createElement('td');
-        dbCell.innerHTML = `<span class="db-badge db-${passenger.sourceDbPrefix?.toLowerCase() || 'other'}">${passenger.sourceDbPrefix || 'OTHER'}</span>`;
-        dbCell.title = passenger.sourceDb || 'Unknown database';
+        // Check for duplicates
+        const hasDuplicates = checkForDuplicates(flightData.passengers);
+        displayDuplicateWarning();
         
-        // Date
-        const dateCell = document.createElement('td');
-        dateCell.textContent = passenger.date || '—';
-        
-        // Shift
-        const shiftCell = document.createElement('td');
-        shiftCell.textContent = passenger.shift || '—';
-        
-        // Entry Time
-        const timeCell = document.createElement('td');
-        timeCell.textContent = passenger.entryTime || '—';
-        
-        // Name
-        const nameCell = document.createElement('td');
-        nameCell.textContent = passenger.pName || '—';
-        
-        // Flight No
-        const flightCell = document.createElement('td');
-        flightCell.textContent = passenger.flightNo || '—';
-        
-        // Seat No
-        const seatCell = document.createElement('td');
-        seatCell.textContent = passenger.seatNo || '—';
-        
-        // Class
-        const classCell = document.createElement('td');
-        classCell.textContent = passenger.class || '—';
-        
-        // Airline
-        const airlineCell = document.createElement('td');
-        airlineCell.textContent = passenger.airline || '—';
-        
-        // FQTV
-        const fqtvCell = document.createElement('td');
-        fqtvCell.textContent = passenger.FQTV || '—';
-        
-        // PAX
-        const paxCell = document.createElement('td');
-        paxCell.textContent = passenger.pax || '—';
-        
-        // Serial No
-        const serialNoCell = document.createElement('td');
-        serialNoCell.textContent = passenger.serialNo || '—';
-        
-        // Remarks
-        const remarksCell = document.createElement('td');
-        remarksCell.textContent = passenger.remarks || '—';
-        
-        // Guest indicator
-        const guestCell = document.createElement('td');
-        if (passenger.isGuest) {
-            guestCell.innerHTML = '<span class="guest-badge">GUEST</span>';
-            guestCell.title = `Main: ${passenger.mainPassengerName || 'Unknown'} (${passenger.mainPassengerSeat || 'No seat'})`;
+        // Set status UI
+        if (currentFlightData.isClosed) {
+            document.getElementById('flightStatus').textContent = 'CLOSED';
+            document.getElementById('flightStatus').className = 'flight-status status-closed';
+            document.getElementById('closeFlightBtn').style.display = 'none';
+            document.getElementById('reopenFlightBtn').style.display = 'block';
+            document.getElementById('printReportBtn').disabled = false;
         } else {
-            guestCell.textContent = '—';
+            document.getElementById('flightStatus').textContent = 'OPEN';
+            document.getElementById('flightStatus').className = 'flight-status status-open';
+            document.getElementById('closeFlightBtn').style.display = 'block';
+            document.getElementById('reopenFlightBtn').style.display = 'none';
+            document.getElementById('printReportBtn').disabled = true;
+            
+            // Disable close button if duplicates exist
+            if (hasDuplicates) {
+                document.getElementById('closeFlightBtn').disabled = true;
+            } else {
+                validateCloseButton();
+            }
         }
         
-        // Entered By
-        const enteredByCell = document.createElement('td');
-        enteredByCell.innerHTML = `
-            <div>${passenger.enteredBy || '—'}</div>
-            <small style="color: #666;">${passenger.enteredByLevel || ''} | ${passenger.enteredByRCNo || ''}</small>
-        `;
+        // Display passenger table
+        displayPassengerTable(flightData.passengers);
+    }
+
+    // Enable/disable close button based on STD and Last Pax values
+    function validateCloseButton() {
+        if (!currentFlightData || currentFlightData.isClosed) return;
         
-        // Entered At
-        const enteredAtCell = document.createElement('td');
-        if (passenger.enteredAt) {
-            const date = new Date(passenger.enteredAt);
-            enteredAtCell.innerHTML = `
-                <div>${date.toLocaleDateString()}</div>
-                <small>${date.toLocaleTimeString()}</small>
-            `;
+        // Check for duplicates first
+        if (duplicateEntries.length > 0) {
+            document.getElementById('closeFlightBtn').disabled = true;
+            return;
+        }
+        
+        const std = document.getElementById('stdInput').value;
+        const lastPax = document.getElementById('lastPaxInput').value;
+        const closeBtn = document.getElementById('closeFlightBtn');
+        if (std && lastPax) {
+            closeBtn.disabled = false;
         } else {
-            enteredAtCell.textContent = '—';
+            closeBtn.disabled = true;
+        }
+    }
+
+    function displayPassengerTable(passengers) {
+        const tbody = document.getElementById('passengerTableBody');
+        
+        if (!passengers || passengers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="no-data">No passengers found for this flight</td></tr>';
+            document.getElementById('tableContainer').style.display = 'block';
+            return;
         }
         
-        // Actions
-        const actionsCell = document.createElement('td');
-        actionsCell.className = 'action-buttons';
-        actionsCell.innerHTML = `
-            <button class="view-btn" onclick="viewPassenger('${passenger.id}')" title="View Details">
-                <i class="fas fa-eye"></i>
-            </button>
-            <button class="print-btn" onclick="printPassenger('${passenger.id}')" title="Print">
-                <i class="fas fa-print"></i>
-            </button>
-        `;
+        // Sort passengers by entry time
+        const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
         
-        // Append all cells
-        row.appendChild(serialCell);
-        row.appendChild(dbCell);
-        row.appendChild(dateCell);
-        row.appendChild(shiftCell);
-        row.appendChild(timeCell);
-        row.appendChild(nameCell);
-        row.appendChild(flightCell);
-        row.appendChild(seatCell);
-        row.appendChild(classCell);
-        row.appendChild(airlineCell);
-        row.appendChild(fqtvCell);
-        row.appendChild(paxCell);
-        row.appendChild(serialNoCell);
-        row.appendChild(remarksCell);
-        row.appendChild(guestCell);
-        row.appendChild(enteredByCell);
-        row.appendChild(enteredAtCell);
-        row.appendChild(actionsCell);
+        // Create a set of duplicate document IDs for highlighting
+        const duplicateDocIds = new Set(duplicateEntries.map(e => e.docId));
         
-        tbody.appendChild(row);
-    });
-}
+        let html = '';
+        
+        sorted.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            const isDuplicate = duplicateDocIds.has(p.docId);
+            const rowClass = isDuplicate ? 'duplicate-row' : '';
+            
+            if (editingRowId === p.docId) {
+                // Edit mode
+                html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td><input type="text" id="edit-pName-${p.docId}" value="${p.pName||''}" class="edit-mode-input"></td>
+                    <td>
+                        <input type="text" id="edit-seatNo-${p.docId}" value="${p.seatNo||''}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
+                        <div id="pax-warning-${p.docId}" class="pax-warning"></div>
+                    </td>
+                    <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
+                    <td><input type="text" id="edit-FQTV-${p.docId}" value="${p.FQTV||''}" class="edit-mode-input"></td>
+                    <td><input type="text" id="edit-serialNo-${p.docId}" value="${p.serialNo||''}" class="edit-mode-input"></td>
+                    <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
+                    <td><input type="text" id="edit-remarks-${p.docId}" value="${p.remarks||''}" class="edit-mode-input"></td>
+                    <td class="action-cell">
+                        <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
+                        <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                    </td>
+                </tr>`;
+            } else {
+                // View mode
+                const duplicateBadge = isDuplicate ? '<span class="duplicate-badge">DUPLICATE</span>' : '';
+                html += `<tr class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td>${p.pName || '-'} ${duplicateBadge}</td>
+                    <td>${p.seatNo || '-'}</td>
+                    <td style="text-align:center;">${p.pax || '1'}</td>
+                    <td>${p.FQTV || '-'}</td>
+                    <td class="${p.serialNo ? 'serial-no' : ''}">${p.serialNo || '—'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${p.remarks || '-'}</td>
+                    <td class="action-cell">
+                        <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                        <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${p.pName}')">Del</button>
+                    </td>
+                </tr>`;
+            }
+        });
+        
+        tbody.innerHTML = html;
+        document.getElementById('tableContainer').style.display = 'block';
+    }
 
-// ========== CLEAR SEARCH FUNCTION ==========
-function clearSearch() {
-    document.getElementById('dateSelect').value = '';
-    document.getElementById('flightInput').value = '';
-    document.getElementById('nameInput').value = '';
-    document.getElementById('seatInput').value = '';
+    function startEdit(docId) { 
+        editingRowId = docId; 
+        displayPassengerTable(currentFlightData.passengers); 
+    }
     
-    filteredPassengers = [];
-    allPassengers = [];
-    
-    document.getElementById('passengerTableBody').innerHTML = `
-        <tr>
-            <td colspan="14" style="text-align: center; padding: 20px;">
-                <i class="fas fa-search" style="font-size: 24px; color: #ccc;"></i>
-                <br>Enter search criteria and click Search
-            </td>
-        </tr>
-    `;
-    
-    document.getElementById('resultsCount').textContent = '0 passengers';
-}
+    function cancelEdit() { 
+        editingRowId = null; 
+        displayPassengerTable(currentFlightData.passengers); 
+    }
 
-// ========== VIEW PASSENGER FUNCTION ==========
-function viewPassenger(id) {
-    const passenger = allPassengers.find(p => p.id === id);
-    if (!passenger) return;
-    
-    // Create a modal or show details (simplified - just alert for now)
-    alert(`
-        Passenger Details:
-        Name: ${passenger.pName || 'N/A'}
-        Flight: ${passenger.flightNo || 'N/A'}
-        Seat: ${passenger.seatNo || 'N/A'}
-        Class: ${passenger.class || 'N/A'}
-        Airline: ${passenger.airline || 'N/A'}
-        FQTV: ${passenger.FQTV || 'N/A'}
-        PAX: ${passenger.pax || 'N/A'}
-        Serial No: ${passenger.serialNo || 'N/A'}
-        Remarks: ${passenger.remarks || 'N/A'}
-        Date: ${passenger.date || 'N/A'}
-        Shift: ${passenger.shift || 'N/A'}
-        Entry Time: ${passenger.entryTime || 'N/A'}
-        Guest: ${passenger.isGuest ? 'Yes' : 'No'}
-        ${passenger.isGuest ? `Main Passenger: ${passenger.mainPassengerName || 'N/A'} (${passenger.mainPassengerSeat || 'N/A'})` : ''}
-        Entered By: ${passenger.enteredBy || 'N/A'} (${passenger.enteredByLevel || 'N/A'}) - ${passenger.enteredByRCNo || 'N/A'}
-        Entered At: ${passenger.enteredAt ? new Date(passenger.enteredAt).toLocaleString() : 'N/A'}
-        Database: ${passenger.sourceDb || 'N/A'}
-    `);
-}
+    async function savePassenger(docId) {
+        try {
+            const pName = document.getElementById(`edit-pName-${docId}`).value;
+            const seatNo = document.getElementById(`edit-seatNo-${docId}`).value;
+            const pax = document.getElementById(`edit-pax-${docId}`).value;
+            const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
+            const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
+            const entryTime = document.getElementById(`edit-entryTime-${docId}`).value;
+            const remarks = document.getElementById(`edit-remarks-${docId}`).value;
+            
+            const calculated = calculatePaxFromSeat(seatNo);
+            if (parseInt(pax) !== calculated && !confirm(`PAX mismatch (seat->${calculated}). Save anyway?`)) return;
+            
+            // Use the correct database for this flight
+            const targetDb = currentDatabase || getFirestoreForFlight(currentFlightData.flightNo);
+            
+            await targetDb.collection('KoveliPass').doc(docId).update({ 
+                pName, 
+                seatNo, 
+                pax: parseInt(pax), 
+                FQTV, 
+                serialNo, 
+                entryTime,
+                remarks, 
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
+            });
+            
+            // Update local data
+            const passenger = currentFlightData.passengers.find(p => p.docId === docId);
+            if (passenger) { 
+                passenger.pName = pName; 
+                passenger.seatNo = seatNo; 
+                passenger.pax = pax; 
+                passenger.FQTV = FQTV; 
+                passenger.serialNo = serialNo; 
+                passenger.entryTime = entryTime;
+                passenger.remarks = remarks; 
+            }
+            
+            // Update first and last pax times
+            const times = currentFlightData.passengers.map(p => p.entryTime).filter(t => t);
+            if (times.length > 0) {
+                currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
+                currentFlightData.lastPax = times.reduce((a, b) => a > b ? a : b);
+                document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
+                document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
+                document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
+            }
+            
+            // Recheck for duplicates after save
+            checkForDuplicates(currentFlightData.passengers);
+            displayDuplicateWarning();
+            
+            editingRowId = null;
+            displayPassengerTable(currentFlightData.passengers);
+            alert(`✅ Updated in ${currentFlightData.database || 'database'}`);
+        } catch (error) { 
+            alert('❌ Error: '+error.message); 
+            console.error(error);
+        }
+    }
 
-// ========== PRINT PASSENGER FUNCTION ==========
-function printPassenger(id) {
-    const passenger = allPassengers.find(p => p.id === id);
-    if (!passenger) return;
+    function confirmDelete(docId, name) { 
+        if (confirm(`Delete ${name}?`)) deletePassenger(docId); 
+    }
     
-    const printContent = document.createElement('div');
-    printContent.innerHTML = `
-        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
-            <h1 style="text-align: center; color: #8b6913;">PASSENGER DETAILS</h1>
-            <hr>
-            <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Passenger Name:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.pName || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Flight Number:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.flightNo || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Seat Number:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.seatNo || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Class:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.class || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Airline:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.airline || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>FQTV:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.FQTV || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>PAX:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.pax || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Serial Number:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.serialNo || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Remarks:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.remarks || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Date:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.date || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Shift:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.shift || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Entry Time:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.entryTime || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Guest:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.isGuest ? 'Yes' : 'No'}</td></tr>
-                ${passenger.isGuest ? `
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Main Passenger:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.mainPassengerName || '—'} (${passenger.mainPassengerSeat || '—'})</td></tr>
-                ` : ''}
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Entered By:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.enteredBy || '—'} (${passenger.enteredByLevel || '—'}) - ${passenger.enteredByRCNo || '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Entered At:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.enteredAt ? new Date(passenger.enteredAt).toLocaleString() : '—'}</td></tr>
-                <tr><td style="padding: 8px; border: 1px solid #ccc; background: #f5f5f5;"><strong>Database:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${passenger.sourceDb || '—'}</td></tr>
-            </table>
-            <hr>
-            <p style="text-align: center; font-size: 12px; color: #666;">Printed: ${new Date().toLocaleString()}</p>
-        </div>
-    `;
+    async function deletePassenger(docId) {
+        try {
+            const targetDb = currentDatabase || getFirestoreForFlight(currentFlightData.flightNo);
+            
+            await targetDb.collection('KoveliPass').doc(docId).delete();
+            
+            const idx = currentFlightData.passengers.findIndex(p => p.docId === docId);
+            if (idx !== -1) currentFlightData.passengers.splice(idx, 1);
+            
+            document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
+            document.getElementById('passengerCount').textContent = currentFlightData.passengers.length + ' PAX';
+            
+            // Recheck for duplicates after delete
+            checkForDuplicates(currentFlightData.passengers);
+            displayDuplicateWarning();
+            
+            displayPassengerTable(currentFlightData.passengers);
+            alert(`✅ Deleted from ${currentFlightData.database || 'database'}`);
+        } catch (error) { 
+            alert('❌ Error: '+error.message);
+            console.error(error);
+        }
+    }
+
+    async function updateSTD() { 
+        const v = document.getElementById('stdInput').value; 
+        if(v && currentFlightData) { 
+            currentFlightData.std = v; 
+            validateCloseButton();
+            try {
+                await saveFlightDataToFirebase();
+                console.log('STD auto-saved');
+            } catch (error) {
+                console.error('Error saving STD:', error);
+            }
+        } 
+    }
     
+    async function updateLastPax() { 
+        const v = document.getElementById('lastPaxInput').value; 
+        if(v && currentFlightData) { 
+            currentFlightData.lastPax = v; 
+            document.getElementById('lastPaxStat').textContent = v; 
+            document.getElementById('lastPaxDisplay').textContent = v;
+            validateCloseButton();
+            try {
+                await saveFlightDataToFirebase();
+                console.log('Last Pax auto-saved');
+            } catch (error) {
+                console.error('Error saving Last Pax:', error);
+            }
+        } 
+    }
+
+    async function saveFlightDataToFirebase() {
+        if (!currentFlightData) return;
+        
+        try {
+            const date = document.getElementById('dateDisplay').textContent;
+            const flightNo = document.getElementById('flightNoDisplay').textContent;
+            const shift = document.getElementById('shiftDisplay').textContent;
+            const airline = document.getElementById('airlineDisplay').textContent;
+            const std = document.getElementById('stdInput').value || currentFlightData.std || '';
+            const lastPax = document.getElementById('lastPaxInput').value || currentFlightData.lastPax || '';
+            const firstPax = currentFlightData.firstPax || '';
+            const totalPax = currentFlightData.passengers.length;
+            const isClosed = currentFlightData.isClosed || false;
+            
+            // Format date for document ID
+            let formattedDate = date;
+            if (date.includes('/')) {
+                const parts = date.split('/');
+                if (parts.length === 3) {
+                    if (parts[0].length === 4) {
+                        formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                    } else {
+                        formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    }
+                }
+            } else if (date.includes('-')) {
+                formattedDate = date;
+            } else {
+                const cleanDate = date.replace(/[^0-9]/g, '');
+                if (cleanDate.length === 8) {
+                    formattedDate = `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
+                } else {
+                    formattedDate = date;
+                }
+            }
+            
+            const reportId = `${flightNo}_${formattedDate}`;
+            const targetDb = currentDatabase || getFirestoreForFlight(flightNo);
+            
+            console.log(`💾 Saving to ${currentFlightData.database}:`, { 
+                reportId, flightNo, date: formattedDate, shift, airline, std, lastPax, firstPax, totalPax, isClosed 
+            });
+            
+            await targetDb.collection('FlightReports').doc(reportId).set({
+                flightNo: flightNo,
+                date: formattedDate,
+                shift: shift,
+                airline: airline,
+                std: std,
+                firstPax: firstPax,
+                lastPax: lastPax,
+                totalPax: totalPax,
+                isClosed: isClosed,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            console.log(`✅ Flight data saved successfully`);
+            return true;
+        } catch (error) { 
+            console.error('Error saving flight data:', error);
+            throw error;
+        }
+    }
+
+    async function closeFlight() {
+        if (!currentFlightData) return;
+        
+        // Check for duplicates before closing
+        if (duplicateEntries.length > 0) {
+            alert('Please resolve duplicate entries before closing the flight.');
+            return;
+        }
+        
+        const std = document.getElementById('stdInput').value;
+        const lastPax = document.getElementById('lastPaxInput').value;
+        
+        if (!std || !lastPax) {
+            alert('STD and Last Pax must be entered before closing the flight.');
+            return;
+        }
+        
+        currentFlightData.std = std;
+        currentFlightData.lastPax = lastPax;
+        currentFlightData.isClosed = true;
+        
+        try {
+            await saveFlightDataToFirebase();
+            
+            document.getElementById('flightStatus').textContent = 'CLOSED';
+            document.getElementById('flightStatus').className = 'flight-status status-closed';
+            document.getElementById('closeFlightBtn').style.display = 'none';
+            document.getElementById('reopenFlightBtn').style.display = 'block';
+            document.getElementById('printReportBtn').disabled = false;
+            
+            alert(`✅ Flight closed and data saved to ${currentFlightData.database}`);
+        } catch (error) {
+            alert('❌ Error saving to Firebase: ' + error.message);
+            console.error('Close flight error:', error);
+        }
+    }
+
+    async function reopenFlight() {
+        if (!currentFlightData || !confirm('Reopen flight?')) return;
+        
+        try {
+            currentFlightData.isClosed = false;
+            await saveFlightDataToFirebase();
+            
+            document.getElementById('flightStatus').textContent = 'OPEN';
+            document.getElementById('flightStatus').className = 'flight-status status-open';
+            document.getElementById('closeFlightBtn').style.display = 'block';
+            document.getElementById('reopenFlightBtn').style.display = 'none';
+            document.getElementById('printReportBtn').disabled = true;
+            validateCloseButton();
+            
+            alert(`✅ Flight reopened and data saved to ${currentFlightData.database}`);
+        } catch (error) {
+            alert('❌ Error saving to Firebase: ' + error.message);
+            console.error('Reopen flight error:', error);
+        }
+    }
+
+    function printReport() {
+    if (!currentFlightData || !currentFlightData.isClosed) { 
+        alert('Flight must be closed'); 
+        return; 
+    }
+
+    const company = window.companyInfo || { 
+        name: 'MACL', 
+        address: '123 Aviation Road', 
+        phone: '+123 456 7890',
+        logo: 'macl.png'
+    };
+    
+    const dateStr = document.getElementById('dateDisplay').textContent; 
+    const dateParts = dateStr.split('-');
+    const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+
+    const airline = currentFlightData.airline || '—';
+    const flightNo = currentFlightData.flightNo || '—';
+    const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
+    const firstPax = currentFlightData.firstPax || '—';
+    const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
+    const shift = currentFlightData.shift || '—';
+    
+    const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+    const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+
+    // Create print window
     const printWindow = window.open('', '_blank');
+    
+    // Generate HTML for print
     printWindow.document.write(`
+        <!DOCTYPE html>
         <html>
         <head>
-            <title>Passenger Details - ${passenger.pName || 'Unknown'}</title>
+            <title>Flight Report - ${flightNo} - ${formattedDate}</title>
             <style>
-                body { font-family: Arial, sans-serif; }
+                body {
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    margin: 0.5in;
+                    color: #333;
+                }
+                .header {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 30px;
+                    padding-bottom: 20px;
+                    border-bottom: 2px solid #e6b800;
+                }
+                .left-section {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 15px;
+                }
+                .logo-section {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .logo {
+                    width: 100px;
+                    height: auto;
+                    margin-bottom: 10px;
+                }
+                .logo img {
+                    max-width: 100%;
+                    max-height: 80px;
+                }
+                .company-address {
+                    font-size: 11px;
+                    color: #666;
+                    line-height: 1.4;
+                }
+                .flight-details {
+                    margin-top: 5px;
+                }
+                .flight-detail-item {
+                    font-size: 13px;
+                    margin-bottom: 3px;
+                }
+                .flight-detail-label {
+                    font-weight: 600;
+                    color: #8b6913;
+                    display: inline-block;
+                    width: 60px;
+                }
+                .right-section {
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: flex-start;
+                    padding-top: 95px;
+                }
+                .info-item {
+                    display: flex;
+                    gap: 15px;
+                    margin-bottom: 8px;
+                    justify-content: flex-end;
+                }
+                .label {
+                    font-weight: 600;
+                    color: #8b6913;
+                    min-width: 80px;
+                    text-align: right;
+                }
+                .value {
+                    color: #333;
+                    min-width: 60px;
+                    text-align: left;
+                }
+                .total-pax {
+                    margin: 15px 0;
+                    text-align: right;
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+                .total-pax span {
+                    background: #e6b800;
+                    color: white;
+                    padding: 5px 15px;
+                    border-radius: 20px;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 20px;
+                    font-size: 12px;
+                }
+                th {
+                    background: #e6b800;
+                    color: white;
+                    padding: 10px;
+                    text-align: left;
+                    font-size: 12px;
+                }
+                td {
+                    padding: 8px 10px;
+                    border-bottom: 1px solid #ddd;
+                }
+                tr:nth-child(even) {
+                    background: #f9f9f9;
+                }
+                .signature-section {
+                    margin-top: 50px;
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 0 20px;
+                }
+                .signature-box {
+                    text-align: center;
+                    width: 200px;
+                }
+                .signature-line {
+                    margin-top: 40px;
+                    border-bottom: 1px solid #333;
+                    width: 100%;
+                }
+                .signature-label {
+                    font-size: 12px;
+                    color: #8b6913;
+                    font-weight: 600;
+                    margin-top: 5px;
+                }
+                .date-info {
+                    margin-top: 20px;
+                    text-align: right;
+                    font-size: 11px;
+                    color: #666;
+                }
+                .footer {
+                    margin-top: 30px;
+                    text-align: center;
+                    font-size: 11px;
+                    color: #666;
+                    border-top: 1px solid #ddd;
+                    padding-top: 20px;
+                }
                 @media print {
-                    body { padding: 0; }
+                    body { margin: 0.25in; }
                 }
             </style>
         </head>
         <body>
-            ${printContent.innerHTML}
-        </body>
-        </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
-}
-
-// ========== EXPORT TO CSV FUNCTION ==========
-function exportToCSV() {
-    if (filteredPassengers.length === 0) {
-        alert('No data to export');
-        return;
-    }
-    
-    // Define CSV headers
-    const headers = [
-        'S.No',
-        'Database',
-        'Date',
-        'Shift',
-        'Entry Time',
-        'Passenger Name',
-        'Flight No',
-        'Seat No',
-        'Class',
-        'Airline',
-        'FQTV',
-        'PAX',
-        'Serial No',
-        'Remarks',
-        'Guest',
-        'Main Passenger',
-        'Main Seat',
-        'Entered By',
-        'Entered By Level',
-        'Entered By RC No',
-        'Entered At'
-    ];
-    
-    // Convert data to CSV rows
-    const rows = filteredPassengers.map((p, index) => [
-        index + 1,
-        p.sourceDbPrefix || 'OTHER',
-        p.date || '',
-        p.shift || '',
-        p.entryTime || '',
-        p.pName || '',
-        p.flightNo || '',
-        p.seatNo || '',
-        p.class || '',
-        p.airline || '',
-        p.FQTV || '',
-        p.pax || '',
-        p.serialNo || '',
-        p.remarks || '',
-        p.isGuest ? 'Yes' : 'No',
-        p.isGuest ? (p.mainPassengerName || '') : '',
-        p.isGuest ? (p.mainPassengerSeat || '') : '',
-        p.enteredBy || '',
-        p.enteredByLevel || '',
-        p.enteredByRCNo || '',
-        p.enteredAt ? new Date(p.enteredAt).toLocaleString() : ''
-    ]);
-    
-    // Combine headers and rows
-    const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-    
-    // Create download link
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `passenger_report_${new Date().toISOString().slice(0,10)}.csv`);
-    link.style.display = 'none';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-}
-
-// ========== PRINT REPORT FUNCTION ==========
-function printReport() {
-    if (filteredPassengers.length === 0) {
-        alert('No data to print');
-        return;
-    }
-    
-    // Create print content
-    const printContent = document.createElement('div');
-    printContent.innerHTML = `
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-            <h1 style="text-align: center; color: #8b6913;">PASSENGER REPORT</h1>
-            <p style="text-align: center;">
-                Generated: ${new Date().toLocaleString()}<br>
-                Total Passengers: ${filteredPassengers.length}
-            </p>
-            <hr>
-            <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+            <div class="header">
+                <div class="left-section">
+                    <div class="logo-section">
+                        <div class="logo">
+                            <img img src="macl.png"  alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
+                        </div>
+                        <div class="company-address">
+                            <strong>${company.name}</strong><br>
+                            ${company.address}<br>
+                            ${company.phone}
+                        </div>
+                    </div>
+                    <div class="flight-details">
+                        <div class="flight-detail-item">
+                            <span class="flight-detail-label">Airline:</span> ${airline}
+                        </div>
+                        <div class="flight-detail-item">
+                            <span class="flight-detail-label">Flight No:</span> ${flightNo}
+                        </div>
+                        <div class="flight-detail-item">
+                            <span class="flight-detail-label">Date:</span> ${formattedDate}
+                        </div>
+                    </div>
+                </div>
+                <div class="right-section">
+                    <div class="info-item">
+                        <span class="label">STD:</span>
+                        <span class="value">${std}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">First Pax:</span>
+                        <span class="value">${firstPax}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Last Pax:</span>
+                        <span class="value">${lastPax}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Shift:</span>
+                        <span class="value">${shift}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="total-pax">
+                <span>TOTAL PAX: ${totalPaxSum}</span>
+            </div>
+            
+            <table>
                 <thead>
-                    <tr style="background: #f5f5f5;">
-                        <th style="border: 1px solid #ccc; padding: 4px;">S.No</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">DB</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Date</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Shift</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Time</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Name</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Flight</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Seat</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Class</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Airline</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">FQTV</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">PAX</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Serial</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Remarks</th>
-                        <th style="border: 1px solid #ccc; padding: 4px;">Guest</th>
+                    <tr>
+                        <th>No.</th>
+                        <th>Name</th>
+                        <th>Seat</th>
+                        <th>Pax</th>
+                        <th>FQTV</th>
+                        <th>Serial No</th>
+                        <th>Time</th>
+                        <th>Remarks</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${filteredPassengers.map((p, index) => `
-                        <tr>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${index + 1}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.sourceDbPrefix || 'OT'}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.date || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.shift || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.entryTime || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.pName || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.flightNo || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.seatNo || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.class || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.airline || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.FQTV || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.pax || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.serialNo || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.remarks || ''}</td>
-                            <td style="border: 1px solid #ccc; padding: 2px;">${p.isGuest ? 'Y' : 'N'}</td>
-                        </tr>
-                    `).join('')}
+    `);
+    
+    // Add passenger rows
+    sortedPassengers.forEach((p, idx) => {
+        const serial = String(idx+1).padStart(3,'0');
+        printWindow.document.write(`
+            <tr>
+                <td>${serial}</td>
+                <td>${p.pName || '-'}</td>
+                <td>${p.seatNo || '-'}</td>
+                <td style="text-align:center;">${p.pax || '1'}</td>
+                <td>${p.FQTV || '-'}</td>
+                <td>${p.serialNo || '-'}</td>
+                <td>${p.entryTime || '-'}</td>
+                <td>${p.remarks || '-'}</td>
+            </tr>
+        `);
+    });
+    
+    printWindow.document.write(`
                 </tbody>
             </table>
-            <hr>
-            <p style="text-align: center; font-size: 10px; color: #666;">
-                Report generated by: ${currentUser.name || currentUser.username || 'Unknown'} (${currentUser.level || 'Operator'}) - RC: ${currentUser.rcno || 'N/A'}
-            </p>
-        </div>
-    `;
-    
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-        <html>
-        <head>
-            <title>Passenger Report</title>
-            <style>
-                body { font-family: Arial, sans-serif; }
-                @media print {
-                    body { padding: 0; }
-                }
-            </style>
-        </head>
-        <body>
-            ${printContent.innerHTML}
+            
+            <div class="signature-section">
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <div class="signature-label">Prepared by:</div>
+                </div>
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <div class="signature-label">Checked by:</div>
+                </div>
+            </div>
+            
+            <div class="date-info">
+                Date: ____________________
+            </div>
+            
+            <div class="footer">
+                <p>This is a computer generated report. Valid without signature.</p>
+                <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
+            </div>
+            
+            <script>
+                window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
+            <\/script>
         </body>
         </html>
     `);
+    
     printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
 }
 
-// Make functions global
-window.logout = logout;
-window.searchPassengers = searchPassengers;
-window.clearSearch = clearSearch;
-window.exportToCSV = exportToCSV;
-window.printReport = printReport;
-window.viewPassenger = viewPassenger;
-window.printPassenger = printPassenger;
-</script>
+    // initialization
+    document.addEventListener('DOMContentLoaded', function() {
+        fetchOpenShift();
+        setInterval(fetchOpenShift, 30000);
+        
+        // Load dates once when page loads
+        setTimeout(() => {
+            loadDates();
+        }, 1000);
+    });
+
+    // global functions
+    window.loadDates = loadDates; 
+    window.onDateSelected = onDateSelected; 
+    window.onFlightSelected = onFlightSelected;
+    window.updateSTD = updateSTD; 
+    window.updateLastPax = updateLastPax; 
+    window.closeFlight = closeFlight;
+    window.reopenFlight = reopenFlight; 
+    window.printReport = printReport;
+    window.fetchOpenShift = fetchOpenShift; 
+    window.startEdit = startEdit; 
+    window.cancelEdit = cancelEdit;
+    window.savePassenger = savePassenger; 
+    window.confirmDelete = confirmDelete; 
+    window.onSeatChange = onSeatChange;
+    window.onPaxChange = onPaxChange; 
+    window.updatePaxFromSeat = updatePaxFromSeat; 
+    window.validateCloseButton = validateCloseButton;
+    
+    // NEW: Duplicate handling functions
+    window.showDuplicatesForResolution = showDuplicatesForResolution;
+    window.closeDuplicateModal = closeDuplicateModal;
+    window.deleteDuplicate = deleteDuplicate;
+    window.deleteAllDuplicates = deleteAllDuplicates;
+    </script>
+</body>
+</html>
