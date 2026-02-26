@@ -558,19 +558,22 @@
                             <th>No.</th>
                             <th>Date</th>
                             <th>QR Flight</th>
-                            <th>QR Code</th>
-                            <th>Timestamp</th>
+                            <th>Passenger Name</th>
+                            <th>Seat</th>
+                            <th>FQTV</th>
+                            <th>Time</th>
+                            <th>Code</th>
                         </tr>
                     </thead>
                     <tbody id="qrTableBody">
-                        <tr><td colspan="5" class="no-data">Loading QR data from cardentryqr...</td></tr>
+                        <tr><td colspan="8" class="no-data">Loading QR data from cardentryqr...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
         
         <div class="footer">
-            <i class="qr-icon">📱</i> QR Airlines • Data from cardentryqr database only
+            <i class="qr-icon">📱</i> QR Airlines • Data from cardentryqr database only • Collection: Kovelipass
         </div>
     </div>
 
@@ -615,7 +618,7 @@
             if (showLoading) {
                 dateSelect.innerHTML = '<option value="">🔍 Loading QR data from cardentryqr...</option>';
                 dateSelect.disabled = true;
-                document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Loading QR data from cardentryqr...</td></tr>';
+                document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span> Loading QR data from cardentryqr...</td></tr>';
                 document.getElementById('tableContainer').style.display = 'block';
             }
             
@@ -628,23 +631,34 @@
                 }
                 
                 console.log(`🔍 Loading data from cardentryqr database only...`);
+                console.log(`🔍 Querying collection: Kovelipass`);
                 
-                // Query the QrCards collection
-                const snapshot = await qrDbInstance.collection('QrCards').get();
+                // Query the Kovelipass collection (note: capital P)
+                const snapshot = await qrDbInstance.collection('Kovelipass').get();
                 
                 // Clear previous data
                 qrDataByDate = {};
                 let qrFlightCount = 0;
                 let totalRecords = 0;
                 let dateSet = new Set(); // Track all dates with QR flights
+                let flightSet = new Set(); // Track all QR flights
+                
+                console.log(`📊 Found ${snapshot.size} total records in Kovelipass`);
                 
                 if (snapshot.empty) {
-                    console.log(`ℹ️ No records found in cardentryqr`);
+                    console.log(`ℹ️ No records found in Kovelipass`);
                 } else {
-                    console.log(`✅ Found ${snapshot.size} total records in cardentryqr`);
-                    
                     snapshot.forEach(doc => {
                         const data = doc.data();
+                        
+                        // Log first few records for debugging
+                        if (qrFlightCount < 3) {
+                            console.log('Sample record:', {
+                                flightNo: data.flightNo,
+                                date: data.date,
+                                pName: data.pName
+                            });
+                        }
                         
                         // Extract flight number
                         let flightNo = data.flightNo || '';
@@ -655,47 +669,18 @@
                         }
                         
                         qrFlightCount++;
+                        flightSet.add(flightNo);
                         
-                        // Extract date
+                        // Extract date - this is the field we need
                         let date = data.date || '';
-                        let code = data.code || '';
-                        let timestamp = '';
+                        let pName = data.pName || '';
+                        let seatNo = data.seatNo || '';
+                        let FQTV = data.FQTV || '';
+                        let entryTime = data.entryTime || '';
+                        let code = data.hiddenCode || data.code || '';
                         
-                        // Parse timestamp
-                        if (data.timestamp) {
-                            if (data.timestamp.toDate) {
-                                const d = data.timestamp.toDate();
-                                timestamp = d.toLocaleString();
-                            } else if (data.timestamp.seconds) {
-                                const d = new Date(data.timestamp.seconds * 1000);
-                                timestamp = d.toLocaleString();
-                            } else if (typeof data.timestamp === 'string') {
-                                timestamp = data.timestamp;
-                            }
-                        }
-                        
-                        // Try to parse date from doc.id if format is DATE_FLIGHT
-                        if (!date && doc.id && doc.id.includes('_')) {
-                            const parts = doc.id.split('_');
-                            date = parts[0] || '';
-                        }
-                        
-                        // Format date for display (YYYY-MM-DD)
+                        // Format date - ensure it's in YYYY-MM-DD format
                         let displayDate = date;
-                        if (date && date.length === 8 && !date.includes('-') && !date.includes('/')) {
-                            // Format YYYYMMDD to YYYY-MM-DD
-                            displayDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
-                        } else if (date && date.includes('/')) {
-                            // Convert DD/MM/YYYY to YYYY-MM-DD
-                            const parts = date.split('/');
-                            if (parts.length === 3) {
-                                if (parts[2].length === 4) {
-                                    displayDate = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-                                }
-                            }
-                        } else {
-                            displayDate = date;
-                        }
                         
                         // If we have a valid date, store the record
                         if (displayDate) {
@@ -711,6 +696,7 @@
                             if (!qrDataByDate[displayDate].has(flightKey)) {
                                 qrDataByDate[displayDate].set(flightKey, {
                                     flightNo: flightNo,
+                                    airline: data.airline || 'QATAR AIRWAYS',
                                     records: [],
                                     firstTimestamp: null,
                                     lastTimestamp: null
@@ -723,21 +709,26 @@
                                 docId: doc.id,
                                 date: displayDate,
                                 flightNo: flightNo,
-                                code: code,
-                                timestamp: timestamp
+                                pName: pName,
+                                seatNo: seatNo,
+                                FQTV: FQTV,
+                                entryTime: entryTime,
+                                code: code
                             });
                             
                             totalRecords++;
                             
                             // Update first/last timestamps
-                            if (timestamp) {
-                                if (!flightData.firstTimestamp || timestamp < flightData.firstTimestamp) {
-                                    flightData.firstTimestamp = timestamp;
+                            if (entryTime) {
+                                if (!flightData.firstTimestamp || entryTime < flightData.firstTimestamp) {
+                                    flightData.firstTimestamp = entryTime;
                                 }
-                                if (!flightData.lastTimestamp || timestamp > flightData.lastTimestamp) {
-                                    flightData.lastTimestamp = timestamp;
+                                if (!flightData.lastTimestamp || entryTime > flightData.lastTimestamp) {
+                                    flightData.lastTimestamp = entryTime;
                                 }
                             }
+                        } else {
+                            console.warn('Record missing date:', doc.id);
                         }
                     });
                 }
@@ -745,8 +736,9 @@
                 // Convert dateSet to array and sort
                 allDates = Array.from(dateSet).sort().reverse();
                 
-                console.log(`📊 Found ${qrFlightCount} QR flight records with ${totalRecords} total QR codes`);
+                console.log(`📊 Found ${qrFlightCount} QR flight records with ${totalRecords} total records`);
                 console.log(`📅 Found ${allDates.length} unique dates with QR flights:`, allDates);
+                console.log(`✈️ Found ${flightSet.size} unique QR flights:`, Array.from(flightSet));
                 
                 // Update the date select dropdown with QR flight dates only
                 updateDateDropdown();
@@ -760,7 +752,7 @@
                 
                 // Show table with message if no data
                 if (allDates.length === 0) {
-                    document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="no-data">No QR flight data found in cardentryqr database</td></tr>';
+                    document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="8" class="no-data">No QR flight data found in cardentryqr database</td></tr>';
                     document.getElementById('tableContainer').style.display = 'block';
                 }
                 
@@ -769,7 +761,7 @@
                 dateSelect.innerHTML = '<option value="">❌ Error loading QR data</option>';
                 dateSelect.disabled = false;
                 document.getElementById('dateCount').textContent = 'Error';
-                document.getElementById('qrTableBody').innerHTML = `<tr><td colspan="5" class="no-data">Error: ${error.message}</td></tr>`;
+                document.getElementById('qrTableBody').innerHTML = `<tr><td colspan="8" class="no-data">Error: ${error.message}</td></tr>`;
                 document.getElementById('tableContainer').style.display = 'block';
             } finally { 
                 isLoadingData = false; 
@@ -841,7 +833,7 @@
             let options = '<option value="">✈️ Select a QR flight</option>';
             flightsArray.forEach(f => { 
                 const recordCount = f.records.length;
-                options += `<option value="${f.flightNo}">${f.flightNo} - ${recordCount} QR code${recordCount !== 1 ? 's' : ''}</option>`; 
+                options += `<option value="${f.flightNo}">${f.flightNo} - ${recordCount} record${recordCount !== 1 ? 's' : ''}</option>`; 
             });
             
             flightSelect.innerHTML = options;
@@ -865,7 +857,7 @@
             
             // Show loading state
             document.getElementById('flightPanel').style.display = 'block';
-            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Loading QR flight data...</td></tr>';
+            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span> Loading QR flight data...</td></tr>';
             
             const flights = qrDataByDate[selectedDate];
             const flightData = Array.from(flights.values()).find(f => f.flightNo === selectedFlight);
@@ -890,9 +882,9 @@
             document.getElementById('lastQrDisplay').textContent = flightData.lastTimestamp || '-';
             document.getElementById('totalQrDisplay').textContent = flightData.records.length;
             document.getElementById('totalQrStat').textContent = flightData.records.length;
-            document.getElementById('firstQrStat').textContent = flightData.firstTimestamp ? 'QR' : '--:--';
-            document.getElementById('lastQrStat').textContent = flightData.lastTimestamp ? 'QR' : '--:--';
-            document.getElementById('recordCount').textContent = flightData.records.length + ' QR';
+            document.getElementById('firstQrStat').textContent = flightData.firstTimestamp || '--:--';
+            document.getElementById('lastQrStat').textContent = flightData.lastTimestamp || '--:--';
+            document.getElementById('recordCount').textContent = flightData.records.length + ' records';
             document.getElementById('infoText').innerHTML = `${flightData.flightNo} <span class="qr-flight-badge">QR</span>`;
             
             // Enable print button if there are records
@@ -906,13 +898,13 @@
             const tbody = document.getElementById('qrTableBody');
             
             if (!records || records.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="no-data">No QR data found for this flight</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="no-data">No QR data found for this flight</td></tr>';
                 document.getElementById('tableContainer').style.display = 'block';
                 return;
             }
             
-            // Sort records by timestamp
-            const sorted = [...records].sort((a,b) => (a.timestamp||'').localeCompare(b.timestamp||''));
+            // Sort records by entry time
+            const sorted = [...records].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
             let html = '';
             
             sorted.forEach((record, idx) => {
@@ -922,8 +914,11 @@
                     <td class="serial-no">${serial}</td>
                     <td><span class="badge badge-date">${record.date || '-'}</span></td>
                     <td><span class="badge badge-flight">${record.flightNo || '-'} <span class="qr-flight-badge">QR</span></span></td>
-                    <td><div class="code-cell" title="${record.code || ''}"><span class="badge badge-code">${record.code ? (record.code.length > 50 ? record.code.substring(0,50)+'...' : record.code) : '—'}</span></div></td>
-                    <td>${record.timestamp || '-'}</td>
+                    <td>${record.pName || '-'}</td>
+                    <td>${record.seatNo || '-'}</td>
+                    <td>${record.FQTV || '-'}</td>
+                    <td>${record.entryTime || '-'}</td>
+                    <td><div class="code-cell" title="${record.code || ''}"><span class="badge badge-code">${record.code ? (record.code.length > 30 ? record.code.substring(0,30)+'...' : record.code) : '—'}</span></div></td>
                 </tr>`;
             });
             
@@ -935,7 +930,7 @@
             if (!currentFlightData) return;
             
             // Show refreshing indicator
-            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Refreshing QR data...</td></tr>';
+            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span> Refreshing QR data...</td></tr>';
             
             // Reload all data
             loadQRData(true).then(() => {
@@ -964,7 +959,7 @@
 
         function refreshAllData() {
             // Show refreshing indicator
-            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Refreshing all QR data...</td></tr>';
+            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span> Refreshing all QR data...</td></tr>';
             
             // Reload all data
             loadQRData(true).then(() => {
@@ -990,8 +985,9 @@
             const flightNo = currentFlightData.flightNo || '—';
             const firstTimestamp = currentFlightData.firstTimestamp || '—';
             const lastTimestamp = currentFlightData.lastTimestamp || '—';
+            const airline = currentFlightData.airline || 'QATAR AIRWAYS';
             
-            const sortedRecords = [...currentFlightData.records].sort((a,b) => (a.timestamp||'').localeCompare(b.timestamp||''));
+            const sortedRecords = [...currentFlightData.records].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
 
             // Create print window
             const printWindow = window.open('', '_blank');
@@ -1050,15 +1046,16 @@
                             width: 100%;
                             border-collapse: collapse;
                             margin-top: 20px;
+                            font-size: 11px;
                         }
                         th {
                             background: #b03a5e;
                             color: white;
-                            padding: 10px;
+                            padding: 8px;
                             text-align: left;
                         }
                         td {
-                            padding: 8px 10px;
+                            padding: 6px 8px;
                             border-bottom: 1px solid #ddd;
                         }
                         tr:nth-child(even) {
@@ -1066,8 +1063,9 @@
                         }
                         .code-cell {
                             font-family: monospace;
-                            font-size: 10px;
+                            font-size: 9px;
                             word-break: break-all;
+                            max-width: 200px;
                         }
                         .footer {
                             margin-top: 50px;
@@ -1082,17 +1080,18 @@
                         <div>
                             <div class="logo">📱 QR AIRLINES</div>
                             <div class="flight-details">
+                                <div class="detail-row"><span class="label">Airline:</span> ${airline}</div>
                                 <div class="detail-row"><span class="label">Flight:</span> ${flightNo}</div>
                                 <div class="detail-row"><span class="label">Date:</span> ${formattedDate}</div>
                                 <div class="detail-row"><span class="label">Database:</span> cardentryqr</div>
-                                <div class="database-note">* Data from QR database only</div>
+                                <div class="database-note">* Collection: Kovelipass</div>
                             </div>
                         </div>
                         <div class="right-section">
-                            <div>First QR: ${firstTimestamp}</div>
-                            <div>Last QR: ${lastTimestamp}</div>
+                            <div>First: ${firstTimestamp}</div>
+                            <div>Last: ${lastTimestamp}</div>
                             <div class="stats-box">
-                                <strong>Total QR Codes: ${sortedRecords.length}</strong>
+                                <strong>Total Records: ${sortedRecords.length}</strong>
                             </div>
                         </div>
                     </div>
@@ -1101,10 +1100,11 @@
                         <thead>
                             <tr>
                                 <th>No.</th>
-                                <th>Date</th>
-                                <th>QR Flight</th>
-                                <th>QR Code</th>
-                                <th>Timestamp</th>
+                                <th>Name</th>
+                                <th>Seat</th>
+                                <th>FQTV</th>
+                                <th>Time</th>
+                                <th>Code</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1115,10 +1115,11 @@
                 printWindow.document.write(`
                     <tr>
                         <td>${serial}</td>
-                        <td>${record.date || '-'}</td>
-                        <td>${record.flightNo || '-'}</td>
+                        <td>${record.pName || '-'}</td>
+                        <td>${record.seatNo || '-'}</td>
+                        <td>${record.FQTV || '-'}</td>
+                        <td>${record.entryTime || '-'}</td>
                         <td class="code-cell">${record.code || '-'}</td>
-                        <td>${record.timestamp || '-'}</td>
                     </tr>
                 `);
             });
