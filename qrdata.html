@@ -481,10 +481,11 @@
             align-items: center;
         }
         
-        .qr-code canvas, .qr-code img {
+        .qr-code canvas {
             max-width: 100%;
             max-height: 100%;
             border-radius: 8px;
+            display: block;
         }
         
         .qr-info {
@@ -687,7 +688,7 @@
         </div>
     </div>
 
- <script>
+    <script>
     // ========== GLOBAL VARIABLES ==========
     let flightsByDate = {};
     let allDates = [];
@@ -1187,6 +1188,9 @@
             </div>
         `;
         
+        // Allow DOM to update
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         try {
             // Get all passengers for the selected date
             const flights = flightsByDate[selectedDate];
@@ -1221,8 +1225,14 @@
                 return (a.pName || '').localeCompare(b.pName || '');
             });
             
-            // Generate QR codes for each passenger
+            // Clear container
             qrContainer.innerHTML = '';
+            
+            // Create a document fragment for better performance
+            const fragment = document.createDocumentFragment();
+            
+            // Create an array to hold promises
+            const qrPromises = [];
             
             for (const passenger of allPassengers) {
                 // Create passenger data for QR code
@@ -1244,7 +1254,6 @@
                 
                 const qrDiv = document.createElement('div');
                 qrDiv.className = 'qr-code';
-                qrDiv.id = `qr-${passenger.docId}`;
                 
                 const infoDiv = document.createElement('div');
                 infoDiv.className = 'qr-info';
@@ -1259,23 +1268,37 @@
                 
                 qrCard.appendChild(qrDiv);
                 qrCard.appendChild(infoDiv);
-                qrContainer.appendChild(qrCard);
+                fragment.appendChild(qrCard);
                 
-                // Generate QR code
-                try {
-                    await QRCode.toCanvas(qrDiv, JSON.stringify(qrData, null, 2), {
+                // Store promise for QR generation
+                qrPromises.push(
+                    QRCode.toCanvas(qrData, { 
                         width: 200,
                         margin: 2,
                         color: {
                             dark: '#000000',
                             light: '#ffffff'
                         }
-                    });
-                } catch (qrError) {
-                    console.error('Error generating QR code for passenger:', passenger.pName, qrError);
-                    qrDiv.innerHTML = '<div style="color: red; padding: 20px;">Error</div>';
-                }
+                    })
+                    .then(canvas => {
+                        // Clear the div and append the canvas
+                        qrDiv.innerHTML = '';
+                        qrDiv.appendChild(canvas);
+                    })
+                    .catch(error => {
+                        console.error('Error generating QR code for passenger:', passenger.pName, error);
+                        qrDiv.innerHTML = '<div style="color: red; padding: 20px;">Error</div>';
+                    })
+                );
             }
+            
+            // Append all cards to container
+            qrContainer.appendChild(fragment);
+            
+            // Wait for all QR codes to generate
+            await Promise.all(qrPromises);
+            
+            console.log(`✅ Generated ${allPassengers.length} QR codes successfully`);
             
         } catch (error) {
             console.error('Error generating QR codes:', error);
