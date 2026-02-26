@@ -543,7 +543,7 @@
         </div>
     </div>
 
-    <script>
+   <script>
     // ========== GLOBAL VARIABLES ==========
     let flightsByDate = {};
     let allDates = [];
@@ -790,43 +790,27 @@
                                 
                                 const flightData = flightsByDate[date].get(flightKey);
                                 
-                                // CRITICAL: Get hiddenCode - check multiple possible field names
-                                let hiddenCode = '';
+                                // SIMPLE: Just get the hiddenCode field directly from Firebase
+                                // If the field doesn't exist, it will be undefined
+                                const hiddenCode = data.hiddenCode || '';
                                 
-                                // List of possible field names for hidden code
-                                const possibleFields = [
-                                    'hiddenCode', 'hiddencode', 'HiddenCode', 'HIDDENCODE',
-                                    'code', 'Code', 'CODE',
-                                    'pnr', 'Pnr', 'PNR',
-                                    'bookingCode', 'bookingcode', 'BookingCode',
-                                    'recordLocator', 'recordlocator', 'RecordLocator',
-                                    'hidden_code', 'hidden_Code', 'Hidden_Code'
-                                ];
-                                
-                                for (const field of possibleFields) {
-                                    if (data[field] !== undefined && data[field] !== null && data[field] !== '') {
-                                        hiddenCode = String(data[field]);
-                                        console.log(`✅ Found hidden code in field '${field}' for document ${docId}:`, hiddenCode);
-                                        break;
-                                    }
-                                }
-                                
-                                if (!hiddenCode) {
-                                    console.log(`❌ No hidden code found for document ${docId}`);
-                                    // Log all available fields to help debug
-                                    console.log(`Available fields for ${docId}:`, Object.keys(data));
+                                // Log to see what's being fetched
+                                if (hiddenCode) {
+                                    console.log(`✅ Found hiddenCode for ${docId}:`, hiddenCode);
+                                } else {
+                                    console.log(`ℹ️ No hiddenCode for ${docId}`);
                                 }
                                 
                                 const passenger = {
                                     docId: docId,
-                                    pName: data.pName || data.name || data.Name || '',
-                                    seatNo: data.seatNo || data.seat || data.Seat || '',
-                                    pax: data.pax || data.Pax || '1',
-                                    FQTV: data.FQTV || data.ffn || data.FFN || '',
-                                    entryTime: data.entryTime || data.time || data.Time || '',
-                                    remarks: data.remarks || data.Remark || data.remark || '',
-                                    serialNo: data.serialNo || data.serial || data.Serial || '',
-                                    hiddenCode: hiddenCode // Store whatever we found
+                                    pName: data.pName || '',
+                                    seatNo: data.seatNo || '',
+                                    pax: data.pax || '1',
+                                    FQTV: data.FQTV || '',
+                                    entryTime: data.entryTime || '',
+                                    remarks: data.remarks || '',
+                                    serialNo: data.serialNo || '',
+                                    hiddenCode: hiddenCode // Just use whatever is in the hiddenCode field
                                 };
                                 
                                 flightData.passengers.push(passenger);
@@ -923,12 +907,6 @@
                currentFlightData.flightNo.toUpperCase().startsWith('SQ');
     }
 
-    function isFZFlight() {
-        return currentFlightData && 
-               currentFlightData.flightNo && 
-               currentFlightData.flightNo.toUpperCase().startsWith('FZ');
-    }
-
     function displayPassengerTable(passengers) {
         const tbody = document.getElementById('passengerTableBody');
         const isSQ = isSQFlight();
@@ -973,7 +951,7 @@
                     </td>
                 </tr>`;
             } else {
-                // Highlight the hidden code if it exists
+                // Display the hidden code exactly as it comes from Firebase
                 const hiddenCodeDisplay = p.hiddenCode ? 
                     `<span class="hidden-code" title="${escapeHtml(p.hiddenCode)}">${escapeHtml(p.hiddenCode)}</span>` : 
                     '-';
@@ -1044,16 +1022,14 @@
             database: flightData.database
         });
         
-        // Log all passengers with their hidden codes
+        // Log all passengers with their hidden codes (exactly as from Firebase)
         console.log('All passengers with hidden codes:');
         flightData.passengers.forEach((p, i) => {
             console.log(`Passenger ${i+1}:`, {
                 name: p.pName,
                 seat: p.seatNo,
                 hiddenCode: p.hiddenCode,
-                hasHiddenCode: !!p.hiddenCode,
-                hiddenCodeType: typeof p.hiddenCode,
-                hiddenCodeLength: p.hiddenCode ? p.hiddenCode.length : 0
+                hasHiddenCode: !!p.hiddenCode
             });
         });
         
@@ -1173,7 +1149,7 @@
                 serialNo, 
                 entryTime,
                 remarks,
-                hiddenCode,
+                hiddenCode, // Save the hidden code back to Firebase
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
             });
             
@@ -1694,7 +1670,6 @@
     window.validateCloseButton = validateCloseButton;
     window.escapeHtml = escapeHtml;
     window.isSQFlight = isSQFlight;
-    window.isFZFlight = isFZFlight;
     </script>
 </body>
 </html>
