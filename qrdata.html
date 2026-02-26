@@ -467,7 +467,7 @@
                 <span>QR AIRLINES</span>
                 <span class="qr-badge" id="dbStatus">cardentryqr</span>
             </div>
-            <button class="refresh-qr" onclick="loadQRData(true)">↻ REFRESH DATA</button>
+            <button class="refresh-qr" onclick="refreshAllData()">↻ REFRESH DATA</button>
         </div>
 
         <!-- main card -->
@@ -476,8 +476,8 @@
                 <div class="left-selectors">
                     <div class="form-group">
                         <label><i class="qr-icon">📅</i> DATE</label>
-                        <select id="dateSelect" class="form-control" onclick="loadQRData()" onchange="onDateSelected()">
-                            <option value="">-- Click to load dates --</option>
+                        <select id="dateSelect" class="form-control" onchange="onDateSelected()">
+                            <option value="">-- Select a date --</option>
                         </select>
                         <div class="distinct-count">
                             <span id="dateCount">0 dates</span>
@@ -553,7 +553,7 @@
                         </tr>
                     </thead>
                     <tbody id="qrTableBody">
-                        <tr><td colspan="5" class="no-data">Select a flight to view QR data</td></tr>
+                        <tr><td colspan="5" class="no-data">Loading QR data...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -571,6 +571,7 @@
         let currentFlightData = null;
         let isLoadingData = false;
         let qrDbInstance = null;
+        let dataLoaded = false;
 
         // ========== GET CARDENTRYQR DATABASE ONLY ==========
         function getCardEntryQRDatabase() {
@@ -596,55 +597,37 @@
                 return window.defaultCardDb;
             }
             
-            // Look through all possible database variables
-            const possibleDbs = [
-                { name: 'baDb', ref: window.baDb, project: 'cardentryba' },
-                { name: 'ekDb', ref: window.ekDb, project: 'cardentryek' },
-                { name: 'qrDb', ref: window.qrDb, project: 'cardentryqr' },
-                { name: 'sqDb', ref: window.sqDb, project: 'dcleeli' },
-                { name: 'cardDb', ref: window.cardDb, project: 'cardentryqr' },
-                { name: 'defaultCardDb', ref: window.defaultCardDb, project: 'cardentry-7bad1' }
-            ];
-            
-            // Find the one with projectId 'cardentryqr'
-            const qrDb = possibleDbs.find(db => db.project === 'cardentryqr' && db.ref);
-            
-            if (qrDb && qrDb.ref) {
-                console.log(`✅ Found cardentryqr database via ${qrDb.name}`);
-                return qrDb.ref;
-            }
-            
             console.error("❌ cardentryqr database not found - check fireshift.js configuration");
             return null;
         }
 
         // ========== LOAD QR DATA FROM CARDENTRYQR ONLY ==========
-        async function loadQRData(forceReload = false) {
+        async function loadQRData(showLoading = true) {
             if (isLoadingData) return;
             
             const dateSelect = document.getElementById('dateSelect');
             isLoadingData = true;
             
-            // Show loading message
-            dateSelect.innerHTML = '<option value="">🔍 Loading QR data from cardentryqr...</option>';
-            dateSelect.disabled = true;
-            
-            // Clear previous data
-            qrDataByDate = {};
-            allDates = [];
+            if (showLoading) {
+                dateSelect.innerHTML = '<option value="">🔍 Loading QR data...</option>';
+                dateSelect.disabled = true;
+            }
             
             try {
                 // Get the cardentryqr database
                 qrDbInstance = getCardEntryQRDatabase();
                 
                 if (!qrDbInstance) {
-                    throw new Error('cardentryqr database not found - check fireshift.js configuration');
+                    throw new Error('cardentryqr database not found');
                 }
                 
                 console.log(`🔍 Loading QR data from cardentryqr ONLY...`);
                 
                 // Query the QrCards collection
                 const snapshot = await qrDbInstance.collection('QrCards').get();
+                
+                // Clear previous data
+                qrDataByDate = {};
                 
                 if (snapshot.empty) {
                     console.log(`ℹ️ No QR records found in cardentryqr`);
@@ -654,7 +637,7 @@
                     snapshot.forEach(doc => {
                         const data = doc.data();
                         
-                        // Extract date
+                        // Extract date - only from QR database
                         let date = data.date || '';
                         let flightNo = data.flightNo || '';
                         let code = data.code || '';
@@ -697,13 +680,13 @@
                             displayDate = date;
                         }
                         
-                        if (displayDate) {
+                        if (displayDate && flightNo) {  // Only store if both date and flight exist
                             if (!qrDataByDate[displayDate]) {
                                 qrDataByDate[displayDate] = new Map();
                             }
                             
                             // Use flight number as key
-                            const flightKey = flightNo || 'UNKNOWN';
+                            const flightKey = flightNo;
                             
                             if (!qrDataByDate[displayDate].has(flightKey)) {
                                 qrDataByDate[displayDate].set(flightKey, {
@@ -739,18 +722,10 @@
                 
                 // Get all unique dates and sort them (newest first)
                 allDates = Object.keys(qrDataByDate).sort().reverse();
+                dataLoaded = true;
                 
                 // Update the date select dropdown
-                if (allDates.length === 0) {
-                    dateSelect.innerHTML = '<option value="">❌ No QR data found in cardentryqr</option>';
-                } else {
-                    let options = '<option value="">📅 Select a date</option>';
-                    allDates.forEach(d => { 
-                        const flightCount = qrDataByDate[d]?.size || 0;
-                        options += `<option value="${d}">${d} (${flightCount} flight${flightCount !== 1 ? 's' : ''})</option>`; 
-                    });
-                    dateSelect.innerHTML = options;
-                }
+                updateDateDropdown();
                 
                 // Update date count
                 document.getElementById('dateCount').textContent = `${allDates.length} date${allDates.length !== 1 ? 's' : ''}`;
@@ -759,15 +734,38 @@
                 // Update flight count
                 document.getElementById('flightCount').textContent = '0 flights';
                 
+                // Show table with message if no data
+                if (allDates.length === 0) {
+                    document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="no-data">No QR data found in cardentryqr database</td></tr>';
+                    document.getElementById('tableContainer').style.display = 'block';
+                }
+                
             } catch (error) {
                 console.error('Error loading QR data:', error);
                 dateSelect.innerHTML = '<option value="">❌ Error loading QR data</option>';
                 dateSelect.disabled = false;
                 document.getElementById('dateCount').textContent = 'Error';
-                alert('Error loading QR data: ' + error.message);
+                document.getElementById('qrTableBody').innerHTML = `<tr><td colspan="5" class="no-data">Error: ${error.message}</td></tr>`;
+                document.getElementById('tableContainer').style.display = 'block';
             } finally { 
                 isLoadingData = false; 
             }
+        }
+
+        function updateDateDropdown() {
+            const dateSelect = document.getElementById('dateSelect');
+            
+            if (allDates.length === 0) {
+                dateSelect.innerHTML = '<option value="">❌ No QR data found</option>';
+                return;
+            }
+            
+            let options = '<option value="">📅 Select a date</option>';
+            allDates.forEach(d => { 
+                const flightCount = qrDataByDate[d]?.size || 0;
+                options += `<option value="${d}">${d} (${flightCount} QR flight${flightCount !== 1 ? 's' : ''})</option>`; 
+            });
+            dateSelect.innerHTML = options;
         }
 
         function onDateSelected() {
@@ -797,7 +795,7 @@
             // Get flights for selected date
             const flights = qrDataByDate[selectedDate];
             if (!flights || flights.size === 0) {
-                flightSelect.innerHTML = '<option value="">❌ No flights for this date</option>';
+                flightSelect.innerHTML = '<option value="">❌ No QR flights for this date</option>';
                 document.getElementById('flightCount').textContent = '0 flights';
                 return;
             }
@@ -805,17 +803,16 @@
             // Convert Map to array and sort
             const flightsArray = Array.from(flights.values()).sort((a,b) => (a.flightNo || '').localeCompare(b.flightNo || ''));
             
-            // Build options
-            let options = '<option value="">✈️ Select a flight</option>';
+            // Build options - only QR flights
+            let options = '<option value="">✈️ Select a QR flight</option>';
             flightsArray.forEach(f => { 
                 const recordCount = f.records.length;
-                const flightDisplay = f.flightNo || 'UNKNOWN';
-                options += `<option value="${flightDisplay}">${flightDisplay} - ${recordCount} QR code${recordCount !== 1 ? 's' : ''}</option>`; 
+                options += `<option value="${f.flightNo}">${f.flightNo} - ${recordCount} QR code${recordCount !== 1 ? 's' : ''}</option>`; 
             });
             
             flightSelect.innerHTML = options;
             flightSelect.disabled = false;
-            document.getElementById('flightCount').textContent = `${flightsArray.length} flight${flightsArray.length !== 1 ? 's' : ''}`;
+            document.getElementById('flightCount').textContent = `${flightsArray.length} QR flight${flightsArray.length !== 1 ? 's' : ''}`;
         }
 
         function onFlightSelected() {
@@ -838,7 +835,7 @@
             const flightData = Array.from(flights.values()).find(f => f.flightNo === selectedFlight);
             
             if (!flightData) {
-                alert('Flight data not found');
+                alert('QR flight data not found');
                 return;
             }
             
@@ -860,7 +857,7 @@
             document.getElementById('firstQrStat').textContent = flightData.firstTimestamp ? 'QR' : '--:--';
             document.getElementById('lastQrStat').textContent = flightData.lastTimestamp ? 'QR' : '--:--';
             document.getElementById('recordCount').textContent = flightData.records.length + ' QR';
-            document.getElementById('infoText').innerHTML = `${flightData.flightNo || 'Unknown'} <span style="font-size:10px; opacity:0.8;">(cardentryqr)</span>`;
+            document.getElementById('infoText').innerHTML = `${flightData.flightNo || 'Unknown'} <span style="font-size:10px; opacity:0.8;">(QR flight)</span>`;
             
             // Enable print button if there are records
             document.getElementById('printReportBtn').disabled = flightData.records.length === 0;
@@ -901,6 +898,9 @@
         function refreshCurrentFlight() {
             if (!currentFlightData) return;
             
+            // Show refreshing indicator
+            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Refreshing data...</td></tr>';
+            
             // Reload all data
             loadQRData(true).then(() => {
                 const currentFlight = currentFlightData.flightNo;
@@ -923,6 +923,21 @@
                         }
                     }, 500);
                 }
+            });
+        }
+
+        function refreshAllData() {
+            // Show refreshing indicator
+            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Refreshing all data...</td></tr>';
+            
+            // Reload all data
+            loadQRData(true).then(() => {
+                // Reset selections
+                document.getElementById('dateSelect').value = '';
+                document.getElementById('flightSelect').innerHTML = '<option value="">-- Select date first --</option>';
+                document.getElementById('flightSelect').disabled = true;
+                document.getElementById('flightPanel').style.display = 'none';
+                document.getElementById('infoText').innerHTML = '<i class="qr-icon">📱</i> QR Code Database';
             });
         }
 
@@ -1085,19 +1100,17 @@
             printWindow.document.close();
         }
 
-        // Initialize
+        // Initialize - load data once when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            // Load QR data when page loads
-            setTimeout(() => {
-                loadQRData();
-            }, 1000);
+            // Load QR data once on page load
+            loadQRData(true);
         });
 
         // Global functions
-        window.loadQRData = loadQRData; 
         window.onDateSelected = onDateSelected; 
         window.onFlightSelected = onFlightSelected;
         window.refreshCurrentFlight = refreshCurrentFlight;
+        window.refreshAllData = refreshAllData;
         window.printQRReport = printQRReport;
     </script>
 </body>
