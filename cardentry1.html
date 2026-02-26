@@ -2299,7 +2299,7 @@ async function saveEntryToFirebase(entry) {
                 entry.date,
                 entry.seatNo || '',
                 entry.pName || '',
-                false,  // isGuest = false - we're checking main passengers
+                false,
                 null
             );
             
@@ -2364,16 +2364,17 @@ async function saveEntryToFirebase(entry) {
         console.log(`✅ Entry saved to ${dbName} with ID:`, docRef.id);
         console.log(`   Flight: ${entry.flightNo}, Date: ${entry.date}, Seat: ${entry.seatNo || 'none'}, PAX: ${firebaseData.pax}`);
         
-        // Also save hidden code to cardDb if needed
+        // Also save hidden code to cardDb with unique document ID
         if (entry.hiddenCode && entry.flightNo && entry.date && typeof cardDb !== 'undefined') {
             try {
-                await cardDb.collection('QrCards').doc(`${entry.date}_${entry.flightNo}`).set({
-                    code: entry.hiddenCode,
-                    flightNo: entry.flightNo,
-                    date: entry.date,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-                console.log('✅ Hidden code saved to cardDb');
+                await saveHiddenCodeToCardDB(
+                    entry.hiddenCode, 
+                    entry.flightNo, 
+                    entry.date, 
+                    entry.pName, 
+                    entry.seatNo
+                );
+                console.log('✅ Hidden code saved to cardDb with unique ID');
             } catch (codeError) {
                 console.error('Error saving hidden code:', codeError);
             }
@@ -2397,6 +2398,66 @@ async function saveEntryToFirebase(entry) {
             flightNo: entry?.flightNo,
             date: entry?.date
         };
+    }
+}
+
+// ========== FIXED HIDDEN CODE SAVING - CREATES UNIQUE DOCUMENTS ==========
+async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date, passengerName = '', seatNo = '') {
+    if (!hiddenCodeValue || !hiddenCodeValue.trim()) {
+        return false;
+    }
+    
+    if (!flightNo || !flightNo.trim()) {
+        return false;
+    }
+    
+    if (!date || !date.trim()) {
+        return false;
+    }
+    
+    if (typeof cardDb === 'undefined') {
+        console.error('❌ cardDb not initialized');
+        return false;
+    }
+    
+    const cleanHiddenCode = hiddenCodeValue.trim();
+    const cleanFlightNo = flightNo.trim();
+    
+    let cleanDate = '';
+    if (date) {
+        cleanDate = date.replace(/[^0-9]/g, '');
+    } else {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        cleanDate = `${year}${month}${day}`;
+    }
+    
+    // Create a unique ID using timestamp and random string to prevent overwrites
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 10);
+    const docId = `${cleanDate}_${cleanFlightNo}_${timestamp}_${randomId}`;
+    
+    try {
+        await cardDb.collection('QrCards').doc(docId).set({
+            code: cleanHiddenCode,
+            flightNo: cleanFlightNo,
+            date: cleanDate,
+            passengerName: passengerName || '',
+            seatNo: seatNo || '',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            createdAt: new Date().toISOString(),
+            uniqueId: docId,
+            savedBy: currentUser.name || currentUser.username || 'UNKNOWN',
+            savedByRCNo: currentUser.rcno || 'N/A'
+        });
+        
+        console.log('✅ Code saved to cardentryqr database with ID:', docId);
+        return true;
+    } catch (error) {
+        console.error('❌ Error saving code:', error);
+        return false;
     }
 }
 
@@ -2845,57 +2906,6 @@ function cancelEditing() {
         const { cell, originalValue } = editingCell;
         cell.textContent = originalValue || '—';
         editingCell = null;
-    }
-}
-
-// ========== HIDDEN CODE SAVING ==========
-async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
-    if (!hiddenCodeValue || !hiddenCodeValue.trim()) {
-        return false;
-    }
-    
-    if (!flightNo || !flightNo.trim()) {
-        return false;
-    }
-    
-    if (!date || !date.trim()) {
-        return false;
-    }
-    
-    if (typeof cardDb === 'undefined') {
-        console.error('❌ cardDb not initialized');
-        return false;
-    }
-    
-    const cleanHiddenCode = hiddenCodeValue.trim();
-    const cleanFlightNo = flightNo.trim();
-    
-    let cleanDate = '';
-    if (date) {
-        cleanDate = date.replace(/[^0-9]/g, '');
-    } else {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        cleanDate = `${year}${month}${day}`;
-    }
-    
-    const docId = `${cleanDate}_${cleanFlightNo}`;
-    
-    try {
-        await cardDb.collection('QrCards').doc(docId).set({
-            code: cleanHiddenCode,
-            flightNo: cleanFlightNo,
-            date: cleanDate,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        
-        console.log('✅ Code saved to cardentryqr database');
-        return true;
-    } catch (error) {
-        console.error('❌ Error saving code:', error);
-        return false;
     }
 }
 
@@ -3532,11 +3542,6 @@ function renderPendingTable() {
             row.classList.add('flight-closed-warning');
         }
         
-        // Add duplicate warning class if applicable
-        if (entry.duplicateWarning) {
-            row.classList.add('duplicate-warning');
-        }
-        
         let displayFQTV = entry.FQTV || '—';
         
         const guestCell = document.createElement('td');
@@ -3545,16 +3550,6 @@ function renderPendingTable() {
         if (entry.isGuest) {
             guestCell.innerHTML = '👤';
             guestCell.style.color = '#6b8e23';
-            
-            // Add warning icon for duplicate if applicable
-            if (entry.duplicateWarning) {
-                const warningIcon = document.createElement('span');
-                warningIcon.innerHTML = '⚠️';
-                warningIcon.style.marginLeft = '5px';
-                warningIcon.style.cursor = 'help';
-                warningIcon.title = 'Duplicate detected - cannot approve';
-                guestCell.appendChild(warningIcon);
-            }
         } else {
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -3563,16 +3558,6 @@ function renderPendingTable() {
             checkbox.checked = guestModeActive && selectedGuestPassengerId === entry.id;
             checkbox.onchange = function() { toggleGuestMode(entry.id, this.checked); };
             guestCell.appendChild(checkbox);
-            
-            // Add warning icon for duplicate if applicable
-            if (entry.duplicateWarning) {
-                const warningIcon = document.createElement('span');
-                warningIcon.innerHTML = '⚠️';
-                warningIcon.style.marginLeft = '5px';
-                warningIcon.style.cursor = 'help';
-                warningIcon.title = 'Duplicate detected - cannot approve';
-                guestCell.appendChild(warningIcon);
-            }
         }
         
         const nameCell = createEditableCell(entry.pName || '—', entry.id, 'pName', false);
@@ -3604,8 +3589,6 @@ function renderPendingTable() {
         
         if (entry.flightCheckFailed) {
             approveButton = `<button class="approve-btn" style="background: #c68b5e;" onclick="approveEntry('${entry.id}')" title="${entry.flightCheckMessage || 'Flight may be closed'}">⚠️ Check</button>`;
-        } else if (entry.duplicateWarning) {
-            approveButton = `<button class="approve-btn" style="background: #e6b800; color: #5e4a1a;" disabled title="Duplicate detected - cannot approve">⚠️ Duplicate</button>`;
         }
         
         actionsCell.innerHTML = `
@@ -3862,7 +3845,7 @@ async function retrySave(id) {
     }, 100);
 }
 
-// ========== UPDATED APPROVE ENTRY FUNCTION WITH DUPLICATE CHECK ==========
+// ========== OPTIMIZED APPROVE ENTRY FUNCTION - MOVES IMMEDIATELY ==========
 async function approveEntry(id) {
     try {
         const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
@@ -3896,51 +3879,7 @@ async function approveEntry(id) {
             return;
         }
         
-        // ===== DUPLICATE CHECK FOR NON-GUEST ENTRIES =====
-        if (!entry.isGuest) {
-            showTemporaryNotification(`🔍 Checking for duplicates in ${getFirestoreNameForFlight(flightNoToUse)}...`, 'info');
-            
-            // Get the appropriate database for this flight
-            const targetDb = getFirestoreForFlight(flightNoToUse);
-            
-            if (!targetDb) {
-                showTemporaryNotification('❌ Target database not initialized', 'error');
-                return;
-            }
-            
-            // Check for duplicates
-            const checkResult = await checkPassengerExistsInDatabase(
-                targetDb,
-                flightNoToUse,
-                dateToUse,
-                entry.seatNo || '',
-                entry.pName || '',
-                false,  // isGuest = false - we're checking main passengers
-                null
-            );
-            
-            if (checkResult.exists) {
-                // Duplicate found - show detailed error and don't allow approval
-                const duplicateInfo = checkResult.matches.map(m => 
-                    `${m.pName} (Seat: ${m.seatNo || 'none'})`
-                ).join('\n• ');
-                
-                const errorMsg = `⚠️ DUPLICATE DETECTED!\n\nCannot approve - this passenger already exists in ${getFirestoreNameForFlight(flightNoToUse)}:\n\n• ${duplicateInfo}\n\nThis entry will remain in pending tab.`;
-                
-                alert(errorMsg);
-                
-                // Mark the entry as having duplicate warning for visual feedback
-                entry.duplicateWarning = true;
-                entry.duplicateDetails = checkResult.matches;
-                savePendingToLocalStorage();
-                renderTables();
-                
-                showTemporaryNotification(`❌ Duplicate detected - approval blocked`, 'error');
-                return; // STOP APPROVAL
-            }
-        }
-        
-        // Flight is OPEN and no duplicates - proceed with PAX validation
+        // Flight is OPEN - proceed with PAX validation
         const flightPrefix = flightNoToUse.substring(0, 2).toUpperCase();
         const calculatedPax = calculatePaxFromSeat(entry.seatNo, entry.flightNo);
         const currentPax = parseInt(entry.pax) || 0;
@@ -4021,10 +3960,6 @@ async function approveEntry(id) {
             enteredAt: entry.enteredAt || new Date().toISOString()
         };
         
-        // Clear duplicate warning if it was set
-        delete entry.duplicateWarning;
-        delete entry.duplicateDetails;
-        
         // IMMEDIATELY move to saved tab
         savedPasses.push(approvedEntry);
         pendingPasses.splice(entryIndex, 1);
@@ -4040,11 +3975,7 @@ async function approveEntry(id) {
         // Start background save immediately (no delay)
         backgroundSaveToFirebase(approvedEntry);
         
-        if (hiddenCode && flightNoToUse && dateToUse) {
-            setTimeout(() => {
-                saveHiddenCodeToCardDB(hiddenCode, flightNoToUse, dateToUse);
-            }, 200);
-        }
+        // The hidden code will be saved within saveEntryToFirebase, so no need for separate call
         
     } catch (error) {
         console.error('Error in approveEntry:', error);
