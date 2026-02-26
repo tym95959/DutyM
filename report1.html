@@ -430,69 +430,95 @@
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(230,184,0,0.3); border-radius: 50%; border-top-color: #e6b800; animation: spin 1s infinite; margin-right: 6px; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* NEW: Double entry warning styles */
-        .double-entry-warning {
+        /* Duplicate detection styles */
+        .duplicate-row {
+            background-color: rgba(255, 200, 200, 0.3) !important;
+            border-left: 4px solid #ff6b6b;
+        }
+        
+        .duplicate-row:hover td {
+            background-color: rgba(255, 200, 200, 0.5) !important;
+        }
+        
+        .duplicate-badge {
+            display: inline-block;
+            background-color: #ff6b6b;
+            color: white;
+            font-size: 9px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 6px;
+            text-transform: uppercase;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { opacity: 1; }
+        }
+        
+        .duplicate-warning-banner {
             background-color: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 10px 15px;
-            margin-bottom: 15px;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            border: 2px solid #ff6b6b;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
             font-size: 13px;
+            box-shadow: 0 2px 8px rgba(255, 107, 107, 0.2);
         }
         
-        .warning-icon {
+        .warning-message {
             color: #856404;
-            font-size: 18px;
-            margin-right: 10px;
+            font-weight: 600;
+            display: block;
+            margin-bottom: 10px;
+            font-size: 14px;
         }
         
-        .warning-text {
-            color: #856404;
-            flex-grow: 1;
+        .duplicate-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
         }
         
-        .resolve-btn {
-            background: #dc3545;
+        .duplicate-action-btn {
+            background-color: #ff6b6b;
             color: white;
             border: none;
-            padding: 5px 15px;
+            padding: 8px 14px;
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
-            margin-left: 10px;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
-        .resolve-btn:hover {
-            background: #c82333;
+        .duplicate-action-btn:hover {
+            background-color: #ff5252;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(255, 82, 82, 0.3);
         }
         
-        .duplicate-row {
-            background-color: rgba(255, 193, 7, 0.1) !important;
+        .duplicate-action-btn.delete-all-duplicates {
+            background-color: #dc3545;
         }
         
-        .duplicate-row:hover td {
-            background-color: rgba(255, 193, 7, 0.2) !important;
+        .duplicate-action-btn.dismiss-warning {
+            background-color: #6c757d;
         }
         
-        .duplicate-badge {
-            background: #ffc107;
-            color: #856404;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 9px;
-            font-weight: 600;
-            margin-left: 5px;
-            white-space: nowrap;
+        .duplicate-action-btn.dismiss-warning:hover {
+            background-color: #5a6268;
         }
         
         /* print-specific styles - header only on first page */
         @media print {
             body { background: white; padding: 0; margin: 0.5in; }
-            .shift-ribbon, .card .selection-flight-row, .action-buttons-vertical, .edit-btn, .table-action-btn, .refresh-shift, .quick-shift-box, .database-badge, .double-entry-warning, .duplicate-badge { display: none; }
+            .shift-ribbon, .card .selection-flight-row, .action-buttons-vertical, .edit-btn, .table-action-btn, .refresh-shift, .quick-shift-box, .database-badge { display: none; }
             .card { border: none; box-shadow: none; padding: 0; background: transparent; }
             .flight-panel-revised { display: block; }
             .left-details-block, .right-ops-block { background: transparent; border: none; padding: 0; }
@@ -517,6 +543,11 @@
             
             tfoot {
                 display: table-footer-group;
+            }
+            
+            /* Hide duplicate warnings in print */
+            .duplicate-warning-banner, .duplicate-badge {
+                display: none !important;
             }
         }
         
@@ -617,18 +648,13 @@
             </div>
         </div>
 
-        <!-- passenger table – unchanged -->
+        <!-- passenger table – with duplicate detection -->
         <div id="tableContainer" class="table-container" style="display: none;">
             <div class="table-header">
                 <h3>✈ PASSENGER LIST</h3>
                 <span class="passenger-count" id="passengerCount">0</span>
             </div>
-            <!-- Double entry warning container -->
-            <div id="doubleEntryWarning" class="double-entry-warning" style="display: none;">
-                <span class="warning-icon">⚠️</span>
-                <span class="warning-text" id="doubleEntryMessage"></span>
-                <button class="resolve-btn" onclick="showDuplicatesForResolution()">Resolve Duplicates</button>
-            </div>
+            <!-- Duplicate warning banner will be inserted here dynamically -->
             <div class="table-wrapper">
                 <table>
                     <thead>
@@ -642,19 +668,7 @@
         </div>
     </div>
 
-    <!-- Duplicate Resolution Modal -->
-    <div id="duplicateModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
-        <div style="background: white; border-radius: 16px; padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;">
-            <h3 style="color: #856404; margin-bottom: 15px; border-bottom: 2px solid #ffc107; padding-bottom: 10px;">⚠️ Duplicate Entries Detected</h3>
-            <div id="duplicateList"></div>
-            <div style="margin-top: 20px; text-align: right;">
-                <button onclick="closeDuplicateModal()" style="padding: 8px 20px; background: #6c757d; color: white; border: none; border-radius: 20px; cursor: pointer; margin-right: 10px;">Cancel</button>
-                <button onclick="deleteAllDuplicates()" style="padding: 8px 20px; background: #dc3545; color: white; border: none; border-radius: 20px; cursor: pointer;">Delete All Duplicates</button>
-            </div>
-        </div>
-    </div>
-
- <script>
+    <script>
     // ========== GLOBAL VARIABLES ==========
     let flightsByDate = {};
     let allDates = [];
@@ -665,10 +679,6 @@
     let isLoadingDates = false;
     let databaseStats = {};
     let datesLoaded = false; // Track if dates have been loaded
-    
-    // NEW: Track duplicates
-    let duplicateEntries = [];
-    let duplicateGroups = {};
 
     // ========== MULTI-DATABASE HELPER FUNCTIONS ==========
     
@@ -1029,6 +1039,9 @@
         currentDatabase = null;
         currentFlightData = null;
         
+        // Dismiss any duplicate warning
+        dismissDuplicateWarning();
+        
         if (!selectedDate) {
             flightSelect.innerHTML = '<option value="">-- Select date first --</option>';
             return;
@@ -1055,154 +1068,291 @@
         flightSelect.disabled = false;
     }
 
-    // NEW: Function to check for duplicate entries based on Serial No
-    function checkForDuplicates(passengers) {
-        duplicateGroups = {};
-        const serialMap = new Map();
+    // ========== DUPLICATE DETECTION FUNCTIONS ==========
+    
+    /**
+     * Detect duplicate passenger entries based on name, seat number, and flight number
+     * @param {Array} passengers - List of passengers to check
+     * @returns {Array} - Array of duplicate objects with original and duplicate indices
+     */
+    function detectDuplicates(passengers) {
+        if (!passengers || !currentFlightData) return [];
         
-        // Group passengers by serial number
-        passengers.forEach((p, index) => {
-            if (p.serialNo && p.serialNo.trim() !== '') {
-                const serial = p.serialNo.trim();
-                if (!serialMap.has(serial)) {
-                    serialMap.set(serial, []);
-                }
-                serialMap.get(serial).push({...p, arrayIndex: index});
+        const duplicates = [];
+        const seen = new Map();
+        
+        passengers.forEach((passenger, index) => {
+            // Create a unique key from name, seatNo, and flightNo (case-insensitive, trimmed)
+            const name = (passenger.pName || '').toLowerCase().trim();
+            const seat = (passenger.seatNo || '').toUpperCase().trim();
+            const flightNo = currentFlightData.flightNo || '';
+            
+            // Skip if name or seat is empty (can't reliably detect duplicates)
+            if (!name || !seat) return;
+            
+            const key = `${name}|${seat}|${flightNo}`;
+            
+            if (seen.has(key)) {
+                // This is a duplicate
+                duplicates.push({
+                    originalIndex: seen.get(key),
+                    duplicateIndex: index,
+                    passenger: passenger,
+                    originalPassenger: passengers[seen.get(key)]
+                });
+            } else {
+                seen.set(key, index);
             }
         });
         
-        // Filter groups with more than one entry
-        duplicateEntries = [];
-        for (const [serial, entries] of serialMap.entries()) {
-            if (entries.length > 1) {
-                duplicateGroups[serial] = entries;
-                duplicateEntries.push(...entries);
-            }
+        return duplicates;
+    }
+
+    /**
+     * Show duplicate warning banner with action buttons
+     * @param {Array} duplicates - Array of duplicate objects
+     */
+    function showDuplicateWarning(duplicates) {
+        if (!duplicates || duplicates.length === 0) return;
+        
+        // Check if warning banner already exists
+        let warningBanner = document.getElementById('duplicateWarningBanner');
+        
+        if (!warningBanner) {
+            warningBanner = document.createElement('div');
+            warningBanner.id = 'duplicateWarningBanner';
+            warningBanner.className = 'duplicate-warning-banner';
+            
+            // Insert at the top of table container
+            const tableContainer = document.getElementById('tableContainer');
+            tableContainer.insertBefore(warningBanner, tableContainer.firstChild);
         }
         
-        return duplicateEntries.length > 0;
+        // Build warning message
+        const duplicateCount = duplicates.length;
+        let message = `⚠️ Found ${duplicateCount} duplicate entr${duplicateCount > 1 ? 'ies' : 'y'} based on same Name, Seat, and Flight Number. `;
+        
+        // Create buttons for each duplicate
+        let buttons = '';
+        duplicates.forEach((dup, index) => {
+            // Truncate long names for display
+            const originalName = (dup.originalPassenger.pName || 'Unknown').substring(0, 20);
+            const duplicateName = (dup.passenger.pName || 'Unknown').substring(0, 20);
+            
+            buttons += `<button class="duplicate-action-btn" onclick="handleDuplicate('${dup.passenger.docId}', '${dup.originalPassenger.docId}')" title="Keep original and delete duplicate">
+                🗑️ Delete "${duplicateName}" (keep "${originalName}")
+            </button>`;
+        });
+        
+        warningBanner.innerHTML = `
+            <div class="warning-content">
+                <span class="warning-message">${message}</span>
+                <div class="duplicate-actions">
+                    ${buttons}
+                    <button class="duplicate-action-btn delete-all-duplicates" onclick="deleteAllDuplicates()">
+                        🗑️ Delete ALL duplicates (${duplicateCount})
+                    </button>
+                    <button class="duplicate-action-btn dismiss-warning" onclick="dismissDuplicateWarning()">
+                        ✖ Dismiss
+                    </button>
+                </div>
+            </div>
+        `;
     }
 
-    // NEW: Display duplicate warning
-    function displayDuplicateWarning() {
-        const warningDiv = document.getElementById('doubleEntryWarning');
-        const messageSpan = document.getElementById('doubleEntryMessage');
-        
-        if (duplicateEntries.length > 0) {
-            const duplicateCount = duplicateEntries.length;
-            const groupCount = Object.keys(duplicateGroups).length;
-            messageSpan.innerHTML = `Found <strong>${duplicateCount}</strong> duplicate entries across <strong>${groupCount}</strong> serial numbers. Please resolve before closing the flight.`;
-            warningDiv.style.display = 'flex';
-            
-            // Disable close button if duplicates exist
-            document.getElementById('closeFlightBtn').disabled = true;
-        } else {
-            warningDiv.style.display = 'none';
-            validateCloseButton();
+    /**
+     * Handle individual duplicate deletion
+     * @param {string} duplicateDocId - Document ID of duplicate to delete
+     * @param {string} originalDocId - Document ID of original to keep
+     */
+    async function handleDuplicate(duplicateDocId, originalDocId) {
+        if (!confirm('Are you sure you want to delete the duplicate entry and keep the original?')) {
+            return;
         }
-    }
-
-    // NEW: Show duplicates in modal for resolution
-    function showDuplicatesForResolution() {
-        const modal = document.getElementById('duplicateModal');
-        const duplicateList = document.getElementById('duplicateList');
-        
-        let html = '';
-        for (const [serial, entries] of Object.entries(duplicateGroups)) {
-            html += `<div style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 8px;">`;
-            html += `<h4 style="color: #856404; margin-bottom: 10px;">Serial No: ${serial}</h4>`;
-            
-            entries.forEach((entry, idx) => {
-                html += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; margin: 5px 0; background: white; border-radius: 4px; border-left: 3px solid #ffc107;">
-                        <div style="flex: 1;">
-                            <strong>${entry.pName || 'Unknown'}</strong><br>
-                            <small>Seat: ${entry.seatNo || '-'} | Time: ${entry.entryTime || '-'}</small>
-                        </div>
-                        <button onclick="deleteDuplicate('${entry.docId}')" style="background: #dc3545; color: white; border: none; padding: 5px 15px; border-radius: 20px; cursor: pointer; font-size: 12px;">
-                            Delete
-                        </button>
-                    </div>
-                `;
-            });
-            
-            html += `</div>`;
-        }
-        
-        duplicateList.innerHTML = html;
-        modal.style.display = 'flex';
-    }
-
-    // NEW: Close duplicate modal
-    function closeDuplicateModal() {
-        document.getElementById('duplicateModal').style.display = 'none';
-    }
-
-    // NEW: Delete single duplicate
-    async function deleteDuplicate(docId) {
-        if (!confirm('Delete this duplicate entry?')) return;
         
         try {
+            // Delete the duplicate
             const targetDb = currentDatabase || getFirestoreForFlight(currentFlightData.flightNo);
-            await targetDb.collection('KoveliPass').doc(docId).delete();
+            await targetDb.collection('KoveliPass').doc(duplicateDocId).delete();
             
-            // Remove from local data
-            const idx = currentFlightData.passengers.findIndex(p => p.docId === docId);
-            if (idx !== -1) currentFlightData.passengers.splice(idx, 1);
-            
-            // Recheck duplicates
-            checkForDuplicates(currentFlightData.passengers);
-            displayDuplicateWarning();
-            displayPassengerTable(currentFlightData.passengers);
-            
-            // Update modal if open
-            if (document.getElementById('duplicateModal').style.display === 'flex') {
-                showDuplicatesForResolution();
+            // Update local data
+            const dupIndex = currentFlightData.passengers.findIndex(p => p.docId === duplicateDocId);
+            if (dupIndex !== -1) {
+                currentFlightData.passengers.splice(dupIndex, 1);
             }
             
-            alert('✅ Duplicate deleted');
+            // Refresh display
+            displayPassengerTable(currentFlightData.passengers);
+            
+            // Update passenger count
+            document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
+            document.getElementById('passengerCount').textContent = currentFlightData.passengers.length + ' PAX';
+            
+            // Check if there are still duplicates
+            const remainingDuplicates = detectDuplicates(currentFlightData.passengers);
+            if (remainingDuplicates.length === 0) {
+                dismissDuplicateWarning();
+                showNotification('All duplicates resolved!', 'success');
+            } else {
+                // Update warning banner with remaining duplicates
+                showDuplicateWarning(remainingDuplicates);
+            }
+            
+            showNotification('✅ Duplicate deleted successfully', 'success');
         } catch (error) {
-            alert('❌ Error: ' + error.message);
+            alert('❌ Error deleting duplicate: ' + error.message);
+            console.error(error);
         }
     }
 
-    // NEW: Delete all duplicates
+    /**
+     * Delete all duplicate entries at once
+     */
     async function deleteAllDuplicates() {
-        if (!confirm('Delete ALL duplicate entries? This cannot be undone.')) return;
+        const duplicates = detectDuplicates(currentFlightData.passengers);
+        
+        if (duplicates.length === 0) {
+            alert('No duplicates found');
+            return;
+        }
+        
+        if (!confirm(`Are you sure you want to delete ALL ${duplicates.length} duplicate entries? This action cannot be undone.`)) {
+            return;
+        }
         
         try {
             const targetDb = currentDatabase || getFirestoreForFlight(currentFlightData.flightNo);
-            const batch = targetDb.batch();
             
-            // Collect all duplicate document IDs
-            const duplicateDocIds = duplicateEntries.map(entry => entry.docId);
+            // Get all duplicate document IDs
+            const duplicateIds = duplicates.map(d => d.passenger.docId);
             
-            // Add delete operations to batch
-            duplicateDocIds.forEach(docId => {
-                const docRef = targetDb.collection('KoveliPass').doc(docId);
-                batch.delete(docRef);
-            });
+            // Delete each duplicate
+            for (const docId of duplicateIds) {
+                await targetDb.collection('KoveliPass').doc(docId).delete();
+                
+                // Remove from local data
+                const index = currentFlightData.passengers.findIndex(p => p.docId === docId);
+                if (index !== -1) {
+                    currentFlightData.passengers.splice(index, 1);
+                }
+            }
             
-            // Execute batch delete
-            await batch.commit();
-            
-            // Remove duplicates from local data
-            currentFlightData.passengers = currentFlightData.passengers.filter(p => 
-                !duplicateDocIds.includes(p.docId)
-            );
-            
-            // Recheck duplicates (should be none now)
-            checkForDuplicates(currentFlightData.passengers);
-            displayDuplicateWarning();
+            // Refresh display
             displayPassengerTable(currentFlightData.passengers);
             
-            // Close modal
-            closeDuplicateModal();
+            // Update passenger count
+            document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
+            document.getElementById('passengerCount').textContent = currentFlightData.passengers.length + ' PAX';
             
-            alert(`✅ Deleted ${duplicateDocIds.length} duplicate entries`);
+            // Dismiss warning banner
+            dismissDuplicateWarning();
+            
+            showNotification(`✅ Deleted ${duplicateIds.length} duplicate entr${duplicateIds.length > 1 ? 'ies' : 'y'}`, 'success');
         } catch (error) {
-            alert('❌ Error: ' + error.message);
+            alert('❌ Error deleting duplicates: ' + error.message);
+            console.error(error);
         }
+    }
+
+    /**
+     * Dismiss duplicate warning banner
+     */
+    function dismissDuplicateWarning() {
+        const warningBanner = document.getElementById('duplicateWarningBanner');
+        if (warningBanner) {
+            warningBanner.remove();
+        }
+    }
+
+    /**
+     * Escape HTML special characters to prevent XSS
+     * @param {string} text - Text to escape
+     * @returns {string} - Escaped text
+     */
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Modified displayPassengerTable function with duplicate highlighting
+    function displayPassengerTable(passengers) {
+        const tbody = document.getElementById('passengerTableBody');
+        
+        if (!passengers || passengers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="no-data">No passengers found for this flight</td></tr>';
+            document.getElementById('tableContainer').style.display = 'block';
+            return;
+        }
+        
+        // Detect duplicates
+        const duplicates = detectDuplicates(passengers);
+        const duplicateIndices = new Set(duplicates.map(d => d.duplicateIndex));
+        
+        // Show duplicate warning if any
+        if (duplicates.length > 0) {
+            showDuplicateWarning(duplicates);
+        } else {
+            dismissDuplicateWarning();
+        }
+        
+        // Sort passengers by entry time
+        const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        let html = '';
+        
+        sorted.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            
+            // Find original index in the original array to check duplicate status
+            const originalIndex = passengers.findIndex(orig => orig.docId === p.docId);
+            const isDuplicate = duplicateIndices.has(originalIndex);
+            
+            // Add duplicate class for highlighting
+            const rowClass = isDuplicate ? 'duplicate-row' : '';
+            
+            if (editingRowId === p.docId) {
+                // Edit mode
+                html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td><input type="text" id="edit-pName-${p.docId}" value="${escapeHtml(p.pName||'')}" class="edit-mode-input"></td>
+                    <td>
+                        <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
+                        <div id="pax-warning-${p.docId}" class="pax-warning"></div>
+                    </td>
+                    <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
+                    <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
+                    <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
+                    <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
+                    <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
+                    <td class="action-cell">
+                        <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
+                        <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                    </td>
+                </tr>`;
+            } else {
+                // View mode - add duplicate indicator if needed
+                const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate entry based on same Name, Seat, and Flight Number">⚠️ DUPLICATE</span>' : '';
+                
+                html += `<tr class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge}</td>
+                    <td>${escapeHtml(p.seatNo) || '-'}</td>
+                    <td style="text-align:center;">${p.pax || '1'}</td>
+                    <td>${escapeHtml(p.FQTV) || '-'}</td>
+                    <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${escapeHtml(p.remarks) || '-'}</td>
+                    <td class="action-cell">
+                        <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                        <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                    </td>
+                </tr>`;
+            }
+        });
+        
+        tbody.innerHTML = html;
+        document.getElementById('tableContainer').style.display = 'block';
     }
 
     async function onFlightSelected() {
@@ -1234,6 +1384,9 @@
         currentFlightData = flightData;
         currentDatabase = flightData.dbRef;
         editingRowId = null;
+        
+        // Dismiss any existing duplicate warning
+        dismissDuplicateWarning();
         
         // Log the data for debugging
         console.log('Flight Data:', {
@@ -1312,10 +1465,6 @@
         document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
         document.getElementById('quickShiftText').innerHTML = `${flightNo} | ${shift} <span style="font-size:10px; opacity:0.8;">(${flightData.database})</span>`;
         
-        // Check for duplicates
-        const hasDuplicates = checkForDuplicates(flightData.passengers);
-        displayDuplicateWarning();
-        
         // Set status UI
         if (currentFlightData.isClosed) {
             document.getElementById('flightStatus').textContent = 'CLOSED';
@@ -1329,29 +1478,16 @@
             document.getElementById('closeFlightBtn').style.display = 'block';
             document.getElementById('reopenFlightBtn').style.display = 'none';
             document.getElementById('printReportBtn').disabled = true;
-            
-            // Disable close button if duplicates exist
-            if (hasDuplicates) {
-                document.getElementById('closeFlightBtn').disabled = true;
-            } else {
-                validateCloseButton();
-            }
+            validateCloseButton();
         }
         
-        // Display passenger table
+        // Display passenger table with duplicate detection
         displayPassengerTable(flightData.passengers);
     }
 
     // Enable/disable close button based on STD and Last Pax values
     function validateCloseButton() {
         if (!currentFlightData || currentFlightData.isClosed) return;
-        
-        // Check for duplicates first
-        if (duplicateEntries.length > 0) {
-            document.getElementById('closeFlightBtn').disabled = true;
-            return;
-        }
-        
         const std = document.getElementById('stdInput').value;
         const lastPax = document.getElementById('lastPaxInput').value;
         const closeBtn = document.getElementById('closeFlightBtn');
@@ -1360,71 +1496,6 @@
         } else {
             closeBtn.disabled = true;
         }
-    }
-
-    function displayPassengerTable(passengers) {
-        const tbody = document.getElementById('passengerTableBody');
-        
-        if (!passengers || passengers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="no-data">No passengers found for this flight</td></tr>';
-            document.getElementById('tableContainer').style.display = 'block';
-            return;
-        }
-        
-        // Sort passengers by entry time
-        const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        
-        // Create a set of duplicate document IDs for highlighting
-        const duplicateDocIds = new Set(duplicateEntries.map(e => e.docId));
-        
-        let html = '';
-        
-        sorted.forEach((p, idx) => {
-            const serial = String(idx+1).padStart(3,'0');
-            const isDuplicate = duplicateDocIds.has(p.docId);
-            const rowClass = isDuplicate ? 'duplicate-row' : '';
-            
-            if (editingRowId === p.docId) {
-                // Edit mode
-                html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
-                    <td class="serial-no">${serial}</td>
-                    <td><input type="text" id="edit-pName-${p.docId}" value="${p.pName||''}" class="edit-mode-input"></td>
-                    <td>
-                        <input type="text" id="edit-seatNo-${p.docId}" value="${p.seatNo||''}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
-                        <div id="pax-warning-${p.docId}" class="pax-warning"></div>
-                    </td>
-                    <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
-                    <td><input type="text" id="edit-FQTV-${p.docId}" value="${p.FQTV||''}" class="edit-mode-input"></td>
-                    <td><input type="text" id="edit-serialNo-${p.docId}" value="${p.serialNo||''}" class="edit-mode-input"></td>
-                    <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
-                    <td><input type="text" id="edit-remarks-${p.docId}" value="${p.remarks||''}" class="edit-mode-input"></td>
-                    <td class="action-cell">
-                        <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
-                        <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
-                    </td>
-                </tr>`;
-            } else {
-                // View mode
-                const duplicateBadge = isDuplicate ? '<span class="duplicate-badge">DUPLICATE</span>' : '';
-                html += `<tr class="${rowClass}">
-                    <td class="serial-no">${serial}</td>
-                    <td>${p.pName || '-'} ${duplicateBadge}</td>
-                    <td>${p.seatNo || '-'}</td>
-                    <td style="text-align:center;">${p.pax || '1'}</td>
-                    <td>${p.FQTV || '-'}</td>
-                    <td class="${p.serialNo ? 'serial-no' : ''}">${p.serialNo || '—'}</td>
-                    <td>${p.entryTime || '-'}</td>
-                    <td>${p.remarks || '-'}</td>
-                    <td class="action-cell">
-                        <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                        <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${p.pName}')">Del</button>
-                    </td>
-                </tr>`;
-            }
-        });
-        
-        tbody.innerHTML = html;
-        document.getElementById('tableContainer').style.display = 'block';
     }
 
     function startEdit(docId) { 
@@ -1486,12 +1557,17 @@
                 document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
             }
             
-            // Recheck for duplicates after save
-            checkForDuplicates(currentFlightData.passengers);
-            displayDuplicateWarning();
-            
             editingRowId = null;
+            
+            // Refresh display with duplicate detection
             displayPassengerTable(currentFlightData.passengers);
+            
+            // Recheck for duplicates after save
+            const remainingDuplicates = detectDuplicates(currentFlightData.passengers);
+            if (remainingDuplicates.length === 0) {
+                dismissDuplicateWarning();
+            }
+            
             alert(`✅ Updated in ${currentFlightData.database || 'database'}`);
         } catch (error) { 
             alert('❌ Error: '+error.message); 
@@ -1515,11 +1591,15 @@
             document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
             document.getElementById('passengerCount').textContent = currentFlightData.passengers.length + ' PAX';
             
-            // Recheck for duplicates after delete
-            checkForDuplicates(currentFlightData.passengers);
-            displayDuplicateWarning();
-            
+            // Refresh display with duplicate detection
             displayPassengerTable(currentFlightData.passengers);
+            
+            // Recheck for duplicates after deletion
+            const remainingDuplicates = detectDuplicates(currentFlightData.passengers);
+            if (remainingDuplicates.length === 0) {
+                dismissDuplicateWarning();
+            }
+            
             alert(`✅ Deleted from ${currentFlightData.database || 'database'}`);
         } catch (error) { 
             alert('❌ Error: '+error.message);
@@ -1624,12 +1704,6 @@
     async function closeFlight() {
         if (!currentFlightData) return;
         
-        // Check for duplicates before closing
-        if (duplicateEntries.length > 0) {
-            alert('Please resolve duplicate entries before closing the flight.');
-            return;
-        }
-        
         const std = document.getElementById('stdInput').value;
         const lastPax = document.getElementById('lastPaxInput').value;
         
@@ -1680,300 +1754,300 @@
     }
 
     function printReport() {
-    if (!currentFlightData || !currentFlightData.isClosed) { 
-        alert('Flight must be closed'); 
-        return; 
-    }
+        if (!currentFlightData || !currentFlightData.isClosed) { 
+            alert('Flight must be closed'); 
+            return; 
+        }
 
-    const company = window.companyInfo || { 
-        name: 'MACL', 
-        address: '123 Aviation Road', 
-        phone: '+123 456 7890',
-        logo: 'macl.png'
-    };
-    
-    const dateStr = document.getElementById('dateDisplay').textContent; 
-    const dateParts = dateStr.split('-');
-    const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+        const company = window.companyInfo || { 
+            name: 'MACL', 
+            address: '123 Aviation Road', 
+            phone: '+123 456 7890',
+            logo: 'macl.png'
+        };
+        
+        const dateStr = document.getElementById('dateDisplay').textContent; 
+        const dateParts = dateStr.split('-');
+        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
 
-    const airline = currentFlightData.airline || '—';
-    const flightNo = currentFlightData.flightNo || '—';
-    const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
-    const firstPax = currentFlightData.firstPax || '—';
-    const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
-    const shift = currentFlightData.shift || '—';
-    
-    const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-    const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        const airline = currentFlightData.airline || '—';
+        const flightNo = currentFlightData.flightNo || '—';
+        const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
+        const firstPax = currentFlightData.firstPax || '—';
+        const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
+        const shift = currentFlightData.shift || '—';
+        
+        const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
 
-    // Create print window
-    const printWindow = window.open('', '_blank');
-    
-    // Generate HTML for print
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Flight Report - ${flightNo} - ${formattedDate}</title>
-            <style>
-                body {
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    margin: 0.5in;
-                    color: #333;
-                }
-                .header {
-                    display: flex;
-                    justify-content: space-between;
-                    margin-bottom: 30px;
-                    padding-bottom: 20px;
-                    border-bottom: 2px solid #e6b800;
-                }
-                .left-section {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 15px;
-                }
-                .logo-section {
-                    display: flex;
-                    flex-direction: column;
-                }
-                .logo {
-                    width: 100px;
-                    height: auto;
-                    margin-bottom: 10px;
-                }
-                .logo img {
-                    max-width: 100%;
-                    max-height: 80px;
-                }
-                .company-address {
-                    font-size: 11px;
-                    color: #666;
-                    line-height: 1.4;
-                }
-                .flight-details {
-                    margin-top: 5px;
-                }
-                .flight-detail-item {
-                    font-size: 13px;
-                    margin-bottom: 3px;
-                }
-                .flight-detail-label {
-                    font-weight: 600;
-                    color: #8b6913;
-                    display: inline-block;
-                    width: 60px;
-                }
-                .right-section {
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: flex-start;
-                    padding-top: 95px;
-                }
-                .info-item {
-                    display: flex;
-                    gap: 15px;
-                    margin-bottom: 8px;
-                    justify-content: flex-end;
-                }
-                .label {
-                    font-weight: 600;
-                    color: #8b6913;
-                    min-width: 80px;
-                    text-align: right;
-                }
-                .value {
-                    color: #333;
-                    min-width: 60px;
-                    text-align: left;
-                }
-                .total-pax {
-                    margin: 15px 0;
-                    text-align: right;
-                    font-size: 14px;
-                    font-weight: 600;
-                }
-                .total-pax span {
-                    background: #e6b800;
-                    color: white;
-                    padding: 5px 15px;
-                    border-radius: 20px;
-                }
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin-top: 20px;
-                    font-size: 12px;
-                }
-                th {
-                    background: #e6b800;
-                    color: white;
-                    padding: 10px;
-                    text-align: left;
-                    font-size: 12px;
-                }
-                td {
-                    padding: 8px 10px;
-                    border-bottom: 1px solid #ddd;
-                }
-                tr:nth-child(even) {
-                    background: #f9f9f9;
-                }
-                .signature-section {
-                    margin-top: 50px;
-                    display: flex;
-                    justify-content: space-between;
-                    padding: 0 20px;
-                }
-                .signature-box {
-                    text-align: center;
-                    width: 200px;
-                }
-                .signature-line {
-                    margin-top: 40px;
-                    border-bottom: 1px solid #333;
-                    width: 100%;
-                }
-                .signature-label {
-                    font-size: 12px;
-                    color: #8b6913;
-                    font-weight: 600;
-                    margin-top: 5px;
-                }
-                .date-info {
-                    margin-top: 20px;
-                    text-align: right;
-                    font-size: 11px;
-                    color: #666;
-                }
-                .footer {
-                    margin-top: 30px;
-                    text-align: center;
-                    font-size: 11px;
-                    color: #666;
-                    border-top: 1px solid #ddd;
-                    padding-top: 20px;
-                }
-                @media print {
-                    body { margin: 0.25in; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <div class="left-section">
-                    <div class="logo-section">
-                        <div class="logo">
-                            <img img src="macl.png"  alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
-                        </div>
-                        <div class="company-address">
-                            <strong>${company.name}</strong><br>
-                            ${company.address}<br>
-                            ${company.phone}
-                        </div>
-                    </div>
-                    <div class="flight-details">
-                        <div class="flight-detail-item">
-                            <span class="flight-detail-label">Airline:</span> ${airline}
-                        </div>
-                        <div class="flight-detail-item">
-                            <span class="flight-detail-label">Flight No:</span> ${flightNo}
-                        </div>
-                        <div class="flight-detail-item">
-                            <span class="flight-detail-label">Date:</span> ${formattedDate}
-                        </div>
-                    </div>
-                </div>
-                <div class="right-section">
-                    <div class="info-item">
-                        <span class="label">STD:</span>
-                        <span class="value">${std}</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">First Pax:</span>
-                        <span class="value">${firstPax}</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Last Pax:</span>
-                        <span class="value">${lastPax}</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Shift:</span>
-                        <span class="value">${shift}</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="total-pax">
-                <span>TOTAL PAX: ${totalPaxSum}</span>
-            </div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>No.</th>
-                        <th>Name</th>
-                        <th>Seat</th>
-                        <th>Pax</th>
-                        <th>FQTV</th>
-                        <th>Serial No</th>
-                        <th>Time</th>
-                        <th>Remarks</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `);
-    
-    // Add passenger rows
-    sortedPassengers.forEach((p, idx) => {
-        const serial = String(idx+1).padStart(3,'0');
+        // Create print window
+        const printWindow = window.open('', '_blank');
+        
+        // Generate HTML for print
         printWindow.document.write(`
-            <tr>
-                <td>${serial}</td>
-                <td>${p.pName || '-'}</td>
-                <td>${p.seatNo || '-'}</td>
-                <td style="text-align:center;">${p.pax || '1'}</td>
-                <td>${p.FQTV || '-'}</td>
-                <td>${p.serialNo || '-'}</td>
-                <td>${p.entryTime || '-'}</td>
-                <td>${p.remarks || '-'}</td>
-            </tr>
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Flight Report - ${flightNo} - ${formattedDate}</title>
+                <style>
+                    body {
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                        margin: 0.5in;
+                        color: #333;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-bottom: 30px;
+                        padding-bottom: 20px;
+                        border-bottom: 2px solid #e6b800;
+                    }
+                    .left-section {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 15px;
+                    }
+                    .logo-section {
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    .logo {
+                        width: 100px;
+                        height: auto;
+                        margin-bottom: 10px;
+                    }
+                    .logo img {
+                        max-width: 100%;
+                        max-height: 80px;
+                    }
+                    .company-address {
+                        font-size: 11px;
+                        color: #666;
+                        line-height: 1.4;
+                    }
+                    .flight-details {
+                        margin-top: 5px;
+                    }
+                    .flight-detail-item {
+                        font-size: 13px;
+                        margin-bottom: 3px;
+                    }
+                    .flight-detail-label {
+                        font-weight: 600;
+                        color: #8b6913;
+                        display: inline-block;
+                        width: 60px;
+                    }
+                    .right-section {
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: flex-start;
+                        padding-top: 95px;
+                    }
+                    .info-item {
+                        display: flex;
+                        gap: 15px;
+                        margin-bottom: 8px;
+                        justify-content: flex-end;
+                    }
+                    .label {
+                        font-weight: 600;
+                        color: #8b6913;
+                        min-width: 80px;
+                        text-align: right;
+                    }
+                    .value {
+                        color: #333;
+                        min-width: 60px;
+                        text-align: left;
+                    }
+                    .total-pax {
+                        margin: 15px 0;
+                        text-align: right;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+                    .total-pax span {
+                        background: #e6b800;
+                        color: white;
+                        padding: 5px 15px;
+                        border-radius: 20px;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 20px;
+                        font-size: 12px;
+                    }
+                    th {
+                        background: #e6b800;
+                        color: white;
+                        padding: 10px;
+                        text-align: left;
+                        font-size: 12px;
+                    }
+                    td {
+                        padding: 8px 10px;
+                        border-bottom: 1px solid #ddd;
+                    }
+                    tr:nth-child(even) {
+                        background: #f9f9f9;
+                    }
+                    .signature-section {
+                        margin-top: 50px;
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 0 20px;
+                    }
+                    .signature-box {
+                        text-align: center;
+                        width: 200px;
+                    }
+                    .signature-line {
+                        margin-top: 40px;
+                        border-bottom: 1px solid #333;
+                        width: 100%;
+                    }
+                    .signature-label {
+                        font-size: 12px;
+                        color: #8b6913;
+                        font-weight: 600;
+                        margin-top: 5px;
+                    }
+                    .date-info {
+                        margin-top: 20px;
+                        text-align: right;
+                        font-size: 11px;
+                        color: #666;
+                    }
+                    .footer {
+                        margin-top: 30px;
+                        text-align: center;
+                        font-size: 11px;
+                        color: #666;
+                        border-top: 1px solid #ddd;
+                        padding-top: 20px;
+                    }
+                    @media print {
+                        body { margin: 0.25in; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="left-section">
+                        <div class="logo-section">
+                            <div class="logo">
+                                <img src="macl.png" alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
+                            </div>
+                            <div class="company-address">
+                                <strong>${company.name}</strong><br>
+                                ${company.address}<br>
+                                ${company.phone}
+                            </div>
+                        </div>
+                        <div class="flight-details">
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Airline:</span> ${airline}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Flight No:</span> ${flightNo}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Date:</span> ${formattedDate}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="right-section">
+                        <div class="info-item">
+                            <span class="label">STD:</span>
+                            <span class="value">${std}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">First Pax:</span>
+                            <span class="value">${firstPax}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Last Pax:</span>
+                            <span class="value">${lastPax}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Shift:</span>
+                            <span class="value">${shift}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="total-pax">
+                    <span>TOTAL PAX: ${totalPaxSum}</span>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No.</th>
+                            <th>Name</th>
+                            <th>Seat</th>
+                            <th>Pax</th>
+                            <th>FQTV</th>
+                            <th>Serial No</th>
+                            <th>Time</th>
+                            <th>Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
         `);
-    });
-    
-    printWindow.document.write(`
-                </tbody>
-            </table>
-            
-            <div class="signature-section">
-                <div class="signature-box">
-                    <div class="signature-line"></div>
-                    <div class="signature-label">Prepared by:</div>
+        
+        // Add passenger rows
+        sortedPassengers.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            printWindow.document.write(`
+                <tr>
+                    <td>${serial}</td>
+                    <td>${escapeHtml(p.pName) || '-'}</td>
+                    <td>${escapeHtml(p.seatNo) || '-'}</td>
+                    <td style="text-align:center;">${p.pax || '1'}</td>
+                    <td>${escapeHtml(p.FQTV) || '-'}</td>
+                    <td>${escapeHtml(p.serialNo) || '-'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${escapeHtml(p.remarks) || '-'}</td>
+                </tr>
+            `);
+        });
+        
+        printWindow.document.write(`
+                    </tbody>
+                </table>
+                
+                <div class="signature-section">
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Prepared by:</div>
+                    </div>
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Checked by:</div>
+                    </div>
                 </div>
-                <div class="signature-box">
-                    <div class="signature-line"></div>
-                    <div class="signature-label">Checked by:</div>
+                
+                <div class="date-info">
+                    Date: ____________________
                 </div>
-            </div>
-            
-            <div class="date-info">
-                Date: ____________________
-            </div>
-            
-            <div class="footer">
-                <p>This is a computer generated report. Valid without signature.</p>
-                <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
-            </div>
-            
-            <script>
-                window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
-            <\/script>
-        </body>
-        </html>
-    `);
-    
-    printWindow.document.close();
-}
+                
+                <div class="footer">
+                    <p>This is a computer generated report. Valid without signature.</p>
+                    <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
+                </div>
+                
+                <script>
+                    window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
+                <\/script>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+    }
 
     // initialization
     document.addEventListener('DOMContentLoaded', function() {
@@ -2005,11 +2079,13 @@
     window.updatePaxFromSeat = updatePaxFromSeat; 
     window.validateCloseButton = validateCloseButton;
     
-    // NEW: Duplicate handling functions
-    window.showDuplicatesForResolution = showDuplicatesForResolution;
-    window.closeDuplicateModal = closeDuplicateModal;
-    window.deleteDuplicate = deleteDuplicate;
+    // Duplicate detection functions
+    window.detectDuplicates = detectDuplicates;
+    window.showDuplicateWarning = showDuplicateWarning;
+    window.handleDuplicate = handleDuplicate;
     window.deleteAllDuplicates = deleteAllDuplicates;
+    window.dismissDuplicateWarning = dismissDuplicateWarning;
+    window.escapeHtml = escapeHtml;
     </script>
 </body>
 </html>
