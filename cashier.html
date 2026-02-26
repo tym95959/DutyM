@@ -128,6 +128,7 @@
         .shift-value {
             color: #212529;
             font-size: 1.1em;
+            font-weight: 500;
         }
 
         .status-badge {
@@ -436,7 +437,7 @@
             <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
 
-        <!-- Shift Info Bar -->
+        <!-- Shift Info Bar - Fetching from 'currentshift' document -->
         <div class="shift-info" id="shiftInfo">
             <div class="shift-details">
                 <div class="shift-item">
@@ -446,6 +447,10 @@
                 <div class="shift-item">
                     <span class="shift-label">⏰ Shift:</span>
                     <span class="shift-value" id="currentShift">Loading...</span>
+                </div>
+                <div class="shift-item">
+                    <span class="shift-label">🕒 Open Time:</span>
+                    <span class="shift-value" id="openTime">Loading...</span>
                 </div>
             </div>
             <div>
@@ -544,16 +549,13 @@
             isLoggedIn: false
         };
 
-        // Current shift data
+        // Current shift data - fetched from 'currentshift' document
         let currentShiftData = {
             date: '',
-            shift: '',
-            status: '',
-            openTime: ''
+            shift: '',      // 'morning' or 'evening'
+            status: '',      // 'open' or 'closed'
+            openTime: ''     // timestamp when shift was opened
         };
-
-        // Cashier status
-        let cashierStatus = 'closed'; // 'open' or 'closed'
 
         // Sales data
         let salesData = {
@@ -619,12 +621,12 @@
                     } catch (e) {}
                 }
                 
-                // Set rcno - prioritize direct localStorage item (note: key is 'rcno' all lowercase)
+                // Set rcno - prioritize direct localStorage item
                 if (rcno) {
                     currentUser.rcno = rcno;
                     console.log('Found rcno in localStorage:', rcno);
                 } else {
-                    // Try alternative casings if direct rcno not found
+                    // Try alternative casings
                     const rcNo = localStorage.getItem('rcNo');
                     if (rcNo) {
                         currentUser.rcno = rcNo;
@@ -652,10 +654,9 @@
                     } catch (e) {}
                 }
                 
-                // If still no username, check if we're on a page that should redirect
+                // If still no username, show warning
                 if (!currentUser.username) {
-                    console.warn('No user logged in - redirecting to login page');
-                    // Show warning but don't auto-redirect to allow testing
+                    console.warn('No user logged in');
                     const statusMsg = document.getElementById('statusMessage');
                     if (statusMsg) {
                         statusMsg.textContent = '⚠️ NOT LOGGED IN - Please log in first';
@@ -666,13 +667,6 @@
                 }
                 
                 updateUserDisplay();
-                
-                // Log all localStorage items for debugging
-                console.log('All localStorage items:');
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    console.log(`${key}: ${localStorage.getItem(key)}`);
-                }
                 
             } catch (error) {
                 console.error('Error loading user from localStorage:', error);
@@ -715,59 +709,47 @@
             loadUserFromLocalStorage();
         }
 
-        // ========== FIREBASE SHIFT FUNCTIONS ==========
+        // ========== FIREBASE SHIFT FUNCTIONS - FETCH FROM 'currentshift' ==========
 
         async function fetchShiftData() {
             try {
                 const shiftInfo = document.getElementById('shiftInfo');
                 const dateElement = document.getElementById('currentDate');
                 const shiftElement = document.getElementById('currentShift');
+                const openTimeElement = document.getElementById('openTime');
                 const statusBadge = document.getElementById('shiftStatus');
                 
-                if (!shiftInfo || !dateElement || !shiftElement || !statusBadge) return;
+                if (!shiftInfo || !dateElement || !shiftElement || !openTimeElement || !statusBadge) return;
                 
                 dateElement.textContent = 'Loading...';
                 shiftElement.textContent = 'Loading...';
+                openTimeElement.textContent = 'Loading...';
                 shiftInfo.classList.add('loading');
                 
                 if (typeof passengerDb === 'undefined') {
                     dateElement.textContent = 'DB ERROR';
                     shiftElement.textContent = 'NOT INITIALIZED';
+                    openTimeElement.textContent = 'ERROR';
                     shiftInfo.classList.remove('loading');
                     shiftInfo.classList.add('error');
                     return;
                 }
                 
-                let shiftDoc = null;
+                // Fetch from 'currentshift' document exactly as specified
+                console.log('Fetching shift data from: shifts/currentshift');
+                const doc = await passengerDb.collection('shifts').doc('currentshift').get();
                 
-                // Try different case variations
-                try {
-                    shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
-                } catch (e) {}
-                
-                if (!shiftDoc || !shiftDoc.exists) {
-                    try {
-                        shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get();
-                    } catch (e) {}
-                }
-                
-                if (!shiftDoc || !shiftDoc.exists) {
-                    try {
-                        shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get();
-                    } catch (e) {}
-                }
-                
-                if (shiftDoc && shiftDoc.exists) {
-                    const data = shiftDoc.data();
+                if (doc.exists) {
+                    const data = doc.data();
                     
-                    // Log the raw data to see what we're getting
-                    console.log('Raw shift data from Firebase:', data);
+                    // Log the raw data for debugging
+                    console.log('Raw shift data from currentshift:', data);
                     
-                    // Store the shift date - this is what we need for transactions
-                    currentShiftData.date = data.date || '';
-                    currentShiftData.openTime = data.updated || data.openTime || '';
+                    // Store the shift data
+                    currentShiftData.date = data.date || 'NO DATE';
+                    currentShiftData.openTime = data.openTime || data.updated || '';
                     
-                    // Determine shift type and status
+                    // Determine which shift is open
                     if (data.morning === 'open') {
                         currentShiftData.shift = 'MORNING';
                         currentShiftData.status = 'OPEN';
@@ -783,57 +765,73 @@
                     
                     console.log('Processed shift data:', currentShiftData);
                 } else {
-                    currentShiftData.date = '';
-                    currentShiftData.shift = 'NO SHIFT DATA';
-                    currentShiftData.status = 'NOT FOUND';
-                    console.warn('No shift document found');
+                    console.warn('No currentshift document found');
+                    currentShiftData.date = 'NO SHIFT DATA';
+                    currentShiftData.shift = 'NOT FOUND';
+                    currentShiftData.status = 'CLOSED';
+                    currentShiftData.openTime = '';
                 }
                 
                 updateShiftDisplay();
                 
             } catch (error) {
                 console.error('Error fetching shift data:', error);
+                
+                const dateElement = document.getElementById('currentDate');
+                const shiftElement = document.getElementById('currentShift');
+                const statusBadge = document.getElementById('shiftStatus');
+                
+                if (dateElement) dateElement.textContent = 'ERROR';
+                if (shiftElement) shiftElement.textContent = 'FETCH FAILED';
+                if (statusBadge) {
+                    statusBadge.textContent = 'ERROR';
+                    statusBadge.className = 'status-badge warning';
+                }
             }
         }
 
         function updateShiftDisplay() {
             const dateElement = document.getElementById('currentDate');
             const shiftElement = document.getElementById('currentShift');
+            const openTimeElement = document.getElementById('openTime');
             const statusBadge = document.getElementById('shiftStatus');
             const shiftInfo = document.getElementById('shiftInfo');
             
-            if (!dateElement || !shiftElement || !statusBadge) return;
+            if (!dateElement || !shiftElement || !openTimeElement || !statusBadge) return;
             
-            dateElement.textContent = currentShiftData.date || 'NO DATE';
+            dateElement.textContent = currentShiftData.date;
             
-            if (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') {
+            // Format open time if it exists
+            if (currentShiftData.openTime) {
+                try {
+                    const date = new Date(currentShiftData.openTime);
+                    openTimeElement.textContent = date.toLocaleTimeString();
+                } catch (e) {
+                    openTimeElement.textContent = currentShiftData.openTime;
+                }
+            } else {
+                openTimeElement.textContent = 'N/A';
+            }
+            
+            if (currentShiftData.status === 'OPEN') {
                 shiftElement.textContent = currentShiftData.shift;
-                statusBadge.textContent = currentShiftData.status;
+                statusBadge.textContent = 'OPEN';
                 statusBadge.className = 'status-badge open';
-                
-                // Set cashier status based on shift
-                cashierStatus = 'open';
             } else {
                 shiftElement.textContent = currentShiftData.shift;
-                statusBadge.textContent = currentShiftData.status;
+                statusBadge.textContent = 'CLOSED';
                 statusBadge.className = 'status-badge closed';
-                
-                // Set cashier status based on shift
-                cashierStatus = 'closed';
             }
             
             shiftInfo.classList.remove('loading', 'error');
-            
-            // Update button states after shift data is loaded
-            updateButtonStates();
         }
 
         // ========== CASHIER FUNCTIONS ==========
 
-        // Fetch sales data from Firebase
+        // Fetch sales data from Kovelipay collection
         async function fetchSalesData() {
             try {
-                // Simulating Firebase fetch (replace with actual Firebase code)
+                // Simulating Firebase fetch - REPLACE WITH YOUR ACTUAL CODE
                 // const kovelipayRef = passengerDb.collection('Kovelipay');
                 // const snapshot = await kovelipayRef.get();
                 
@@ -892,7 +890,7 @@
             // Check if both match
             const bothMatch = mvrMatch && usdMatch;
             
-            // Update button states based on match status and cashier status
+            // Update button states based on match status and shift status
             updateButtonStates(bothMatch);
             
             // Show message if mismatch
@@ -905,10 +903,12 @@
 
         // Update button states
         function updateButtonStates(bothMatch = false) {
-            if (cashierStatus === 'closed') {
+            if (currentShiftData.status !== 'OPEN') {
+                // If shift is closed, only Open button is relevant
                 openCashierBtn.disabled = !bothMatch;
                 closeCashierBtn.disabled = true;
             } else {
+                // If shift is open, only Close button is relevant
                 openCashierBtn.disabled = true;
                 closeCashierBtn.disabled = !bothMatch;
             }
@@ -919,9 +919,9 @@
             try {
                 showMessage('Opening cashier...', 'success');
                 
-                // Update shift in Firebase to open
+                // Update shift in Firebase - using 'currentshift' document
                 if (typeof passengerDb !== 'undefined') {
-                    const shiftRef = passengerDb.collection('shifts').doc('currentShift');
+                    const shiftRef = passengerDb.collection('shifts').doc('currentshift');
                     
                     // Get current date
                     const today = new Date();
@@ -934,17 +934,20 @@
                     await shiftRef.set({
                         [shiftToOpen]: 'open',
                         date: dateStr,
-                        updated: new Date().toISOString()
+                        openTime: today.toISOString(),
+                        updated: today.toISOString()
                     }, { merge: true });
                 }
                 
                 // Simulate API call
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
-                cashierStatus = 'open';
+                // Update local shift data
+                const now = new Date();
                 currentShiftData.status = 'OPEN';
-                currentShiftData.shift = hours < 12 ? 'MORNING' : 'EVENING';
-                currentShiftData.date = new Date().toISOString().split('T')[0];
+                currentShiftData.shift = now.getHours() < 12 ? 'MORNING' : 'EVENING';
+                currentShiftData.date = now.toISOString().split('T')[0];
+                currentShiftData.openTime = now.toISOString();
                 
                 updateShiftDisplay();
                 updateButtonStates(true);
@@ -965,9 +968,9 @@
             try {
                 showMessage('Closing cashier...', 'success');
                 
-                // Update shift in Firebase to close
+                // Update shift in Firebase - using 'currentshift' document
                 if (typeof passengerDb !== 'undefined') {
-                    const shiftRef = passengerDb.collection('shifts').doc('currentShift');
+                    const shiftRef = passengerDb.collection('shifts').doc('currentshift');
                     
                     // Determine which shift to close based on current shift
                     const shiftToClose = currentShiftData.shift === 'MORNING' ? 'morning' : 'evening';
@@ -981,7 +984,7 @@
                 // Simulate API call
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
-                cashierStatus = 'closed';
+                // Update local shift data
                 currentShiftData.status = 'CLOSED';
                 currentShiftData.shift = 'NO OPEN SHIFT';
                 
@@ -1022,7 +1025,7 @@
                 // Check authentication
                 checkAuth();
                 
-                // Fetch shift data
+                // Fetch shift data from 'currentshift' document
                 await fetchShiftData();
                 
                 // Fetch sales data
