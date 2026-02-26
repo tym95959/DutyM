@@ -496,6 +496,30 @@
             font-weight: 600;
         }
 
+        /* Cashier Button - New Style */
+        .cashier-btn {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+            border: 1px solid #9ae6b4;
+        }
+
+        .cashier-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4);
+            background: linear-gradient(135deg, #34ce57, #28a745);
+        }
+
         /* Loading Spinner */
         .loading-spinner {
             display: inline-block;
@@ -509,6 +533,83 @@
 
         @keyframes spin {
             to { transform: rotate(360deg); }
+        }
+
+        /* Modal for shift warning */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            max-width: 400px;
+            text-align: center;
+            border-left: 5px solid #e6b800;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .modal-icon {
+            font-size: 48px;
+            color: #e6b800;
+            margin-bottom: 15px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .modal-message {
+            color: #8b6913;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .modal-btn {
+            padding: 10px 25px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .modal-btn-primary {
+            background: linear-gradient(135deg, #e6b800, #8b6913);
+            color: white;
+        }
+
+        .modal-btn-secondary {
+            background: #f8f9fa;
+            color: #2c3e50;
+            border: 1px solid #e6b80030;
+        }
+
+        .modal-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(230, 184, 0, 0.3);
+        }
+
+        .modal-btn-secondary:hover {
+            background: #fff2d7;
         }
 
         /* Responsive */
@@ -560,6 +661,19 @@
     </style>
 </head>
 <body>
+    <!-- Modal for shift warning -->
+    <div id="shiftWarningModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-icon">⚠️</div>
+            <h3 class="modal-title">No Active Shift</h3>
+            <p class="modal-message">You need to start a shift before accessing Passenger Entry. Please go to Shift Management to start your shift.</p>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="modal-btn modal-btn-primary" onclick="goToShiftManagement()">Go to Shift Management</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Top Navigation -->
     <div class="top-nav">
         <div class="nav-left">
@@ -567,6 +681,10 @@
             <div class="nav-buttons">
                 <button class="shift-btn" onclick="navigateTo('shift.html')">
                     <span>⏰</span> SHIFT MANAGEMENT
+                </button>
+                <!-- Cashier Button -->
+                <button class="cashier-btn" onclick="navigateTo('cashier.html')">
+                    <span>💰</span> CASHIER
                 </button>
                 <div class="shift-indicator">
                     <span class="shift-badge" id="shiftType">LOADING...</span>
@@ -638,7 +756,7 @@
         <!-- Dashboard Grid -->
         <div class="dashboard-grid">
             <!-- Passenger Entry Card -->
-            <div class="dashboard-card" onclick="navigateTo('cardentry.html')">
+            <div class="dashboard-card" onclick="handlePassengerEntryClick()">
                 <div class="card-icon">👤</div>
                 <h3 class="card-title">Passenger Entry</h3>
                 <p class="card-description">Add new passengers, assign seats, and manage boarding</p>
@@ -669,7 +787,6 @@
                 <p class="card-description">Process payments, view transactions, and settlements</p>
                 <div class="card-stats" id="pendingPayments">Loading...</div>
             </div>
-
         </div>
 
         <!-- Flight Statistics -->
@@ -891,6 +1008,39 @@
                 document.getElementById('shiftType').textContent = 'ERROR';
                 document.getElementById('shiftDate').textContent = '--';
             }
+        }
+
+        // ========== CHECK IF SHIFT IS OPEN ==========
+        function isShiftOpen() {
+            if (!currentShift) return false;
+            return (currentShift.morning === 'open' || currentShift.evening === 'open');
+        }
+
+        // ========== HANDLE PASSENGER ENTRY CLICK ==========
+        function handlePassengerEntryClick() {
+            if (!checkSession()) return;
+            
+            if (isShiftOpen()) {
+                // Shift is open, navigate to passenger entry
+                navigateTo('cardentry.html');
+            } else {
+                // No active shift, show warning modal
+                showShiftWarningModal();
+            }
+        }
+
+        // ========== MODAL FUNCTIONS ==========
+        function showShiftWarningModal() {
+            document.getElementById('shiftWarningModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('shiftWarningModal').style.display = 'none';
+        }
+
+        function goToShiftManagement() {
+            closeModal();
+            navigateTo('shift.html');
         }
 
         // ========== DASHBOARD STATS ==========
@@ -1182,6 +1332,9 @@
         window.viewAllActivity = viewAllActivity;
         window.showProfile = showProfile;
         window.showSettings = showSettings;
+        window.handlePassengerEntryClick = handlePassengerEntryClick;
+        window.closeModal = closeModal;
+        window.goToShiftManagement = goToShiftManagement;
     </script>
 </body>
 </html>
