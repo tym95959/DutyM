@@ -971,7 +971,7 @@
                                     entryTime: data.entryTime || '',
                                     remarks: data.remarks || '',
                                     serialNo: data.serialNo || '',
-                                    hiddenCode: data.hiddenCode || '' // Added hiddenCode field for PNR extraction
+                                    hiddenCode: data.hiddenCode || '' // IMPORTANT: Fetch hiddenCode field from Firebase
                                 });
                                 
                                 if (data.entryTime) {
@@ -1309,102 +1309,87 @@
 
     /**
      * Extract PNR from hiddenCode for FZ flights
-     * Looks for a string containing 'MLE' and exactly 8 letters in it, then extracts the 7 letters before 'MLE'
+     * Looks for a string containing 'MLE' and extracts the 6-7 characters before it
      * @param {string} hiddenCode - The hidden code from Firebase
      * @returns {string} - Extracted PNR or empty string if not found
      */
     function extractPNRFromHiddenCode(hiddenCode) {
-        if (!hiddenCode || typeof hiddenCode !== 'string') return '';
+        if (!hiddenCode || typeof hiddenCode !== 'string') {
+            console.log('No hiddenCode provided');
+            return '';
+        }
         
         console.log('Extracting PNR from hiddenCode:', hiddenCode);
         
-        // Convert to uppercase for case-insensitive matching
-        const upperCode = hiddenCode.toUpperCase();
+        // Convert to lowercase for case-insensitive matching, but we'll return uppercase
+        const lowerCode = hiddenCode.toLowerCase();
         
-        // Method 1: Look for pattern with possible spaces or special characters
-        // This looks for 7 letters that may be followed by any characters (including spaces) and then 'MLE'
-        const flexiblePattern = /([A-Z]{7})[^A-Z]*MLE/;
-        const match = upperCode.match(flexiblePattern);
-        
-        if (match && match[1]) {
-            const pnr = match[1];
-            console.log('Found PNR (flexible pattern):', pnr);
+        // Method 1: Look for pattern where PNR is before "mle" with possible space
+        // This matches "flacy4 mle" pattern
+        const pattern1 = /([a-z0-9]{6,7})\s+mle/i;
+        const match1 = hiddenCode.match(pattern1);
+        if (match1 && match1[1]) {
+            const pnr = match1[1].toUpperCase();
+            console.log('Found PNR (pattern1 - space separated):', pnr);
             return pnr;
         }
         
-        // Method 2: Find the position of 'MLE' and look backwards for 7 letters
-        const mleIndex = upperCode.indexOf('MLE');
-        if (mleIndex >= 7) {
-            // Get the substring before MLE
-            const beforeMLE = upperCode.substring(0, mleIndex);
-            
-            // Find the last 7 consecutive letters in the string before MLE
-            let consecutiveLetters = '';
-            let pnr = '';
-            
-            // Scan backwards from the end of beforeMLE
-            for (let i = beforeMLE.length - 1; i >= 0; i--) {
-                const char = beforeMLE[i];
-                if (char >= 'A' && char <= 'Z') {
-                    consecutiveLetters = char + consecutiveLetters;
-                    if (consecutiveLetters.length === 7) {
-                        pnr = consecutiveLetters;
-                        break;
+        // Method 2: Look for pattern where PNR is directly before "mle" (no space)
+        // This matches "flacy4mle" pattern
+        const pattern2 = /([a-z0-9]{6,7})mle/i;
+        const match2 = hiddenCode.match(pattern2);
+        if (match2 && match2[1]) {
+            const pnr = match2[1].toUpperCase();
+            console.log('Found PNR (pattern2 - directly attached):', pnr);
+            return pnr;
+        }
+        
+        // Method 3: Look for any word that ends with "mle" and extract the part before it
+        const words = hiddenCode.split(/\s+/);
+        for (let word of words) {
+            const lowerWord = word.toLowerCase();
+            if (lowerWord.includes('mle')) {
+                const mleIndex = lowerWord.indexOf('mle');
+                if (mleIndex > 0) {
+                    const possiblePNR = word.substring(0, mleIndex);
+                    // Check if it's a reasonable length (5-8 characters)
+                    if (possiblePNR.length >= 5 && possiblePNR.length <= 8) {
+                        console.log('Found PNR (pattern3 - word containing mle):', possiblePNR.toUpperCase());
+                        return possiblePNR.toUpperCase();
                     }
-                } else {
-                    // Reset when we hit a non-letter
-                    consecutiveLetters = '';
                 }
             }
+        }
+        
+        // Method 4: Find "mle" and extract the word before it
+        const mleIndex = lowerCode.indexOf('mle');
+        if (mleIndex > 0) {
+            // Look backwards to find the start of the word
+            let start = mleIndex - 1;
+            while (start >= 0 && /[a-z0-9]/.test(lowerCode[start])) {
+                start--;
+            }
+            start++;
             
-            if (pnr) {
-                console.log('Found PNR (backward scan):', pnr);
-                return pnr;
-            }
-        }
-        
-        // Method 3: Look for any 7-letter combination that appears before 'MLE' (anywhere in the string)
-        // This is more aggressive - finds the first 7 consecutive letters before the position of MLE
-        const words = upperCode.split(/[\s>]+/); // Split by spaces or '>'
-        
-        for (let i = 0; i < words.length; i++) {
-            const word = words[i];
-            // Check if this word contains 'MLE' at the end or if the next word starts with 'MLE'
-            if (word.endsWith('MLE') && word.length > 3) {
-                // The part before MLE might be the PNR
-                const possiblePNR = word.substring(0, word.length - 3);
-                if (possiblePNR.length === 7 && /^[A-Z]+$/.test(possiblePNR)) {
-                    console.log('Found PNR (word ending with MLE):', possiblePNR);
-                    return possiblePNR;
-                }
-            }
-            
-            // Check if next word exists and starts with 'MLE'
-            if (i < words.length - 1 && words[i + 1].startsWith('MLE')) {
-                if (word.length === 7 && /^[A-Z]+$/.test(word)) {
-                    console.log('Found PNR (word before MLE):', word);
-                    return word;
+            if (start < mleIndex) {
+                const possiblePNR = hiddenCode.substring(start, mleIndex);
+                // Check if it's a reasonable length (5-8 characters)
+                if (possiblePNR.length >= 5 && possiblePNR.length <= 8) {
+                    console.log('Found PNR (pattern4 - before mle):', possiblePNR.toUpperCase());
+                    return possiblePNR.toUpperCase();
                 }
             }
         }
         
-        // Method 4: Special handling for your specific format - look for pattern like "flacy4 mle"
-        // This handles the case where there's a space between the PNR and 'mle'
-        const spacePattern = /([A-Z]{7})\s+MLE/i;
-        const spaceMatch = hiddenCode.match(spacePattern);
-        if (spaceMatch && spaceMatch[1]) {
-            const pnr = spaceMatch[1].toUpperCase();
-            console.log('Found PNR (space pattern):', pnr);
-            return pnr;
-        }
-        
-        // Method 5: Even more flexible - find any 7 letters that are followed (with or without spaces) by 'MLE'
-        const anySeparatorPattern = /([A-Z]{7})[^A-Z]*MLE/i;
-        const anyMatch = hiddenCode.match(anySeparatorPattern);
-        if (anyMatch && anyMatch[1]) {
-            const pnr = anyMatch[1].toUpperCase();
-            console.log('Found PNR (any separator pattern):', pnr);
-            return pnr;
+        // Method 5: For your specific format - look at the beginning of the string
+        // Many times the PNR is the first word before any numbers
+        const firstWord = hiddenCode.split(/\s+/)[0];
+        if (firstWord && firstWord.length >= 5 && firstWord.length <= 8 && /^[a-z0-9]+$/i.test(firstWord)) {
+            // Check if the rest of the string contains "mle"
+            if (lowerCode.includes('mle')) {
+                console.log('Found PNR (pattern5 - first word):', firstWord.toUpperCase());
+                return firstWord.toUpperCase();
+            }
         }
         
         console.log('No valid PNR found in hiddenCode');
@@ -1935,6 +1920,18 @@
         
         const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
         const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+
+        // Log hiddenCode values for debugging
+        if (isFZ) {
+            console.log('FZ Flight - Hidden Codes:');
+            sortedPassengers.forEach((p, idx) => {
+                console.log(`Passenger ${idx+1}:`, {
+                    name: p.pName,
+                    hiddenCode: p.hiddenCode,
+                    extractedPNR: extractPNRFromHiddenCode(p.hiddenCode)
+                });
+            });
+        }
 
         // Create print window
         const printWindow = window.open('', '_blank');
