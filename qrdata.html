@@ -78,21 +78,35 @@
             color: #8b6913;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
-        .filter-group input, .filter-group select {
-            padding: 10px 12px;
+        .filter-group select, .filter-group input {
+            padding: 12px;
             border: 2px solid rgba(230, 184, 0, 0.3);
             border-radius: 8px;
             font-size: 14px;
             transition: all 0.3s;
             background: white;
+            cursor: pointer;
         }
 
-        .filter-group input:focus, .filter-group select:focus {
+        .filter-group select:focus, .filter-group input:focus {
             outline: none;
             border-color: #e6b800;
             box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.1);
+        }
+
+        .filter-group select option {
+            padding: 10px;
+        }
+
+        .filter-group select:disabled {
+            background: #f5f5f5;
+            cursor: not-allowed;
+            opacity: 0.7;
         }
 
         .filter-group input::placeholder {
@@ -108,8 +122,8 @@
             justify-content: flex-end;
         }
 
-        .search-btn, .reset-btn, .export-btn {
-            padding: 10px 20px;
+        .search-btn, .reset-btn {
+            padding: 12px 24px;
             border: none;
             border-radius: 8px;
             font-size: 14px;
@@ -126,10 +140,15 @@
             color: white;
         }
 
-        .search-btn:hover {
+        .search-btn:hover:not(:disabled) {
             background: linear-gradient(135deg, #d4a900, #c29800);
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(230, 184, 0, 0.3);
+        }
+
+        .search-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         .reset-btn {
@@ -141,17 +160,6 @@
             background: linear-gradient(135deg, #a67244, #8b5a3c);
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(198, 139, 94, 0.3);
-        }
-
-        .export-btn {
-            background: linear-gradient(135deg, #4682b4, #31698e);
-            color: white;
-        }
-
-        .export-btn:hover {
-            background: linear-gradient(135deg, #31698e, #1e4b6a);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(70, 130, 180, 0.3);
         }
 
         .stats-bar {
@@ -205,7 +213,7 @@
             overflow-x: auto;
             border-radius: 10px;
             border: 1px solid rgba(230, 184, 0, 0.2);
-            max-height: 600px;
+            max-height: 500px;
             overflow-y: auto;
         }
 
@@ -248,7 +256,7 @@
 
         .badge {
             display: inline-block;
-            padding: 3px 8px;
+            padding: 4px 10px;
             border-radius: 20px;
             font-size: 11px;
             font-weight: 600;
@@ -258,6 +266,7 @@
             background: rgba(230, 184, 0, 0.15);
             color: #8b6913;
             border: 1px solid rgba(230, 184, 0, 0.3);
+            font-family: monospace;
         }
 
         .badge-flight {
@@ -273,61 +282,27 @@
         }
 
         .code-value {
-            font-family: monospace;
-            font-size: 11px;
-            max-width: 200px;
+            max-width: 250px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
 
-        .toolbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .date-presets {
-            display: flex;
-            gap: 8px;
-        }
-
-        .preset-btn {
-            padding: 6px 12px;
-            border: 1px solid rgba(230, 184, 0, 0.3);
-            background: white;
-            border-radius: 20px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-            color: #5e4a1a;
-        }
-
-        .preset-btn:hover {
-            background: #e6b800;
-            color: white;
-            border-color: #e6b800;
-        }
-
-        .preset-btn.active {
-            background: #e6b800;
-            color: white;
-            border-color: #e6b800;
-        }
-
-        .copy-btn {
+        .refresh-btn {
             background: none;
             border: none;
             color: #8b6913;
             cursor: pointer;
-            padding: 2px 5px;
+            padding: 5px 10px;
             border-radius: 4px;
             font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
-        .copy-btn:hover {
-            background: rgba(230, 184, 0, 0.2);
+        .refresh-btn:hover {
+            background: rgba(230, 184, 0, 0.1);
         }
 
         .footer {
@@ -337,6 +312,20 @@
             color: #8b6913;
             opacity: 0.7;
         }
+
+        .distinct-values {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .distinct-values span {
+            background: #f0f0f0;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
     </style>
 </head>
 <body>
@@ -344,63 +333,63 @@
         <h1>
             <i class="fas fa-qrcode"></i>
             QR Card Data - cardentryqr
+            <button class="refresh-btn" onclick="refreshData()" style="margin-left: auto;">
+                <i class="fas fa-sync-alt"></i> REFRESH
+            </button>
         </h1>
 
         <!-- Filter Section -->
         <div class="filter-section">
             <div class="filter-group">
                 <label><i class="fas fa-calendar"></i> Date</label>
-                <input type="text" id="filterDate" placeholder="YYYY-MM-DD or DD/MM/YYYY">
+                <select id="filterDate" onchange="filterData()">
+                    <option value="">ALL DATES</option>
+                </select>
+                <div class="distinct-values">
+                    <span id="dateCount">Loading dates...</span>
+                </div>
             </div>
 
             <div class="filter-group">
                 <label><i class="fas fa-plane"></i> Flight Number</label>
-                <input type="text" id="filterFlight" placeholder="e.g., BA123, EK456">
+                <select id="filterFlight" onchange="filterData()">
+                    <option value="">ALL FLIGHTS</option>
+                </select>
+                <div class="distinct-values">
+                    <span id="flightCount">Loading flights...</span>
+                </div>
             </div>
 
             <div class="filter-group">
                 <label><i class="fas fa-user"></i> Passenger Name</label>
-                <input type="text" id="filterName" placeholder="Search by name">
+                <input type="text" id="filterName" placeholder="Search by name..." oninput="filterData()">
             </div>
 
             <div class="filter-group">
                 <label><i class="fas fa-chair"></i> Seat Number</label>
-                <input type="text" id="filterSeat" placeholder="e.g., 12A, 34B">
+                <input type="text" id="filterSeat" placeholder="e.g., 12A, 34B..." oninput="filterData()">
             </div>
 
             <div class="filter-group">
                 <label><i class="fas fa-id-card"></i> FQTV</label>
-                <input type="text" id="filterFQTV" placeholder="Frequent flyer number">
+                <input type="text" id="filterFQTV" placeholder="Frequent flyer number..." oninput="filterData()">
             </div>
 
             <div class="button-group">
-                <button class="search-btn" onclick="searchData()">
+                <button class="search-btn" onclick="applyFilters()" id="searchBtn">
                     <i class="fas fa-search"></i> SEARCH
                 </button>
                 <button class="reset-btn" onclick="resetFilters()">
                     <i class="fas fa-undo"></i> RESET
                 </button>
-                <button class="export-btn" onclick="exportToCSV()">
-                    <i class="fas fa-download"></i> EXPORT CSV
-                </button>
-            </div>
-        </div>
-
-        <!-- Date Presets -->
-        <div class="toolbar">
-            <div class="date-presets">
-                <button class="preset-btn" onclick="setDatePreset('today')">Today</button>
-                <button class="preset-btn" onclick="setDatePreset('yesterday')">Yesterday</button>
-                <button class="preset-btn" onclick="setDatePreset('week')">This Week</button>
-                <button class="preset-btn" onclick="setDatePreset('month')">This Month</button>
-                <button class="preset-btn" onclick="clearDatePreset()">Clear Date</button>
             </div>
         </div>
 
         <!-- Stats Bar -->
         <div class="stats-bar">
             <div class="record-count">
-                <i class="fas fa-database"></i> Total Records: <span id="recordCount">0</span>
+                <i class="fas fa-database"></i> 
+                Showing: <span id="recordCount">0</span> of <span id="totalCount">0</span> records
             </div>
             <div id="loadingIndicator" class="loading-indicator" style="display: none;">
                 <div class="spinner"></div>
@@ -419,14 +408,13 @@
                         <th>SEAT NO</th>
                         <th>FQTV</th>
                         <th>CODE</th>
-                        <th>TIMESTAMP</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody">
                     <tr class="empty-row">
-                        <td colspan="7">
-                            <i class="fas fa-search" style="margin-right: 8px;"></i>
-                            Enter filters and click SEARCH to load data
+                        <td colspan="6">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            Loading data from Firebase...
                         </td>
                     </tr>
                 </tbody>
@@ -435,7 +423,7 @@
 
         <div class="footer">
             <i class="fas fa-info-circle"></i>
-            Data from cardentryqr collection • Click on any value to copy
+            Data from cardentryqr collection • Select date or flight to filter
         </div>
     </div>
 
@@ -443,6 +431,8 @@
         // Global variables
         let allData = [];
         let filteredData = [];
+        let distinctDates = [];
+        let distinctFlights = [];
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
@@ -454,18 +444,12 @@
             
             // Load initial data
             loadAllData();
-            
-            // Add input event listeners for real-time filtering
-            document.getElementById('filterDate').addEventListener('input', filterData);
-            document.getElementById('filterFlight').addEventListener('input', filterData);
-            document.getElementById('filterName').addEventListener('input', filterData);
-            document.getElementById('filterSeat').addEventListener('input', filterData);
-            document.getElementById('filterFQTV').addEventListener('input', filterData);
         });
 
         // Load all data from cardentryqr
         async function loadAllData() {
             showLoading(true);
+            disableControls(true);
             
             try {
                 console.log('Loading data from cardentryqr...');
@@ -474,6 +458,8 @@
                 const snapshot = await cardDb.collection('QrCards').get();
                 
                 allData = [];
+                const dateSet = new Set();
+                const flightSet = new Set();
                 
                 snapshot.forEach(doc => {
                     const data = doc.data();
@@ -489,26 +475,26 @@
                         if (!flightNo && parts[1]) flightNo = parts[1];
                     }
                     
-                    // Format timestamp
-                    let timestamp = '';
-                    if (data.timestamp) {
-                        if (data.timestamp.toDate) {
-                            timestamp = data.timestamp.toDate().toLocaleString();
-                        } else if (data.timestamp.seconds) {
-                            timestamp = new Date(data.timestamp.seconds * 1000).toLocaleString();
-                        }
+                    // Format date for display
+                    let displayDate = date;
+                    if (date && date.length === 8 && !date.includes('-') && !date.includes('/')) {
+                        // Format YYYYMMDD to YYYY-MM-DD
+                        displayDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
                     }
+                    
+                    // Add to distinct sets
+                    if (displayDate) dateSet.add(displayDate);
+                    if (flightNo) flightSet.add(flightNo);
                     
                     allData.push({
                         id: doc.id,
-                        date: date,
+                        date: displayDate,
+                        rawDate: date,
                         flightNo: flightNo,
                         pName: data.pName || data.name || '',
                         seatNo: data.seatNo || data.seat || '',
                         FQTV: data.FQTV || data.fqtv || data.frequentFlyer || '',
                         code: data.code || '',
-                        timestamp: timestamp,
-                        rawTimestamp: data.timestamp,
                         ...data // Include all original data
                     });
                 });
@@ -522,6 +508,14 @@
                     return 0;
                 });
                 
+                // Convert sets to sorted arrays
+                distinctDates = Array.from(dateSet).sort().reverse(); // Newest first
+                distinctFlights = Array.from(flightSet).sort();
+                
+                // Populate dropdowns
+                populateDateDropdown();
+                populateFlightDropdown();
+                
                 filteredData = [...allData];
                 renderTable();
                 updateRecordCount();
@@ -531,34 +525,71 @@
                 showError('Failed to load data: ' + error.message);
             } finally {
                 showLoading(false);
+                disableControls(false);
             }
+        }
+
+        // Populate date dropdown
+        function populateDateDropdown() {
+            const dateSelect = document.getElementById('filterDate');
+            const dateCount = document.getElementById('dateCount');
+            
+            // Clear existing options except first
+            while (dateSelect.options.length > 1) {
+                dateSelect.remove(1);
+            }
+            
+            // Add date options
+            distinctDates.forEach(date => {
+                const option = document.createElement('option');
+                option.value = date;
+                option.textContent = date;
+                dateSelect.appendChild(option);
+            });
+            
+            // Update count
+            dateCount.textContent = `${distinctDates.length} date${distinctDates.length !== 1 ? 's' : ''}`;
+        }
+
+        // Populate flight dropdown
+        function populateFlightDropdown() {
+            const flightSelect = document.getElementById('filterFlight');
+            const flightCount = document.getElementById('flightCount');
+            
+            // Clear existing options except first
+            while (flightSelect.options.length > 1) {
+                flightSelect.remove(1);
+            }
+            
+            // Add flight options
+            distinctFlights.forEach(flight => {
+                const option = document.createElement('option');
+                option.value = flight;
+                option.textContent = flight;
+                flightSelect.appendChild(option);
+            });
+            
+            // Update count
+            flightCount.textContent = `${distinctFlights.length} flight${distinctFlights.length !== 1 ? 's' : ''}`;
         }
 
         // Filter data based on all filter inputs
         function filterData() {
-            const dateFilter = document.getElementById('filterDate').value.trim().toUpperCase();
-            const flightFilter = document.getElementById('filterFlight').value.trim().toUpperCase();
+            const dateFilter = document.getElementById('filterDate').value;
+            const flightFilter = document.getElementById('filterFlight').value;
             const nameFilter = document.getElementById('filterName').value.trim().toUpperCase();
             const seatFilter = document.getElementById('filterSeat').value.trim().toUpperCase();
             const fqtvFilter = document.getElementById('filterFQTV').value.trim().toUpperCase();
             
             filteredData = allData.filter(item => {
                 // Date filter
-                if (dateFilter) {
-                    const itemDate = (item.date || '').toUpperCase();
-                    if (!itemDate.includes(dateFilter) && 
-                        !itemDate.replace(/-/g, '').includes(dateFilter.replace(/-/g, '')) &&
-                        !itemDate.replace(/\//g, '').includes(dateFilter.replace(/\//g, ''))) {
-                        return false;
-                    }
+                if (dateFilter && item.date !== dateFilter) {
+                    return false;
                 }
                 
                 // Flight filter
-                if (flightFilter) {
-                    const itemFlight = (item.flightNo || '').toUpperCase();
-                    if (!itemFlight.includes(flightFilter)) {
-                        return false;
-                    }
+                if (flightFilter && item.flightNo !== flightFilter) {
+                    return false;
                 }
                 
                 // Name filter
@@ -592,10 +623,9 @@
             updateRecordCount();
         }
 
-        // Search button click - reload and filter
-        async function searchData() {
-            await loadAllData(); // Reload from Firebase
-            filterData(); // Apply filters
+        // Apply filters (called by search button)
+        function applyFilters() {
+            filterData();
         }
 
         // Reset all filters
@@ -606,66 +636,14 @@
             document.getElementById('filterSeat').value = '';
             document.getElementById('filterFQTV').value = '';
             
-            // Remove active class from preset buttons
-            document.querySelectorAll('.preset-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
             filteredData = [...allData];
             renderTable();
             updateRecordCount();
         }
 
-        // Set date preset
-        function setDatePreset(preset) {
-            const today = new Date();
-            let dateStr = '';
-            
-            switch(preset) {
-                case 'today':
-                    dateStr = formatDate(today);
-                    break;
-                case 'yesterday':
-                    const yesterday = new Date(today);
-                    yesterday.setDate(yesterday.getDate() - 1);
-                    dateStr = formatDate(yesterday);
-                    break;
-                case 'week':
-                    // This week - show all dates from this week
-                    // For simplicity, just clear date filter and show message
-                    alert('Showing all records - use date filter for specific dates');
-                    return;
-                case 'month':
-                    // This month - show all dates from this month
-                    alert('Showing all records - use date filter for specific dates');
-                    return;
-            }
-            
-            document.getElementById('filterDate').value = dateStr;
-            
-            // Update active class
-            document.querySelectorAll('.preset-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            event.target.classList.add('active');
-            
-            filterData();
-        }
-
-        function clearDatePreset() {
-            document.getElementById('filterDate').value = '';
-            document.querySelectorAll('.preset-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            filterData();
-        }
-
-        // Format date as YYYY-MM-DD
-        function formatDate(date) {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+        // Refresh data from Firebase
+        async function refreshData() {
+            await loadAllData();
         }
 
         // Render table with filtered data
@@ -675,7 +653,7 @@
             if (filteredData.length === 0) {
                 tbody.innerHTML = `
                     <tr class="empty-row">
-                        <td colspan="7">
+                        <td colspan="6">
                             <i class="fas fa-inbox"></i>
                             No records found matching your filters
                         </td>
@@ -686,17 +664,10 @@
             
             let html = '';
             filteredData.forEach(item => {
-                // Format date for display
-                let displayDate = item.date || '—';
-                if (displayDate.length === 8 && !displayDate.includes('-') && !displayDate.includes('/')) {
-                    // Format YYYYMMDD to YYYY-MM-DD
-                    displayDate = `${displayDate.substring(0,4)}-${displayDate.substring(4,6)}-${displayDate.substring(6,8)}`;
-                }
-                
                 html += `
                     <tr>
                         <td>
-                            <span class="badge badge-date">${displayDate}</span>
+                            <span class="badge badge-date">${item.date || '—'}</span>
                         </td>
                         <td>
                             <span class="badge badge-flight">${item.flightNo || '—'}</span>
@@ -722,9 +693,6 @@
                                 <span class="badge badge-code">${item.code ? item.code.substring(0, 30) + (item.code.length > 30 ? '...' : '') : '—'}</span>
                             </div>
                         </td>
-                        <td>
-                            <small style="color: #666;">${item.timestamp || '—'}</small>
-                        </td>
                     </tr>
                 `;
             });
@@ -735,6 +703,7 @@
         // Update record count display
         function updateRecordCount() {
             document.getElementById('recordCount').textContent = filteredData.length;
+            document.getElementById('totalCount').textContent = allData.length;
         }
 
         // Show/hide loading indicator
@@ -742,110 +711,38 @@
             document.getElementById('loadingIndicator').style.display = show ? 'flex' : 'none';
         }
 
+        // Enable/disable controls during loading
+        function disableControls(disable) {
+            document.getElementById('filterDate').disabled = disable;
+            document.getElementById('filterFlight').disabled = disable;
+            document.getElementById('filterName').disabled = disable;
+            document.getElementById('filterSeat').disabled = disable;
+            document.getElementById('filterFQTV').disabled = disable;
+            document.getElementById('searchBtn').disabled = disable;
+        }
+
         // Show error message
         function showError(message) {
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = `
                 <tr class="empty-row">
-                    <td colspan="7">
+                    <td colspan="6">
                         <i class="fas fa-exclamation-triangle" style="color: #c68b5e;"></i>
                         ${message}
                     </td>
                 </tr>
             `;
+            
+            // Update dropdowns to show error
+            document.getElementById('dateCount').textContent = 'Error loading';
+            document.getElementById('flightCount').textContent = 'Error loading';
         }
-
-        // Export to CSV
-        function exportToCSV() {
-            if (filteredData.length === 0) {
-                alert('No data to export');
-                return;
-            }
-            
-            // Define CSV headers
-            const headers = ['Date', 'Flight Number', 'Passenger Name', 'Seat Number', 'FQTV', 'Code', 'Timestamp'];
-            
-            // Convert data to CSV rows
-            const csvRows = [];
-            csvRows.push(headers.join(','));
-            
-            filteredData.forEach(item => {
-                const row = [
-                    `"${item.date || ''}"`,
-                    `"${item.flightNo || ''}"`,
-                    `"${(item.pName || '').replace(/"/g, '""')}"`,
-                    `"${item.seatNo || ''}"`,
-                    `"${(item.FQTV || '').replace(/"/g, '""')}"`,
-                    `"${(item.code || '').replace(/"/g, '""')}"`,
-                    `"${item.timestamp || ''}"`
-                ];
-                csvRows.push(row.join(','));
-            });
-            
-            const csvString = csvRows.join('\n');
-            
-            // Create download link
-            const blob = new Blob([csvString], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.setAttribute('href', url);
-            a.setAttribute('download', `cardentryqr_export_${new Date().toISOString().slice(0,10)}.csv`);
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-            
-            showTemporaryNotification(`✅ Exported ${filteredData.length} records to CSV`, 'success');
-        }
-
-        // Show temporary notification
-        function showTemporaryNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: ${type === 'success' ? '#6b8e23' : '#e6b800'};
-                color: white;
-                padding: 12px 20px;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: 600;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                z-index: 9999;
-                animation: slideIn 0.3s ease;
-            `;
-            notification.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-info-circle'}"></i> ${message}`;
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.style.animation = 'slideOut 0.3s ease';
-                setTimeout(() => {
-                    document.body.removeChild(notification);
-                }, 300);
-            }, 3000);
-        }
-
-        // Add CSS animations
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            @keyframes slideOut {
-                from { transform: translateX(0); opacity: 1; }
-                to { transform: translateX(100%); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
 
         // Make functions global
-        window.searchData = searchData;
+        window.filterData = filterData;
+        window.applyFilters = applyFilters;
         window.resetFilters = resetFilters;
-        window.exportToCSV = exportToCSV;
-        window.setDatePreset = setDatePreset;
-        window.clearDatePreset = clearDatePreset;
+        window.refreshData = refreshData;
     </script>
 </body>
 </html>
