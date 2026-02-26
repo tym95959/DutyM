@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Airlines - Code Data</title>
+    <title>QR Airlines - QR Flight Data</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -411,6 +411,16 @@
             font-family: monospace;
         }
         
+        .qr-flight-badge {
+            background: #b03a5e;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+        
         .no-data, .loading { 
             text-align: center; 
             padding: 30px; 
@@ -465,7 +475,7 @@
             <div class="qr-logo">
                 <i>📱</i>
                 <span>QR AIRLINES</span>
-                <span class="qr-badge" id="dbStatus">cardentryqr</span>
+                <span class="qr-badge" id="dbStatus">QR Flights Only</span>
             </div>
             <button class="refresh-qr" onclick="refreshAllData()">↻ REFRESH DATA</button>
         </div>
@@ -484,18 +494,18 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label><i class="qr-icon">✈</i> FLIGHT NO</label>
+                        <label><i class="qr-icon">✈</i> QR FLIGHT NO</label>
                         <select id="flightSelect" class="form-control" onchange="onFlightSelected()" disabled>
                             <option value="">-- Select date first --</option>
                         </select>
                         <div class="distinct-count">
-                            <span id="flightCount">0 flights</span>
+                            <span id="flightCount">0 QR flights</span>
                         </div>
                     </div>
                 </div>
                 <div class="qr-info-box" id="qrInfoBox">
-                    <span id="infoText"><i class="qr-icon">📱</i> QR Code Database</span>
-                    <span id="databaseBadge" class="database-badge">cardentryqr</span>
+                    <span id="infoText"><i class="qr-icon">📱</i> QR Airlines Data</span>
+                    <span id="databaseBadge" class="database-badge">QR Flights</span>
                 </div>
             </div>
             
@@ -505,7 +515,7 @@
                     <!-- LEFT SIDE: flight details -->
                     <div class="left-details">
                         <div class="info-grid">
-                            <span class="info-label"><i class="qr-icon">✈</i> Flight:</span><span class="info-value" id="flightNoDisplay">-</span>
+                            <span class="info-label"><i class="qr-icon">✈</i> QR Flight:</span><span class="info-value" id="flightNoDisplay">-</span>
                             <span class="info-label"><i class="qr-icon">📅</i> Date:</span><span class="info-value" id="dateDisplay">-</span>
                             <span class="info-label"><i class="qr-icon">💾</i> Database:</span><span class="info-value" id="databaseDisplay">cardentryqr</span>
                         </div>
@@ -538,7 +548,7 @@
         <!-- QR data table -->
         <div id="tableContainer" class="table-container" style="display: none;">
             <div class="table-header">
-                <h3><i class="qr-icon">📱</i> QR CODE DATA - cardentryqr</h3>
+                <h3><i class="qr-icon">📱</i> QR FLIGHT DATA - cardentryqr</h3>
                 <span class="record-count" id="recordCount">0</span>
             </div>
             <div class="table-wrapper">
@@ -547,20 +557,20 @@
                         <tr>
                             <th>No.</th>
                             <th>Date</th>
-                            <th>Flight</th>
+                            <th>QR Flight</th>
                             <th>QR Code</th>
                             <th>Timestamp</th>
                         </tr>
                     </thead>
                     <tbody id="qrTableBody">
-                        <tr><td colspan="5" class="no-data">Loading QR data...</td></tr>
+                        <tr><td colspan="5" class="no-data">Loading QR flight data...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
         
         <div class="footer">
-            <i class="qr-icon">📱</i> QR Airlines Data System • cardentryqr only
+            <i class="qr-icon">📱</i> QR Airlines • Only flights starting with "QR" are shown
         </div>
     </div>
 
@@ -571,12 +581,9 @@
         let currentFlightData = null;
         let isLoadingData = false;
         let qrDbInstance = null;
-        let dataLoaded = false;
 
-        // ========== GET CARDENTRYQR DATABASE ONLY ==========
+        // ========== GET CARDENTRYQR DATABASE ==========
         function getCardEntryQRDatabase() {
-            // Only return the cardentryqr database, nothing else
-            
             // Try window.qrDb first (should be cardentryqr)
             if (window.qrDb) {
                 console.log("✅ Using qrDb for cardentryqr");
@@ -589,16 +596,13 @@
                 return window.cardDb;
             }
             
-            // Check if there's a database with cardentryqr in the name
-            if (window.defaultCardDb && window.defaultCardDb._delegate && 
-                window.defaultCardDb._delegate._databaseId && 
-                window.defaultCardDb._delegate._databaseId.projectId === 'cardentryqr') {
-                console.log("✅ Found cardentryqr via defaultCardDb");
-                return window.defaultCardDb;
-            }
-            
-            console.error("❌ cardentryqr database not found - check fireshift.js configuration");
+            console.error("❌ cardentryqr database not found");
             return null;
+        }
+
+        // ========== CHECK IF FLIGHT IS QR AIRLINES ==========
+        function isQRFlight(flightNo) {
+            return flightNo && flightNo.toUpperCase().startsWith('QR');
         }
 
         // ========== LOAD QR DATA FROM CARDENTRYQR ONLY ==========
@@ -609,7 +613,7 @@
             isLoadingData = true;
             
             if (showLoading) {
-                dateSelect.innerHTML = '<option value="">🔍 Loading QR data...</option>';
+                dateSelect.innerHTML = '<option value="">🔍 Loading QR flight data...</option>';
                 dateSelect.disabled = true;
             }
             
@@ -621,25 +625,36 @@
                     throw new Error('cardentryqr database not found');
                 }
                 
-                console.log(`🔍 Loading QR data from cardentryqr ONLY...`);
+                console.log(`🔍 Loading QR flight data from cardentryqr...`);
                 
                 // Query the QrCards collection
                 const snapshot = await qrDbInstance.collection('QrCards').get();
                 
                 // Clear previous data
                 qrDataByDate = {};
+                let qrFlightCount = 0;
+                let totalRecords = 0;
                 
                 if (snapshot.empty) {
-                    console.log(`ℹ️ No QR records found in cardentryqr`);
+                    console.log(`ℹ️ No records found in cardentryqr`);
                 } else {
-                    console.log(`✅ Found ${snapshot.size} QR records in cardentryqr`);
+                    console.log(`✅ Found ${snapshot.size} total records in cardentryqr`);
                     
                     snapshot.forEach(doc => {
                         const data = doc.data();
                         
-                        // Extract date - only from QR database
-                        let date = data.date || '';
+                        // Extract flight number
                         let flightNo = data.flightNo || '';
+                        
+                        // ONLY PROCESS FLIGHTS THAT START WITH 'QR'
+                        if (!isQRFlight(flightNo)) {
+                            return; // Skip non-QR flights
+                        }
+                        
+                        qrFlightCount++;
+                        
+                        // Extract date
+                        let date = data.date || '';
                         let code = data.code || '';
                         let timestamp = '';
                         
@@ -660,7 +675,6 @@
                         if (!date && doc.id && doc.id.includes('_')) {
                             const parts = doc.id.split('_');
                             date = parts[0] || '';
-                            if (!flightNo && parts[1]) flightNo = parts[1];
                         }
                         
                         // Format date for display (YYYY-MM-DD)
@@ -680,7 +694,7 @@
                             displayDate = date;
                         }
                         
-                        if (displayDate && flightNo) {  // Only store if both date and flight exist
+                        if (displayDate && flightNo) {
                             if (!qrDataByDate[displayDate]) {
                                 qrDataByDate[displayDate] = new Map();
                             }
@@ -707,6 +721,8 @@
                                 timestamp: timestamp
                             });
                             
+                            totalRecords++;
+                            
                             // Update first/last timestamps
                             if (timestamp) {
                                 if (!flightData.firstTimestamp || timestamp < flightData.firstTimestamp) {
@@ -720,9 +736,10 @@
                     });
                 }
                 
+                console.log(`📊 Found ${qrFlightCount} QR flight records with ${totalRecords} total QR codes`);
+                
                 // Get all unique dates and sort them (newest first)
                 allDates = Object.keys(qrDataByDate).sort().reverse();
-                dataLoaded = true;
                 
                 // Update the date select dropdown
                 updateDateDropdown();
@@ -732,11 +749,11 @@
                 dateSelect.disabled = false;
                 
                 // Update flight count
-                document.getElementById('flightCount').textContent = '0 flights';
+                document.getElementById('flightCount').textContent = '0 QR flights';
                 
                 // Show table with message if no data
                 if (allDates.length === 0) {
-                    document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="no-data">No QR data found in cardentryqr database</td></tr>';
+                    document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="no-data">No QR flight data found in cardentryqr database</td></tr>';
                     document.getElementById('tableContainer').style.display = 'block';
                 }
                 
@@ -756,7 +773,7 @@
             const dateSelect = document.getElementById('dateSelect');
             
             if (allDates.length === 0) {
-                dateSelect.innerHTML = '<option value="">❌ No QR data found</option>';
+                dateSelect.innerHTML = '<option value="">❌ No QR flight data found</option>';
                 return;
             }
             
@@ -774,13 +791,13 @@
             const selectedDate = dateSelect.value;
             
             // Reset flight select
-            flightSelect.innerHTML = '<option value="">⏳ Loading flights...</option>';
+            flightSelect.innerHTML = '<option value="">⏳ Loading QR flights...</option>';
             flightSelect.disabled = true;
             
             // Hide panels
             document.getElementById('flightPanel').style.display = 'none';
             document.getElementById('tableContainer').style.display = 'none';
-            document.getElementById('infoText').innerHTML = '<i class="qr-icon">📱</i> QR Code Database';
+            document.getElementById('infoText').innerHTML = '<i class="qr-icon">📱</i> QR Airlines Data';
             document.getElementById('printReportBtn').disabled = true;
             
             // Reset current data
@@ -788,7 +805,7 @@
             
             if (!selectedDate) {
                 flightSelect.innerHTML = '<option value="">-- Select date first --</option>';
-                document.getElementById('flightCount').textContent = '0 flights';
+                document.getElementById('flightCount').textContent = '0 QR flights';
                 return;
             }
             
@@ -796,7 +813,7 @@
             const flights = qrDataByDate[selectedDate];
             if (!flights || flights.size === 0) {
                 flightSelect.innerHTML = '<option value="">❌ No QR flights for this date</option>';
-                document.getElementById('flightCount').textContent = '0 flights';
+                document.getElementById('flightCount').textContent = '0 QR flights';
                 return;
             }
             
@@ -829,7 +846,7 @@
             
             // Show loading state
             document.getElementById('flightPanel').style.display = 'block';
-            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Loading QR data...</td></tr>';
+            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Loading QR flight data...</td></tr>';
             
             const flights = qrDataByDate[selectedDate];
             const flightData = Array.from(flights.values()).find(f => f.flightNo === selectedFlight);
@@ -841,7 +858,7 @@
             
             currentFlightData = flightData;
             
-            console.log('QR Data from cardentryqr:', {
+            console.log('QR Flight Data:', {
                 flightNo: flightData.flightNo,
                 records: flightData.records.length
             });
@@ -857,7 +874,7 @@
             document.getElementById('firstQrStat').textContent = flightData.firstTimestamp ? 'QR' : '--:--';
             document.getElementById('lastQrStat').textContent = flightData.lastTimestamp ? 'QR' : '--:--';
             document.getElementById('recordCount').textContent = flightData.records.length + ' QR';
-            document.getElementById('infoText').innerHTML = `${flightData.flightNo || 'Unknown'} <span style="font-size:10px; opacity:0.8;">(QR flight)</span>`;
+            document.getElementById('infoText').innerHTML = `${flightData.flightNo} <span class="qr-flight-badge">QR</span>`;
             
             // Enable print button if there are records
             document.getElementById('printReportBtn').disabled = flightData.records.length === 0;
@@ -885,7 +902,7 @@
                 html += `<tr>
                     <td class="serial-no">${serial}</td>
                     <td><span class="badge badge-date">${record.date || '-'}</span></td>
-                    <td><span class="badge badge-flight">${record.flightNo || '-'}</span></td>
+                    <td><span class="badge badge-flight">${record.flightNo || '-'} <span class="qr-flight-badge">QR</span></span></td>
                     <td><div class="code-cell" title="${record.code || ''}"><span class="badge badge-code">${record.code ? (record.code.length > 50 ? record.code.substring(0,50)+'...' : record.code) : '—'}</span></div></td>
                     <td>${record.timestamp || '-'}</td>
                 </tr>`;
@@ -899,7 +916,7 @@
             if (!currentFlightData) return;
             
             // Show refreshing indicator
-            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Refreshing data...</td></tr>';
+            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Refreshing QR data...</td></tr>';
             
             // Reload all data
             loadQRData(true).then(() => {
@@ -928,7 +945,7 @@
 
         function refreshAllData() {
             // Show refreshing indicator
-            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Refreshing all data...</td></tr>';
+            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Refreshing all QR data...</td></tr>';
             
             // Reload all data
             loadQRData(true).then(() => {
@@ -937,7 +954,7 @@
                 document.getElementById('flightSelect').innerHTML = '<option value="">-- Select date first --</option>';
                 document.getElementById('flightSelect').disabled = true;
                 document.getElementById('flightPanel').style.display = 'none';
-                document.getElementById('infoText').innerHTML = '<i class="qr-icon">📱</i> QR Code Database';
+                document.getElementById('infoText').innerHTML = '<i class="qr-icon">📱</i> QR Airlines Data';
             });
         }
 
@@ -1043,7 +1060,7 @@
                             <div class="flight-details">
                                 <div class="detail-row"><span class="label">Flight:</span> ${flightNo}</div>
                                 <div class="detail-row"><span class="label">Date:</span> ${formattedDate}</div>
-                                <div class="detail-row"><span class="label">Database:</span> cardentryqr</div>
+                                <div class="detail-row"><span class="label">Type:</span> QR Flight Only</div>
                             </div>
                         </div>
                         <div class="right-section">
@@ -1060,7 +1077,7 @@
                             <tr>
                                 <th>No.</th>
                                 <th>Date</th>
-                                <th>Flight</th>
+                                <th>QR Flight</th>
                                 <th>QR Code</th>
                                 <th>Timestamp</th>
                             </tr>
@@ -1086,7 +1103,7 @@
                     </table>
                     
                     <div class="footer">
-                        <p>QR Airlines Data System • cardentryqr only</p>
+                        <p>QR Airlines Data System • Only QR flights shown</p>
                         <p>Printed: ${new Date().toLocaleString()}</p>
                     </div>
                     
