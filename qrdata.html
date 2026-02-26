@@ -636,6 +636,7 @@
                 qrDataByDate = {};
                 let qrFlightCount = 0;
                 let totalRecords = 0;
+                let dateSet = new Set(); // Track all dates with QR flights
                 
                 if (snapshot.empty) {
                     console.log(`ℹ️ No records found in cardentryqr`);
@@ -696,7 +697,10 @@
                             displayDate = date;
                         }
                         
-                        if (displayDate && flightNo) {
+                        // If we have a valid date, store the record
+                        if (displayDate) {
+                            dateSet.add(displayDate); // Add to date set
+                            
                             if (!qrDataByDate[displayDate]) {
                                 qrDataByDate[displayDate] = new Map();
                             }
@@ -738,10 +742,11 @@
                     });
                 }
                 
-                console.log(`📊 Found ${qrFlightCount} QR flight records with ${totalRecords} total QR codes`);
+                // Convert dateSet to array and sort
+                allDates = Array.from(dateSet).sort().reverse();
                 
-                // Get all unique dates from QR flights only and sort them (newest first)
-                allDates = Object.keys(qrDataByDate).sort().reverse();
+                console.log(`📊 Found ${qrFlightCount} QR flight records with ${totalRecords} total QR codes`);
+                console.log(`📅 Found ${allDates.length} unique dates with QR flights:`, allDates);
                 
                 // Update the date select dropdown with QR flight dates only
                 updateDateDropdown();
@@ -785,12 +790,16 @@
                 options += `<option value="${d}">${d} (${flightCount} QR flight${flightCount !== 1 ? 's' : ''})</option>`; 
             });
             dateSelect.innerHTML = options;
+            
+            console.log('Date dropdown updated with options:', options);
         }
 
         function onDateSelected() {
             const dateSelect = document.getElementById('dateSelect');
             const flightSelect = document.getElementById('flightSelect');
             const selectedDate = dateSelect.value;
+            
+            console.log('Date selected:', selectedDate);
             
             // Reset flight select
             flightSelect.innerHTML = '<option value="">⏳ Loading QR flights...</option>';
@@ -813,6 +822,8 @@
             
             // Get QR flights for selected date
             const flights = qrDataByDate[selectedDate];
+            console.log('Flights for date:', flights);
+            
             if (!flights || flights.size === 0) {
                 flightSelect.innerHTML = '<option value="">❌ No QR flights for this date</option>';
                 document.getElementById('flightCount').textContent = '0 QR flights';
@@ -823,6 +834,8 @@
             const flightsArray = Array.from(flights.values())
                 .filter(f => isQRFlight(f.flightNo))
                 .sort((a,b) => (a.flightNo || '').localeCompare(b.flightNo || ''));
+            
+            console.log('Filtered QR flights:', flightsArray);
             
             // Build options - only QR flights
             let options = '<option value="">✈️ Select a QR flight</option>';
@@ -841,6 +854,8 @@
             const flightSelect = document.getElementById('flightSelect');
             const selectedDate = dateSelect.value;
             const selectedFlight = flightSelect.value;
+            
+            console.log('Flight selected:', selectedFlight, 'for date:', selectedDate);
             
             if (!selectedDate || !selectedFlight) {
                 document.getElementById('flightPanel').style.display = 'none';
