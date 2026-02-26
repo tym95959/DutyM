@@ -657,8 +657,18 @@
             <!-- Duplicate warning banner will be inserted here dynamically -->
             <div class="table-wrapper">
                 <table>
-                    <thead>
-                        <tr><th>No.</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th><th>Actions</th></tr>
+                    <thead id="tableHeader">
+                        <tr>
+                            <th>No.</th>
+                            <th id="nameColumnHeader">Name</th>
+                            <th>Seat</th>
+                            <th>Pax</th>
+                            <th>FQTV</th>
+                            <th>Serial No</th>
+                            <th>Time</th>
+                            <th>Remarks</th>
+                            <th>Actions</th>
+                        </tr>
                     </thead>
                     <tbody id="passengerTableBody">
                         <tr><td colspan="9" class="no-data">Select a flight to view passengers</td></tr>
@@ -1276,9 +1286,20 @@
         return div.innerHTML;
     }
 
-    // Modified displayPassengerTable function with duplicate highlighting
+    /**
+     * Check if current flight is SQ (Singapore Airlines)
+     * @returns {boolean} - True if current flight is SQ
+     */
+    function isSQFlight() {
+        return currentFlightData && 
+               currentFlightData.flightNo && 
+               currentFlightData.flightNo.toUpperCase().startsWith('SQ');
+    }
+
+    // Modified displayPassengerTable function with duplicate highlighting and SQ-specific labels
     function displayPassengerTable(passengers) {
         const tbody = document.getElementById('passengerTableBody');
+        const isSQ = isSQFlight();
         
         if (!passengers || passengers.length === 0) {
             tbody.innerHTML = '<tr><td colspan="9" class="no-data">No passengers found for this flight</td></tr>';
@@ -1312,10 +1333,17 @@
             const rowClass = isDuplicate ? 'duplicate-row' : '';
             
             if (editingRowId === p.docId) {
-                // Edit mode
+                // Edit mode with SQ-specific placeholder
+                const namePlaceholder = isSQ ? 'Voucher No.' : 'Name';
+                
                 html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
                     <td class="serial-no">${serial}</td>
-                    <td><input type="text" id="edit-pName-${p.docId}" value="${escapeHtml(p.pName||'')}" class="edit-mode-input"></td>
+                    <td>
+                        <input type="text" id="edit-pName-${p.docId}" 
+                               value="${escapeHtml(p.pName||'')}" 
+                               class="edit-mode-input" 
+                               placeholder="${namePlaceholder}">
+                    </td>
                     <td>
                         <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
                         <div id="pax-warning-${p.docId}" class="pax-warning"></div>
@@ -1384,6 +1412,16 @@
         currentFlightData = flightData;
         currentDatabase = flightData.dbRef;
         editingRowId = null;
+        
+        // Update column header based on flight number
+        const nameColumnHeader = document.getElementById('nameColumnHeader');
+        if (flightNo && flightNo.toUpperCase().startsWith('SQ')) {
+            nameColumnHeader.textContent = 'Voucher No.';
+            nameColumnHeader.title = 'Voucher Number for SQ flights';
+        } else {
+            nameColumnHeader.textContent = 'Name';
+            nameColumnHeader.title = 'Passenger Name';
+        }
         
         // Dismiss any existing duplicate warning
         dismissDuplicateWarning();
@@ -1576,7 +1614,8 @@
     }
 
     function confirmDelete(docId, name) { 
-        if (confirm(`Delete ${name}?`)) deletePassenger(docId); 
+        const itemType = isSQFlight() ? 'voucher' : 'passenger';
+        if (confirm(`Delete ${itemType} ${name}?`)) deletePassenger(docId); 
     }
     
     async function deletePassenger(docId) {
@@ -1759,6 +1798,7 @@
             return; 
         }
 
+        const isSQ = isSQFlight();
         const company = window.companyInfo || { 
             name: 'MACL', 
             address: '123 Aviation Road', 
@@ -1986,7 +2026,7 @@
                     <thead>
                         <tr>
                             <th>No.</th>
-                            <th>Name</th>
+                            <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
                             <th>Seat</th>
                             <th>Pax</th>
                             <th>FQTV</th>
@@ -2086,6 +2126,7 @@
     window.deleteAllDuplicates = deleteAllDuplicates;
     window.dismissDuplicateWarning = dismissDuplicateWarning;
     window.escapeHtml = escapeHtml;
+    window.isSQFlight = isSQFlight;
     </script>
 </body>
 </html>
