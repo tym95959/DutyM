@@ -788,7 +788,7 @@
                     <div class="left-selectors">
                         <div class="form-group">
                             <label>📅 DATE</label>
-                            <select id="dateSelect" class="form-control" onclick="loadDates()" onchange="onDateSelected()">
+                            <select id="dateSelect" class="form-control" onchange="onDateSelected()">
                                 <option value="">-- Click to load dates --</option>
                             </select>
                         </div>
@@ -949,18 +949,19 @@
 
     <script>
     // ========== GLOBAL VARIABLES ==========
-    let flightsByDate = {};
-    let allDates = [];
-    let currentFlightData = null;
-    let isLoadingDates = false;
-    let datesLoaded = false;
+    // Use 'var' instead of 'let' to avoid redeclaration issues with multiple script tags
+    var flightsByDate = {};
+    var allDates = [];
+    var currentFlightData = null;
+    var isLoadingDates = false;
+    var datesLoaded = false;
     
     // QR Code variables
-    let allQRCodes = [];
-    let filteredQRCodes = [];
-    let duplicateCount = 0;
-    let currentQRSort = 'timestamp_desc';
-    let qrDb = null;
+    var allQRCodes = [];
+    var filteredQRCodes = [];
+    var duplicateCount = 0;
+    var currentQRSort = 'timestamp_desc';
+    var qrDatabase = null; // Renamed from qrDb to avoid conflicts
 
     // ========== QR DATABASE FUNCTIONS ==========
     
@@ -999,18 +1000,18 @@
     // ========== SHIFT ==========
     async function fetchOpenShift() {
         try {
-            const shiftBadge = document.getElementById('shiftBadge');
-            const ribbonDate = document.getElementById('ribbonDate');
-            const ribbon = document.getElementById('shiftRibbon');
+            var shiftBadge = document.getElementById('shiftBadge');
+            var ribbonDate = document.getElementById('ribbonDate');
+            var ribbon = document.getElementById('shiftRibbon');
             shiftBadge.textContent = 'LOADING...';
             ribbonDate.textContent = '--';
             if (typeof passengerDb === 'undefined') throw new Error('no passengerDb');
-            const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+            var shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
             if (shiftDoc.exists) {
-                const data = shiftDoc.data();
-                const date = data.date || 'No date';
-                const morning = data.morning || 'closed';
-                const evening = data.evening || 'closed';
+                var data = shiftDoc.data();
+                var date = data.date || 'No date';
+                var morning = data.morning || 'closed';
+                var evening = data.evening || 'closed';
                 if (morning === 'open') {
                     shiftBadge.textContent = 'MORNING SHIFT';
                     ribbonDate.textContent = date;
@@ -1041,7 +1042,7 @@
         
         if (isLoadingDates) return;
         
-        const dateSelect = document.getElementById('dateSelect');
+        var dateSelect = document.getElementById('dateSelect');
         isLoadingDates = true;
         
         dateSelect.innerHTML = '<option value="">🔍 Scanning QR database...</option>';
@@ -1053,25 +1054,25 @@
         }
         
         try {
-            qrDb = getQRDatabase();
+            qrDatabase = getQRDatabase();
             
-            if (!qrDb) {
+            if (!qrDatabase) {
                 throw new Error("QR Database not available");
             }
             
             console.log(`🔍 Loading dates from QR database...`);
             
-            const snapshot = await qrDb.collection('KoveliPass').get();
+            var snapshot = await qrDatabase.collection('KoveliPass').get();
             
             if (snapshot.size > 0) {
                 snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const date = data.date;
+                    var data = doc.data();
+                    var date = data.date;
                     
                     if (date) {
                         if (!flightsByDate[date]) flightsByDate[date] = new Map();
                         
-                        const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
+                        var flightKey = data.flightNo + '_' + (data.shift || 'UNKNOWN');
                         
                         if (!flightsByDate[date].has(flightKey)) {
                             flightsByDate[date].set(flightKey, {
@@ -1084,7 +1085,7 @@
                             });
                         }
                         
-                        const flightData = flightsByDate[date].get(flightKey);
+                        var flightData = flightsByDate[date].get(flightKey);
                         flightData.passengers.push({
                             docId: doc.id,
                             pName: data.pName || '',
@@ -1120,9 +1121,9 @@
             if (allDates.length === 0) {
                 dateSelect.innerHTML = '<option value="">❌ No dates found in QR database</option>';
             } else {
-                let options = '<option value="">📅 Select a date</option>';
+                var options = '<option value="">📅 Select a date</option>';
                 allDates.forEach(d => { 
-                    const flightCount = flightsByDate[d]?.size || 0;
+                    var flightCount = flightsByDate[d]?.size || 0;
                     options += `<option value="${d}">${d} (${flightCount} flight${flightCount !== 1 ? 's' : ''})</option>`; 
                 });
                 dateSelect.innerHTML = options;
@@ -1141,13 +1142,13 @@
     }
 
     function updateQrDateSelect() {
-        const qrDateSelect = document.getElementById('qrDateSelect');
-        const loadBtn = document.getElementById('loadQrBtn');
+        var qrDateSelect = document.getElementById('qrDateSelect');
+        var loadBtn = document.getElementById('loadQrBtn');
         
         if (allDates.length === 0) {
             qrDateSelect.innerHTML = '<option value="">❌ No dates found</option>';
         } else {
-            let options = '<option value="">📅 Select a date</option>';
+            var options = '<option value="">📅 Select a date</option>';
             allDates.forEach(d => { 
                 options += `<option value="${d}">${d}</option>`; 
             });
@@ -1159,9 +1160,9 @@
     }
 
     function onDateSelected() {
-        const dateSelect = document.getElementById('dateSelect');
-        const flightSelect = document.getElementById('flightSelect');
-        const selectedDate = dateSelect.value;
+        var dateSelect = document.getElementById('dateSelect');
+        var flightSelect = document.getElementById('flightSelect');
+        var selectedDate = dateSelect.value;
         
         flightSelect.innerHTML = '<option value="">⏳ Loading flights...</option>';
         flightSelect.disabled = true;
@@ -1178,17 +1179,19 @@
             return;
         }
         
-        const flights = flightsByDate[selectedDate];
+        var flights = flightsByDate[selectedDate];
         if (!flights || flights.size === 0) {
             flightSelect.innerHTML = '<option value="">❌ No flights for this date</option>';
             return;
         }
         
-        const flightsArray = Array.from(flights.values()).sort((a,b) => a.flightNo.localeCompare(b.flightNo));
+        var flightsArray = Array.from(flights.values()).sort(function(a,b) { 
+            return a.flightNo.localeCompare(b.flightNo); 
+        });
         
-        let options = '<option value="">✈️ Select a flight</option>';
-        flightsArray.forEach(f => { 
-            const passengerCount = f.passengers.length;
+        var options = '<option value="">✈️ Select a flight</option>';
+        flightsArray.forEach(function(f) { 
+            var passengerCount = f.passengers.length;
             options += `<option value="${f.flightNo}|${f.shift}">${f.flightNo} - ${passengerCount} pax</option>`; 
         });
         
@@ -1197,26 +1200,26 @@
     }
 
     function onQrDateSelected() {
-        const qrDateSelect = document.getElementById('qrDateSelect');
-        const loadBtn = document.getElementById('loadQrBtn');
-        const deleteBtn = document.getElementById('deleteByDateBtn');
-        const selectedDate = qrDateSelect.value;
+        var qrDateSelect = document.getElementById('qrDateSelect');
+        var loadBtn = document.getElementById('loadQrBtn');
+        var deleteBtn = document.getElementById('deleteByDateBtn');
+        var selectedDate = qrDateSelect.value;
         
         // Update flight filter dropdown
-        const flightSelect = document.getElementById('qrFlightSelect');
+        var flightSelect = document.getElementById('qrFlightSelect');
         
         if (selectedDate && flightsByDate[selectedDate]) {
             loadBtn.disabled = false;
             deleteBtn.disabled = false;
             
             // Get unique flights for this date
-            const flights = new Set();
-            flightsByDate[selectedDate].forEach(flight => {
+            var flights = new Set();
+            flightsByDate[selectedDate].forEach(function(flight) {
                 flights.add(flight.flightNo);
             });
             
-            let options = '<option value="">All Flights</option>';
-            Array.from(flights).sort().forEach(flight => {
+            var options = '<option value="">All Flights</option>';
+            Array.from(flights).sort().forEach(function(flight) {
                 options += `<option value="${flight}">${flight}</option>`;
             });
             flightSelect.innerHTML = options;
@@ -1230,10 +1233,10 @@
     }
 
     async function onFlightSelected() {
-        const dateSelect = document.getElementById('dateSelect');
-        const flightSelect = document.getElementById('flightSelect');
-        const selectedDate = dateSelect.value;
-        const selectedFlight = flightSelect.value;
+        var dateSelect = document.getElementById('dateSelect');
+        var flightSelect = document.getElementById('flightSelect');
+        var selectedDate = dateSelect.value;
+        var selectedFlight = flightSelect.value;
         
         if (!selectedDate || !selectedFlight) {
             document.getElementById('flightPanel').style.display = 'none';
@@ -1245,9 +1248,11 @@
         document.getElementById('airlineDisplay').textContent = 'Loading...';
         document.getElementById('passengerTableBody').innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span> Loading passengers...</td></tr>';
         
-        const [flightNo, shift] = selectedFlight.split('|');
-        const flightKey = `${flightNo}_${shift}`;
-        const flightData = flightsByDate[selectedDate]?.get(flightKey);
+        var flightInfo = selectedFlight.split('|');
+        var flightNo = flightInfo[0];
+        var shift = flightInfo[1];
+        var flightKey = flightNo + '_' + shift;
+        var flightData = flightsByDate[selectedDate]?.get(flightKey);
         
         if (!flightData) {
             alert('Flight data not found');
@@ -1256,12 +1261,10 @@
         
         currentFlightData = flightData;
         
-        document.getElementById('databaseDisplay').textContent = `QR Database (cardentryqr)`;
+        document.getElementById('databaseDisplay').textContent = 'QR Database (cardentryqr)';
         document.getElementById('databaseBadge').style.display = 'inline-block';
         
         try {
-            const targetDb = getQRDatabase();
-            
             // Update UI with loaded data
             document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
             document.getElementById('flightNoDisplay').textContent = flightNo;
@@ -1274,7 +1277,7 @@
             document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
             document.getElementById('lastPaxStat').textContent = flightData.lastPax || '--:--';
             document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
-            document.getElementById('quickShiftText').innerHTML = `${flightNo} | ${shift} <span style="font-size:10px; opacity:0.8;">(QR Database)</span>`;
+            document.getElementById('quickShiftText').innerHTML = flightNo + ' | ' + shift + ' <span style="font-size:10px; opacity:0.8;">(QR Database)</span>';
             
             document.getElementById('flightStatus').textContent = 'OPEN';
             document.getElementById('flightStatus').className = 'flight-status status-open';
@@ -1288,7 +1291,7 @@
     }
 
     function displayPassengerTable(passengers) {
-        const tbody = document.getElementById('passengerTableBody');
+        var tbody = document.getElementById('passengerTableBody');
         
         if (!passengers || passengers.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="no-data">No passengers found</td></tr>';
@@ -1296,11 +1299,13 @@
             return;
         }
         
-        const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        let html = '';
+        var sorted = [...passengers].sort(function(a,b) { 
+            return (a.entryTime||'').localeCompare(b.entryTime||''); 
+        });
+        var html = '';
         
-        sorted.forEach((p, idx) => {
-            const serial = String(idx+1).padStart(3,'0');
+        sorted.forEach(function(p, idx) {
+            var serial = String(idx+1).padStart(3,'0');
             html += `<tr>
                 <td class="serial-no">${serial}</td>
                 <td>${p.pName || '-'}</td>
@@ -1318,14 +1323,14 @@
     }
 
     // ========== MESSAGE FUNCTIONS ==========
-    function showMessage(message, type = 'info') {
-        const container = document.getElementById('messageContainer');
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${type}`;
+    function showMessage(message, type) {
+        var container = document.getElementById('messageContainer');
+        var messageDiv = document.createElement('div');
+        messageDiv.className = 'message ' + type;
         messageDiv.textContent = message;
         container.appendChild(messageDiv);
         
-        setTimeout(() => {
+        setTimeout(function() {
             if (messageDiv.parentNode) {
                 messageDiv.remove();
             }
@@ -1358,10 +1363,10 @@
         if (!timestamp) return 'No timestamp';
         try {
             if (timestamp.toDate) {
-                const date = timestamp.toDate();
+                var date = timestamp.toDate();
                 return date.toLocaleString();
             }
-            const date = new Date(timestamp);
+            var date = new Date(timestamp);
             if (!isNaN(date.getTime())) {
                 return date.toLocaleString();
             }
@@ -1376,10 +1381,10 @@
         clearMessages();
         duplicateCount = 0;
         
-        const qrDateSelect = document.getElementById('qrDateSelect');
-        const selectedDate = qrDateSelect.value;
-        const qrContainer = document.getElementById('qrContainer');
-        const loadBtn = document.getElementById('loadQrBtn');
+        var qrDateSelect = document.getElementById('qrDateSelect');
+        var selectedDate = qrDateSelect.value;
+        var qrContainer = document.getElementById('qrContainer');
+        var loadBtn = document.getElementById('loadQrBtn');
         
         if (!selectedDate) {
             showMessage("Please select a date first", 'error');
@@ -1394,7 +1399,7 @@
         `;
         
         try {
-            const flights = flightsByDate[selectedDate];
+            var flights = flightsByDate[selectedDate];
             if (!flights || flights.size === 0) {
                 qrContainer.innerHTML = '<div class="qr-no-data">No passengers found for this date</div>';
                 loadBtn.disabled = false;
@@ -1403,8 +1408,8 @@
             
             // Collect all passengers
             allQRCodes = [];
-            flights.forEach(flight => {
-                flight.passengers.forEach(passenger => {
+            flights.forEach(function(flight) {
+                flight.passengers.forEach(function(passenger) {
                     allQRCodes.push({
                         id: passenger.docId,
                         pName: passenger.pName || 'Unknown',
@@ -1413,7 +1418,7 @@
                         flightNo: passenger.flightNo || flight.flightNo,
                         date: passenger.date || selectedDate,
                         entryTime: passenger.entryTime || '',
-                        code: passenger.code || `${passenger.flightNo} ${passenger.pName} ${passenger.seatNo}`,
+                        code: passenger.code || (passenger.flightNo + ' ' + passenger.pName + ' ' + passenger.seatNo),
                         timestamp: passenger.timestamp || null,
                         shift: flight.shift || ''
                     });
@@ -1423,9 +1428,9 @@
             filteredQRCodes = [...allQRCodes];
             
             // Sort by timestamp (newest first)
-            filteredQRCodes.sort((a, b) => {
-                const timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
-                const timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
+            filteredQRCodes.sort(function(a, b) {
+                var timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
+                var timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
                 return timeB - timeA;
             });
             
@@ -1436,11 +1441,11 @@
             updateStats();
             displayQRCodes(filteredQRCodes);
             
-            showMessage(`Successfully loaded ${filteredQRCodes.length} passenger records.`, 'success');
+            showMessage('Successfully loaded ' + filteredQRCodes.length + ' passenger records.', 'success');
             
         } catch (error) {
             console.error("Error loading QR codes:", error);
-            qrContainer.innerHTML = `<div class="qr-no-data">Error loading data: ${error.message}</div>`;
+            qrContainer.innerHTML = '<div class="qr-no-data">Error loading data: ' + error.message + '</div>';
             showMessage("Error loading data: " + error.message, 'error');
         } finally {
             loadBtn.disabled = false;
@@ -1449,11 +1454,13 @@
 
     // Filter QR codes by flight
     function filterQRCodes() {
-        const flightSelect = document.getElementById('qrFlightSelect');
-        const selectedFlight = flightSelect.value;
+        var flightSelect = document.getElementById('qrFlightSelect');
+        var selectedFlight = flightSelect.value;
         
         if (selectedFlight) {
-            filteredQRCodes = allQRCodes.filter(item => item.flightNo === selectedFlight);
+            filteredQRCodes = allQRCodes.filter(function(item) { 
+                return item.flightNo === selectedFlight; 
+            });
         } else {
             filteredQRCodes = [...allQRCodes];
         }
@@ -1468,45 +1475,49 @@
         
         if (filteredQRCodes.length === 0) return;
         
-        const sortedCodes = [...filteredQRCodes];
+        var sortedCodes = [...filteredQRCodes];
         
         switch(currentQRSort) {
             case 'timestamp_desc':
-                sortedCodes.sort((a, b) => {
-                    const timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
-                    const timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
+                sortedCodes.sort(function(a, b) {
+                    var timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
+                    var timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
                     return timeB - timeA;
                 });
                 break;
                 
             case 'timestamp_asc':
-                sortedCodes.sort((a, b) => {
-                    const timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
-                    const timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
+                sortedCodes.sort(function(a, b) {
+                    var timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
+                    var timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
                     return timeA - timeB;
                 });
                 break;
                 
             case 'name_asc':
-                sortedCodes.sort((a, b) => {
-                    const nameA = (a.pName || '').toLowerCase();
-                    const nameB = (b.pName || '').toLowerCase();
-                    return nameA.localeCompare(nameB);
+                sortedCodes.sort(function(a, b) {
+                    var nameA = (a.pName || '').toLowerCase();
+                    var nameB = (b.pName || '').toLowerCase();
+                    if (nameA < nameB) return -1;
+                    if (nameA > nameB) return 1;
+                    return 0;
                 });
                 break;
                 
             case 'name_desc':
-                sortedCodes.sort((a, b) => {
-                    const nameA = (a.pName || '').toLowerCase();
-                    const nameB = (b.pName || '').toLowerCase();
-                    return nameB.localeCompare(nameA);
+                sortedCodes.sort(function(a, b) {
+                    var nameA = (a.pName || '').toLowerCase();
+                    var nameB = (b.pName || '').toLowerCase();
+                    if (nameA > nameB) return -1;
+                    if (nameA < nameB) return 1;
+                    return 0;
                 });
                 break;
                 
             case 'seat_asc':
-                sortedCodes.sort((a, b) => {
-                    const seatA = a.seatNo || '';
-                    const seatB = b.seatNo || '';
+                sortedCodes.sort(function(a, b) {
+                    var seatA = a.seatNo || '';
+                    var seatB = b.seatNo || '';
                     return seatA.localeCompare(seatB, undefined, {numeric: true});
                 });
                 break;
@@ -1517,7 +1528,7 @@
 
     // Display QR codes
     function displayQRCodes(codesToDisplay) {
-        const container = document.getElementById('qrContainer');
+        var container = document.getElementById('qrContainer');
         
         if (codesToDisplay.length === 0) {
             container.innerHTML = '<div class="qr-no-data">No records found</div>';
@@ -1525,21 +1536,23 @@
         }
         
         container.innerHTML = '<div class="qr-grid"></div>';
-        const qrGrid = container.querySelector('.qr-grid');
+        var qrGrid = container.querySelector('.qr-grid');
         
         document.getElementById('currentCount').textContent = codesToDisplay.length;
         document.getElementById('totalCount').textContent = filteredQRCodes.length;
         
-        codesToDisplay.forEach((item, index) => {
-            const card = document.createElement('div');
+        codesToDisplay.forEach(function(item, index) {
+            var card = document.createElement('div');
             card.className = 'qr-card';
-            card.id = `card-${item.id}`;
+            card.id = 'card-' + item.id;
+            
+            var escapedName = (item.pName || '').replace(/'/g, "\\'");
             
             card.innerHTML = `
                 <div class="qr-info">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                         <div class="passenger-name">${item.pName || 'Unknown'}</div>
-                        <button class="delete-btn" onclick="deleteRecord('${item.id}', '${(item.pName || '').replace(/'/g, "\\'")}', this.parentElement.parentElement.parentElement)" 
+                        <button class="delete-btn" onclick="deleteRecord('${item.id}', '${escapedName}', this.parentElement.parentElement.parentElement)" 
                                 title="Delete this record">
                             🗑️
                         </button>
@@ -1586,7 +1599,7 @@
             
             // Generate QR code
             try {
-                new QRCode(document.getElementById(`qr-${index}`), {
+                new QRCode(document.getElementById('qr-' + index), {
                     text: item.code || JSON.stringify({
                         name: item.pName,
                         seat: item.seatNo,
@@ -1603,7 +1616,7 @@
                 });
             } catch (qrError) {
                 console.error("Error generating QR code:", qrError);
-                document.getElementById(`qr-${index}`).innerHTML = '<div style="color: red; padding: 20px;">Error</div>';
+                document.getElementById('qr-' + index).innerHTML = '<div style="color: red; padding: 20px;">Error</div>';
             }
         });
         
@@ -1624,23 +1637,23 @@
     // Delete a single record
     async function deleteRecord(recordId, recordName, cardElement) {
         try {
-            const confirmed = confirm(`Are you sure you want to delete record for:\n${recordName}?\n\nThis action cannot be undone.`);
+            var confirmed = confirm('Are you sure you want to delete record for:\n' + recordName + '?\n\nThis action cannot be undone.');
             
             if (!confirmed) return;
             
             // Save original content
-            const originalContent = cardElement.innerHTML;
+            var originalContent = cardElement.innerHTML;
             cardElement.innerHTML = '<div class="loading">Deleting...</div>';
             cardElement.style.opacity = '0.7';
             
             // Delete from Firebase
-            await qrDb.collection('KoveliPass').doc(recordId).delete();
+            await qrDatabase.collection('KoveliPass').doc(recordId).delete();
             
-            showMessage(`Successfully deleted record for ${recordName}`, 'success');
+            showMessage('Successfully deleted record for ' + recordName, 'success');
             
             // Remove from arrays
-            allQRCodes = allQRCodes.filter(code => code.id !== recordId);
-            filteredQRCodes = filteredQRCodes.filter(code => code.id !== recordId);
+            allQRCodes = allQRCodes.filter(function(code) { return code.id !== recordId; });
+            filteredQRCodes = filteredQRCodes.filter(function(code) { return code.id !== recordId; });
             
             // Update stats
             updateStats();
@@ -1650,7 +1663,7 @@
             cardElement.style.opacity = '0';
             cardElement.style.transform = 'scale(0.8)';
             
-            setTimeout(() => {
+            setTimeout(function() {
                 cardElement.remove();
                 
                 if (filteredQRCodes.length === 0) {
@@ -1661,7 +1674,7 @@
             
         } catch (error) {
             console.error("Error deleting record:", error);
-            showMessage(`Error deleting record: ${error.message}`, 'error');
+            showMessage('Error deleting record: ' + error.message, 'error');
             cardElement.innerHTML = originalContent;
             cardElement.style.opacity = '1';
         }
@@ -1669,9 +1682,9 @@
 
     // Delete all records for selected date
     async function deleteAllByDate() {
-        const qrDateSelect = document.getElementById('qrDateSelect');
-        const selectedDate = qrDateSelect.value;
-        const deleteBtn = document.getElementById('deleteByDateBtn');
+        var qrDateSelect = document.getElementById('qrDateSelect');
+        var selectedDate = qrDateSelect.value;
+        var deleteBtn = document.getElementById('deleteByDateBtn');
         
         if (!selectedDate) {
             showMessage("Please select a date first", 'error');
@@ -1679,14 +1692,14 @@
         }
         
         try {
-            const recordCount = allQRCodes.length;
+            var recordCount = allQRCodes.length;
             
             if (recordCount === 0) {
-                showMessage(`No records found for date: ${selectedDate}`, 'warning');
+                showMessage('No records found for date: ' + selectedDate, 'warning');
                 return;
             }
             
-            const confirmed = confirm(`⚠️ DANGER - IRREVERSIBLE ACTION!\n\nAre you sure you want to DELETE ALL ${recordCount} records for date:\n${selectedDate}?\n\nThis action cannot be undone!`);
+            var confirmed = confirm('⚠️ DANGER - IRREVERSIBLE ACTION!\n\nAre you sure you want to DELETE ALL ' + recordCount + ' records for date:\n' + selectedDate + '?\n\nThis action cannot be undone!');
             
             if (!confirmed) return;
             
@@ -1694,18 +1707,18 @@
             deleteBtn.disabled = true;
             deleteBtn.innerHTML = '⏳ Deleting...';
             
-            showMessage(`Starting deletion of ${recordCount} records for ${selectedDate}...`, 'warning');
+            showMessage('Starting deletion of ' + recordCount + ' records for ' + selectedDate + '...', 'warning');
             
             // Delete in batches
-            const batchSize = 100;
-            const batches = [];
+            var batchSize = 100;
+            var batches = [];
             
-            for (let i = 0; i < allQRCodes.length; i += batchSize) {
-                const batch = qrDb.batch();
-                const batchItems = allQRCodes.slice(i, i + batchSize);
+            for (var i = 0; i < allQRCodes.length; i += batchSize) {
+                var batch = qrDatabase.batch();
+                var batchItems = allQRCodes.slice(i, i + batchSize);
                 
-                batchItems.forEach(item => {
-                    batch.delete(qrDb.collection('KoveliPass').doc(item.id));
+                batchItems.forEach(function(item) {
+                    batch.delete(qrDatabase.collection('KoveliPass').doc(item.id));
                 });
                 
                 batches.push(batch.commit());
@@ -1721,11 +1734,11 @@
             document.getElementById('qrContainer').innerHTML = 
                 '<div class="qr-no-data">All records have been deleted</div>';
             
-            showMessage(`✅ Successfully deleted ${recordCount} records for date: ${selectedDate}`, 'success');
+            showMessage('✅ Successfully deleted ' + recordCount + ' records for date: ' + selectedDate, 'success');
             
         } catch (error) {
             console.error("Error deleting all records:", error);
-            showMessage(`Error deleting records: ${error.message}`, 'error');
+            showMessage('Error deleting records: ' + error.message, 'error');
         } finally {
             deleteBtn.disabled = false;
             deleteBtn.innerHTML = '🗑️ DELETE ALL BY DATE';
@@ -1739,30 +1752,34 @@
             return; 
         }
 
-        const company = window.companyInfo || { 
+        var company = window.companyInfo || { 
             name: 'MACL', 
             address: '123 Aviation Road', 
             phone: '+123 456 7890',
             logo: 'macl.png'
         };
         
-        const dateStr = document.getElementById('dateDisplay').textContent; 
-        const dateParts = dateStr.split('-');
-        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+        var dateStr = document.getElementById('dateDisplay').textContent; 
+        var dateParts = dateStr.split('-');
+        var formattedDate = dateParts.length === 3 ? dateParts[2] + '/' + dateParts[1] + '/' + dateParts[0] : dateStr;
 
-        const airline = currentFlightData.airline || '—';
-        const flightNo = currentFlightData.flightNo || '—';
-        const std = document.getElementById('stdDisplay').textContent || '—';
-        const firstPax = currentFlightData.firstPax || '—';
-        const lastPax = currentFlightData.lastPax || '—';
-        const shift = currentFlightData.shift || '—';
+        var airline = currentFlightData.airline || '—';
+        var flightNo = currentFlightData.flightNo || '—';
+        var std = document.getElementById('stdDisplay').textContent || '—';
+        var firstPax = currentFlightData.firstPax || '—';
+        var lastPax = currentFlightData.lastPax || '—';
+        var shift = currentFlightData.shift || '—';
         
-        const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        var sortedPassengers = [...currentFlightData.passengers].sort(function(a,b) { 
+            return (a.entryTime||'').localeCompare(b.entryTime||''); 
+        });
+        var totalPaxSum = sortedPassengers.reduce(function(sum, p) { 
+            return sum + (parseInt(p.pax) || 1); 
+        }, 0);
 
-        const printWindow = window.open('', '_blank');
+        var printWindow = window.open('', '_blank');
         
-        printWindow.document.write(`
+        var html = `
             <!DOCTYPE html>
             <html>
             <head>
@@ -1830,18 +1847,18 @@
                 <table>
                     <thead><tr><th>No.</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th></tr></thead>
                     <tbody>
-        `);
+        `;
         
-        sortedPassengers.forEach((p, idx) => {
-            const serial = String(idx+1).padStart(3,'0');
-            printWindow.document.write(`
+        sortedPassengers.forEach(function(p, idx) {
+            var serial = String(idx+1).padStart(3,'0');
+            html += `
                 <tr><td>${serial}</td><td>${p.pName || '-'}</td><td>${p.seatNo || '-'}</td>
                 <td style="text-align:center;">${p.pax || '1'}</td><td>${p.FQTV || '-'}</td>
                 <td>${p.serialNo || '-'}</td><td>${p.entryTime || '-'}</td><td>${p.remarks || '-'}</td></tr>
-            `);
+            `;
         });
         
-        printWindow.document.write(`
+        html += `
                     </tbody>
                 </table>
                 
@@ -1860,8 +1877,9 @@
                 <script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }<\/script>
             </body>
             </html>
-        `);
+        `;
         
+        printWindow.document.write(html);
         printWindow.document.close();
     }
 
@@ -1870,12 +1888,12 @@
         fetchOpenShift();
         setInterval(fetchOpenShift, 30000);
         
-        setTimeout(() => {
+        setTimeout(function() {
             loadDates();
         }, 1000);
     });
 
-    // Global functions
+    // Global functions - make sure all are attached to window
     window.loadDates = loadDates; 
     window.onDateSelected = onDateSelected; 
     window.onFlightSelected = onFlightSelected;
