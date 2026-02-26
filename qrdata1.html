@@ -1,0 +1,1893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Report – Passenger List (QR Database Only)</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- QR Code Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <!-- Your config files -->
+    <script src="fireshift.js"></script>
+    <script src="Co.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f0e1, #fff5e6);
+            min-height: 100vh;
+            padding: 16px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        /* ===== smaller top ribbon ===== */
+        .shift-ribbon {
+            background: linear-gradient(135deg, #8b6913, #e6b800);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(230, 184, 0, 0.25);
+            font-size: 0.9rem;
+        }
+        
+        .shift-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .shift-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 14px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .date-value {
+            font-weight: 500;
+            font-size: 13px;
+            opacity: 0.9;
+        }
+        
+        .refresh-shift {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 4px 14px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        /* ===== Tab Navigation ===== */
+        .tab-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        
+        .tab-button {
+            padding: 10px 24px;
+            background: white;
+            border: 2px solid #e6b800;
+            border-radius: 30px;
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .tab-button.active {
+            background: #e6b800;
+            color: white;
+        }
+        
+        .tab-button:hover {
+            background: #fff9e6;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* ===== main card – more compact ===== */
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 18px 22px;
+            box-shadow: 0 8px 24px rgba(230, 184, 0, 0.15);
+            border: 2px solid #e6b800;
+            margin-bottom: 18px;
+        }
+        
+        /* --- REARRANGED: date/flight on left, ops on right --- */
+        .selection-flight-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        
+        /* left block: date + flight selects */
+        .left-selectors {
+            display: flex;
+            gap: 16px;
+            flex: 2;
+            min-width: 360px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            flex: 1;
+        }
+        
+        .form-group label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        
+        .form-control {
+            padding: 8px 12px;
+            border: 2px solid rgba(230, 184, 0, 0.25);
+            border-radius: 10px;
+            font-size: 14px;
+            background: white;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        /* right block: minimal quick info (optional) */
+        .quick-shift-box {
+            background: #fff9e6;
+            border-radius: 30px;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+            font-weight: 500;
+            color: #8b6913;
+            border: 1px solid #e6b800;
+            white-space: nowrap;
+        }
+        
+        /* Database indicator - updated for QR only */
+        .database-badge {
+            background: #800080;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        
+        /* flight panel — two columns now: left (details + stats) and right (ops + buttons) */
+        .flight-panel-revised {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-top: 8px;
+        }
+        
+        .left-details-block {
+            background: #fff9e6;
+            border-radius: 14px;
+            padding: 14px 16px;
+            border-left: 4px solid #e6b800;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px 16px;
+            align-items: center;
+            font-size: 13px;
+        }
+        
+        .info-label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        .info-value {
+            color: #2c3e50;
+            font-weight: 500;
+            font-size: 13px;
+        }
+        
+        /* stats inside left block */
+        .stats-mini {
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            background: white;
+            border-radius: 12px;
+            padding: 10px 8px;
+            border: 1px solid rgba(230,184,0,0.2);
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-label {
+            color: #8b6913;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        
+        .stat-number {
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        /* right block: ops + buttons (under last pax) */
+        .right-ops-block {
+            background: white;
+            border-radius: 14px;
+            padding: 14px 16px;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        
+        .ops-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px 16px;
+            align-items: center;
+            font-size: 13px;
+        }
+        
+        .ops-label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        .ops-value {
+            color: #2c3e50;
+            font-weight: 500;
+        }
+        
+        .edit-field {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        
+        .edit-input {
+            padding: 4px 8px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 6px;
+            font-size: 12px;
+            width: 100px;
+        }
+        
+        .edit-btn {
+            background: #e6b800;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        
+        /* action buttons – now only PRINT (no CLOSE/REOPEN) */
+        .action-buttons-vertical {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 8px;
+            border-top: 1px dashed rgba(230,184,0,0.3);
+            padding-top: 12px;
+        }
+        
+        .print-btn {
+            padding: 10px 16px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            flex: 1 0 auto;
+            min-width: 140px;
+            white-space: nowrap;
+            background: #4a6fa5;
+            color: white;
+        }
+        .print-btn:disabled { background: #a0b8d0; cursor: not-allowed; }
+        
+        /* passenger table - read only */
+        .table-container {
+            background: white;
+            border-radius: 16px;
+            border: 2px solid #e6b800;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .table-header {
+            background: linear-gradient(135deg, #faf3e0, #fff5e6);
+            padding: 12px 18px;
+            border-bottom: 2px solid #e6b800;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .table-header h3 {
+            color: #8b6913;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .passenger-count {
+            background: #6b8e23;
+            color: white;
+            padding: 4px 14px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: 480px;
+            overflow-y: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 900px;
+        }
+        
+        th {
+            background: #e6b800;
+            color: white;
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid rgba(230, 184, 0, 0.2);
+            color: #2c3e50;
+            font-size: 12px;
+        }
+        
+        tr:hover td {
+            background: rgba(230, 184, 0, 0.04);
+        }
+        
+        .serial-no {
+            font-weight: 600;
+            color: #8b6913;
+            font-family: monospace;
+        }
+        
+        /* QR Codes Tab Styles - Inspired by example */
+        .qr-controls {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        
+        .qr-date-selector {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .generate-btn {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            height: 40px;
+            white-space: nowrap;
+        }
+        
+        .generate-btn:hover {
+            background: #0d62d9;
+        }
+        
+        .generate-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .danger-btn {
+            background: #dc3545 !important;
+        }
+        
+        .danger-btn:hover {
+            background: #c82333 !important;
+        }
+        
+        .danger-btn:disabled {
+            background: #e0a0a8 !important;
+            cursor: not-allowed;
+        }
+        
+        .qr-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 16px;
+            border: 2px solid #e6b800;
+            min-height: 200px;
+        }
+        
+        .qr-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid #ddd;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .qr-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .qr-info {
+            margin-bottom: 10px;
+            text-align: left;
+            font-size: 13px;
+            color: #333;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #1a73e8;
+        }
+        
+        .passenger-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px dashed #ddd;
+            font-size: 12px;
+        }
+        
+        .passenger-name {
+            font-weight: bold;
+            color: #1a73e8;
+            font-size: 13px;
+            grid-column: span 2;
+            padding: 4px;
+            background: #e8f0fe;
+            border-radius: 4px;
+            margin-bottom: 4px;
+        }
+        
+        .detail-label {
+            font-weight: 600;
+            color: #666;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        
+        .detail-value {
+            font-weight: bold;
+            color: #333;
+            font-size: 11px;
+        }
+        
+        .qr-code-container {
+            margin: 8px 0;
+            padding: 8px;
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .qr-code-container div {
+            margin: 0 auto;
+        }
+        
+        .delete-btn {
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        
+        .delete-btn:hover {
+            background: #cc0000;
+        }
+        
+        .delete-btn:disabled {
+            background: #f0b0b0;
+            cursor: not-allowed;
+        }
+        
+        .flight-number {
+            color: #1a73e8;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        
+        .timestamp {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        
+        .loading, .qr-no-data {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .loading::after {
+            content: "";
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #e6b800;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        
+        .qr-spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(230,184,0,0.3);
+            border-radius: 50%;
+            border-top-color: #e6b800;
+            animation: spin 1s infinite;
+            margin-bottom: 16px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Stats */
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+        
+        .stat-item {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #eee;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1a73e8;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        /* Sort Controls */
+        .sort-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .sort-controls label {
+            margin-bottom: 0;
+            font-size: 14px;
+        }
+        
+        .sort-select {
+            width: 180px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        /* Message Styling */
+        .message {
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .message-container {
+            margin-bottom: 15px;
+        }
+        
+        /* Code Preview */
+        .code-preview {
+            font-size: 9px;
+            color: #999;
+            margin-top: 8px;
+            word-break: break-all;
+            max-height: 30px;
+            overflow: hidden;
+            padding: 4px;
+            background: #f9f9f9;
+            border-radius: 3px;
+        }
+        
+        /* Delete All Button */
+        .delete-all-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            height: 40px;
+            white-space: nowrap;
+        }
+        
+        .delete-all-btn:hover {
+            background: #c82333;
+        }
+        
+        .delete-all-btn:disabled {
+            background: #e0a0a8;
+            cursor: not-allowed;
+        }
+        
+        @media (max-width: 768px) {
+            .filters {
+                flex-direction: column;
+            }
+            
+            .qr-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .sort-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .sort-select {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- smaller ribbon -->
+        <div class="shift-ribbon" id="shiftRibbon">
+            <div class="shift-info">
+                <span class="shift-badge" id="shiftBadge">LOADING...</span>
+                <span class="date-value" id="ribbonDate">--</span>
+            </div>
+            <button class="refresh-shift" onclick="fetchOpenShift()">↻ REFRESH</button>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="tab-container">
+            <button class="tab-button active" onclick="switchTab('flight')" id="tabFlightBtn">✈ FLIGHT REPORT</button>
+            <button class="tab-button" onclick="switchTab('qr')" id="tabQrBtn">📱 QR CODES</button>
+        </div>
+
+        <!-- FLIGHT REPORT TAB -->
+        <div id="flightTab" class="tab-content active">
+            <!-- main card – compact & rearranged -->
+            <div class="card">
+                <!-- Row: Date and Flight No on left side, extra right box for visual balance (optional) -->
+                <div class="selection-flight-row">
+                    <div class="left-selectors">
+                        <div class="form-group">
+                            <label>📅 DATE</label>
+                            <select id="dateSelect" class="form-control" onclick="loadDates()" onchange="onDateSelected()">
+                                <option value="">-- Click to load dates --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>✈ FLIGHT NO</label>
+                            <select id="flightSelect" class="form-control" onchange="onFlightSelected()" disabled>
+                                <option value="">-- Select date first --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="quick-shift-box" id="quickShiftDisplay">
+                        <span id="quickShiftText">Select flight</span>
+                        <span id="databaseBadge" class="database-badge" style="display: none;">QR ONLY</span>
+                    </div>
+                </div>
+                
+                <!-- flight panel – now two columns: left details+stats, right ops+buttons under last pax -->
+                <div id="flightPanel" style="display: none;">
+                    <div class="flight-panel-revised">
+                        <!-- LEFT SIDE: airline, flight, date, status + stats -->
+                        <div class="left-details-block">
+                            <div class="info-grid">
+                                <span class="info-label">Airline:</span><span class="info-value" id="airlineDisplay">-</span>
+                                <span class="info-label">Flight No:</span><span class="info-value" id="flightNoDisplay">-</span>
+                                <span class="info-label">Date:</span><span class="info-value" id="dateDisplay">-</span>
+                                <span class="info-label">Database:</span><span class="info-value" id="databaseDisplay">QR Database</span>
+                                <span class="info-label">Status:</span>
+                                <span class="info-value"><span id="flightStatus" class="flight-status status-open">OPEN</span></span>
+                            </div>
+                            <!-- stats moved inside left block (right below basic info) -->
+                            <div class="stats-mini">
+                                <div class="stat-item"><div class="stat-label">Total Pax</div><div class="stat-number" id="totalPaxStat">0</div></div>
+                                <div class="stat-item"><div class="stat-label">First Pax</div><div class="stat-number" id="firstPaxStat">--:--</div></div>
+                                <div class="stat-item"><div class="stat-label">Last Pax</div><div class="stat-number" id="lastPaxStat">--:--</div></div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT SIDE: Shift, STD, Last Pax (view only) + print button -->
+                        <div class="right-ops-block">
+                            <div class="ops-grid">
+                                <span class="ops-label">Shift:</span><span class="ops-value" id="shiftDisplay">-</span>
+                                <span class="ops-label">STD:</span><span class="ops-value" id="stdDisplay">-</span>
+                                <span class="ops-label">First Pax:</span><span class="ops-value first-pax" id="firstPaxDisplay">-</span>
+                                <span class="ops-label">Last Pax:</span><span class="ops-value" id="lastPaxDisplay">-</span>
+                            </div>
+                            
+                            <!-- BUTTONS: only PRINT -->
+                            <div class="action-buttons-vertical">
+                                <button id="printReportBtn" class="print-btn" onclick="printReport()" disabled>🖨️ PRINT REPORT</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- passenger table – read only (no edit/delete) -->
+            <div id="tableContainer" class="table-container" style="display: none;">
+                <div class="table-header">
+                    <h3>✈ PASSENGER LIST - QR DATABASE ONLY</h3>
+                    <span class="passenger-count" id="passengerCount">0</span>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr><th>No.</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th></tr>
+                        </thead>
+                        <tbody id="passengerTableBody">
+                            <tr><td colspan="8" class="no-data">Select a flight to view passengers</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- QR CODES TAB - Redesigned like the example -->
+        <div id="qrTab" class="tab-content">
+            <div class="card">
+                <!-- Message Container -->
+                <div id="messageContainer" class="message-container"></div>
+                
+                <!-- Controls -->
+                <div class="controls" style="margin-bottom: 20px;">
+                    <div class="filters" style="display: flex; gap: 15px; flex-wrap: wrap;">
+                        <div class="form-group qr-date-selector" style="flex: 2;">
+                            <label>📅 SELECT DATE</label>
+                            <select id="qrDateSelect" class="form-control" onchange="onQrDateSelected()">
+                                <option value="">-- Select a date --</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group" style="flex: 2;">
+                            <label>✈ FILTER BY FLIGHT</label>
+                            <select id="qrFlightSelect" class="form-control" onchange="filterQRCodes()">
+                                <option value="">All Flights</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group" style="flex: 1;">
+                            <label>&nbsp;</label>
+                            <button onclick="loadQRCodes()" id="loadQrBtn" class="generate-btn" disabled>
+                                📱 GENERATE QR CODES
+                            </button>
+                        </div>
+                        
+                        <div class="form-group" style="flex: 1;">
+                            <label>&nbsp;</label>
+                            <button onclick="deleteAllByDate()" id="deleteByDateBtn" class="generate-btn danger-btn" disabled>
+                                🗑️ DELETE ALL BY DATE
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Sort Controls -->
+                <div class="sort-controls" id="sortControls" style="display: none;">
+                    <label>Sort by:</label>
+                    <select id="sortSelect" class="sort-select" onchange="sortAndDisplayQRCodes()">
+                        <option value="timestamp_desc">Timestamp (Newest First)</option>
+                        <option value="timestamp_asc">Timestamp (Oldest First)</option>
+                        <option value="name_asc">Name (A-Z)</option>
+                        <option value="name_desc">Name (Z-A)</option>
+                        <option value="seat_asc">Seat Number</option>
+                    </select>
+                    <div style="font-size: 12px; color: #666; margin-left: auto;">
+                        Showing <span id="currentCount">0</span> of <span id="totalCount">0</span> records
+                    </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="stats" id="statsSection" style="display: none;">
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalCodes">0</div>
+                        <div class="stat-label">Total Codes</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="filteredCodes">0</div>
+                        <div class="stat-label">Filtered</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="qrCodes">0</div>
+                        <div class="stat-label">QR Codes</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="duplicates">0</div>
+                        <div class="stat-label">Duplicates</div>
+                    </div>
+                </div>
+                
+                <!-- QR Codes Container -->
+                <div id="qrContainer" class="qr-container">
+                    <div class="qr-no-data">
+                        Select a date and click Generate to create QR codes
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ========== GLOBAL VARIABLES ==========
+    let flightsByDate = {};
+    let allDates = [];
+    let currentFlightData = null;
+    let isLoadingDates = false;
+    let datesLoaded = false;
+    
+    // QR Code variables
+    let allQRCodes = [];
+    let filteredQRCodes = [];
+    let duplicateCount = 0;
+    let currentQRSort = 'timestamp_desc';
+    let qrDb = null;
+
+    // ========== QR DATABASE FUNCTIONS ==========
+    
+    /**
+     * Returns the QR Firestore database
+     */
+    function getQRDatabase() {
+        if (!window.qrDb) {
+            console.error("QR Database not found in window.qrDb");
+            return null;
+        }
+        return window.qrDb;
+    }
+
+    // ========== TAB SWITCHING ==========
+    function switchTab(tabName) {
+        document.getElementById('tabFlightBtn').classList.remove('active');
+        document.getElementById('tabQrBtn').classList.remove('active');
+        document.getElementById('flightTab').classList.remove('active');
+        document.getElementById('qrTab').classList.remove('active');
+        
+        if (tabName === 'flight') {
+            document.getElementById('tabFlightBtn').classList.add('active');
+            document.getElementById('flightTab').classList.add('active');
+        } else {
+            document.getElementById('tabQrBtn').classList.add('active');
+            document.getElementById('qrTab').classList.add('active');
+            if (!datesLoaded) {
+                loadDates();
+            } else {
+                updateQrDateSelect();
+            }
+        }
+    }
+
+    // ========== SHIFT ==========
+    async function fetchOpenShift() {
+        try {
+            const shiftBadge = document.getElementById('shiftBadge');
+            const ribbonDate = document.getElementById('ribbonDate');
+            const ribbon = document.getElementById('shiftRibbon');
+            shiftBadge.textContent = 'LOADING...';
+            ribbonDate.textContent = '--';
+            if (typeof passengerDb === 'undefined') throw new Error('no passengerDb');
+            const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+            if (shiftDoc.exists) {
+                const data = shiftDoc.data();
+                const date = data.date || 'No date';
+                const morning = data.morning || 'closed';
+                const evening = data.evening || 'closed';
+                if (morning === 'open') {
+                    shiftBadge.textContent = 'MORNING SHIFT';
+                    ribbonDate.textContent = date;
+                    ribbon.style.background = 'linear-gradient(135deg, #6b8e23, #8b6913)';
+                } else if (evening === 'open') {
+                    shiftBadge.textContent = 'EVENING SHIFT';
+                    ribbonDate.textContent = date;
+                    ribbon.style.background = 'linear-gradient(135deg, #c68b5e, #8b6913)';
+                } else {
+                    shiftBadge.textContent = 'NO OPEN SHIFT';
+                    ribbonDate.textContent = date;
+                    ribbon.style.background = 'linear-gradient(135deg, #7f8c8d, #5e4a1a)';
+                }
+            } else throw new Error('shift missing');
+        } catch (error) {
+            document.getElementById('shiftBadge').textContent = 'ERROR';
+            document.getElementById('ribbonDate').textContent = '--';
+        }
+    }
+
+    // ========== LOAD DATES FROM QR DATABASE ==========
+    async function loadDates(forceReload = false) {
+        if (datesLoaded && !forceReload) {
+            console.log('Dates already loaded, skipping...');
+            updateQrDateSelect();
+            return;
+        }
+        
+        if (isLoadingDates) return;
+        
+        const dateSelect = document.getElementById('dateSelect');
+        isLoadingDates = true;
+        
+        dateSelect.innerHTML = '<option value="">🔍 Scanning QR database...</option>';
+        dateSelect.disabled = true;
+        
+        if (forceReload) {
+            flightsByDate = {};
+            allDates = [];
+        }
+        
+        try {
+            qrDb = getQRDatabase();
+            
+            if (!qrDb) {
+                throw new Error("QR Database not available");
+            }
+            
+            console.log(`🔍 Loading dates from QR database...`);
+            
+            const snapshot = await qrDb.collection('KoveliPass').get();
+            
+            if (snapshot.size > 0) {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const date = data.date;
+                    
+                    if (date) {
+                        if (!flightsByDate[date]) flightsByDate[date] = new Map();
+                        
+                        const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
+                        
+                        if (!flightsByDate[date].has(flightKey)) {
+                            flightsByDate[date].set(flightKey, {
+                                flightNo: data.flightNo,
+                                shift: data.shift || 'UNKNOWN',
+                                airline: data.airline || '',
+                                passengers: [],
+                                firstPax: null,
+                                lastPax: null
+                            });
+                        }
+                        
+                        const flightData = flightsByDate[date].get(flightKey);
+                        flightData.passengers.push({
+                            docId: doc.id,
+                            pName: data.pName || '',
+                            seatNo: data.seatNo || '',
+                            pax: data.pax || '1',
+                            FQTV: data.FQTV || '',
+                            entryTime: data.entryTime || '',
+                            remarks: data.remarks || '',
+                            serialNo: data.serialNo || '',
+                            flightNo: data.flightNo || '',
+                            date: data.date || '',
+                            timestamp: data.timestamp || null,
+                            code: data.code || '' // Original code for QR
+                        });
+                        
+                        if (data.entryTime) {
+                            if (!flightData.firstPax || data.entryTime < flightData.firstPax) {
+                                flightData.firstPax = data.entryTime;
+                            }
+                            if (!flightData.lastPax || data.entryTime > flightData.lastPax) {
+                                flightData.lastPax = data.entryTime;
+                            }
+                        }
+                    }
+                });
+                
+                console.log(`✅ QR Database: ${snapshot.size} records found`);
+            }
+            
+            allDates = Object.keys(flightsByDate).sort().reverse();
+            datesLoaded = true;
+            
+            if (allDates.length === 0) {
+                dateSelect.innerHTML = '<option value="">❌ No dates found in QR database</option>';
+            } else {
+                let options = '<option value="">📅 Select a date</option>';
+                allDates.forEach(d => { 
+                    const flightCount = flightsByDate[d]?.size || 0;
+                    options += `<option value="${d}">${d} (${flightCount} flight${flightCount !== 1 ? 's' : ''})</option>`; 
+                });
+                dateSelect.innerHTML = options;
+            }
+            
+            dateSelect.disabled = false;
+            updateQrDateSelect();
+            
+        } catch (error) {
+            console.error('Error loading dates:', error);
+            dateSelect.innerHTML = '<option value="">❌ Error loading dates</option>';
+            dateSelect.disabled = false;
+        } finally { 
+            isLoadingDates = false; 
+        }
+    }
+
+    function updateQrDateSelect() {
+        const qrDateSelect = document.getElementById('qrDateSelect');
+        const loadBtn = document.getElementById('loadQrBtn');
+        
+        if (allDates.length === 0) {
+            qrDateSelect.innerHTML = '<option value="">❌ No dates found</option>';
+        } else {
+            let options = '<option value="">📅 Select a date</option>';
+            allDates.forEach(d => { 
+                options += `<option value="${d}">${d}</option>`; 
+            });
+            qrDateSelect.innerHTML = options;
+        }
+        
+        loadBtn.disabled = true;
+        document.getElementById('deleteByDateBtn').disabled = true;
+    }
+
+    function onDateSelected() {
+        const dateSelect = document.getElementById('dateSelect');
+        const flightSelect = document.getElementById('flightSelect');
+        const selectedDate = dateSelect.value;
+        
+        flightSelect.innerHTML = '<option value="">⏳ Loading flights...</option>';
+        flightSelect.disabled = true;
+        
+        document.getElementById('flightPanel').style.display = 'none';
+        document.getElementById('tableContainer').style.display = 'none';
+        document.getElementById('quickShiftText').innerText = 'Select flight';
+        document.getElementById('databaseBadge').style.display = 'inline-block';
+        
+        currentFlightData = null;
+        
+        if (!selectedDate) {
+            flightSelect.innerHTML = '<option value="">-- Select date first --</option>';
+            return;
+        }
+        
+        const flights = flightsByDate[selectedDate];
+        if (!flights || flights.size === 0) {
+            flightSelect.innerHTML = '<option value="">❌ No flights for this date</option>';
+            return;
+        }
+        
+        const flightsArray = Array.from(flights.values()).sort((a,b) => a.flightNo.localeCompare(b.flightNo));
+        
+        let options = '<option value="">✈️ Select a flight</option>';
+        flightsArray.forEach(f => { 
+            const passengerCount = f.passengers.length;
+            options += `<option value="${f.flightNo}|${f.shift}">${f.flightNo} - ${passengerCount} pax</option>`; 
+        });
+        
+        flightSelect.innerHTML = options;
+        flightSelect.disabled = false;
+    }
+
+    function onQrDateSelected() {
+        const qrDateSelect = document.getElementById('qrDateSelect');
+        const loadBtn = document.getElementById('loadQrBtn');
+        const deleteBtn = document.getElementById('deleteByDateBtn');
+        const selectedDate = qrDateSelect.value;
+        
+        // Update flight filter dropdown
+        const flightSelect = document.getElementById('qrFlightSelect');
+        
+        if (selectedDate && flightsByDate[selectedDate]) {
+            loadBtn.disabled = false;
+            deleteBtn.disabled = false;
+            
+            // Get unique flights for this date
+            const flights = new Set();
+            flightsByDate[selectedDate].forEach(flight => {
+                flights.add(flight.flightNo);
+            });
+            
+            let options = '<option value="">All Flights</option>';
+            Array.from(flights).sort().forEach(flight => {
+                options += `<option value="${flight}">${flight}</option>`;
+            });
+            flightSelect.innerHTML = options;
+            flightSelect.disabled = false;
+        } else {
+            loadBtn.disabled = true;
+            deleteBtn.disabled = true;
+            flightSelect.innerHTML = '<option value="">All Flights</option>';
+            flightSelect.disabled = true;
+        }
+    }
+
+    async function onFlightSelected() {
+        const dateSelect = document.getElementById('dateSelect');
+        const flightSelect = document.getElementById('flightSelect');
+        const selectedDate = dateSelect.value;
+        const selectedFlight = flightSelect.value;
+        
+        if (!selectedDate || !selectedFlight) {
+            document.getElementById('flightPanel').style.display = 'none';
+            document.getElementById('tableContainer').style.display = 'none';
+            return;
+        }
+        
+        document.getElementById('flightPanel').style.display = 'block';
+        document.getElementById('airlineDisplay').textContent = 'Loading...';
+        document.getElementById('passengerTableBody').innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span> Loading passengers...</td></tr>';
+        
+        const [flightNo, shift] = selectedFlight.split('|');
+        const flightKey = `${flightNo}_${shift}`;
+        const flightData = flightsByDate[selectedDate]?.get(flightKey);
+        
+        if (!flightData) {
+            alert('Flight data not found');
+            return;
+        }
+        
+        currentFlightData = flightData;
+        
+        document.getElementById('databaseDisplay').textContent = `QR Database (cardentryqr)`;
+        document.getElementById('databaseBadge').style.display = 'inline-block';
+        
+        try {
+            const targetDb = getQRDatabase();
+            
+            // Update UI with loaded data
+            document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
+            document.getElementById('flightNoDisplay').textContent = flightNo;
+            document.getElementById('dateDisplay').textContent = selectedDate;
+            document.getElementById('shiftDisplay').textContent = shift;
+            document.getElementById('firstPaxDisplay').textContent = flightData.firstPax || '-';
+            document.getElementById('stdDisplay').textContent = '-';
+            document.getElementById('lastPaxDisplay').textContent = flightData.lastPax || '-';
+            document.getElementById('totalPaxStat').textContent = flightData.passengers.length;
+            document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
+            document.getElementById('lastPaxStat').textContent = flightData.lastPax || '--:--';
+            document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
+            document.getElementById('quickShiftText').innerHTML = `${flightNo} | ${shift} <span style="font-size:10px; opacity:0.8;">(QR Database)</span>`;
+            
+            document.getElementById('flightStatus').textContent = 'OPEN';
+            document.getElementById('flightStatus').className = 'flight-status status-open';
+            document.getElementById('printReportBtn').disabled = true;
+            
+            displayPassengerTable(flightData.passengers);
+            
+        } catch (error) {
+            console.error('Error loading flight:', error);
+        }
+    }
+
+    function displayPassengerTable(passengers) {
+        const tbody = document.getElementById('passengerTableBody');
+        
+        if (!passengers || passengers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="no-data">No passengers found</td></tr>';
+            document.getElementById('tableContainer').style.display = 'block';
+            return;
+        }
+        
+        const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        let html = '';
+        
+        sorted.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            html += `<tr>
+                <td class="serial-no">${serial}</td>
+                <td>${p.pName || '-'}</td>
+                <td>${p.seatNo || '-'}</td>
+                <td style="text-align:center;">${p.pax || '1'}</td>
+                <td>${p.FQTV || '-'}</td>
+                <td class="${p.serialNo ? 'serial-no' : ''}">${p.serialNo || '—'}</td>
+                <td>${p.entryTime || '-'}</td>
+                <td>${p.remarks || '-'}</td>
+            </tr>`;
+        });
+        
+        tbody.innerHTML = html;
+        document.getElementById('tableContainer').style.display = 'block';
+    }
+
+    // ========== MESSAGE FUNCTIONS ==========
+    function showMessage(message, type = 'info') {
+        const container = document.getElementById('messageContainer');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+        messageDiv.textContent = message;
+        container.appendChild(messageDiv);
+        
+        setTimeout(() => {
+            if (messageDiv.parentNode) {
+                messageDiv.remove();
+            }
+        }, 5000);
+    }
+
+    function clearMessages() {
+        document.getElementById('messageContainer').innerHTML = '';
+    }
+
+    // ========== QR CODE GENERATION FUNCTIONS ==========
+    
+    // Extract Name from passenger data
+    function extractName(passenger) {
+        return passenger.pName || 'Unknown';
+    }
+
+    // Extract Seat from passenger data
+    function extractSeat(passenger) {
+        return passenger.seatNo || 'N/A';
+    }
+
+    // Extract FQTV from passenger data
+    function extractFQTV(passenger) {
+        return passenger.FQTV || 'N/A';
+    }
+
+    // Format timestamp
+    function formatTimestamp(timestamp) {
+        if (!timestamp) return 'No timestamp';
+        try {
+            if (timestamp.toDate) {
+                const date = timestamp.toDate();
+                return date.toLocaleString();
+            }
+            const date = new Date(timestamp);
+            if (!isNaN(date.getTime())) {
+                return date.toLocaleString();
+            }
+            return 'Invalid timestamp';
+        } catch (error) {
+            return 'Error formatting';
+        }
+    }
+
+    // Load QR codes for selected date
+    async function loadQRCodes() {
+        clearMessages();
+        duplicateCount = 0;
+        
+        const qrDateSelect = document.getElementById('qrDateSelect');
+        const selectedDate = qrDateSelect.value;
+        const qrContainer = document.getElementById('qrContainer');
+        const loadBtn = document.getElementById('loadQrBtn');
+        
+        if (!selectedDate) {
+            showMessage("Please select a date first", 'error');
+            return;
+        }
+        
+        loadBtn.disabled = true;
+        qrContainer.innerHTML = `
+            <div class="loading">
+                Loading codes from Firebase for ${selectedDate}...
+            </div>
+        `;
+        
+        try {
+            const flights = flightsByDate[selectedDate];
+            if (!flights || flights.size === 0) {
+                qrContainer.innerHTML = '<div class="qr-no-data">No passengers found for this date</div>';
+                loadBtn.disabled = false;
+                return;
+            }
+            
+            // Collect all passengers
+            allQRCodes = [];
+            flights.forEach(flight => {
+                flight.passengers.forEach(passenger => {
+                    allQRCodes.push({
+                        id: passenger.docId,
+                        pName: passenger.pName || 'Unknown',
+                        seatNo: passenger.seatNo || 'N/A',
+                        FQTV: passenger.FQTV || 'N/A',
+                        flightNo: passenger.flightNo || flight.flightNo,
+                        date: passenger.date || selectedDate,
+                        entryTime: passenger.entryTime || '',
+                        code: passenger.code || `${passenger.flightNo} ${passenger.pName} ${passenger.seatNo}`,
+                        timestamp: passenger.timestamp || null,
+                        shift: flight.shift || ''
+                    });
+                });
+            });
+            
+            filteredQRCodes = [...allQRCodes];
+            
+            // Sort by timestamp (newest first)
+            filteredQRCodes.sort((a, b) => {
+                const timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
+                const timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
+                return timeB - timeA;
+            });
+            
+            // Update UI
+            document.getElementById('sortControls').style.display = 'flex';
+            document.getElementById('statsSection').style.display = 'flex';
+            
+            updateStats();
+            displayQRCodes(filteredQRCodes);
+            
+            showMessage(`Successfully loaded ${filteredQRCodes.length} passenger records.`, 'success');
+            
+        } catch (error) {
+            console.error("Error loading QR codes:", error);
+            qrContainer.innerHTML = `<div class="qr-no-data">Error loading data: ${error.message}</div>`;
+            showMessage("Error loading data: " + error.message, 'error');
+        } finally {
+            loadBtn.disabled = false;
+        }
+    }
+
+    // Filter QR codes by flight
+    function filterQRCodes() {
+        const flightSelect = document.getElementById('qrFlightSelect');
+        const selectedFlight = flightSelect.value;
+        
+        if (selectedFlight) {
+            filteredQRCodes = allQRCodes.filter(item => item.flightNo === selectedFlight);
+        } else {
+            filteredQRCodes = [...allQRCodes];
+        }
+        
+        updateStats();
+        sortAndDisplayQRCodes();
+    }
+
+    // Sort and display QR codes
+    function sortAndDisplayQRCodes() {
+        currentQRSort = document.getElementById('sortSelect').value;
+        
+        if (filteredQRCodes.length === 0) return;
+        
+        const sortedCodes = [...filteredQRCodes];
+        
+        switch(currentQRSort) {
+            case 'timestamp_desc':
+                sortedCodes.sort((a, b) => {
+                    const timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
+                    const timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
+                    return timeB - timeA;
+                });
+                break;
+                
+            case 'timestamp_asc':
+                sortedCodes.sort((a, b) => {
+                    const timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
+                    const timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
+                    return timeA - timeB;
+                });
+                break;
+                
+            case 'name_asc':
+                sortedCodes.sort((a, b) => {
+                    const nameA = (a.pName || '').toLowerCase();
+                    const nameB = (b.pName || '').toLowerCase();
+                    return nameA.localeCompare(nameB);
+                });
+                break;
+                
+            case 'name_desc':
+                sortedCodes.sort((a, b) => {
+                    const nameA = (a.pName || '').toLowerCase();
+                    const nameB = (b.pName || '').toLowerCase();
+                    return nameB.localeCompare(nameA);
+                });
+                break;
+                
+            case 'seat_asc':
+                sortedCodes.sort((a, b) => {
+                    const seatA = a.seatNo || '';
+                    const seatB = b.seatNo || '';
+                    return seatA.localeCompare(seatB, undefined, {numeric: true});
+                });
+                break;
+        }
+        
+        displayQRCodes(sortedCodes);
+    }
+
+    // Display QR codes
+    function displayQRCodes(codesToDisplay) {
+        const container = document.getElementById('qrContainer');
+        
+        if (codesToDisplay.length === 0) {
+            container.innerHTML = '<div class="qr-no-data">No records found</div>';
+            return;
+        }
+        
+        container.innerHTML = '<div class="qr-grid"></div>';
+        const qrGrid = container.querySelector('.qr-grid');
+        
+        document.getElementById('currentCount').textContent = codesToDisplay.length;
+        document.getElementById('totalCount').textContent = filteredQRCodes.length;
+        
+        codesToDisplay.forEach((item, index) => {
+            const card = document.createElement('div');
+            card.className = 'qr-card';
+            card.id = `card-${item.id}`;
+            
+            card.innerHTML = `
+                <div class="qr-info">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <div class="passenger-name">${item.pName || 'Unknown'}</div>
+                        <button class="delete-btn" onclick="deleteRecord('${item.id}', '${(item.pName || '').replace(/'/g, "\\'")}', this.parentElement.parentElement.parentElement)" 
+                                title="Delete this record">
+                            🗑️
+                        </button>
+                    </div>
+                    
+                    <div class="passenger-details">
+                        <div>
+                            <div class="detail-label">Seat</div>
+                            <div class="detail-value">${item.seatNo || 'N/A'}</div>
+                        </div>
+                        <div>
+                            <div class="detail-label">FQTV</div>
+                            <div class="detail-value">${item.FQTV || 'N/A'}</div>
+                        </div>
+                        <div>
+                            <div class="detail-label">Flight</div>
+                            <div class="detail-value">${item.flightNo || 'N/A'}</div>
+                        </div>
+                        <div>
+                            <div class="detail-label">Time</div>
+                            <div class="detail-value">${item.entryTime || 'N/A'}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="timestamp">
+                        ${formatTimestamp(item.timestamp)}
+                    </div>
+                    
+                    <div style="font-size: 11px; color: #888; margin-top: 8px;">
+                        Record #${index + 1}
+                    </div>
+                </div>
+                
+                <div class="qr-code-container">
+                    <div id="qr-${index}"></div>
+                </div>
+                
+                <div class="code-preview">
+                    ${(item.code || '').substring(0, 50)}${(item.code || '').length > 50 ? '...' : ''}
+                </div>
+            `;
+            
+            qrGrid.appendChild(card);
+            
+            // Generate QR code
+            try {
+                new QRCode(document.getElementById(`qr-${index}`), {
+                    text: item.code || JSON.stringify({
+                        name: item.pName,
+                        seat: item.seatNo,
+                        flight: item.flightNo,
+                        date: item.date,
+                        time: item.entryTime,
+                        fqtv: item.FQTV
+                    }),
+                    width: 150,
+                    height: 150,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            } catch (qrError) {
+                console.error("Error generating QR code:", qrError);
+                document.getElementById(`qr-${index}`).innerHTML = '<div style="color: red; padding: 20px;">Error</div>';
+            }
+        });
+        
+        document.getElementById('qrCodes').textContent = codesToDisplay.length;
+    }
+
+    // Update statistics
+    function updateStats() {
+        document.getElementById('statsSection').style.display = 'flex';
+        document.getElementById('totalCodes').textContent = allQRCodes.length;
+        document.getElementById('filteredCodes').textContent = filteredQRCodes.length;
+        document.getElementById('qrCodes').textContent = filteredQRCodes.length;
+        document.getElementById('duplicates').textContent = duplicateCount;
+    }
+
+    // ========== DELETE FUNCTIONS ==========
+    
+    // Delete a single record
+    async function deleteRecord(recordId, recordName, cardElement) {
+        try {
+            const confirmed = confirm(`Are you sure you want to delete record for:\n${recordName}?\n\nThis action cannot be undone.`);
+            
+            if (!confirmed) return;
+            
+            // Save original content
+            const originalContent = cardElement.innerHTML;
+            cardElement.innerHTML = '<div class="loading">Deleting...</div>';
+            cardElement.style.opacity = '0.7';
+            
+            // Delete from Firebase
+            await qrDb.collection('KoveliPass').doc(recordId).delete();
+            
+            showMessage(`Successfully deleted record for ${recordName}`, 'success');
+            
+            // Remove from arrays
+            allQRCodes = allQRCodes.filter(code => code.id !== recordId);
+            filteredQRCodes = filteredQRCodes.filter(code => code.id !== recordId);
+            
+            // Update stats
+            updateStats();
+            
+            // Remove card with animation
+            cardElement.style.transition = 'opacity 0.3s, transform 0.3s';
+            cardElement.style.opacity = '0';
+            cardElement.style.transform = 'scale(0.8)';
+            
+            setTimeout(() => {
+                cardElement.remove();
+                
+                if (filteredQRCodes.length === 0) {
+                    document.getElementById('qrContainer').innerHTML = 
+                        '<div class="qr-no-data">No records found</div>';
+                }
+            }, 300);
+            
+        } catch (error) {
+            console.error("Error deleting record:", error);
+            showMessage(`Error deleting record: ${error.message}`, 'error');
+            cardElement.innerHTML = originalContent;
+            cardElement.style.opacity = '1';
+        }
+    }
+
+    // Delete all records for selected date
+    async function deleteAllByDate() {
+        const qrDateSelect = document.getElementById('qrDateSelect');
+        const selectedDate = qrDateSelect.value;
+        const deleteBtn = document.getElementById('deleteByDateBtn');
+        
+        if (!selectedDate) {
+            showMessage("Please select a date first", 'error');
+            return;
+        }
+        
+        try {
+            const recordCount = allQRCodes.length;
+            
+            if (recordCount === 0) {
+                showMessage(`No records found for date: ${selectedDate}`, 'warning');
+                return;
+            }
+            
+            const confirmed = confirm(`⚠️ DANGER - IRREVERSIBLE ACTION!\n\nAre you sure you want to DELETE ALL ${recordCount} records for date:\n${selectedDate}?\n\nThis action cannot be undone!`);
+            
+            if (!confirmed) return;
+            
+            // Update button state
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '⏳ Deleting...';
+            
+            showMessage(`Starting deletion of ${recordCount} records for ${selectedDate}...`, 'warning');
+            
+            // Delete in batches
+            const batchSize = 100;
+            const batches = [];
+            
+            for (let i = 0; i < allQRCodes.length; i += batchSize) {
+                const batch = qrDb.batch();
+                const batchItems = allQRCodes.slice(i, i + batchSize);
+                
+                batchItems.forEach(item => {
+                    batch.delete(qrDb.collection('KoveliPass').doc(item.id));
+                });
+                
+                batches.push(batch.commit());
+            }
+            
+            await Promise.all(batches);
+            
+            // Clear arrays
+            allQRCodes = [];
+            filteredQRCodes = [];
+            updateStats();
+            
+            document.getElementById('qrContainer').innerHTML = 
+                '<div class="qr-no-data">All records have been deleted</div>';
+            
+            showMessage(`✅ Successfully deleted ${recordCount} records for date: ${selectedDate}`, 'success');
+            
+        } catch (error) {
+            console.error("Error deleting all records:", error);
+            showMessage(`Error deleting records: ${error.message}`, 'error');
+        } finally {
+            deleteBtn.disabled = false;
+            deleteBtn.innerHTML = '🗑️ DELETE ALL BY DATE';
+        }
+    }
+
+    // Print report function
+    function printReport() {
+        if (!currentFlightData) { 
+            alert('No flight data to print'); 
+            return; 
+        }
+
+        const company = window.companyInfo || { 
+            name: 'MACL', 
+            address: '123 Aviation Road', 
+            phone: '+123 456 7890',
+            logo: 'macl.png'
+        };
+        
+        const dateStr = document.getElementById('dateDisplay').textContent; 
+        const dateParts = dateStr.split('-');
+        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+
+        const airline = currentFlightData.airline || '—';
+        const flightNo = currentFlightData.flightNo || '—';
+        const std = document.getElementById('stdDisplay').textContent || '—';
+        const firstPax = currentFlightData.firstPax || '—';
+        const lastPax = currentFlightData.lastPax || '—';
+        const shift = currentFlightData.shift || '—';
+        
+        const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+
+        const printWindow = window.open('', '_blank');
+        
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Flight Report - ${flightNo} - ${formattedDate}</title>
+                <style>
+                    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0.5in; color: #333; }
+                    .header { display: flex; justify-content: space-between; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e6b800; }
+                    .logo-section { display: flex; flex-direction: column; }
+                    .company-address { font-size: 11px; color: #666; line-height: 1.4; }
+                    .flight-details { margin-top: 5px; }
+                    .flight-detail-item { font-size: 13px; margin-bottom: 3px; }
+                    .flight-detail-label { font-weight: 600; color: #8b6913; display: inline-block; width: 60px; }
+                    .right-section { display: flex; flex-direction: column; justify-content: flex-start; padding-top: 95px; }
+                    .info-item { display: flex; gap: 15px; margin-bottom: 8px; justify-content: flex-end; }
+                    .label { font-weight: 600; color: #8b6913; min-width: 80px; text-align: right; }
+                    .value { color: #333; min-width: 60px; text-align: left; }
+                    .total-pax { margin: 15px 0; text-align: right; font-size: 14px; font-weight: 600; }
+                    .total-pax span { background: #e6b800; color: white; padding: 5px 15px; border-radius: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                    th { background: #e6b800; color: white; padding: 10px; text-align: left; font-size: 12px; }
+                    td { padding: 8px 10px; border-bottom: 1px solid #ddd; }
+                    tr:nth-child(even) { background: #f9f9f9; }
+                    .signature-section { margin-top: 50px; display: flex; justify-content: space-between; padding: 0 20px; }
+                    .signature-box { text-align: center; width: 200px; }
+                    .signature-line { margin-top: 40px; border-bottom: 1px solid #333; width: 100%; }
+                    .signature-label { font-size: 12px; color: #8b6913; font-weight: 600; margin-top: 5px; }
+                    .date-info { margin-top: 20px; text-align: right; font-size: 11px; color: #666; }
+                    .footer { margin-top: 30px; text-align: center; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 20px; }
+                    .qr-badge { background: #800080; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
+                    @media print { body { margin: 0.25in; } }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="left-section">
+                        <div class="logo-section">
+                            <div class="company-address">
+                                <strong>${company.name}</strong><br>
+                                ${company.address}<br>
+                                ${company.phone}
+                            </div>
+                        </div>
+                        <div class="flight-details">
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Airline:</span> ${airline}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Flight No:</span> ${flightNo}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Date:</span> ${formattedDate}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="right-section">
+                        <div class="info-item"><span class="label">STD:</span><span class="value">${std}</span></div>
+                        <div class="info-item"><span class="label">First Pax:</span><span class="value">${firstPax}</span></div>
+                        <div class="info-item"><span class="label">Last Pax:</span><span class="value">${lastPax}</span></div>
+                        <div class="info-item"><span class="label">Shift:</span><span class="value">${shift}</span></div>
+                    </div>
+                </div>
+                
+                <div class="total-pax"><span>TOTAL PAX: ${totalPaxSum}</span></div>
+                
+                <table>
+                    <thead><tr><th>No.</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th></tr></thead>
+                    <tbody>
+        `);
+        
+        sortedPassengers.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            printWindow.document.write(`
+                <tr><td>${serial}</td><td>${p.pName || '-'}</td><td>${p.seatNo || '-'}</td>
+                <td style="text-align:center;">${p.pax || '1'}</td><td>${p.FQTV || '-'}</td>
+                <td>${p.serialNo || '-'}</td><td>${p.entryTime || '-'}</td><td>${p.remarks || '-'}</td></tr>
+            `);
+        });
+        
+        printWindow.document.write(`
+                    </tbody>
+                </table>
+                
+                <div class="signature-section">
+                    <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Prepared by:</div></div>
+                    <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Checked by:</div></div>
+                </div>
+                
+                <div class="date-info">Date: ____________________</div>
+                
+                <div class="footer">
+                    <p>This is a computer generated report. Valid without signature.</p>
+                    <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
+                </div>
+                
+                <script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }<\/script>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        fetchOpenShift();
+        setInterval(fetchOpenShift, 30000);
+        
+        setTimeout(() => {
+            loadDates();
+        }, 1000);
+    });
+
+    // Global functions
+    window.loadDates = loadDates; 
+    window.onDateSelected = onDateSelected; 
+    window.onFlightSelected = onFlightSelected;
+    window.printReport = printReport;
+    window.fetchOpenShift = fetchOpenShift; 
+    window.switchTab = switchTab;
+    window.onQrDateSelected = onQrDateSelected;
+    window.loadQRCodes = loadQRCodes;
+    window.filterQRCodes = filterQRCodes;
+    window.sortAndDisplayQRCodes = sortAndDisplayQRCodes;
+    window.deleteRecord = deleteRecord;
+    window.deleteAllByDate = deleteAllByDate;
+    </script>
+</body>
+</html>
