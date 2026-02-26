@@ -90,6 +90,9 @@
             font-size: 14px;
             transition: all 0.3s;
             background: white;
+        }
+
+        .filter-group select {
             cursor: pointer;
         }
 
@@ -103,7 +106,7 @@
             padding: 10px;
         }
 
-        .filter-group select:disabled {
+        .filter-group select:disabled, .filter-group input:disabled {
             background: #f5f5f5;
             cursor: not-allowed;
             opacity: 0.7;
@@ -122,7 +125,7 @@
             justify-content: flex-end;
         }
 
-        .search-btn, .reset-btn {
+        .search-btn, .reset-btn, .refresh-btn {
             padding: 12px 24px;
             border: none;
             border-radius: 8px;
@@ -146,11 +149,6 @@
             box-shadow: 0 5px 15px rgba(230, 184, 0, 0.3);
         }
 
-        .search-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
         .reset-btn {
             background: linear-gradient(135deg, #c68b5e, #a67244);
             color: white;
@@ -160,6 +158,17 @@
             background: linear-gradient(135deg, #a67244, #8b5a3c);
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(198, 139, 94, 0.3);
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #4682b4, #31698e);
+            color: white;
+        }
+
+        .refresh-btn:hover {
+            background: linear-gradient(135deg, #31698e, #1e4b6a);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(70, 130, 180, 0.3);
         }
 
         .stats-bar {
@@ -220,7 +229,7 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 1000px;
+            min-width: 1200px;
         }
 
         th {
@@ -282,27 +291,24 @@
         }
 
         .code-value {
-            max-width: 250px;
+            max-width: 300px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            font-family: monospace;
+            font-size: 11px;
         }
 
-        .refresh-btn {
-            background: none;
-            border: none;
-            color: #8b6913;
-            cursor: pointer;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            gap: 5px;
+        .distinct-values {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
         }
 
-        .refresh-btn:hover {
-            background: rgba(230, 184, 0, 0.1);
+        .distinct-values span {
+            background: #f0f0f0;
+            padding: 2px 8px;
+            border-radius: 12px;
         }
 
         .footer {
@@ -313,18 +319,13 @@
             opacity: 0.7;
         }
 
-        .distinct-values {
-            font-size: 11px;
-            color: #666;
-            margin-top: 4px;
-            display: flex;
-            gap: 10px;
-        }
-
-        .distinct-values span {
-            background: #f0f0f0;
-            padding: 2px 8px;
-            border-radius: 12px;
+        .error-message {
+            color: #c68b5e;
+            background: #fff2f0;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #c68b5e;
         }
     </style>
 </head>
@@ -333,9 +334,6 @@
         <h1>
             <i class="fas fa-qrcode"></i>
             QR Card Data - cardentryqr
-            <button class="refresh-btn" onclick="refreshData()" style="margin-left: auto;">
-                <i class="fas fa-sync-alt"></i> REFRESH
-            </button>
         </h1>
 
         <!-- Filter Section -->
@@ -346,7 +344,7 @@
                     <option value="">ALL DATES</option>
                 </select>
                 <div class="distinct-values">
-                    <span id="dateCount">Loading dates...</span>
+                    <span id="dateCount">0 dates</span>
                 </div>
             </div>
 
@@ -356,7 +354,7 @@
                     <option value="">ALL FLIGHTS</option>
                 </select>
                 <div class="distinct-values">
-                    <span id="flightCount">Loading flights...</span>
+                    <span id="flightCount">0 flights</span>
                 </div>
             </div>
 
@@ -367,23 +365,29 @@
 
             <div class="filter-group">
                 <label><i class="fas fa-chair"></i> Seat Number</label>
-                <input type="text" id="filterSeat" placeholder="e.g., 12A, 34B..." oninput="filterData()">
+                <input type="text" id="filterSeat" placeholder="Search by seat..." oninput="filterData()">
             </div>
 
             <div class="filter-group">
                 <label><i class="fas fa-id-card"></i> FQTV</label>
-                <input type="text" id="filterFQTV" placeholder="Frequent flyer number..." oninput="filterData()">
+                <input type="text" id="filterFQTV" placeholder="Search by FQTV..." oninput="filterData()">
             </div>
 
             <div class="button-group">
-                <button class="search-btn" onclick="applyFilters()" id="searchBtn">
-                    <i class="fas fa-search"></i> SEARCH
+                <button class="search-btn" onclick="filterData()" id="searchBtn">
+                    <i class="fas fa-search"></i> FILTER
                 </button>
                 <button class="reset-btn" onclick="resetFilters()">
                     <i class="fas fa-undo"></i> RESET
                 </button>
+                <button class="refresh-btn" onclick="refreshData()">
+                    <i class="fas fa-sync-alt"></i> REFRESH
+                </button>
             </div>
         </div>
+
+        <!-- Error Message (if any) -->
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
 
         <!-- Stats Bar -->
         <div class="stats-bar">
@@ -423,7 +427,7 @@
 
         <div class="footer">
             <i class="fas fa-info-circle"></i>
-            Data from cardentryqr collection • Select date or flight to filter
+            Data from cardentryqr collection • Showing code from Firebase
         </div>
     </div>
 
@@ -436,10 +440,24 @@
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, checking Firebase...');
+            
+            // Check if Firebase is available
+            if (typeof firebase === 'undefined') {
+                showError('Firebase not loaded. Check your internet connection.');
+                return;
+            }
+            
             // Check if cardDb is available
             if (typeof cardDb === 'undefined') {
-                showError('cardDb not initialized. Check fireshift.js configuration.');
-                return;
+                console.log('cardDb not found, trying window.cardDb...');
+                if (typeof window.cardDb !== 'undefined') {
+                    window.cardDb = window.cardDb;
+                    console.log('Using window.cardDb');
+                } else {
+                    showError('cardDb not initialized. Check fireshift.js configuration.');
+                    return;
+                }
             }
             
             // Load initial data
@@ -450,56 +468,91 @@
         async function loadAllData() {
             showLoading(true);
             disableControls(true);
+            hideError();
             
             try {
                 console.log('Loading data from cardentryqr...');
                 
+                // Use the correct database reference
+                const db = cardDb || window.cardDb;
+                
+                if (!db) {
+                    throw new Error('Database not available');
+                }
+                
                 // Get all documents from QrCards collection
-                const snapshot = await cardDb.collection('QrCards').get();
+                const snapshot = await db.collection('QrCards').get();
                 
-                allData = [];
-                const dateSet = new Set();
-                const flightSet = new Set();
-                
-                snapshot.forEach(doc => {
-                    const data = doc.data();
+                if (snapshot.empty) {
+                    console.log('No documents found in QrCards collection');
+                    allData = [];
+                    distinctDates = [];
+                    distinctFlights = [];
+                } else {
+                    console.log(`Found ${snapshot.size} documents`);
                     
-                    // Parse the document ID to extract date and flight if needed
-                    let date = data.date || '';
-                    let flightNo = data.flightNo || '';
+                    allData = [];
+                    const dateSet = new Set();
+                    const flightSet = new Set();
                     
-                    // Try to parse from doc.id if format is DATE_FLIGHT
-                    if (!date && doc.id && doc.id.includes('_')) {
-                        const parts = doc.id.split('_');
-                        date = parts[0] || '';
-                        if (!flightNo && parts[1]) flightNo = parts[1];
-                    }
-                    
-                    // Format date for display
-                    let displayDate = date;
-                    if (date && date.length === 8 && !date.includes('-') && !date.includes('/')) {
-                        // Format YYYYMMDD to YYYY-MM-DD
-                        displayDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
-                    }
-                    
-                    // Add to distinct sets
-                    if (displayDate) dateSet.add(displayDate);
-                    if (flightNo) flightSet.add(flightNo);
-                    
-                    allData.push({
-                        id: doc.id,
-                        date: displayDate,
-                        rawDate: date,
-                        flightNo: flightNo,
-                        pName: data.pName || data.name || '',
-                        seatNo: data.seatNo || data.seat || '',
-                        FQTV: data.FQTV || data.fqtv || data.frequentFlyer || '',
-                        code: data.code || '',
-                        ...data // Include all original data
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        
+                        // Extract data with fallbacks
+                        let date = data.date || '';
+                        let flightNo = data.flightNo || '';
+                        let pName = data.pName || data.name || '';
+                        let seatNo = data.seatNo || data.seat || '';
+                        let FQTV = data.FQTV || data.fqtv || data.frequentFlyer || '';
+                        let code = data.code || '';
+                        
+                        // Try to parse date from doc.id if format is DATE_FLIGHT
+                        if (!date && doc.id && doc.id.includes('_')) {
+                            const parts = doc.id.split('_');
+                            date = parts[0] || '';
+                            if (!flightNo && parts[1]) flightNo = parts[1];
+                        }
+                        
+                        // Format date for display (YYYY-MM-DD)
+                        let displayDate = date;
+                        if (date && date.length === 8 && !date.includes('-') && !date.includes('/')) {
+                            // Format YYYYMMDD to YYYY-MM-DD
+                            displayDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
+                        } else if (date && date.includes('/')) {
+                            // Convert DD/MM/YYYY to YYYY-MM-DD
+                            const parts = date.split('/');
+                            if (parts.length === 3) {
+                                if (parts[2].length === 4) {
+                                    displayDate = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+                                }
+                            }
+                        }
+                        
+                        // Add to distinct sets
+                        if (displayDate) dateSet.add(displayDate);
+                        if (flightNo) flightSet.add(flightNo);
+                        
+                        allData.push({
+                            id: doc.id,
+                            date: displayDate || '',
+                            rawDate: date,
+                            flightNo: flightNo || '',
+                            pName: pName || '',
+                            seatNo: seatNo || '',
+                            FQTV: FQTV || '',
+                            code: code || '',
+                            ...data // Include all original data for reference
+                        });
                     });
-                });
+                    
+                    // Convert sets to sorted arrays
+                    distinctDates = Array.from(dateSet).sort().reverse(); // Newest first
+                    distinctFlights = Array.from(flightSet).sort();
+                }
                 
                 console.log(`Loaded ${allData.length} records from cardentryqr`);
+                console.log(`Found ${distinctDates.length} unique dates`);
+                console.log(`Found ${distinctFlights.length} unique flights`);
                 
                 // Sort by date (newest first)
                 allData.sort((a, b) => {
@@ -507,10 +560,6 @@
                     if (a.date < b.date) return 1;
                     return 0;
                 });
-                
-                // Convert sets to sorted arrays
-                distinctDates = Array.from(dateSet).sort().reverse(); // Newest first
-                distinctFlights = Array.from(flightSet).sort();
                 
                 // Populate dropdowns
                 populateDateDropdown();
@@ -523,6 +572,17 @@
             } catch (error) {
                 console.error('Error loading data:', error);
                 showError('Failed to load data: ' + error.message);
+                
+                // Show empty table
+                const tbody = document.getElementById('tableBody');
+                tbody.innerHTML = `
+                    <tr class="empty-row">
+                        <td colspan="6">
+                            <i class="fas fa-exclamation-triangle" style="color: #c68b5e;"></i>
+                            Error: ${error.message}
+                        </td>
+                    </tr>
+                `;
             } finally {
                 showLoading(false);
                 disableControls(false);
@@ -541,10 +601,12 @@
             
             // Add date options
             distinctDates.forEach(date => {
-                const option = document.createElement('option');
-                option.value = date;
-                option.textContent = date;
-                dateSelect.appendChild(option);
+                if (date) { // Only add non-empty dates
+                    const option = document.createElement('option');
+                    option.value = date;
+                    option.textContent = date;
+                    dateSelect.appendChild(option);
+                }
             });
             
             // Update count
@@ -563,10 +625,12 @@
             
             // Add flight options
             distinctFlights.forEach(flight => {
-                const option = document.createElement('option');
-                option.value = flight;
-                option.textContent = flight;
-                flightSelect.appendChild(option);
+                if (flight) { // Only add non-empty flights
+                    const option = document.createElement('option');
+                    option.value = flight;
+                    option.textContent = flight;
+                    flightSelect.appendChild(option);
+                }
             });
             
             // Update count
@@ -577,9 +641,9 @@
         function filterData() {
             const dateFilter = document.getElementById('filterDate').value;
             const flightFilter = document.getElementById('filterFlight').value;
-            const nameFilter = document.getElementById('filterName').value.trim().toUpperCase();
-            const seatFilter = document.getElementById('filterSeat').value.trim().toUpperCase();
-            const fqtvFilter = document.getElementById('filterFQTV').value.trim().toUpperCase();
+            const nameFilter = document.getElementById('filterName').value.trim().toLowerCase();
+            const seatFilter = document.getElementById('filterSeat').value.trim().toLowerCase();
+            const fqtvFilter = document.getElementById('filterFQTV').value.trim().toLowerCase();
             
             filteredData = allData.filter(item => {
                 // Date filter
@@ -592,25 +656,25 @@
                     return false;
                 }
                 
-                // Name filter
+                // Name filter (case insensitive)
                 if (nameFilter) {
-                    const itemName = (item.pName || '').toUpperCase();
+                    const itemName = (item.pName || '').toLowerCase();
                     if (!itemName.includes(nameFilter)) {
                         return false;
                     }
                 }
                 
-                // Seat filter
+                // Seat filter (case insensitive)
                 if (seatFilter) {
-                    const itemSeat = (item.seatNo || '').toUpperCase();
+                    const itemSeat = (item.seatNo || '').toLowerCase();
                     if (!itemSeat.includes(seatFilter)) {
                         return false;
                     }
                 }
                 
-                // FQTV filter
+                // FQTV filter (case insensitive)
                 if (fqtvFilter) {
-                    const itemFQTV = (item.FQTV || '').toUpperCase();
+                    const itemFQTV = (item.FQTV || '').toLowerCase();
                     if (!itemFQTV.includes(fqtvFilter)) {
                         return false;
                     }
@@ -621,11 +685,6 @@
             
             renderTable();
             updateRecordCount();
-        }
-
-        // Apply filters (called by search button)
-        function applyFilters() {
-            filterData();
         }
 
         // Reset all filters
@@ -664,6 +723,11 @@
             
             let html = '';
             filteredData.forEach(item => {
+                // Truncate code for display
+                const displayCode = item.code ? 
+                    (item.code.length > 40 ? item.code.substring(0, 40) + '...' : item.code) : 
+                    '—';
+                
                 html += `
                     <tr>
                         <td>
@@ -690,7 +754,7 @@
                         </td>
                         <td>
                             <div class="code-value" title="${item.code || ''}">
-                                <span class="badge badge-code">${item.code ? item.code.substring(0, 30) + (item.code.length > 30 ? '...' : '') : '—'}</span>
+                                <span class="badge badge-code">${displayCode}</span>
                             </div>
                         </td>
                     </tr>
@@ -723,26 +787,40 @@
 
         // Show error message
         function showError(message) {
-            const tbody = document.getElementById('tableBody');
-            tbody.innerHTML = `
-                <tr class="empty-row">
-                    <td colspan="6">
-                        <i class="fas fa-exclamation-triangle" style="color: #c68b5e;"></i>
-                        ${message}
-                    </td>
-                </tr>
-            `;
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
             
-            // Update dropdowns to show error
-            document.getElementById('dateCount').textContent = 'Error loading';
-            document.getElementById('flightCount').textContent = 'Error loading';
+            // Update dropdown counts to show error
+            document.getElementById('dateCount').textContent = 'Error';
+            document.getElementById('flightCount').textContent = 'Error';
         }
+
+        // Hide error message
+        function hideError() {
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        // Debug function to check Firebase connection
+        function checkFirebaseConnection() {
+            console.log('Checking Firebase connection...');
+            console.log('firebase available:', typeof firebase !== 'undefined');
+            console.log('cardDb available:', typeof cardDb !== 'undefined');
+            console.log('window.cardDb available:', typeof window.cardDb !== 'undefined');
+            
+            if (typeof cardDb !== 'undefined') {
+                console.log('cardDb methods:', Object.keys(cardDb));
+            }
+        }
+
+        // Run connection check
+        setTimeout(checkFirebaseConnection, 1000);
 
         // Make functions global
         window.filterData = filterData;
-        window.applyFilters = applyFilters;
         window.resetFilters = resetFilters;
         window.refreshData = refreshData;
+        window.checkFirebaseConnection = checkFirebaseConnection;
     </script>
 </body>
 </html>
