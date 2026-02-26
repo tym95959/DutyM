@@ -963,17 +963,38 @@
                                 
                                 const flightData = flightsByDate[date].get(flightKey);
                                 
-                                // IMPORTANT: Store each passenger with their own hiddenCode
+                                // IMPORTANT: Log all fields from Firebase to see what's available
+                                console.log(`Document ${docId} fields:`, Object.keys(data));
+                                
+                                // Check for hiddenCode field (might be named differently)
+                                let hiddenCode = '';
+                                if (data.hiddenCode) {
+                                    hiddenCode = data.hiddenCode;
+                                    console.log(`Found hiddenCode for ${docId}:`, hiddenCode);
+                                } else if (data.hiddencode) {
+                                    hiddenCode = data.hiddencode;
+                                    console.log(`Found hiddencode (lowercase) for ${docId}:`, hiddenCode);
+                                } else if (data.HiddenCode) {
+                                    hiddenCode = data.HiddenCode;
+                                    console.log(`Found HiddenCode (capitalized) for ${docId}:`, hiddenCode);
+                                } else if (data.code) {
+                                    hiddenCode = data.code;
+                                    console.log(`Found code for ${docId}:`, hiddenCode);
+                                } else {
+                                    console.log(`No hidden code field found for ${docId}`);
+                                }
+                                
+                                // Create passenger object with ALL available fields
                                 const passenger = {
                                     docId: docId,
-                                    pName: data.pName || '',
-                                    seatNo: data.seatNo || '',
-                                    pax: data.pax || '1',
-                                    FQTV: data.FQTV || '',
-                                    entryTime: data.entryTime || '',
-                                    remarks: data.remarks || '',
-                                    serialNo: data.serialNo || '',
-                                    hiddenCode: data.hiddenCode || '' // Each passenger gets their own hiddenCode
+                                    pName: data.pName || data.name || data.Name || '',
+                                    seatNo: data.seatNo || data.seat || data.Seat || '',
+                                    pax: data.pax || data.Pax || '1',
+                                    FQTV: data.FQTV || data.ffn || data.FFN || '',
+                                    entryTime: data.entryTime || data.time || data.Time || '',
+                                    remarks: data.remarks || data.Remark || data.remark || '',
+                                    serialNo: data.serialNo || data.serial || data.Serial || '',
+                                    hiddenCode: hiddenCode // Store whatever hidden code we found
                                 };
                                 
                                 flightData.passengers.push(passenger);
@@ -1313,30 +1334,30 @@
 
     /**
      * Extract PNR from hiddenCode for each passenger
-     * Looks for a string containing 'MLE' and extracts the characters before it
+     * Looks for a string containing 'MLE' and extracts the 6-7 characters before it
      * @param {string} hiddenCode - The hidden code from Firebase for a specific passenger
      * @returns {string} - Extracted PNR or empty string if not found
      */
     function extractPNRFromHiddenCode(hiddenCode) {
-        if (!hiddenCode || typeof hiddenCode !== 'string') {
+        if (!hiddenCode || typeof hiddenCode !== 'string' || hiddenCode.trim() === '') {
             return '';
         }
         
-        // Convert to lowercase for easier matching
-        const lowerCode = hiddenCode.toLowerCase();
+        // Convert to lowercase for easier matching, but return uppercase
+        const lowerCode = hiddenCode.toLowerCase().trim();
         
         // Method 1: Look for pattern where PNR is before "mle" with possible space
         // This matches "flacy4 mle" pattern
-        const spacePattern = /([a-z0-9]{6,7})\s+mle/i;
-        const spaceMatch = hiddenCode.match(spacePattern);
+        const spacePattern = /([a-z0-9]{6,7})\s+mle/;
+        const spaceMatch = lowerCode.match(spacePattern);
         if (spaceMatch && spaceMatch[1]) {
             return spaceMatch[1].toUpperCase();
         }
         
         // Method 2: Look for pattern where PNR is directly before "mle" (no space)
         // This matches "flacy4mle" pattern
-        const directPattern = /([a-z0-9]{6,7})mle/i;
-        const directMatch = hiddenCode.match(directPattern);
+        const directPattern = /([a-z0-9]{6,7})mle/;
+        const directMatch = lowerCode.match(directPattern);
         if (directMatch && directMatch[1]) {
             return directMatch[1].toUpperCase();
         }
@@ -1360,27 +1381,21 @@
             }
         }
         
-        // Method 4: Look at the beginning of the string for the first alphanumeric word
-        // if the string contains "mle" somewhere
+        // Method 4: If the string contains "mle", try to extract from the beginning
         if (lowerCode.includes('mle')) {
-            const words = hiddenCode.split(/\s+/);
-            for (let word of words) {
-                // If the word itself contains "mle", extract the part before it
-                const lowerWord = word.toLowerCase();
-                const wordMleIndex = lowerWord.indexOf('mle');
-                if (wordMleIndex > 0) {
-                    const possiblePNR = word.substring(0, wordMleIndex);
-                    if (possiblePNR.length >= 4 && possiblePNR.length <= 8) {
-                        return possiblePNR.toUpperCase();
+            // Split by spaces and look for a word that might be the PNR
+            const words = lowerCode.split(/\s+/);
+            for (let i = 0; i < words.length; i++) {
+                const word = words[i];
+                // If this word contains "mle", extract the part before it
+                if (word.includes('mle')) {
+                    const mlePos = word.indexOf('mle');
+                    if (mlePos > 0) {
+                        const possiblePNR = word.substring(0, mlePos);
+                        if (possiblePNR.length >= 4 && possiblePNR.length <= 8) {
+                            return possiblePNR.toUpperCase();
+                        }
                     }
-                }
-            }
-            
-            // If no word contains "mle", take the first word that looks like a PNR
-            if (words.length > 0) {
-                const firstWord = words[0];
-                if (firstWord.length >= 4 && firstWord.length <= 8 && /^[a-z0-9]+$/i.test(firstWord)) {
-                    return firstWord.toUpperCase();
                 }
             }
         }
@@ -1527,18 +1542,18 @@
             database: flightData.database
         });
         
-        // Log first few passengers to check hiddenCode
-        if (flightData.passengers.length > 0) {
-            console.log('Sample passenger data (first 3):');
-            flightData.passengers.slice(0, 3).forEach((p, i) => {
-                console.log(`Passenger ${i+1}:`, {
-                    name: p.pName,
-                    seat: p.seatNo,
-                    hiddenCode: p.hiddenCode,
-                    hasHiddenCode: !!p.hiddenCode
-                });
+        // Log ALL passengers with their hiddenCode
+        console.log('All passengers with hiddenCode:');
+        flightData.passengers.forEach((p, i) => {
+            console.log(`Passenger ${i+1}:`, {
+                name: p.pName,
+                seat: p.seatNo,
+                hiddenCode: p.hiddenCode,
+                hiddenCodeLength: p.hiddenCode ? p.hiddenCode.length : 0,
+                hasHiddenCode: !!p.hiddenCode,
+                extractedPNR: extractPNRFromHiddenCode(p.hiddenCode)
             });
-        }
+        });
         
         // Update database display
         document.getElementById('databaseDisplay').textContent = `${flightData.database} (${flightData.databaseProject || 'unknown'})`;
@@ -1927,14 +1942,16 @@
         const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
         const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
 
-        // Debug: Log all passengers with their hiddenCode and extracted PNR for FZ flights
+        // Debug: Log ALL passengers with their hiddenCode and extracted PNR for FZ flights
         if (isFZ) {
-            console.log('FZ Flight - All Passengers with PNR:');
+            console.log('FZ Flight - All Passengers with PNR (Print Report):');
             sortedPassengers.forEach((p, idx) => {
                 const pnr = extractPNRFromHiddenCode(p.hiddenCode);
                 console.log(`Passenger ${idx+1}:`, {
                     name: p.pName,
                     hiddenCode: p.hiddenCode,
+                    hiddenCodeType: typeof p.hiddenCode,
+                    hiddenCodeLength: p.hiddenCode ? p.hiddenCode.length : 0,
                     extractedPNR: pnr,
                     hasHiddenCode: !!p.hiddenCode
                 });
