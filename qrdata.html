@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Card Data – Passenger List</title>
+    <title>QR Code Data – cardentryqr</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -127,7 +127,7 @@
             cursor: pointer;
         }
         
-        /* right block: minimal quick info (optional) */
+        /* right block: minimal quick info */
         .quick-shift-box {
             background: #fff9e6;
             border-radius: 30px;
@@ -215,7 +215,7 @@
             font-weight: 600;
         }
         
-        /* right block: ops + buttons (under last pax) */
+        /* right block: ops + buttons */
         .right-ops-block {
             background: white;
             border-radius: 14px;
@@ -245,32 +245,6 @@
             font-weight: 500;
         }
         
-        .edit-field {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-        }
-        
-        .edit-input {
-            padding: 4px 8px;
-            border: 2px solid rgba(230, 184, 0, 0.3);
-            border-radius: 6px;
-            font-size: 12px;
-            width: 100px;
-        }
-        
-        .edit-btn {
-            background: #e6b800;
-            color: white;
-            border: none;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-        
         /* action buttons */
         .action-buttons-vertical {
             display: flex;
@@ -297,7 +271,7 @@
         .refresh-data-btn { background: #6b8e23; color: white; }
         .print-btn { background: #4a6fa5; color: white; }
         
-        /* passenger table unchanged */
+        /* passenger table */
         .table-container {
             background: white;
             border-radius: 16px;
@@ -374,7 +348,7 @@
         .code-value {
             font-family: monospace;
             font-size: 11px;
-            max-width: 250px;
+            max-width: 300px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -413,7 +387,7 @@
         /* print-specific styles */
         @media print {
             body { background: white; padding: 0; margin: 0.5in; }
-            .shift-ribbon, .card .selection-flight-row, .action-buttons-vertical, .edit-btn, .refresh-shift, .quick-shift-box, .database-badge, .refresh-data-btn { display: none; }
+            .shift-ribbon, .card .selection-flight-row, .action-buttons-vertical, .refresh-shift, .quick-shift-box, .database-badge, .refresh-data-btn { display: none; }
             .card { border: none; box-shadow: none; padding: 0; background: transparent; }
             .flight-panel-revised { display: block; }
             .left-details-block, .right-ops-block { background: transparent; border: none; padding: 0; }
@@ -421,29 +395,12 @@
             .table-container { border: 1px solid #000; margin-top: 20px; }
             th { background: #e6b800 !important; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             
-            /* Header only on first page */
-            .report-header-print {
-                display: block !important;
-            }
-            
             tr, td, th {
                 page-break-inside: avoid;
             }
             
             thead {
                 display: table-header-group;
-            }
-        }
-        
-        /* Print header - hidden normally, shown only in print */
-        .report-header-print {
-            display: none;
-        }
-        
-        @media print {
-            .report-header-print {
-                display: block;
-                margin-bottom: 20px;
             }
         }
         
@@ -458,6 +415,11 @@
             padding: 2px 8px;
             border-radius: 12px;
         }
+        
+        .qr-icon {
+            color: #8b6913;
+            margin-right: 5px;
+        }
     </style>
 </head>
 <body>
@@ -471,14 +433,14 @@
             <button class="refresh-shift" onclick="fetchOpenShift()">↻ REFRESH SHIFT</button>
         </div>
 
-        <!-- main card – compact & rearranged -->
+        <!-- main card -->
         <div class="card">
-            <!-- Row: Date and Flight No on left side, extra right box for visual balance -->
+            <!-- Row: Date and Flight No on left side -->
             <div class="selection-flight-row">
                 <div class="left-selectors">
                     <div class="form-group">
-                        <label>📅 DATE</label>
-                        <select id="dateSelect" class="form-control" onclick="loadDates()" onchange="onDateSelected()">
+                        <label><i class="qr-icon">📅</i> DATE</label>
+                        <select id="dateSelect" class="form-control" onclick="loadQRData()" onchange="onDateSelected()">
                             <option value="">-- Click to load dates --</option>
                         </select>
                         <div class="distinct-count">
@@ -486,7 +448,7 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label>✈ FLIGHT NO</label>
+                        <label><i class="qr-icon">✈</i> FLIGHT NO</label>
                         <select id="flightSelect" class="form-control" onchange="onFlightSelected()" disabled>
                             <option value="">-- Select date first --</option>
                         </select>
@@ -496,53 +458,52 @@
                     </div>
                 </div>
                 <div class="quick-shift-box" id="quickShiftDisplay">
-                    <span id="quickShiftText">Select flight</span>
-                    <span id="databaseBadge" class="database-badge" style="display: none;"></span>
+                    <span id="quickShiftText"><i class="qr-icon">📱</i> QR Data</span>
+                    <span id="databaseBadge" class="database-badge" style="display: none;">cardentryqr</span>
                 </div>
             </div>
             
-            <!-- flight panel – two columns: left details+stats, right ops+buttons -->
+            <!-- flight panel -->
             <div id="flightPanel" style="display: none;">
                 <div class="flight-panel-revised">
                     <!-- LEFT SIDE: flight details + stats -->
                     <div class="left-details-block">
                         <div class="info-grid">
-                            <span class="info-label">Airline:</span><span class="info-value" id="airlineDisplay">-</span>
-                            <span class="info-label">Flight No:</span><span class="info-value" id="flightNoDisplay">-</span>
-                            <span class="info-label">Date:</span><span class="info-value" id="dateDisplay">-</span>
-                            <span class="info-label">Database:</span><span class="info-value" id="databaseDisplay">-</span>
-                            <span class="info-label">Shift:</span><span class="info-value" id="shiftDisplay">-</span>
+                            <span class="info-label"><i class="qr-icon">🛫</i> Flight:</span><span class="info-value" id="flightNoDisplay">-</span>
+                            <span class="info-label"><i class="qr-icon">📅</i> Date:</span><span class="info-value" id="dateDisplay">-</span>
+                            <span class="info-label"><i class="qr-icon">💾</i> Database:</span><span class="info-value" id="databaseDisplay">cardentryqr</span>
+                            <span class="info-label"><i class="qr-icon">📊</i> Shift:</span><span class="info-value" id="shiftDisplay">-</span>
                         </div>
                         <!-- stats inside left block -->
                         <div class="stats-mini">
-                            <div class="stat-item"><div class="stat-label">Total Pax</div><div class="stat-number" id="totalPaxStat">0</div></div>
-                            <div class="stat-item"><div class="stat-label">First Pax</div><div class="stat-number" id="firstPaxStat">--:--</div></div>
-                            <div class="stat-item"><div class="stat-label">Last Pax</div><div class="stat-number" id="lastPaxStat">--:--</div></div>
+                            <div class="stat-item"><div class="stat-label">Total QR</div><div class="stat-number" id="totalPaxStat">0</div></div>
+                            <div class="stat-item"><div class="stat-label">First</div><div class="stat-number" id="firstPaxStat">--:--</div></div>
+                            <div class="stat-item"><div class="stat-label">Last</div><div class="stat-number" id="lastPaxStat">--:--</div></div>
                         </div>
                     </div>
 
                     <!-- RIGHT SIDE: Quick info + buttons -->
                     <div class="right-ops-block">
                         <div class="ops-grid">
-                            <span class="ops-label">First Pax:</span><span class="ops-value first-pax" id="firstPaxDisplay">-</span>
-                            <span class="ops-label">Last Pax:</span><span class="ops-value" id="lastPaxDisplay">-</span>
-                            <span class="ops-label">Total Pax:</span><span class="ops-value" id="totalPaxDisplay">0</span>
+                            <span class="ops-label"><i class="qr-icon">⏱️</i> First:</span><span class="ops-value first-pax" id="firstPaxDisplay">-</span>
+                            <span class="ops-label"><i class="qr-icon">⏱️</i> Last:</span><span class="ops-value" id="lastPaxDisplay">-</span>
+                            <span class="ops-label"><i class="qr-icon">📊</i> Total:</span><span class="ops-value" id="totalPaxDisplay">0</span>
                         </div>
                         
-                        <!-- BUTTONS: only REFRESH and PRINT -->
+                        <!-- BUTTONS: REFRESH and PRINT -->
                         <div class="action-buttons-vertical">
-                            <button id="refreshDataBtn" class="refresh-data-btn" onclick="refreshCurrentFlight()">🔄 REFRESH DATA</button>
-                            <button id="printReportBtn" class="print-btn" onclick="printQRReport()" disabled>🖨️ PRINT</button>
+                            <button id="refreshDataBtn" class="refresh-data-btn" onclick="refreshCurrentFlight()">🔄 REFRESH QR</button>
+                            <button id="printReportBtn" class="print-btn" onclick="printQRReport()" disabled>🖨️ PRINT QR</button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- passenger table -->
+        <!-- QR data table -->
         <div id="tableContainer" class="table-container" style="display: none;">
             <div class="table-header">
-                <h3>📋 QR CODE DATA</h3>
+                <h3><i class="qr-icon">📱</i> QR CODE DATA - cardentryqr</h3>
                 <span class="passenger-count" id="passengerCount">0</span>
             </div>
             <div class="table-wrapper">
@@ -550,19 +511,14 @@
                     <thead>
                         <tr>
                             <th>No.</th>
-                            <th>Name</th>
+                            <th>Date</th>
                             <th>Flight</th>
-                            <th>Seat</th>
-                            <th>Pax</th>
-                            <th>FQTV</th>
-                            <th>Serial No</th>
-                            <th>Time</th>
-                            <th>Remarks</th>
                             <th>Code</th>
+                            <th>Timestamp</th>
                         </tr>
                     </thead>
-                    <tbody id="passengerTableBody">
-                        <tr><td colspan="10" class="no-data">Select a flight to view QR data</td></tr>
+                    <tbody id="qrTableBody">
+                        <tr><td colspan="5" class="no-data">Select a flight to view QR data</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -571,169 +527,52 @@
 
     <script>
         // ========== GLOBAL VARIABLES ==========
-        let flightsByDate = {};
+        let qrDataByDate = {};
         let allDates = [];
         let currentFlightData = null;
-        let currentDatabase = null;
-        let isLoadingDates = false;
-        let databaseStats = {};
+        let isLoadingData = false;
         let datesLoaded = false;
 
-        // ========== MULTI-DATABASE HELPER FUNCTIONS ==========
+        // ========== DATABASE ACCESS ==========
         
-        /**
-         * Returns the appropriate Firestore database based on flight number
-         * @param {string} flightNo - The flight number (e.g., "BA123", "EK456")
-         * @returns {Object} - The Firestore database instance
-         */
-        function getFirestoreForFlight(flightNo) {
-            if (!flightNo || typeof flightNo !== 'string') {
-                console.log("No valid flight number provided, using default database");
-                return window.defaultCardDb || window.db;
-            }
-
-            const flightPrefix = flightNo.substring(0, 2).toUpperCase();
-            
-            switch(flightPrefix) {
-                case 'BA':
-                    return window.baDb;
-                case 'EK':
-                    return window.ekDb;
-                case 'QR':
-                    return window.qrDb;
-                case 'SQ':
-                    return window.sqDb;
-                default:
-                    return window.defaultCardDb;
-            }
-        }
-
-        /**
-         * Gets the friendly name of the database for a flight
-         * @param {string} flightNo - The flight number
-         * @returns {string} - The database name
-         */
-        function getFirestoreNameForFlight(flightNo) {
-            if (!flightNo || typeof flightNo !== 'string') return "Default Database";
-            
-            const flightPrefix = flightNo.substring(0, 2).toUpperCase();
-            
-            switch(flightPrefix) {
-                case 'BA': return "BA Database";
-                case 'EK': return "EK Database";
-                case 'QR': return "QR Database";
-                case 'SQ': return "SQ Database";
-                default: return "Default Database";
-            }
-        }
-
         /**
          * Gets the cardentryqr database specifically for QR codes
          * @returns {Object} - The cardentryqr database instance
          */
         function getCardEntryQRDatabase() {
-            // First try window.qrDb (which should be cardentryqr)
+            // Try window.qrDb first (should be cardentryqr)
             if (window.qrDb) {
-                console.log("Using qrDb for cardentryqr");
+                console.log("✅ Using qrDb for cardentryqr");
                 return window.qrDb;
             }
             
-            // Then try window.cardDb if available
+            // Try window.cardDb
             if (window.cardDb) {
-                console.log("Using cardDb for cardentryqr");
+                console.log("✅ Using cardDb for cardentryqr");
                 return window.cardDb;
             }
             
-            // Then try to find by project ID
-            const databases = getAllDatabases();
+            // Try to find by checking all databases
+            const databases = [
+                { name: 'baDb', ref: window.baDb, project: 'cardentryba' },
+                { name: 'ekDb', ref: window.ekDb, project: 'cardentryek' },
+                { name: 'qrDb', ref: window.qrDb, project: 'cardentryqr' },
+                { name: 'sqDb', ref: window.sqDb, project: 'dcleeli' },
+                { name: 'defaultCardDb', ref: window.defaultCardDb, project: 'cardentry-7bad1' }
+            ];
+            
             const qrDb = databases.find(db => 
-                db.projectId === 'cardentryqr' || 
-                db.name.includes('QR') || 
-                db.name.includes('cardentryqr')
+                db.project === 'cardentryqr' || 
+                (db.ref && db.name === 'qrDb')
             );
             
-            if (qrDb) {
-                console.log(`Found cardentryqr database: ${qrDb.name}`);
+            if (qrDb && qrDb.ref) {
+                console.log(`✅ Found cardentryqr database via ${qrDb.name}`);
                 return qrDb.ref;
             }
             
-            console.warn("No cardentryqr database found, using default");
-            return window.defaultCardDb || window.db;
-        }
-
-        /**
-         * Gets all available databases for loading passenger data
-         * @returns {Array} - Array of database objects with name and reference
-         */
-        function getAllDatabases() {
-            const databases = [];
-            
-            if (window.baDb) {
-                databases.push({ 
-                    name: 'BA Database', 
-                    ref: window.baDb, 
-                    prefix: 'BA',
-                    projectId: 'cardentryba'
-                });
-            }
-            
-            if (window.ekDb) {
-                databases.push({ 
-                    name: 'EK Database', 
-                    ref: window.ekDb, 
-                    prefix: 'EK',
-                    projectId: 'cardentryek'
-                });
-            }
-            
-            if (window.qrDb) {
-                databases.push({ 
-                    name: 'QR Database', 
-                    ref: window.qrDb, 
-                    prefix: 'QR',
-                    projectId: 'cardentryqr'
-                });
-            }
-            
-            if (window.sqDb) {
-                databases.push({ 
-                    name: 'SQ Database', 
-                    ref: window.sqDb, 
-                    prefix: 'SQ',
-                    projectId: 'dcleeli'
-                });
-            }
-            
-            if (window.cardDb) {
-                databases.push({ 
-                    name: 'Card Database', 
-                    ref: window.cardDb, 
-                    prefix: 'CARD',
-                    projectId: 'cardentryqr'
-                });
-            }
-            
-            if (window.defaultCardDb) {
-                databases.push({ 
-                    name: 'Default Database', 
-                    ref: window.defaultCardDb, 
-                    prefix: 'OTHER',
-                    projectId: 'cardentry-7bad1'
-                });
-            }
-            
-            return databases;
-        }
-
-        // ========== UTILS ==========
-        function calculatePaxFromSeat(seatNo) {
-            if (!seatNo) return 1;
-            const letters = seatNo.toString().match(/[A-Za-z]/g);
-            return letters ? letters.length : 1;
-        }
-
-        function showNotification(msg, type = 'info') { 
-            console.log(msg); 
+            console.error("❌ cardentryqr database not found");
+            return null;
         }
 
         // ========== SHIFT ==========
@@ -744,13 +583,19 @@
                 const ribbon = document.getElementById('shiftRibbon');
                 shiftBadge.textContent = 'LOADING...';
                 ribbonDate.textContent = '--';
-                if (typeof passengerDb === 'undefined') throw new Error('no passengerDb');
+                
+                if (typeof passengerDb === 'undefined') {
+                    throw new Error('passengerDb not available');
+                }
+                
                 const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+                
                 if (shiftDoc.exists) {
                     const data = shiftDoc.data();
                     const date = data.date || 'No date';
                     const morning = data.morning || 'closed';
                     const evening = data.evening || 'closed';
+                    
                     if (morning === 'open') {
                         shiftBadge.textContent = 'MORNING SHIFT';
                         ribbonDate.textContent = date;
@@ -764,58 +609,54 @@
                         ribbonDate.textContent = date;
                         ribbon.style.background = 'linear-gradient(135deg, #7f8c8d, #5e4a1a)';
                     }
-                } else throw new Error('shift missing');
+                } else {
+                    throw new Error('shift document not found');
+                }
             } catch (error) {
                 document.getElementById('shiftBadge').textContent = 'ERROR';
                 document.getElementById('ribbonDate').textContent = '--';
+                console.error('Shift error:', error);
             }
         }
 
-        // ========== LOAD DATES FROM CARDENTRYQR DATABASE ==========
-        async function loadDates(forceReload = false) {
-            // If dates are already loaded and not forcing reload, just return
+        // ========== LOAD QR DATA FROM CARDENTRYQR ==========
+        async function loadQRData(forceReload = false) {
+            // If already loaded and not forcing reload, just return
             if (datesLoaded && !forceReload) {
-                console.log('Dates already loaded, skipping...');
+                console.log('QR data already loaded, skipping...');
                 return;
             }
             
-            if (isLoadingDates) return;
+            if (isLoadingData) return;
             
             const dateSelect = document.getElementById('dateSelect');
-            isLoadingDates = true;
+            isLoadingData = true;
             
             // Show loading message
-            dateSelect.innerHTML = '<option value="">🔍 Scanning cardentryqr database...</option>';
+            dateSelect.innerHTML = '<option value="">🔍 Loading QR data from cardentryqr...</option>';
             dateSelect.disabled = true;
             
-            // Clear previous data only if forcing reload
-            if (forceReload) {
-                flightsByDate = {};
-                databaseStats = {};
-                allDates = [];
-            }
+            // Clear previous data
+            qrDataByDate = {};
+            allDates = [];
             
             try {
                 // Get the cardentryqr database
                 const qrDb = getCardEntryQRDatabase();
                 
                 if (!qrDb) {
-                    throw new Error('cardentryqr database not found');
+                    throw new Error('cardentryqr database not found - check fireshift.js configuration');
                 }
                 
-                console.log(`🔍 Loading data from cardentryqr...`);
+                console.log(`🔍 Loading QR data from cardentryqr...`);
                 
                 // Query the QrCards collection
                 const snapshot = await qrDb.collection('QrCards').get();
                 
-                databaseStats['cardentryqr'] = {
-                    records: snapshot.size,
-                    flights: new Set(),
-                    dates: new Set()
-                };
-                
-                if (snapshot.size > 0) {
-                    console.log(`✅ Found ${snapshot.size} records in cardentryqr`);
+                if (snapshot.empty) {
+                    console.log(`ℹ️ No QR records found in cardentryqr`);
+                } else {
+                    console.log(`✅ Found ${snapshot.size} QR records`);
                     
                     snapshot.forEach(doc => {
                         const data = doc.data();
@@ -823,11 +664,21 @@
                         // Extract date from various possible fields
                         let date = data.date || '';
                         let flightNo = data.flightNo || '';
-                        let pName = data.pName || data.name || '';
-                        let seatNo = data.seatNo || data.seat || '';
-                        let FQTV = data.FQTV || data.fqtv || data.frequentFlyer || '';
                         let code = data.code || '';
-                        let entryTime = data.entryTime || data.timestamp || '';
+                        let timestamp = '';
+                        
+                        // Parse timestamp
+                        if (data.timestamp) {
+                            if (data.timestamp.toDate) {
+                                const d = data.timestamp.toDate();
+                                timestamp = d.toLocaleString();
+                            } else if (data.timestamp.seconds) {
+                                const d = new Date(data.timestamp.seconds * 1000);
+                                timestamp = d.toLocaleString();
+                            } else if (typeof data.timestamp === 'string') {
+                                timestamp = data.timestamp;
+                            }
+                        }
                         
                         // Try to parse date from doc.id if format is DATE_FLIGHT
                         if (!date && doc.id && doc.id.includes('_')) {
@@ -852,82 +703,57 @@
                         }
                         
                         if (displayDate) {
-                            databaseStats['cardentryqr'].dates.add(displayDate);
+                            if (!qrDataByDate[displayDate]) {
+                                qrDataByDate[displayDate] = new Map();
+                            }
                             
-                            if (!flightsByDate[displayDate]) flightsByDate[displayDate] = new Map();
+                            // Use flight number as key (or 'UNKNOWN' if missing)
+                            const flightKey = flightNo || 'UNKNOWN';
                             
-                            // Create a unique key for each flight
-                            const flightKey = flightNo || 'UNKNOWN_FLIGHT';
-                            databaseStats['cardentryqr'].flights.add(flightNo);
-                            
-                            if (!flightsByDate[displayDate].has(flightKey)) {
-                                flightsByDate[displayDate].set(flightKey, {
+                            if (!qrDataByDate[displayDate].has(flightKey)) {
+                                qrDataByDate[displayDate].set(flightKey, {
                                     flightNo: flightNo,
-                                    shift: data.shift || 'N/A',
-                                    airline: data.airline || '',
-                                    passengers: [],
-                                    firstPax: null,
-                                    lastPax: null,
-                                    database: 'cardentryqr',
-                                    dbRef: qrDb,
-                                    databaseProject: 'cardentryqr'
+                                    records: [],
+                                    firstTimestamp: null,
+                                    lastTimestamp: null
                                 });
                             }
                             
-                            const flightData = flightsByDate[displayDate].get(flightKey);
+                            const flightData = qrDataByDate[displayDate].get(flightKey);
                             
-                            // Format time
-                            let timeValue = entryTime;
-                            if (data.timestamp && data.timestamp.toDate) {
-                                const d = data.timestamp.toDate();
-                                timeValue = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                            } else if (data.timestamp && data.timestamp.seconds) {
-                                const d = new Date(data.timestamp.seconds * 1000);
-                                timeValue = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                            }
-                            
-                            flightData.passengers.push({
+                            flightData.records.push({
                                 docId: doc.id,
-                                pName: pName || '',
-                                flightNo: flightNo || '',
-                                seatNo: seatNo || '',
-                                pax: data.pax || '1',
-                                FQTV: FQTV || '',
-                                entryTime: timeValue,
-                                remarks: data.remarks || '',
-                                serialNo: data.serialNo || '',
-                                code: code || ''
+                                date: displayDate,
+                                flightNo: flightNo,
+                                code: code,
+                                timestamp: timestamp,
+                                rawTimestamp: data.timestamp
                             });
                             
-                            if (timeValue) {
-                                if (!flightData.firstPax || timeValue < flightData.firstPax) {
-                                    flightData.firstPax = timeValue;
+                            // Update first/last timestamps
+                            if (timestamp) {
+                                if (!flightData.firstTimestamp || timestamp < flightData.firstTimestamp) {
+                                    flightData.firstTimestamp = timestamp;
                                 }
-                                if (!flightData.lastPax || timeValue > flightData.lastPax) {
-                                    flightData.lastPax = timeValue;
+                                if (!flightData.lastTimestamp || timestamp > flightData.lastTimestamp) {
+                                    flightData.lastTimestamp = timestamp;
                                 }
                             }
                         }
                     });
-                    
-                    console.log(`📊 Found ${databaseStats['cardentryqr'].dates.size} unique dates`);
-                    console.log(`📊 Found ${databaseStats['cardentryqr'].flights.size} unique flights`);
-                    
-                } else {
-                    console.log(`ℹ️ No records found in cardentryqr`);
                 }
                 
                 // Get all unique dates and sort them (newest first)
-                allDates = Object.keys(flightsByDate).sort().reverse();
+                allDates = Object.keys(qrDataByDate).sort().reverse();
                 datesLoaded = true;
                 
                 // Update the date select dropdown
                 if (allDates.length === 0) {
-                    dateSelect.innerHTML = '<option value="">❌ No dates found in cardentryqr</option>';
+                    dateSelect.innerHTML = '<option value="">❌ No QR data found in cardentryqr</option>';
                 } else {
                     let options = '<option value="">📅 Select a date</option>';
                     allDates.forEach(d => { 
-                        const flightCount = flightsByDate[d]?.size || 0;
+                        const flightCount = qrDataByDate[d]?.size || 0;
                         options += `<option value="${d}">${d} (${flightCount} flight${flightCount !== 1 ? 's' : ''})</option>`; 
                     });
                     dateSelect.innerHTML = options;
@@ -938,12 +764,13 @@
                 dateSelect.disabled = false;
                 
             } catch (error) {
-                console.error('Error loading dates:', error);
-                dateSelect.innerHTML = '<option value="">❌ Error loading dates</option>';
+                console.error('Error loading QR data:', error);
+                dateSelect.innerHTML = '<option value="">❌ Error loading QR data</option>';
                 dateSelect.disabled = false;
                 document.getElementById('dateCount').textContent = 'Error';
+                alert('Error loading QR data: ' + error.message);
             } finally { 
-                isLoadingDates = false; 
+                isLoadingData = false; 
             }
         }
 
@@ -959,12 +786,11 @@
             // Hide panels
             document.getElementById('flightPanel').style.display = 'none';
             document.getElementById('tableContainer').style.display = 'none';
-            document.getElementById('quickShiftText').innerText = 'Select flight';
+            document.getElementById('quickShiftText').innerHTML = '<i class="qr-icon">📱</i> QR Data';
             document.getElementById('databaseBadge').style.display = 'none';
             document.getElementById('printReportBtn').disabled = true;
             
             // Reset current data
-            currentDatabase = null;
             currentFlightData = null;
             
             if (!selectedDate) {
@@ -974,7 +800,7 @@
             }
             
             // Get flights for selected date
-            const flights = flightsByDate[selectedDate];
+            const flights = qrDataByDate[selectedDate];
             if (!flights || flights.size === 0) {
                 flightSelect.innerHTML = '<option value="">❌ No flights for this date</option>';
                 document.getElementById('flightCount').textContent = '0 flights';
@@ -987,9 +813,9 @@
             // Build options
             let options = '<option value="">✈️ Select a flight</option>';
             flightsArray.forEach(f => { 
-                const passengerCount = f.passengers.length;
+                const recordCount = f.records.length;
                 const flightDisplay = f.flightNo || 'UNKNOWN';
-                options += `<option value="${flightDisplay}">${flightDisplay} - ${passengerCount} records</option>`; 
+                options += `<option value="${flightDisplay}">${flightDisplay} - ${recordCount} QR code${recordCount !== 1 ? 's' : ''}</option>`; 
             });
             
             flightSelect.innerHTML = options;
@@ -1011,10 +837,9 @@
             
             // Show loading state
             document.getElementById('flightPanel').style.display = 'block';
-            document.getElementById('airlineDisplay').textContent = 'Loading...';
-            document.getElementById('passengerTableBody').innerHTML = '<tr><td colspan="10" class="loading"><span class="spinner"></span> Loading QR data...</td></tr>';
+            document.getElementById('qrTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner"></span> Loading QR data...</td></tr>';
             
-            const flights = flightsByDate[selectedDate];
+            const flights = qrDataByDate[selectedDate];
             const flightData = Array.from(flights.values()).find(f => f.flightNo === selectedFlight);
             
             if (!flightData) {
@@ -1023,69 +848,58 @@
             }
             
             currentFlightData = flightData;
-            currentDatabase = flightData.dbRef;
             
-            console.log('Flight Data:', {
+            console.log('QR Data:', {
                 flightNo: flightData.flightNo,
-                passengers: flightData.passengers.length,
-                firstPax: flightData.firstPax,
-                lastPax: flightData.lastPax,
-                database: flightData.database
+                records: flightData.records.length,
+                first: flightData.firstTimestamp,
+                last: flightData.lastTimestamp
             });
             
-            // Update database display
-            document.getElementById('databaseDisplay').textContent = `cardentryqr`;
-            document.getElementById('databaseBadge').textContent = 'QR Database';
+            // Update UI
+            document.getElementById('databaseDisplay').textContent = 'cardentryqr';
             document.getElementById('databaseBadge').style.display = 'inline-block';
-            
-            // Update UI with loaded data
-            document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
             document.getElementById('flightNoDisplay').textContent = flightData.flightNo || '-';
             document.getElementById('dateDisplay').textContent = selectedDate;
-            document.getElementById('shiftDisplay').textContent = flightData.shift || 'N/A';
-            document.getElementById('firstPaxDisplay').textContent = flightData.firstPax || '-';
-            document.getElementById('lastPaxDisplay').textContent = flightData.lastPax || '-';
-            document.getElementById('totalPaxDisplay').textContent = flightData.passengers.length;
-            document.getElementById('totalPaxStat').textContent = flightData.passengers.length;
-            document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
-            document.getElementById('lastPaxStat').textContent = flightData.lastPax || '--:--';
-            document.getElementById('passengerCount').textContent = flightData.passengers.length + ' RECORDS';
+            document.getElementById('shiftDisplay').textContent = 'N/A';
+            document.getElementById('firstPaxDisplay').textContent = flightData.firstTimestamp || '-';
+            document.getElementById('lastPaxDisplay').textContent = flightData.lastTimestamp || '-';
+            document.getElementById('totalPaxDisplay').textContent = flightData.records.length;
+            document.getElementById('totalPaxStat').textContent = flightData.records.length;
+            document.getElementById('firstPaxStat').textContent = flightData.firstTimestamp ? 'QR' : '--:--';
+            document.getElementById('lastPaxStat').textContent = flightData.lastTimestamp ? 'QR' : '--:--';
+            document.getElementById('passengerCount').textContent = flightData.records.length + ' QR';
             document.getElementById('quickShiftText').innerHTML = `${flightData.flightNo || 'Unknown'} <span style="font-size:10px; opacity:0.8;">(QR Database)</span>`;
             
-            // Enable print button if there are passengers
-            document.getElementById('printReportBtn').disabled = flightData.passengers.length === 0;
+            // Enable print button if there are records
+            document.getElementById('printReportBtn').disabled = flightData.records.length === 0;
             
-            // Display passenger table
-            displayPassengerTable(flightData.passengers);
+            // Display QR table
+            displayQRTable(flightData.records);
         }
 
-        function displayPassengerTable(passengers) {
-            const tbody = document.getElementById('passengerTableBody');
+        function displayQRTable(records) {
+            const tbody = document.getElementById('qrTableBody');
             
-            if (!passengers || passengers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="10" class="no-data">No QR data found for this flight</td></tr>';
+            if (!records || records.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="no-data">No QR data found for this flight</td></tr>';
                 document.getElementById('tableContainer').style.display = 'block';
                 return;
             }
             
-            // Sort passengers by entry time
-            const sorted = [...passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+            // Sort records by timestamp
+            const sorted = [...records].sort((a,b) => (a.timestamp||'').localeCompare(b.timestamp||''));
             let html = '';
             
-            sorted.forEach((p, idx) => {
+            sorted.forEach((record, idx) => {
                 const serial = String(idx+1).padStart(3,'0');
                 
                 html += `<tr>
                     <td class="serial-no">${serial}</td>
-                    <td>${p.pName || '-'}</td>
-                    <td><span class="badge badge-flight">${p.flightNo || '-'}</span></td>
-                    <td>${p.seatNo || '-'}</td>
-                    <td style="text-align:center;">${p.pax || '1'}</td>
-                    <td>${p.FQTV || '-'}</td>
-                    <td class="${p.serialNo ? 'serial-no' : ''}">${p.serialNo || '—'}</td>
-                    <td>${p.entryTime || '-'}</td>
-                    <td>${p.remarks || '-'}</td>
-                    <td><div class="code-value" title="${p.code || ''}"><span class="badge badge-code">${p.code ? (p.code.length > 30 ? p.code.substring(0,30)+'...' : p.code) : '—'}</span></div></td>
+                    <td><span class="badge badge-date">${record.date || '-'}</span></td>
+                    <td><span class="badge badge-flight">${record.flightNo || '-'}</span></td>
+                    <td><div class="code-value" title="${record.code || ''}"><span class="badge badge-code">${record.code ? (record.code.length > 40 ? record.code.substring(0,40)+'...' : record.code) : '—'}</span></div></td>
+                    <td>${record.timestamp || '-'}</td>
                 </tr>`;
             });
             
@@ -1096,22 +910,24 @@
         async function refreshCurrentFlight() {
             if (!currentFlightData) return;
             
-            // Reload all data and reselect current flight
-            await loadDates(true);
+            // Reload all data
+            await loadQRData(true);
             
             const dateSelect = document.getElementById('dateSelect');
             const flightSelect = document.getElementById('flightSelect');
+            const currentFlight = currentFlightData.flightNo;
+            const currentDate = document.getElementById('dateDisplay').textContent;
             
             // Try to reselect the same date and flight
-            if (currentFlightData.flightNo) {
-                dateSelect.value = document.getElementById('dateDisplay').textContent;
+            if (currentDate && currentFlight) {
+                dateSelect.value = currentDate;
                 onDateSelected();
                 
                 setTimeout(() => {
                     const options = Array.from(flightSelect.options);
-                    const option = options.find(opt => opt.value === currentFlightData.flightNo);
+                    const option = options.find(opt => opt.value === currentFlight);
                     if (option) {
-                        flightSelect.value = currentFlightData.flightNo;
+                        flightSelect.value = currentFlight;
                         onFlightSelected();
                     }
                 }, 500);
@@ -1119,30 +935,26 @@
         }
 
         function printQRReport() {
-            if (!currentFlightData || currentFlightData.passengers.length === 0) { 
-                alert('No data to print'); 
+            if (!currentFlightData || currentFlightData.records.length === 0) { 
+                alert('No QR data to print'); 
                 return; 
             }
 
             const company = window.companyInfo || { 
                 name: 'MACL', 
                 address: '123 Aviation Road', 
-                phone: '+123 456 7890',
-                logo: 'macl.png'
+                phone: '+123 456 7890'
             };
             
             const dateStr = document.getElementById('dateDisplay').textContent; 
             const dateParts = dateStr.split('-');
             const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
 
-            const airline = currentFlightData.airline || '—';
             const flightNo = currentFlightData.flightNo || '—';
-            const firstPax = currentFlightData.firstPax || '—';
-            const lastPax = currentFlightData.lastPax || '—';
-            const shift = currentFlightData.shift || '—';
+            const firstTimestamp = currentFlightData.firstTimestamp || '—';
+            const lastTimestamp = currentFlightData.lastTimestamp || '—';
             
-            const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-            const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+            const sortedRecords = [...currentFlightData.records].sort((a,b) => (a.timestamp||'').localeCompare(b.timestamp||''));
 
             // Create print window
             const printWindow = window.open('', '_blank');
@@ -1180,10 +992,6 @@
                             height: auto;
                             margin-bottom: 10px;
                         }
-                        .logo img {
-                            max-width: 100%;
-                            max-height: 80px;
-                        }
                         .company-address {
                             font-size: 11px;
                             color: #666;
@@ -1200,7 +1008,7 @@
                             font-weight: 600;
                             color: #8b6913;
                             display: inline-block;
-                            width: 60px;
+                            width: 80px;
                         }
                         .right-section {
                             display: flex;
@@ -1225,13 +1033,13 @@
                             min-width: 60px;
                             text-align: left;
                         }
-                        .total-pax {
+                        .total-records {
                             margin: 15px 0;
                             text-align: right;
                             font-size: 14px;
                             font-weight: 600;
                         }
-                        .total-pax span {
+                        .total-records span {
                             background: #e6b800;
                             color: white;
                             padding: 5px 15px;
@@ -1260,7 +1068,7 @@
                         .code-cell {
                             font-family: monospace;
                             font-size: 10px;
-                            max-width: 200px;
+                            max-width: 300px;
                             word-break: break-all;
                         }
                         .signature-section {
@@ -1308,7 +1116,7 @@
                         <div class="left-section">
                             <div class="logo-section">
                                 <div class="logo">
-                                    <img src="macl.png" alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
+                                    <div style="font-size: 32px; font-weight: bold; color: #e6b800;">MACL</div>
                                 </div>
                                 <div class="company-address">
                                     <strong>${company.name}</strong><br>
@@ -1318,16 +1126,10 @@
                             </div>
                             <div class="flight-details">
                                 <div class="flight-detail-item">
-                                    <span class="flight-detail-label">Airline:</span> ${airline}
-                                </div>
-                                <div class="flight-detail-item">
                                     <span class="flight-detail-label">Flight:</span> ${flightNo}
                                 </div>
                                 <div class="flight-detail-item">
                                     <span class="flight-detail-label">Date:</span> ${formattedDate}
-                                </div>
-                                <div class="flight-detail-item">
-                                    <span class="flight-detail-label">Shift:</span> ${shift}
                                 </div>
                                 <div class="flight-detail-item">
                                     <span class="flight-detail-label">Database:</span> cardentryqr
@@ -1336,53 +1138,43 @@
                         </div>
                         <div class="right-section">
                             <div class="info-item">
-                                <span class="label">First Pax:</span>
-                                <span class="value">${firstPax}</span>
+                                <span class="label">First QR:</span>
+                                <span class="value">${firstTimestamp}</span>
                             </div>
                             <div class="info-item">
-                                <span class="label">Last Pax:</span>
-                                <span class="value">${lastPax}</span>
+                                <span class="label">Last QR:</span>
+                                <span class="value">${lastTimestamp}</span>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="total-pax">
-                        <span>TOTAL RECORDS: ${totalPaxSum}</span>
+                    <div class="total-records">
+                        <span>TOTAL QR CODES: ${sortedRecords.length}</span>
                     </div>
                     
                     <table>
                         <thead>
                             <tr>
                                 <th>No.</th>
-                                <th>Name</th>
+                                <th>Date</th>
                                 <th>Flight</th>
-                                <th>Seat</th>
-                                <th>Pax</th>
-                                <th>FQTV</th>
-                                <th>Serial No</th>
-                                <th>Time</th>
-                                <th>Remarks</th>
-                                <th>Code</th>
+                                <th>QR Code</th>
+                                <th>Timestamp</th>
                             </tr>
                         </thead>
                         <tbody>
             `);
             
-            // Add passenger rows
-            sortedPassengers.forEach((p, idx) => {
+            // Add record rows
+            sortedRecords.forEach((record, idx) => {
                 const serial = String(idx+1).padStart(3,'0');
                 printWindow.document.write(`
                     <tr>
                         <td>${serial}</td>
-                        <td>${p.pName || '-'}</td>
-                        <td>${p.flightNo || '-'}</td>
-                        <td>${p.seatNo || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '1'}</td>
-                        <td>${p.FQTV || '-'}</td>
-                        <td>${p.serialNo || '-'}</td>
-                        <td>${p.entryTime || '-'}</td>
-                        <td>${p.remarks || '-'}</td>
-                        <td class="code-cell">${p.code || '-'}</td>
+                        <td>${record.date || '-'}</td>
+                        <td>${record.flightNo || '-'}</td>
+                        <td class="code-cell">${record.code || '-'}</td>
+                        <td>${record.timestamp || '-'}</td>
                     </tr>
                 `);
             });
@@ -1426,14 +1218,14 @@
             fetchOpenShift();
             setInterval(fetchOpenShift, 30000);
             
-            // Load dates once when page loads
+            // Load QR data when page loads
             setTimeout(() => {
-                loadDates();
+                loadQRData();
             }, 1000);
         });
 
         // global functions
-        window.loadDates = loadDates; 
+        window.loadQRData = loadQRData; 
         window.onDateSelected = onDateSelected; 
         window.onFlightSelected = onFlightSelected;
         window.fetchOpenShift = fetchOpenShift;
