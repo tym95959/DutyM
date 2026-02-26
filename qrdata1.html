@@ -284,6 +284,24 @@
             font-weight: 500;
         }
         
+        /* Status message when flight not closed */
+        .not-closed-message {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ffeaa7;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        
+        .not-closed-message i {
+            font-size: 16px;
+            margin-right: 8px;
+        }
+        
         .edit-field {
             display: flex;
             gap: 6px;
@@ -410,7 +428,7 @@
             font-family: monospace;
         }
         
-        /* QR Codes Tab Styles - Inspired by example */
+        /* QR Codes Tab Styles - No delete buttons */
         .qr-controls {
             display: flex;
             gap: 16px;
@@ -444,19 +462,6 @@
         
         .generate-btn:disabled {
             background: #ccc;
-            cursor: not-allowed;
-        }
-        
-        .danger-btn {
-            background: #dc3545 !important;
-        }
-        
-        .danger-btn:hover {
-            background: #c82333 !important;
-        }
-        
-        .danger-btn:disabled {
-            background: #e0a0a8 !important;
             cursor: not-allowed;
         }
         
@@ -541,36 +546,6 @@
         
         .qr-code-container div {
             margin: 0 auto;
-        }
-        
-        .delete-btn {
-            background: #ff4444;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            width: 30px;
-            height: 30px;
-            cursor: pointer;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.2s;
-        }
-        
-        .delete-btn:hover {
-            background: #cc0000;
-        }
-        
-        .delete-btn:disabled {
-            background: #f0b0b0;
-            cursor: not-allowed;
-        }
-        
-        .flight-number {
-            color: #1a73e8;
-            font-weight: bold;
-            margin: 5px 0;
         }
         
         .timestamp {
@@ -713,30 +688,6 @@
             border-radius: 3px;
         }
         
-        /* Delete All Button */
-        .delete-all-btn {
-            background: #dc3545;
-            color: white;
-            border: none;
-            padding: 10px 24px;
-            border-radius: 30px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s;
-            height: 40px;
-            white-space: nowrap;
-        }
-        
-        .delete-all-btn:hover {
-            background: #c82333;
-        }
-        
-        .delete-all-btn:disabled {
-            background: #e0a0a8;
-            cursor: not-allowed;
-        }
-        
         @media (max-width: 768px) {
             .filters {
                 flex-direction: column;
@@ -835,6 +786,11 @@
                                 <span class="ops-label">Last Pax:</span><span class="ops-value" id="lastPaxDisplay">-</span>
                             </div>
                             
+                            <!-- Message when flight not closed -->
+                            <div id="notClosedMessage" class="not-closed-message" style="display: none;">
+                                <i>⏳</i> Flight is not closed yet. Report can only be printed after flight is closed.
+                            </div>
+                            
                             <!-- BUTTONS: only PRINT -->
                             <div class="action-buttons-vertical">
                                 <button id="printReportBtn" class="print-btn" onclick="printReport()" disabled>🖨️ PRINT REPORT</button>
@@ -863,7 +819,7 @@
             </div>
         </div>
 
-        <!-- QR CODES TAB - Redesigned like the example -->
+        <!-- QR CODES TAB - No delete buttons -->
         <div id="qrTab" class="tab-content">
             <div class="card">
                 <!-- Message Container -->
@@ -890,13 +846,6 @@
                             <label>&nbsp;</label>
                             <button onclick="loadQRCodes()" id="loadQrBtn" class="generate-btn" disabled>
                                 📱 GENERATE QR CODES
-                            </button>
-                        </div>
-                        
-                        <div class="form-group" style="flex: 1;">
-                            <label>&nbsp;</label>
-                            <button onclick="deleteAllByDate()" id="deleteByDateBtn" class="generate-btn danger-btn" disabled>
-                                🗑️ DELETE ALL BY DATE
                             </button>
                         </div>
                     </div>
@@ -931,10 +880,6 @@
                         <div class="stat-value" id="qrCodes">0</div>
                         <div class="stat-label">QR Codes</div>
                     </div>
-                    <div class="stat-item">
-                        <div class="stat-value" id="duplicates">0</div>
-                        <div class="stat-label">Duplicates</div>
-                    </div>
                 </div>
                 
                 <!-- QR Codes Container -->
@@ -959,9 +904,8 @@
     // QR Code variables
     var allQRCodes = [];
     var filteredQRCodes = [];
-    var duplicateCount = 0;
     var currentQRSort = 'timestamp_desc';
-    var qrDatabase = null; // Renamed from qrDb to avoid conflicts
+    var qrDatabase = null;
 
     // ========== QR DATABASE FUNCTIONS ==========
     
@@ -1081,7 +1025,8 @@
                                 airline: data.airline || '',
                                 passengers: [],
                                 firstPax: null,
-                                lastPax: null
+                                lastPax: null,
+                                isClosed: false // Default to open
                             });
                         }
                         
@@ -1115,6 +1060,9 @@
                 console.log(`✅ QR Database: ${snapshot.size} records found`);
             }
             
+            // Load flight status from FlightReports collection
+            await loadFlightStatuses();
+            
             allDates = Object.keys(flightsByDate).sort().reverse();
             datesLoaded = true;
             
@@ -1141,6 +1089,40 @@
         }
     }
 
+    // Load flight statuses from FlightReports collection
+    async function loadFlightStatuses() {
+        try {
+            var reportsSnapshot = await qrDatabase.collection('FlightReports').get();
+            
+            reportsSnapshot.forEach(doc => {
+                var reportData = doc.data();
+                var flightNo = reportData.flightNo;
+                var reportDate = reportData.date;
+                var isClosed = reportData.isClosed || false;
+                
+                // Format date to match our date format
+                var formattedDate = reportDate;
+                if (reportDate.includes('-')) {
+                    var parts = reportDate.split('-');
+                    formattedDate = parts[0] + '-' + parts[1] + '-' + parts[2];
+                }
+                
+                // Find matching flight in our data
+                if (flightsByDate[formattedDate]) {
+                    flightsByDate[formattedDate].forEach(function(flight, key) {
+                        if (flight.flightNo === flightNo) {
+                            flight.isClosed = isClosed;
+                        }
+                    });
+                }
+            });
+            
+            console.log("✅ Flight statuses loaded");
+        } catch (error) {
+            console.error("Error loading flight statuses:", error);
+        }
+    }
+
     function updateQrDateSelect() {
         var qrDateSelect = document.getElementById('qrDateSelect');
         var loadBtn = document.getElementById('loadQrBtn');
@@ -1156,7 +1138,6 @@
         }
         
         loadBtn.disabled = true;
-        document.getElementById('deleteByDateBtn').disabled = true;
     }
 
     function onDateSelected() {
@@ -1192,7 +1173,8 @@
         var options = '<option value="">✈️ Select a flight</option>';
         flightsArray.forEach(function(f) { 
             var passengerCount = f.passengers.length;
-            options += `<option value="${f.flightNo}|${f.shift}">${f.flightNo} - ${passengerCount} pax</option>`; 
+            var statusIcon = f.isClosed ? '🔒' : '🔓';
+            options += `<option value="${f.flightNo}|${f.shift}">${statusIcon} ${f.flightNo} - ${passengerCount} pax ${f.isClosed ? '(Closed)' : '(Open)'}</option>`; 
         });
         
         flightSelect.innerHTML = options;
@@ -1202,7 +1184,6 @@
     function onQrDateSelected() {
         var qrDateSelect = document.getElementById('qrDateSelect');
         var loadBtn = document.getElementById('loadQrBtn');
-        var deleteBtn = document.getElementById('deleteByDateBtn');
         var selectedDate = qrDateSelect.value;
         
         // Update flight filter dropdown
@@ -1210,7 +1191,6 @@
         
         if (selectedDate && flightsByDate[selectedDate]) {
             loadBtn.disabled = false;
-            deleteBtn.disabled = false;
             
             // Get unique flights for this date
             var flights = new Set();
@@ -1226,7 +1206,6 @@
             flightSelect.disabled = false;
         } else {
             loadBtn.disabled = true;
-            deleteBtn.disabled = true;
             flightSelect.innerHTML = '<option value="">All Flights</option>';
             flightSelect.disabled = true;
         }
@@ -1279,9 +1258,18 @@
             document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
             document.getElementById('quickShiftText').innerHTML = flightNo + ' | ' + shift + ' <span style="font-size:10px; opacity:0.8;">(QR Database)</span>';
             
-            document.getElementById('flightStatus').textContent = 'OPEN';
-            document.getElementById('flightStatus').className = 'flight-status status-open';
-            document.getElementById('printReportBtn').disabled = true;
+            // Set status based on flight.isClosed
+            if (flightData.isClosed) {
+                document.getElementById('flightStatus').textContent = 'CLOSED';
+                document.getElementById('flightStatus').className = 'flight-status status-closed';
+                document.getElementById('printReportBtn').disabled = false;
+                document.getElementById('notClosedMessage').style.display = 'none';
+            } else {
+                document.getElementById('flightStatus').textContent = 'OPEN';
+                document.getElementById('flightStatus').className = 'flight-status status-open';
+                document.getElementById('printReportBtn').disabled = true;
+                document.getElementById('notClosedMessage').style.display = 'block';
+            }
             
             displayPassengerTable(flightData.passengers);
             
@@ -1343,21 +1331,6 @@
 
     // ========== QR CODE GENERATION FUNCTIONS ==========
     
-    // Extract Name from passenger data
-    function extractName(passenger) {
-        return passenger.pName || 'Unknown';
-    }
-
-    // Extract Seat from passenger data
-    function extractSeat(passenger) {
-        return passenger.seatNo || 'N/A';
-    }
-
-    // Extract FQTV from passenger data
-    function extractFQTV(passenger) {
-        return passenger.FQTV || 'N/A';
-    }
-
     // Format timestamp
     function formatTimestamp(timestamp) {
         if (!timestamp) return 'No timestamp';
@@ -1379,7 +1352,6 @@
     // Load QR codes for selected date
     async function loadQRCodes() {
         clearMessages();
-        duplicateCount = 0;
         
         var qrDateSelect = document.getElementById('qrDateSelect');
         var selectedDate = qrDateSelect.value;
@@ -1526,7 +1498,7 @@
         displayQRCodes(sortedCodes);
     }
 
-    // Display QR codes
+    // Display QR codes (no delete buttons)
     function displayQRCodes(codesToDisplay) {
         var container = document.getElementById('qrContainer');
         
@@ -1546,17 +1518,9 @@
             card.className = 'qr-card';
             card.id = 'card-' + item.id;
             
-            var escapedName = (item.pName || '').replace(/'/g, "\\'");
-            
             card.innerHTML = `
                 <div class="qr-info">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                        <div class="passenger-name">${item.pName || 'Unknown'}</div>
-                        <button class="delete-btn" onclick="deleteRecord('${item.id}', '${escapedName}', this.parentElement.parentElement.parentElement)" 
-                                title="Delete this record">
-                            🗑️
-                        </button>
-                    </div>
+                    <div class="passenger-name">${item.pName || 'Unknown'}</div>
                     
                     <div class="passenger-details">
                         <div>
@@ -1629,127 +1593,19 @@
         document.getElementById('totalCodes').textContent = allQRCodes.length;
         document.getElementById('filteredCodes').textContent = filteredQRCodes.length;
         document.getElementById('qrCodes').textContent = filteredQRCodes.length;
-        document.getElementById('duplicates').textContent = duplicateCount;
     }
 
-    // ========== DELETE FUNCTIONS ==========
-    
-    // Delete a single record
-    async function deleteRecord(recordId, recordName, cardElement) {
-        try {
-            var confirmed = confirm('Are you sure you want to delete record for:\n' + recordName + '?\n\nThis action cannot be undone.');
-            
-            if (!confirmed) return;
-            
-            // Save original content
-            var originalContent = cardElement.innerHTML;
-            cardElement.innerHTML = '<div class="loading">Deleting...</div>';
-            cardElement.style.opacity = '0.7';
-            
-            // Delete from Firebase
-            await qrDatabase.collection('KoveliPass').doc(recordId).delete();
-            
-            showMessage('Successfully deleted record for ' + recordName, 'success');
-            
-            // Remove from arrays
-            allQRCodes = allQRCodes.filter(function(code) { return code.id !== recordId; });
-            filteredQRCodes = filteredQRCodes.filter(function(code) { return code.id !== recordId; });
-            
-            // Update stats
-            updateStats();
-            
-            // Remove card with animation
-            cardElement.style.transition = 'opacity 0.3s, transform 0.3s';
-            cardElement.style.opacity = '0';
-            cardElement.style.transform = 'scale(0.8)';
-            
-            setTimeout(function() {
-                cardElement.remove();
-                
-                if (filteredQRCodes.length === 0) {
-                    document.getElementById('qrContainer').innerHTML = 
-                        '<div class="qr-no-data">No records found</div>';
-                }
-            }, 300);
-            
-        } catch (error) {
-            console.error("Error deleting record:", error);
-            showMessage('Error deleting record: ' + error.message, 'error');
-            cardElement.innerHTML = originalContent;
-            cardElement.style.opacity = '1';
-        }
-    }
-
-    // Delete all records for selected date
-    async function deleteAllByDate() {
-        var qrDateSelect = document.getElementById('qrDateSelect');
-        var selectedDate = qrDateSelect.value;
-        var deleteBtn = document.getElementById('deleteByDateBtn');
-        
-        if (!selectedDate) {
-            showMessage("Please select a date first", 'error');
-            return;
-        }
-        
-        try {
-            var recordCount = allQRCodes.length;
-            
-            if (recordCount === 0) {
-                showMessage('No records found for date: ' + selectedDate, 'warning');
-                return;
-            }
-            
-            var confirmed = confirm('⚠️ DANGER - IRREVERSIBLE ACTION!\n\nAre you sure you want to DELETE ALL ' + recordCount + ' records for date:\n' + selectedDate + '?\n\nThis action cannot be undone!');
-            
-            if (!confirmed) return;
-            
-            // Update button state
-            deleteBtn.disabled = true;
-            deleteBtn.innerHTML = '⏳ Deleting...';
-            
-            showMessage('Starting deletion of ' + recordCount + ' records for ' + selectedDate + '...', 'warning');
-            
-            // Delete in batches
-            var batchSize = 100;
-            var batches = [];
-            
-            for (var i = 0; i < allQRCodes.length; i += batchSize) {
-                var batch = qrDatabase.batch();
-                var batchItems = allQRCodes.slice(i, i + batchSize);
-                
-                batchItems.forEach(function(item) {
-                    batch.delete(qrDatabase.collection('KoveliPass').doc(item.id));
-                });
-                
-                batches.push(batch.commit());
-            }
-            
-            await Promise.all(batches);
-            
-            // Clear arrays
-            allQRCodes = [];
-            filteredQRCodes = [];
-            updateStats();
-            
-            document.getElementById('qrContainer').innerHTML = 
-                '<div class="qr-no-data">All records have been deleted</div>';
-            
-            showMessage('✅ Successfully deleted ' + recordCount + ' records for date: ' + selectedDate, 'success');
-            
-        } catch (error) {
-            console.error("Error deleting all records:", error);
-            showMessage('Error deleting records: ' + error.message, 'error');
-        } finally {
-            deleteBtn.disabled = false;
-            deleteBtn.innerHTML = '🗑️ DELETE ALL BY DATE';
-        }
-    }
-
-    // Print report function
+    // Print report function - only works if flight is closed
     function printReport() {
         if (!currentFlightData) { 
             alert('No flight data to print'); 
             return; 
+        }
+        
+        // Check if flight is closed
+        if (!currentFlightData.isClosed) {
+            alert('Flight is not closed yet. Report can only be printed after the flight is closed.');
+            return;
         }
 
         var company = window.companyInfo || { 
@@ -1904,8 +1760,6 @@
     window.loadQRCodes = loadQRCodes;
     window.filterQRCodes = filterQRCodes;
     window.sortAndDisplayQRCodes = sortAndDisplayQRCodes;
-    window.deleteRecord = deleteRecord;
-    window.deleteAllByDate = deleteAllByDate;
     </script>
 </body>
 </html>
