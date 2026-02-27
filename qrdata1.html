@@ -857,7 +857,6 @@
 
     <script>
     // ========== GLOBAL VARIABLES ==========
-    // Use 'var' instead of 'let' to avoid redeclaration issues with multiple script tags
     var flightsByDate = {};
     var allDates = [];
     var currentFlightData = null;
@@ -871,10 +870,6 @@
     var qrDatabase = null;
 
     // ========== QR DATABASE FUNCTIONS ==========
-    
-    /**
-     * Returns the QR Firestore database
-     */
     function getQRDatabase() {
         if (!window.qrDb) {
             console.error("QR Database not found in window.qrDb");
@@ -953,7 +948,7 @@
                                 passengers: [],
                                 firstPax: null,
                                 lastPax: null,
-                                isClosed: false // Default to open
+                                isClosed: false
                             });
                         }
                         
@@ -970,7 +965,7 @@
                             flightNo: data.flightNo || '',
                             date: data.date || '',
                             timestamp: data.timestamp || null,
-                            code: data.hiddenCode || '' // Using hiddenCode field from Firebase
+                            code: data.hiddenCode || ''
                         });
                         
                         if (data.entryTime) {
@@ -987,7 +982,6 @@
                 console.log(`✅ QR Database: ${snapshot.size} records found`);
             }
             
-            // Load flight status from FlightReports collection
             await loadFlightStatuses();
             
             allDates = Object.keys(flightsByDate).sort().reverse();
@@ -1016,7 +1010,6 @@
         }
     }
 
-    // Load flight statuses from FlightReports collection
     async function loadFlightStatuses() {
         try {
             var reportsSnapshot = await qrDatabase.collection('FlightReports').get();
@@ -1027,14 +1020,12 @@
                 var reportDate = reportData.date;
                 var isClosed = reportData.isClosed || false;
                 
-                // Format date to match our date format
                 var formattedDate = reportDate;
                 if (reportDate.includes('-')) {
                     var parts = reportDate.split('-');
                     formattedDate = parts[0] + '-' + parts[1] + '-' + parts[2];
                 }
                 
-                // Find matching flight in our data
                 if (flightsByDate[formattedDate]) {
                     flightsByDate[formattedDate].forEach(function(flight, key) {
                         if (flight.flightNo === flightNo) {
@@ -1113,13 +1104,11 @@
         var loadBtn = document.getElementById('loadQrBtn');
         var selectedDate = qrDateSelect.value;
         
-        // Update flight filter dropdown
         var flightSelect = document.getElementById('qrFlightSelect');
         
         if (selectedDate && flightsByDate[selectedDate]) {
             loadBtn.disabled = false;
             
-            // Get unique flights for this date
             var flights = new Set();
             flightsByDate[selectedDate].forEach(function(flight) {
                 flights.add(flight.flightNo);
@@ -1137,7 +1126,6 @@
             flightSelect.disabled = true;
         }
         
-        // Clear previous QR codes when date changes
         document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a date and click Generate to create QR codes</div>';
         document.getElementById('sortControls').style.display = 'none';
         document.getElementById('statsSection').style.display = 'none';
@@ -1161,7 +1149,6 @@
         var flights = flightsByDate[selectedDate];
         var flightData = null;
         
-        // Find the flight data
         flights.forEach(function(flight) {
             if (flight.flightNo === selectedFlight) {
                 flightData = flight;
@@ -1179,7 +1166,6 @@
         document.getElementById('databaseBadge').style.display = 'inline-block';
         
         try {
-            // Update UI with loaded data
             document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
             document.getElementById('flightNoDisplay').textContent = selectedFlight;
             document.getElementById('dateDisplay').textContent = selectedDate;
@@ -1192,22 +1178,17 @@
             document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
             document.getElementById('quickShiftText').innerHTML = selectedFlight + ' <span style="font-size:10px; opacity:0.8;">(QR Database)</span>';
             
-            // Set status based on flight.isClosed
             if (flightData.isClosed) {
                 document.getElementById('flightStatus').textContent = 'CLOSED';
                 document.getElementById('flightStatus').className = 'flight-status status-closed';
                 document.getElementById('printReportBtn').disabled = false;
                 document.getElementById('notClosedMessage').style.display = 'none';
-                
-                // Show passenger table
                 displayPassengerTable(flightData.passengers);
             } else {
                 document.getElementById('flightStatus').textContent = 'OPEN';
                 document.getElementById('flightStatus').className = 'flight-status status-open';
                 document.getElementById('printReportBtn').disabled = true;
                 document.getElementById('notClosedMessage').style.display = 'block';
-                
-                // Show "flight not closed" message in table
                 showNotClosedMessage();
             }
             
@@ -1216,7 +1197,6 @@
         }
     }
 
-    // Display message when flight is not closed
     function showNotClosedMessage() {
         var tbody = document.getElementById('passengerTableBody');
         tbody.innerHTML = `
@@ -1265,7 +1245,6 @@
         document.getElementById('tableContainer').style.display = 'block';
     }
 
-    // ========== MESSAGE FUNCTIONS ==========
     function showMessage(message, type) {
         var container = document.getElementById('messageContainer');
         var messageDiv = document.createElement('div');
@@ -1284,9 +1263,6 @@
         document.getElementById('messageContainer').innerHTML = '';
     }
 
-    // ========== QR CODE GENERATION FUNCTIONS ==========
-    
-    // Format timestamp
     function formatTimestamp(timestamp) {
         if (!timestamp) return 'No timestamp';
         try {
@@ -1304,7 +1280,6 @@
         }
     }
 
-    // Load QR codes for selected date
     async function loadQRCodes() {
         clearMessages();
         
@@ -1326,10 +1301,8 @@
         `;
         
         try {
-            // Clear previous data
             allQRCodes = [];
             
-            // Get QR database reference
             qrDatabase = getQRDatabase();
             
             if (!qrDatabase) {
@@ -1338,7 +1311,6 @@
             
             console.log(`🔍 Loading code fields from KoveliPass collection for date: ${selectedDate}`);
             
-            // Direct query to Firebase for the selected date
             var snapshot = await qrDatabase.collection('KoveliPass')
                 .where('date', '==', selectedDate)
                 .get();
@@ -1351,12 +1323,9 @@
             
             console.log(`Found ${snapshot.size} records for date ${selectedDate}`);
             
-            // Process each document
             snapshot.forEach(doc => {
                 var data = doc.data();
-                
-                // Get the code field from Firebase (hiddenCode field)
-                var code = data.hiddenCode || '';  // This is the hiddenCode field from Firebase
+                var code = data.hiddenCode || '';
                 
                 allQRCodes.push({
                     id: doc.id,
@@ -1366,12 +1335,17 @@
                     flightNo: data.flightNo || 'N/A',
                     date: data.date || selectedDate,
                     entryTime: data.entryTime || '',
-                    code: code,  // Store the code for QR generation
+                    code: code,
                     timestamp: data.timestamp || null
                 });
             });
             
+            // Reset filtered codes to all codes initially
             filteredQRCodes = [...allQRCodes];
+            
+            // Reset flight filter dropdown to "All Flights"
+            var flightSelect = document.getElementById('qrFlightSelect');
+            flightSelect.value = '';
             
             // Sort by timestamp (newest first)
             filteredQRCodes.sort(function(a, b) {
@@ -1380,7 +1354,6 @@
                 return timeB - timeA;
             });
             
-            // Update UI
             document.getElementById('sortControls').style.display = 'flex';
             document.getElementById('statsSection').style.display = 'flex';
             
@@ -1398,7 +1371,7 @@
         }
     }
 
-    // Filter QR codes by flight - FIXED VERSION
+    // FIXED: Filter QR codes by flight - Now properly updates display
     function filterQRCodes() {
         var flightSelect = document.getElementById('qrFlightSelect');
         var selectedFlight = flightSelect.value;
@@ -1418,12 +1391,16 @@
         
         updateStats();
         
-        // IMPORTANT: Call sortAndDisplayQRCodes to refresh the display
-        // This will use the current sort setting and display the filtered codes
+        // Always sort and display the filtered codes
+        // Use the current sort setting
         sortAndDisplayQRCodes();
+        
+        // Show a message if no results
+        if (filteredQRCodes.length === 0) {
+            showMessage(`No records found for flight ${selectedFlight}`, 'warning');
+        }
     }
 
-    // Sort and display QR codes
     function sortAndDisplayQRCodes() {
         currentQRSort = document.getElementById('sortSelect').value;
         
@@ -1483,11 +1460,9 @@
         displayQRCodes(sortedCodes);
     }
 
-    // Display QR codes using the code field
     function displayQRCodes(codesToDisplay) {
         var container = document.getElementById('qrContainer');
         
-        // Update current count display
         document.getElementById('currentCount').textContent = codesToDisplay.length;
         document.getElementById('totalCount').textContent = allQRCodes.length;
         
@@ -1496,7 +1471,6 @@
             return;
         }
         
-        // Create a grid container
         container.innerHTML = '';
         
         codesToDisplay.forEach(function(item, index) {
@@ -1504,7 +1478,6 @@
             card.className = 'qr-card';
             card.id = 'card-' + item.id;
             
-            // Use the code field for QR generation
             var qrCodeData = item.code || '';
             
             card.innerHTML = `
@@ -1546,7 +1519,6 @@
             
             container.appendChild(card);
             
-            // Generate QR code using the code field
             try {
                 if (qrCodeData) {
                     new QRCode(document.getElementById('qr-' + index), {
@@ -1558,7 +1530,6 @@
                         correctLevel: QRCode.CorrectLevel.H
                     });
                 } else {
-                    // Show placeholder if no code
                     document.getElementById('qr-' + index).innerHTML = '<div style="color: #999; padding: 20px; text-align: center;">No code</div>';
                 }
             } catch (qrError) {
@@ -1570,7 +1541,6 @@
         document.getElementById('qrCodes').textContent = codesToDisplay.length;
     }
 
-    // Update statistics
     function updateStats() {
         document.getElementById('statsSection').style.display = 'flex';
         document.getElementById('totalCodes').textContent = allQRCodes.length;
@@ -1578,14 +1548,12 @@
         document.getElementById('qrCodes').textContent = filteredQRCodes.length;
     }
 
-    // Print report function - only works if flight is closed
     function printReport() {
         if (!currentFlightData) { 
             alert('No flight data to print'); 
             return; 
         }
         
-        // Check if flight is closed
         if (!currentFlightData.isClosed) {
             alert('Flight is not closed yet. Report can only be printed after the flight is closed.');
             return;
@@ -1720,14 +1688,12 @@
         printWindow.document.close();
     }
 
-    // Initialize
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(function() {
             loadDates();
         }, 1000);
     });
 
-    // Global functions - make sure all are attached to window
     window.loadDates = loadDates; 
     window.onDateSelected = onDateSelected; 
     window.onFlightSelected = onFlightSelected;
