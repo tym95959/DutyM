@@ -1336,36 +1336,42 @@
     }
 
     /**
-     * Extract PNR from hiddenCode for each passenger
-     * Looks for a string containing 'MLE' and extracts the 6-7 characters before it
-     * @param {string} hiddenCode - The hidden code from Firebase for a specific passenger
-     * @returns {string} - Extracted PNR or empty string if not found
-     */
-    function extractPNRFromHiddenCode(hiddenCode) {
-        if (!hiddenCode || typeof hiddenCode !== 'string' || hiddenCode.trim() === '') {
-            return '';
-        }
-        
-        // Convert to lowercase for easier matching, but return uppercase
-        const lowerCode = hiddenCode.toLowerCase().trim();
-        
-        // Method 1: Look for pattern where PNR is before "mle" with possible space
-        // This matches "flacy4 mle" pattern
-        const spacePattern = /([a-z0-9]{6,7})\s+mle/;
-        const spaceMatch = lowerCode.match(spacePattern);
-        if (spaceMatch && spaceMatch[1]) {
-            return spaceMatch[1].toUpperCase();
-        }
-        
-        // Method 2: Look for pattern where PNR is directly before "mle" (no space)
-        // This matches "flacy4mle" pattern
+     /**
+ * Extract PNR from hiddenCode for each passenger
+ * Looks for a string containing 'MLE' and extracts the 6-7 characters before it
+ * If result is 7 characters, removes the first character to make it 6
+ * @param {string} hiddenCode - The hidden code from Firebase for a specific passenger
+ * @returns {string} - Extracted PNR (always 6 characters) or empty string if not found
+ */
+function extractPNRFromHiddenCode(hiddenCode) {
+    if (!hiddenCode || typeof hiddenCode !== 'string' || hiddenCode.trim() === '') {
+        return '';
+    }
+    
+    // Convert to lowercase for easier matching, but return uppercase
+    const lowerCode = hiddenCode.toLowerCase().trim();
+    let pnr = '';
+    
+    // Method 1: Look for pattern where PNR is before "mle" with possible space
+    // This matches "flacy4 mle" pattern
+    const spacePattern = /([a-z0-9]{6,7})\s+mle/;
+    const spaceMatch = lowerCode.match(spacePattern);
+    if (spaceMatch && spaceMatch[1]) {
+        pnr = spaceMatch[1];
+    }
+    
+    // Method 2: Look for pattern where PNR is directly before "mle" (no space)
+    // This matches "flacy4mle" pattern
+    if (!pnr) {
         const directPattern = /([a-z0-9]{6,7})mle/;
         const directMatch = lowerCode.match(directPattern);
         if (directMatch && directMatch[1]) {
-            return directMatch[1].toUpperCase();
+            pnr = directMatch[1];
         }
-        
-        // Method 3: Find "mle" and extract the word before it
+    }
+    
+    // Method 3: Find "mle" and extract the word before it
+    if (!pnr) {
         const mleIndex = lowerCode.indexOf('mle');
         if (mleIndex > 0) {
             // Look backwards to find the start of the word
@@ -1379,32 +1385,67 @@
                 const possiblePNR = hiddenCode.substring(start, mleIndex);
                 // Check if it's a reasonable length (4-8 characters)
                 if (possiblePNR.length >= 4 && possiblePNR.length <= 8) {
-                    return possiblePNR.toUpperCase();
+                    pnr = possiblePNR;
                 }
             }
         }
-        
-        // Method 4: If the string contains "mle", try to extract from the beginning
-        if (lowerCode.includes('mle')) {
-            // Split by spaces and look for a word that might be the PNR
-            const words = lowerCode.split(/\s+/);
-            for (let i = 0; i < words.length; i++) {
-                const word = words[i];
-                // If this word contains "mle", extract the part before it
-                if (word.includes('mle')) {
-                    const mlePos = word.indexOf('mle');
-                    if (mlePos > 0) {
-                        const possiblePNR = word.substring(0, mlePos);
-                        if (possiblePNR.length >= 4 && possiblePNR.length <= 8) {
-                            return possiblePNR.toUpperCase();
-                        }
+    }
+    
+    // Method 4: If the string contains "mle", try to extract from the beginning
+    if (!pnr && lowerCode.includes('mle')) {
+        // Split by spaces and look for a word that might be the PNR
+        const words = lowerCode.split(/\s+/);
+        for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+            // If this word contains "mle", extract the part before it
+            if (word.includes('mle')) {
+                const mlePos = word.indexOf('mle');
+                if (mlePos > 0) {
+                    const possiblePNR = word.substring(0, mlePos);
+                    if (possiblePNR.length >= 4 && possiblePNR.length <= 8) {
+                        pnr = possiblePNR;
+                        break;
                     }
                 }
             }
         }
-        
-        return '';
     }
+    
+    // If we found a PNR, process it to ensure it's 6 characters
+    if (pnr) {
+        // Convert to uppercase
+        pnr = pnr.toUpperCase();
+        
+        // If it's 7 characters, remove the first character to make it 6
+        if (pnr.length === 7) {
+            pnr = pnr.substring(1);
+            console.log(`PNR was 7 chars, removed first letter: ${pnr}`);
+        }
+        
+        // If it's more than 7 characters, try to extract the last 6 characters
+        // (assuming the PNR might be at the end of a longer string)
+        if (pnr.length > 7) {
+            // Look for a 6-character alphanumeric sequence within the string
+            const alphanumericPattern = /[A-Z0-9]{6}/;
+            const alphanumericMatch = pnr.match(alphanumericPattern);
+            if (alphanumericMatch) {
+                pnr = alphanumericMatch[0];
+            } else {
+                // If no clear 6-character sequence, take the last 6 characters
+                pnr = pnr.slice(-6);
+            }
+        }
+        
+        // Final check: ensure it's exactly 6 characters
+        if (pnr.length > 6) {
+            pnr = pnr.slice(0, 6);
+        }
+        
+        return pnr;
+    }
+    
+    return '';
+}
 
     // Modified displayPassengerTable function with duplicate highlighting and FZ-specific PNR display
     function displayPassengerTable(passengers) {
