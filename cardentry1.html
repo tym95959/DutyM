@@ -1737,6 +1737,15 @@ document.addEventListener('DOMContentLoaded', function() {
     updateErrorSummary();
 });
 
+// ========== CHECK IF SHIFT IS OPEN ==========
+function isShiftOpen() {
+    const isOpen = currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING';
+    if (!isOpen) {
+        alert('⚠️ NO SHIFT OPEN\n\nPlease open a shift before entering passenger data.\nUse the Shift End button or open a shift from the dashboard.');
+    }
+    return isOpen;
+}
+
 // ========== LOGIN CHECK FUNCTION ==========
 function checkLoginStatus() {
     try {
@@ -1853,7 +1862,7 @@ function createDummyEntry() {
     }
     
     if (!currentShiftData.shift || (currentShiftData.shift !== 'MORNING' && currentShiftData.shift !== 'EVENING')) {
-        showTemporaryNotification('⚠️ Please wait for valid shift data to load', 'warning');
+        alert('⚠️ NO SHIFT OPEN\n\nPlease open a shift before creating entries.');
         return;
     }
     
@@ -2918,6 +2927,14 @@ function cancelEditing() {
 
 // ========== GUEST MODE FUNCTIONS ==========
 function toggleGuestMode(passengerId, checked) {
+    if (!isShiftOpen()) {
+        // Uncheck the checkbox since shift isn't open
+        document.querySelectorAll('.guest-checkbox').forEach(cb => {
+            cb.checked = false;
+        });
+        return;
+    }
+    
     const guestIndicator = document.getElementById('guestModeIndicator');
     const guestModeText = document.getElementById('guestModeText');
     const codeField = document.getElementById('code');
@@ -3488,6 +3505,10 @@ function createEditableCell(text, entryId, field, isSaved, className = '') {
     
     cell.onclick = function(e) { 
         if (!e.target.classList.contains('editable-input')) {
+            if (!isShiftOpen() && !isSaved) {
+                alert('⚠️ NO SHIFT OPEN\n\nPlease open a shift before editing entries.');
+                return;
+            }
             makeEditable(this, entryId, field, isSaved); 
         }
     };
@@ -3857,6 +3878,10 @@ async function retrySave(id) {
 
 // ========== FIXED APPROVE ENTRY FUNCTION - PRESERVES HIDDEN CODE ==========
 async function approveEntry(id) {
+    if (!isShiftOpen()) {
+        return; // isShiftOpen already shows alert
+    }
+    
     try {
         const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
         if (entryIndex === -1) return;
@@ -4160,6 +4185,11 @@ function showTemporaryNotification(message, type = 'info') {
 
 // ========== PARSE FUNCTION ==========
 function parseAndAddToList() {
+    if (!isShiftOpen()) {
+        document.getElementById('code').value = '';
+        return false;
+    }
+    
     const codeInput = document.getElementById('code').value.toUpperCase();
     
     if (!codeInput) return false;
