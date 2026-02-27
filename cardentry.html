@@ -1737,6 +1737,15 @@ document.addEventListener('DOMContentLoaded', function() {
     updateErrorSummary();
 });
 
+// ========== CHECK IF SHIFT IS OPEN ==========
+function isShiftOpen() {
+    const isOpen = currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING';
+    if (!isOpen) {
+        alert('⚠️ NO SHIFT OPEN\n\nPlease open a shift before entering passenger data.\nopen a shift from the dashboard.');
+    }
+    return isOpen;
+}
+
 // ========== LOGIN CHECK FUNCTION ==========
 function checkLoginStatus() {
     try {
@@ -1853,7 +1862,7 @@ function createDummyEntry() {
     }
     
     if (!currentShiftData.shift || (currentShiftData.shift !== 'MORNING' && currentShiftData.shift !== 'EVENING')) {
-        showTemporaryNotification('⚠️ Please wait for valid shift data to load', 'warning');
+        alert('⚠️ NO SHIFT OPEN\n\nPlease open a shift before creating entries.');
         return;
     }
     
@@ -2353,7 +2362,8 @@ async function saveEntryToFirebase(entry) {
             date: firebaseData.date,
             pName: firebaseData.pName,
             seatNo: firebaseData.seatNo || '(no seat)',
-            pax: firebaseData.pax
+            pax: firebaseData.pax,
+            hiddenCode: firebaseData.hiddenCode ? firebaseData.hiddenCode.substring(0, 20) + '...' : 'none'
         });
         
         // Save to the appropriate collection (using 'KoveliPass' as collection name)
@@ -2364,16 +2374,17 @@ async function saveEntryToFirebase(entry) {
         console.log(`✅ Entry saved to ${dbName} with ID:`, docRef.id);
         console.log(`   Flight: ${entry.flightNo}, Date: ${entry.date}, Seat: ${entry.seatNo || 'none'}, PAX: ${firebaseData.pax}`);
         
-        // Also save hidden code to cardDb if needed
-        if (entry.hiddenCode && entry.flightNo && entry.date && typeof cardDb !== 'undefined') {
+        // Also save hidden code to cardDb with unique document ID
+        if (entry.hiddenCode && entry.hiddenCode.trim() !== '' && entry.flightNo && entry.date && typeof cardDb !== 'undefined') {
             try {
-                await cardDb.collection('QrCards').doc(`${entry.date}_${entry.flightNo}`).set({
-                    code: entry.hiddenCode,
-                    flightNo: entry.flightNo,
-                    date: entry.date,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-                console.log('✅ Hidden code saved to cardDb');
+                await saveHiddenCodeToCardDB(
+                    entry.hiddenCode, 
+                    entry.flightNo, 
+                    entry.date, 
+                    entry.pName, 
+                    entry.seatNo
+                );
+                console.log('✅ Hidden code saved to cardDb with unique ID');
             } catch (codeError) {
                 console.error('Error saving hidden code:', codeError);
             }
@@ -2397,6 +2408,72 @@ async function saveEntryToFirebase(entry) {
             flightNo: entry?.flightNo,
             date: entry?.date
         };
+    }
+}
+
+// ========== FIXED HIDDEN CODE SAVING - CREATES UNIQUE DOCUMENTS ==========
+async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date, passengerName = '', seatNo = '') {
+    if (!hiddenCodeValue || !hiddenCodeValue.trim()) {
+        console.log('No hidden code to save');
+        return false;
+    }
+    
+    if (!flightNo || !flightNo.trim()) {
+        console.log('No flight number for hidden code save');
+        return false;
+    }
+    
+    if (!date || !date.trim()) {
+        console.log('No date for hidden code save');
+        return false;
+    }
+    
+    if (typeof cardDb === 'undefined') {
+        console.error('❌ cardDb not initialized');
+        return false;
+    }
+    
+    const cleanHiddenCode = hiddenCodeValue.trim();
+    const cleanFlightNo = flightNo.trim();
+    
+    let cleanDate = '';
+    if (date) {
+        cleanDate = date.replace(/[^0-9]/g, '');
+    } else {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        cleanDate = `${year}${month}${day}`;
+    }
+    
+    // Create a unique ID using timestamp and random string to prevent overwrites
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 10);
+    const docId = `${cleanDate}_${cleanFlightNo}_${timestamp}_${randomId}`;
+    
+    try {
+        await cardDb.collection('QrCards').doc(docId).set({
+            code: cleanHiddenCode,
+            flightNo: cleanFlightNo,
+            date: cleanDate,
+            passengerName: passengerName || '',
+            seatNo: seatNo || '',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            createdAt: new Date().toISOString(),
+            uniqueId: docId,
+            savedBy: currentUser.name || currentUser.username || 'UNKNOWN',
+            savedByRCNo: currentUser.rcno || 'N/A',
+            codeLength: cleanHiddenCode.length,
+            codePrefix: cleanHiddenCode.substring(0, 10) // First 10 chars for identification
+        });
+        
+        console.log('✅ Code saved to cardentryqr database with ID:', docId);
+        console.log('   Code preview:', cleanHiddenCode.substring(0, 30) + '...');
+        return true;
+    } catch (error) {
+        console.error('❌ Error saving code:', error);
+        return false;
     }
 }
 
@@ -2848,59 +2925,16 @@ function cancelEditing() {
     }
 }
 
-// ========== HIDDEN CODE SAVING ==========
-async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date) {
-    if (!hiddenCodeValue || !hiddenCodeValue.trim()) {
-        return false;
-    }
-    
-    if (!flightNo || !flightNo.trim()) {
-        return false;
-    }
-    
-    if (!date || !date.trim()) {
-        return false;
-    }
-    
-    if (typeof cardDb === 'undefined') {
-        console.error('❌ cardDb not initialized');
-        return false;
-    }
-    
-    const cleanHiddenCode = hiddenCodeValue.trim();
-    const cleanFlightNo = flightNo.trim();
-    
-    let cleanDate = '';
-    if (date) {
-        cleanDate = date.replace(/[^0-9]/g, '');
-    } else {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        cleanDate = `${year}${month}${day}`;
-    }
-    
-    const docId = `${cleanDate}_${cleanFlightNo}`;
-    
-    try {
-        await cardDb.collection('QrCards').doc(docId).set({
-            code: cleanHiddenCode,
-            flightNo: cleanFlightNo,
-            date: cleanDate,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        
-        console.log('✅ Code saved to cardentryqr database');
-        return true;
-    } catch (error) {
-        console.error('❌ Error saving code:', error);
-        return false;
-    }
-}
-
 // ========== GUEST MODE FUNCTIONS ==========
 function toggleGuestMode(passengerId, checked) {
+    if (!isShiftOpen()) {
+        // Uncheck the checkbox since shift isn't open
+        document.querySelectorAll('.guest-checkbox').forEach(cb => {
+            cb.checked = false;
+        });
+        return;
+    }
+    
     const guestIndicator = document.getElementById('guestModeIndicator');
     const guestModeText = document.getElementById('guestModeText');
     const codeField = document.getElementById('code');
@@ -3234,6 +3268,9 @@ function showErrorDetails() {
                         
                         <span style="color: #8b6913;">PAX:</span>
                         <span>${entry.pax || '—'}</span>
+                        
+                        <span style="color: #8b6913;">Code:</span>
+                        <span>${entry.hiddenCode ? entry.hiddenCode.substring(0, 20) + '...' : '—'}</span>
                     </div>
                 </div>
                 
@@ -3468,6 +3505,10 @@ function createEditableCell(text, entryId, field, isSaved, className = '') {
     
     cell.onclick = function(e) { 
         if (!e.target.classList.contains('editable-input')) {
+            if (!isShiftOpen() && !isSaved) {
+                alert('⚠️ NO SHIFT OPEN\n\nPlease open a shift before editing entries.');
+                return;
+            }
             makeEditable(this, entryId, field, isSaved); 
         }
     };
@@ -3835,8 +3876,12 @@ async function retrySave(id) {
     }, 100);
 }
 
-// ========== OPTIMIZED APPROVE ENTRY FUNCTION - MOVES IMMEDIATELY ==========
+// ========== FIXED APPROVE ENTRY FUNCTION - PRESERVES HIDDEN CODE ==========
 async function approveEntry(id) {
+    if (!isShiftOpen()) {
+        return; // isShiftOpen already shows alert
+    }
+    
     try {
         const entryIndex = pendingPasses.findIndex(entry => entry.id === id);
         if (entryIndex === -1) return;
@@ -3915,7 +3960,10 @@ async function approveEntry(id) {
         }
         
         const shiftToUse = entry.shift || (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING' ? currentShiftData.shift : '');
-        const hiddenCode = document.getElementById('hiddenCode')?.value || entry.hiddenCode || '';
+        
+        // IMPORTANT: Keep the entry's own hiddenCode, don't overwrite with the global one
+        // The hiddenCode is already set in the entry from when it was scanned
+        const hiddenCode = entry.hiddenCode || '';
         
         if (!entry.enteredBy) {
             entry.enteredBy = currentUser.name || currentUser.username || 'UNKNOWN';
@@ -3938,7 +3986,7 @@ async function approveEntry(id) {
             errorCode: null,
             errorMessage: null,
             errorTimestamp: null,
-            hiddenCode: hiddenCode,
+            hiddenCode: hiddenCode, // Use the entry's own hidden code
             isGuest: entry.isGuest === true ? true : false,
             mainPassengerId: entry.mainPassengerId || '',
             mainPassengerName: entry.mainPassengerName || '',
@@ -3949,6 +3997,8 @@ async function approveEntry(id) {
             enteredByLevel: entry.enteredByLevel || currentUser.level || 'OPERATOR',
             enteredAt: entry.enteredAt || new Date().toISOString()
         };
+        
+        console.log('✅ Approving entry with hidden code:', hiddenCode ? hiddenCode.substring(0, 30) + '...' : 'none');
         
         // IMMEDIATELY move to saved tab
         savedPasses.push(approvedEntry);
@@ -3964,12 +4014,6 @@ async function approveEntry(id) {
         
         // Start background save immediately (no delay)
         backgroundSaveToFirebase(approvedEntry);
-        
-        if (hiddenCode && flightNoToUse && dateToUse) {
-            setTimeout(() => {
-                saveHiddenCodeToCardDB(hiddenCode, flightNoToUse, dateToUse);
-            }, 200);
-        }
         
     } catch (error) {
         console.error('Error in approveEntry:', error);
@@ -4008,6 +4052,7 @@ function printRow(id, isSaved = false) {
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Entered By:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.enteredBy || 'UNKNOWN'} (${entry.enteredByUsername || ''}) - ${entry.enteredByLevel || ''}</td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>RC No:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.enteredByRCNo || 'N/A'}</td></tr>
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Entered At:</strong></td><td style="padding: 8px; border: 1px solid #ccc;">${entry.enteredAt ? new Date(entry.enteredAt).toLocaleString() : '—'}</td></tr>
+                ${entry.hiddenCode ? `<tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Hidden Code:</strong></td><td style="padding: 8px; border: 1px solid #ccc; font-family: monospace; font-size: 10px;">${entry.hiddenCode}</td></tr>` : ''}
                 ${entry.firebaseError ? `
                 <tr><td style="padding: 8px; border: 1px solid #ccc;"><strong>Error:</strong></td><td style="padding: 8px; border: 1px solid #ccc; color: #c68b5e;">[${entry.errorCode || getErrorCode(entry.firebaseReason)}] ${entry.firebaseError}</td></tr>
                 ` : ''}
@@ -4101,7 +4146,8 @@ function addToTable(data) {
     
     const dbName = getFirestoreNameForFlight(newEntry.flightNo);
     const seatInfo = newEntry.seatNo ? `Seat: ${newEntry.seatNo}` : 'No seat number (SQ/UL flight)';
-    showTemporaryNotification(`✓ BOARDING PASS ADDED - ${seatInfo}, PAX: ${newEntry.pax} - Will save to ${dbName} when approved`, 'success');
+    const codeInfo = newEntry.hiddenCode ? `Code: ${newEntry.hiddenCode.substring(0, 20)}...` : 'No code';
+    showTemporaryNotification(`✓ BOARDING PASS ADDED - ${seatInfo}, PAX: ${newEntry.pax}, ${codeInfo} - Will save to ${dbName} when approved`, 'success');
 }
 
 function deleteEntry(id, isSaved = false) {
@@ -4139,6 +4185,11 @@ function showTemporaryNotification(message, type = 'info') {
 
 // ========== PARSE FUNCTION ==========
 function parseAndAddToList() {
+    if (!isShiftOpen()) {
+        document.getElementById('code').value = '';
+        return false;
+    }
+    
     const codeInput = document.getElementById('code').value.toUpperCase();
     
     if (!codeInput) return false;
@@ -4212,7 +4263,7 @@ function parseAndAddToList() {
                 date: currentShiftData.date || '',
                 shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
                 entryTime: entryTime,
-                hiddenCode: codeInput,
+                hiddenCode: codeInput, // Store the full code
                 isGuest: false,
                 mainPassengerId: '',
                 mainPassengerName: '',
@@ -4463,7 +4514,7 @@ function parseAndAddToList() {
                 date: currentShiftData.date || '',
                 shift: (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') ? currentShiftData.shift : '',
                 entryTime: entryTime,
-                hiddenCode: codeInput,
+                hiddenCode: codeInput, // Store the full code
                 isGuest: false,
                 mainPassengerId: '',
                 mainPassengerName: '',
@@ -4495,6 +4546,8 @@ function parseAndAddToList() {
             parsedEntry.pax = '1';
             console.log(`✅ Setting PAX to 1 for ${flightPrefix} flight`);
         }
+        
+        console.log('📄 Parsed entry with hidden code:', parsedEntry.hiddenCode ? parsedEntry.hiddenCode.substring(0, 30) + '...' : 'none');
         
         if (guestModeActive && selectedGuestPassengerId) {
             const result = addGuestToPassenger(selectedGuestPassengerId, parsedEntry);
