@@ -856,7 +856,7 @@
     </div>
 
     <script>
-    // ========== GLOBAL VARIABLES ==========
+        // ========== GLOBAL VARIABLES ==========
     var flightsByDate = {};
     var allDates = [];
     var currentFlightData = null;
@@ -1284,6 +1284,7 @@
         }
     }
 
+    // ========== UPDATED FUNCTION - PRESERVES FLIGHT FILTER ==========
     async function loadQRCodes() {
         clearMessages();
         
@@ -1347,14 +1348,41 @@
             // Log all flight numbers to debug
             console.log("All flight numbers in data:", allQRCodes.map(item => item.flightNo));
             
+            // Get the currently selected flight BEFORE resetting filtered codes
+            var flightSelect = document.getElementById('qrFlightSelect');
+            var currentSelectedFlight = flightSelect.value; // Save current selection
+            
             // Reset filtered codes to all codes initially
             filteredQRCodes = [...allQRCodes];
             
-            // Reset flight filter dropdown to "All Flights"
-            var flightSelect = document.getElementById('qrFlightSelect');
-            flightSelect.value = '';
+            // Populate flight dropdown with available flights from loaded data
+            var flights = new Set();
+            allQRCodes.forEach(function(item) {
+                if (item.flightNo) {
+                    flights.add(item.flightNo.toString().trim());
+                }
+            });
             
-            // Sort by timestamp (newest first)
+            // Rebuild the flight dropdown but PRESERVE the selected value
+            var options = '<option value="">All Flights</option>';
+            Array.from(flights).sort().forEach(function(flight) {
+                // Check if this flight matches the previously selected one
+                var selected = (flight === currentSelectedFlight) ? 'selected' : '';
+                options += `<option value="${flight}" ${selected}>${flight}</option>`;
+            });
+            flightSelect.innerHTML = options;
+            flightSelect.disabled = false;
+            
+            // Apply the saved flight filter if it exists and is not "All Flights"
+            if (currentSelectedFlight) {
+                filteredQRCodes = allQRCodes.filter(function(item) { 
+                    var itemFlight = (item.flightNo || '').toString().trim();
+                    return itemFlight === currentSelectedFlight.toString().trim();
+                });
+                console.log(`Applied saved filter for flight ${currentSelectedFlight}: ${filteredQRCodes.length} records`);
+            }
+            
+            // Sort by timestamp (newest first) as default
             filteredQRCodes.sort(function(a, b) {
                 var timeA = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime()) : 0;
                 var timeB = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime()) : 0;
@@ -1367,7 +1395,7 @@
             updateStats();
             displayQRCodes(filteredQRCodes);
             
-            showMessage(`Successfully loaded ${filteredQRCodes.length} records.`, 'success');
+            showMessage(`Successfully loaded ${allQRCodes.length} records.`, 'success');
             
         } catch (error) {
             console.error("Error loading codes:", error);
