@@ -778,9 +778,9 @@
                         </div>
                         
                         <div class="form-group" style="flex: 2;">
-                            <label>✈ FILTER BY FLIGHT</label>
-                            <select id="qrFlightSelect" class="form-control" onchange="filterQRCodes()">
-                                <option value="">All Flights</option>
+                            <label>✈ SELECT FLIGHT</label>
+                            <select id="qrFlightSelect" class="form-control" onchange="onQrFlightSelected()" disabled>
+                                <option value="">-- Select date first --</option>
                             </select>
                         </div>
                         
@@ -822,7 +822,7 @@
                 <!-- QR Codes Container -->
                 <div id="qrContainer" class="qr-container">
                     <div class="qr-no-data">
-                        Select a date to view QR codes
+                        Select a date and flight to view QR codes
                     </div>
                 </div>
             </div>
@@ -843,6 +843,7 @@
     var currentQRSort = 'timestamp_desc';
     var qrDatabase = null;
     var currentSelectedDate = null; // Track current selected date for QR tab
+    var currentSelectedFlight = null; // Track current selected flight for QR tab
 
     // ========== QR DATABASE FUNCTIONS ==========
     function getQRDatabase() {
@@ -870,10 +871,6 @@
                 loadDates();
             } else {
                 updateQrDateSelect();
-                // Auto-load if a date was previously selected
-                if (currentSelectedDate) {
-                    loadQRCodesForDate(currentSelectedDate);
-                }
             }
         }
     }
@@ -1022,6 +1019,7 @@
 
     function updateQrDateSelect() {
         var qrDateSelect = document.getElementById('qrDateSelect');
+        var qrFlightSelect = document.getElementById('qrFlightSelect');
         
         if (allDates.length === 0) {
             qrDateSelect.innerHTML = '<option value="">❌ No dates found</option>';
@@ -1032,6 +1030,21 @@
             });
             qrDateSelect.innerHTML = options;
         }
+        
+        // Reset flight select
+        qrFlightSelect.innerHTML = '<option value="">-- Select date first --</option>';
+        qrFlightSelect.disabled = true;
+        
+        // Clear any existing QR data
+        clearQRData();
+    }
+
+    function clearQRData() {
+        allQRCodes = [];
+        filteredQRCodes = [];
+        document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a date and flight to view QR codes</div>';
+        document.getElementById('sortControls').style.display = 'none';
+        document.getElementById('statsSection').style.display = 'none';
     }
 
     function onDateSelected() {
@@ -1077,55 +1090,67 @@
 
     function onQrDateSelected() {
         var qrDateSelect = document.getElementById('qrDateSelect');
+        var qrFlightSelect = document.getElementById('qrFlightSelect');
         var selectedDate = qrDateSelect.value;
         
-        currentSelectedDate = selectedDate; // Store the selected date
+        currentSelectedDate = selectedDate;
+        currentSelectedFlight = null; // Reset selected flight
         
-        var flightSelect = document.getElementById('qrFlightSelect');
+        // Clear any existing QR data
+        clearQRData();
         
         if (selectedDate && flightsByDate[selectedDate]) {
-            // Load QR codes immediately when date is selected
-            loadQRCodesForDate(selectedDate);
-            
+            // Update flight dropdown with flights for this date
             var flights = new Set();
             flightsByDate[selectedDate].forEach(function(flight) {
                 flights.add(flight.flightNo);
             });
             
-            var options = '<option value="">All Flights</option>';
+            var options = '<option value="">✈️ Select a flight</option>';
             Array.from(flights).sort().forEach(function(flight) {
                 options += `<option value="${flight}">${flight}</option>`;
             });
-            flightSelect.innerHTML = options;
-            flightSelect.disabled = false;
-        } else {
-            // Clear everything if no date selected
-            allQRCodes = [];
-            filteredQRCodes = [];
-            document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a date to view QR codes</div>';
-            document.getElementById('sortControls').style.display = 'none';
-            document.getElementById('statsSection').style.display = 'none';
+            qrFlightSelect.innerHTML = options;
+            qrFlightSelect.disabled = false;
             
-            flightSelect.innerHTML = '<option value="">All Flights</option>';
-            flightSelect.disabled = true;
+            // Show message to select a flight
+            document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a flight to view QR codes</div>';
+        } else {
+            // No date selected - reset flight dropdown
+            qrFlightSelect.innerHTML = '<option value="">-- Select date first --</option>';
+            qrFlightSelect.disabled = true;
         }
     }
 
-    // NEW FUNCTION: Load QR codes automatically when date is selected
-    async function loadQRCodesForDate(selectedDate) {
-        clearMessages();
+    // NEW FUNCTION: Called when flight is selected in QR tab
+    async function onQrFlightSelected() {
+        var qrDateSelect = document.getElementById('qrDateSelect');
+        var qrFlightSelect = document.getElementById('qrFlightSelect');
+        var selectedDate = qrDateSelect.value;
+        var selectedFlight = qrFlightSelect.value;
         
-        var qrContainer = document.getElementById('qrContainer');
-        
-        if (!selectedDate) {
+        if (!selectedDate || !selectedFlight) {
+            clearQRData();
             return;
         }
         
-        qrContainer.innerHTML = `
+        currentSelectedFlight = selectedFlight;
+        
+        // Show loading indicator
+        document.getElementById('qrContainer').innerHTML = `
             <div class="loading">
-                Loading codes from Firebase for ${selectedDate}...
+                Loading QR codes for flight ${selectedFlight} on ${selectedDate}...
             </div>
         `;
+        
+        await loadQRCodesForFlight(selectedDate, selectedFlight);
+    }
+
+    // NEW FUNCTION: Load QR codes for specific flight
+    async function loadQRCodesForFlight(selectedDate, selectedFlight) {
+        clearMessages();
+        
+        var qrContainer = document.getElementById('qrContainer');
         
         try {
             allQRCodes = [];
@@ -1136,18 +1161,19 @@
                 throw new Error("QR Database not available");
             }
             
-            console.log(`🔍 Loading code fields from KoveliPass collection for date: ${selectedDate}`);
+            console.log(`🔍 Loading codes for flight: ${selectedFlight} on date: ${selectedDate}`);
             
             var snapshot = await qrDatabase.collection('KoveliPass')
                 .where('date', '==', selectedDate)
+                .where('flightNo', '==', selectedFlight)
                 .get();
             
             if (snapshot.empty) {
-                qrContainer.innerHTML = '<div class="qr-no-data">No records found for this date in Firebase</div>';
+                qrContainer.innerHTML = '<div class="qr-no-data">No records found for this flight on the selected date</div>';
                 return;
             }
             
-            console.log(`Found ${snapshot.size} records for date ${selectedDate}`);
+            console.log(`Found ${snapshot.size} records for flight ${selectedFlight} on date ${selectedDate}`);
             
             snapshot.forEach(doc => {
                 var data = doc.data();
@@ -1166,12 +1192,8 @@
                 });
             });
             
-            // Reset filtered codes to all codes initially
+            // Set filtered codes to all codes (since we're already filtered by flight)
             filteredQRCodes = [...allQRCodes];
-            
-            // Reset flight filter dropdown to "All Flights"
-            var flightSelect = document.getElementById('qrFlightSelect');
-            flightSelect.value = '';
             
             // Sort by timestamp (newest first)
             filteredQRCodes.sort(function(a, b) {
@@ -1186,7 +1208,7 @@
             updateStats();
             displayQRCodes(filteredQRCodes);
             
-            showMessage(`Successfully loaded ${filteredQRCodes.length} records.`, 'success');
+            showMessage(`Successfully loaded ${filteredQRCodes.length} records for flight ${selectedFlight}.`, 'success');
             
         } catch (error) {
             console.error("Error loading codes:", error);
@@ -1195,45 +1217,15 @@
         }
     }
 
-    // FIXED: Filter QR codes by flight - Now properly filters and displays
+    // Update filterQRCodes function to work with the new flow
     function filterQRCodes() {
-        var flightSelect = document.getElementById('qrFlightSelect');
-        var selectedFlight = flightSelect.value;
+        // This function is now mainly for sorting, since we're already filtering by flight
+        // We'll keep it for future use if needed
+        if (allQRCodes.length === 0) return;
         
-        console.log("Filtering by flight:", selectedFlight);
-        console.log("Total allQRCodes:", allQRCodes.length);
-        
-        if (allQRCodes.length === 0) {
-            console.log("No QR codes loaded yet");
-            return;
-        }
-        
-        if (selectedFlight) {
-            // Case-insensitive comparison to handle any formatting issues
-            filteredQRCodes = allQRCodes.filter(function(item) { 
-                var itemFlight = (item.flightNo || '').toString().trim();
-                var selectedFlightTrimmed = selectedFlight.toString().trim();
-                var matches = itemFlight === selectedFlightTrimmed;
-                
-                console.log(`Comparing: "${itemFlight}" with "${selectedFlightTrimmed}" -> ${matches}`);
-                return matches;
-            });
-            
-            console.log(`Found ${filteredQRCodes.length} records for flight ${selectedFlight}`);
-        } else {
-            filteredQRCodes = [...allQRCodes];
-            console.log("Showing all flights:", filteredQRCodes.length);
-        }
-        
+        filteredQRCodes = [...allQRCodes];
         updateStats();
-        
-        // Force display update with current sort
         sortAndDisplayQRCodes();
-        
-        // Show a message if no results
-        if (filteredQRCodes.length === 0 && selectedFlight) {
-            showMessage(`No records found for flight ${selectedFlight}`, 'warning');
-        }
     }
 
     function sortAndDisplayQRCodes() {
@@ -1570,9 +1562,9 @@
     window.printReport = printReport;
     window.switchTab = switchTab;
     window.onQrDateSelected = onQrDateSelected;
+    window.onQrFlightSelected = onQrFlightSelected;
     window.filterQRCodes = filterQRCodes;
     window.sortAndDisplayQRCodes = sortAndDisplayQRCodes;
-    // Removed loadQRCodes from window object
     </script>
 </body>
 </html>
