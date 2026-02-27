@@ -414,28 +414,7 @@
             min-width: 200px;
         }
         
-        .generate-btn {
-            background: #8b1e3f;
-            color: white;
-            border: none;
-            padding: 10px 24px;
-            border-radius: 30px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s;
-            height: 40px;
-            white-space: nowrap;
-        }
-        
-        .generate-btn:hover {
-            background: #6b172f;
-        }
-        
-        .generate-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
+        /* REMOVED: generate button styles */
         
         .qr-container {
             display: grid;
@@ -782,13 +761,13 @@
             </div>
         </div>
 
-        <!-- QR CODES TAB - Fixed filtering -->
+        <!-- QR CODES TAB - Fixed filtering - Removed Generate Button -->
         <div id="qrTab" class="tab-content">
             <div class="card">
                 <!-- Message Container -->
                 <div id="messageContainer" class="message-container"></div>
                 
-                <!-- Controls -->
+                <!-- Controls - REMOVED GENERATE BUTTON -->
                 <div class="controls" style="margin-bottom: 20px;">
                     <div class="filters" style="display: flex; gap: 15px; flex-wrap: wrap;">
                         <div class="form-group qr-date-selector" style="flex: 2;">
@@ -805,12 +784,7 @@
                             </select>
                         </div>
                         
-                        <div class="form-group" style="flex: 1;">
-                            <label>&nbsp;</label>
-                            <button onclick="loadQRCodes()" id="loadQrBtn" class="generate-btn" disabled>
-                                📱 GENERATE QR CODES
-                            </button>
-                        </div>
+                        <!-- GENERATE BUTTON REMOVED -->
                     </div>
                 </div>
                 
@@ -848,7 +822,7 @@
                 <!-- QR Codes Container -->
                 <div id="qrContainer" class="qr-container">
                     <div class="qr-no-data">
-                        Select a date and click Generate to create QR codes
+                        Select a date to view QR codes
                     </div>
                 </div>
             </div>
@@ -868,6 +842,7 @@
     var filteredQRCodes = [];
     var currentQRSort = 'timestamp_desc';
     var qrDatabase = null;
+    var currentSelectedDate = null; // Track current selected date for QR tab
 
     // ========== QR DATABASE FUNCTIONS ==========
     function getQRDatabase() {
@@ -895,6 +870,10 @@
                 loadDates();
             } else {
                 updateQrDateSelect();
+                // Auto-load if a date was previously selected
+                if (currentSelectedDate) {
+                    loadQRCodesForDate(currentSelectedDate);
+                }
             }
         }
     }
@@ -1043,7 +1022,6 @@
 
     function updateQrDateSelect() {
         var qrDateSelect = document.getElementById('qrDateSelect');
-        var loadBtn = document.getElementById('loadQrBtn');
         
         if (allDates.length === 0) {
             qrDateSelect.innerHTML = '<option value="">❌ No dates found</option>';
@@ -1054,8 +1032,6 @@
             });
             qrDateSelect.innerHTML = options;
         }
-        
-        loadBtn.disabled = true;
     }
 
     function onDateSelected() {
@@ -1101,13 +1077,15 @@
 
     function onQrDateSelected() {
         var qrDateSelect = document.getElementById('qrDateSelect');
-        var loadBtn = document.getElementById('loadQrBtn');
         var selectedDate = qrDateSelect.value;
+        
+        currentSelectedDate = selectedDate; // Store the selected date
         
         var flightSelect = document.getElementById('qrFlightSelect');
         
         if (selectedDate && flightsByDate[selectedDate]) {
-            loadBtn.disabled = false;
+            // Load QR codes immediately when date is selected
+            loadQRCodesForDate(selectedDate);
             
             var flights = new Set();
             flightsByDate[selectedDate].forEach(function(flight) {
@@ -1121,183 +1099,28 @@
             flightSelect.innerHTML = options;
             flightSelect.disabled = false;
         } else {
-            loadBtn.disabled = true;
+            // Clear everything if no date selected
+            allQRCodes = [];
+            filteredQRCodes = [];
+            document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a date to view QR codes</div>';
+            document.getElementById('sortControls').style.display = 'none';
+            document.getElementById('statsSection').style.display = 'none';
+            
             flightSelect.innerHTML = '<option value="">All Flights</option>';
             flightSelect.disabled = true;
         }
-        
-        document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a date and click Generate to create QR codes</div>';
-        document.getElementById('sortControls').style.display = 'none';
-        document.getElementById('statsSection').style.display = 'none';
-        
-        // Clear data when date changes
-        allQRCodes = [];
-        filteredQRCodes = [];
     }
 
-    async function onFlightSelected() {
-        var dateSelect = document.getElementById('dateSelect');
-        var flightSelect = document.getElementById('flightSelect');
-        var selectedDate = dateSelect.value;
-        var selectedFlight = flightSelect.value;
-        
-        if (!selectedDate || !selectedFlight) {
-            document.getElementById('flightPanel').style.display = 'none';
-            document.getElementById('tableContainer').style.display = 'none';
-            return;
-        }
-        
-        document.getElementById('flightPanel').style.display = 'block';
-        document.getElementById('airlineDisplay').textContent = 'Loading...';
-        
-        var flights = flightsByDate[selectedDate];
-        var flightData = null;
-        
-        flights.forEach(function(flight) {
-            if (flight.flightNo === selectedFlight) {
-                flightData = flight;
-            }
-        });
-        
-        if (!flightData) {
-            alert('Flight data not found');
-            return;
-        }
-        
-        currentFlightData = flightData;
-        
-        document.getElementById('databaseDisplay').textContent = 'QR Database (cardentryqr)';
-        document.getElementById('databaseBadge').style.display = 'inline-block';
-        
-        try {
-            document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
-            document.getElementById('flightNoDisplay').textContent = selectedFlight;
-            document.getElementById('dateDisplay').textContent = selectedDate;
-            document.getElementById('firstPaxDisplay').textContent = flightData.firstPax || '-';
-            document.getElementById('stdDisplay').textContent = '-';
-            document.getElementById('lastPaxDisplay').textContent = flightData.lastPax || '-';
-            document.getElementById('totalPaxStat').textContent = flightData.passengers.length;
-            document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
-            document.getElementById('lastPaxStat').textContent = flightData.lastPax || '--:--';
-            document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
-            document.getElementById('quickShiftText').innerHTML = selectedFlight + ' <span style="font-size:10px; opacity:0.8;">(QR Database)</span>';
-            
-            if (flightData.isClosed) {
-                document.getElementById('flightStatus').textContent = 'CLOSED';
-                document.getElementById('flightStatus').className = 'flight-status status-closed';
-                document.getElementById('printReportBtn').disabled = false;
-                document.getElementById('notClosedMessage').style.display = 'none';
-                displayPassengerTable(flightData.passengers);
-            } else {
-                document.getElementById('flightStatus').textContent = 'OPEN';
-                document.getElementById('flightStatus').className = 'flight-status status-open';
-                document.getElementById('printReportBtn').disabled = true;
-                document.getElementById('notClosedMessage').style.display = 'block';
-                showNotClosedMessage();
-            }
-            
-        } catch (error) {
-            console.error('Error loading flight:', error);
-        }
-    }
-
-    function showNotClosedMessage() {
-        var tbody = document.getElementById('passengerTableBody');
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" class="table-not-closed">
-                    <i>⏳</i>
-                    <strong>Flight is not closed yet</strong><br>
-                    <span style="font-size: 12px; margin-top: 8px; display: block;">
-                        Passenger list will be available only after the flight is closed.
-                    </span>
-                </td>
-            </tr>
-        `;
-        document.getElementById('tableContainer').style.display = 'block';
-    }
-
-    function displayPassengerTable(passengers) {
-        var tbody = document.getElementById('passengerTableBody');
-        
-        if (!passengers || passengers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="no-data">No passengers found</td></tr>';
-            document.getElementById('tableContainer').style.display = 'block';
-            return;
-        }
-        
-        var sorted = [...passengers].sort(function(a,b) { 
-            return (a.entryTime||'').localeCompare(b.entryTime||''); 
-        });
-        var html = '';
-        
-        sorted.forEach(function(p, idx) {
-            var serial = String(idx+1).padStart(3,'0');
-            html += `<tr>
-                <td class="serial-no">${serial}</td>
-                <td>${p.pName || '-'}</td>
-                <td>${p.seatNo || '-'}</td>
-                <td style="text-align:center;">${p.pax || '1'}</td>
-                <td>${p.FQTV || '-'}</td>
-                <td class="${p.serialNo ? 'serial-no' : ''}">${p.serialNo || '—'}</td>
-                <td>${p.entryTime || '-'}</td>
-                <td>${p.remarks || '-'}</td>
-            </tr>`;
-        });
-        
-        tbody.innerHTML = html;
-        document.getElementById('tableContainer').style.display = 'block';
-    }
-
-    function showMessage(message, type) {
-        var container = document.getElementById('messageContainer');
-        var messageDiv = document.createElement('div');
-        messageDiv.className = 'message ' + type;
-        messageDiv.textContent = message;
-        container.appendChild(messageDiv);
-        
-        setTimeout(function() {
-            if (messageDiv.parentNode) {
-                messageDiv.remove();
-            }
-        }, 5000);
-    }
-
-    function clearMessages() {
-        document.getElementById('messageContainer').innerHTML = '';
-    }
-
-    function formatTimestamp(timestamp) {
-        if (!timestamp) return 'No timestamp';
-        try {
-            if (timestamp.toDate) {
-                var date = timestamp.toDate();
-                return date.toLocaleString();
-            }
-            var date = new Date(timestamp);
-            if (!isNaN(date.getTime())) {
-                return date.toLocaleString();
-            }
-            return 'Invalid timestamp';
-        } catch (error) {
-            return 'Error formatting';
-        }
-    }
-
-    async function loadQRCodes() {
+    // NEW FUNCTION: Load QR codes automatically when date is selected
+    async function loadQRCodesForDate(selectedDate) {
         clearMessages();
         
-        var qrDateSelect = document.getElementById('qrDateSelect');
-        var selectedDate = qrDateSelect.value;
         var qrContainer = document.getElementById('qrContainer');
-        var loadBtn = document.getElementById('loadQrBtn');
         
         if (!selectedDate) {
-            showMessage("Please select a date first", 'error');
             return;
         }
         
-        loadBtn.disabled = true;
         qrContainer.innerHTML = `
             <div class="loading">
                 Loading codes from Firebase for ${selectedDate}...
@@ -1321,7 +1144,6 @@
             
             if (snapshot.empty) {
                 qrContainer.innerHTML = '<div class="qr-no-data">No records found for this date in Firebase</div>';
-                loadBtn.disabled = false;
                 return;
             }
             
@@ -1343,9 +1165,6 @@
                     timestamp: data.timestamp || null
                 });
             });
-            
-            // Log all flight numbers to debug
-            console.log("All flight numbers in data:", allQRCodes.map(item => item.flightNo));
             
             // Reset filtered codes to all codes initially
             filteredQRCodes = [...allQRCodes];
@@ -1373,8 +1192,6 @@
             console.error("Error loading codes:", error);
             qrContainer.innerHTML = '<div class="qr-no-data">Error loading data: ' + error.message + '</div>';
             showMessage("Error loading codes: " + error.message, 'error');
-        } finally {
-            loadBtn.disabled = false;
         }
     }
 
@@ -1706,6 +1523,41 @@
         printWindow.document.close();
     }
 
+    function showMessage(message, type) {
+        var container = document.getElementById('messageContainer');
+        var messageDiv = document.createElement('div');
+        messageDiv.className = 'message ' + type;
+        messageDiv.textContent = message;
+        container.appendChild(messageDiv);
+        
+        setTimeout(function() {
+            if (messageDiv.parentNode) {
+                messageDiv.remove();
+            }
+        }, 5000);
+    }
+
+    function clearMessages() {
+        document.getElementById('messageContainer').innerHTML = '';
+    }
+
+    function formatTimestamp(timestamp) {
+        if (!timestamp) return 'No timestamp';
+        try {
+            if (timestamp.toDate) {
+                var date = timestamp.toDate();
+                return date.toLocaleString();
+            }
+            var date = new Date(timestamp);
+            if (!isNaN(date.getTime())) {
+                return date.toLocaleString();
+            }
+            return 'Invalid timestamp';
+        } catch (error) {
+            return 'Error formatting';
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(function() {
             loadDates();
@@ -1718,9 +1570,9 @@
     window.printReport = printReport;
     window.switchTab = switchTab;
     window.onQrDateSelected = onQrDateSelected;
-    window.loadQRCodes = loadQRCodes;
     window.filterQRCodes = filterQRCodes;
     window.sortAndDisplayQRCodes = sortAndDisplayQRCodes;
+    // Removed loadQRCodes from window object
     </script>
 </body>
 </html>
