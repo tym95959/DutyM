@@ -400,7 +400,7 @@
             font-family: monospace;
         }
         
-        /* QR Codes Tab Styles - No delete buttons */
+        /* QR Codes Tab Styles */
         .qr-controls {
             display: flex;
             gap: 16px;
@@ -413,8 +413,6 @@
             flex: 1;
             min-width: 200px;
         }
-        
-        /* REMOVED: generate button styles */
         
         .qr-container {
             display: grid;
@@ -640,6 +638,26 @@
             border-left: 2px solid #8b1e3f;
         }
         
+        /* Flight status indicator in QR dropdown */
+        .flight-status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .status-closed {
+            background: #6b8e23;
+            color: white;
+        }
+        
+        .status-open {
+            background: #ffc107;
+            color: #333;
+        }
+        
         @media (max-width: 768px) {
             .filters {
                 flex-direction: column;
@@ -761,13 +779,13 @@
             </div>
         </div>
 
-        <!-- QR CODES TAB - Fixed filtering - Removed Generate Button -->
+        <!-- QR CODES TAB - Fixed with flight status display -->
         <div id="qrTab" class="tab-content">
             <div class="card">
                 <!-- Message Container -->
                 <div id="messageContainer" class="message-container"></div>
                 
-                <!-- Controls - REMOVED GENERATE BUTTON -->
+                <!-- Controls -->
                 <div class="controls" style="margin-bottom: 20px;">
                     <div class="filters" style="display: flex; gap: 15px; flex-wrap: wrap;">
                         <div class="form-group qr-date-selector" style="flex: 2;">
@@ -783,9 +801,13 @@
                                 <option value="">-- Select date first --</option>
                             </select>
                         </div>
-                        
-                        <!-- GENERATE BUTTON REMOVED -->
                     </div>
+                </div>
+                
+                <!-- Flight Status Display -->
+                <div id="qrFlightStatus" style="display: none; margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #8b1e3f;">
+                    <span style="font-weight: 600;">Flight Status:</span> 
+                    <span id="qrFlightStatusText" class="flight-status status-open">OPEN</span>
                 </div>
                 
                 <!-- Sort Controls -->
@@ -842,8 +864,9 @@
     var filteredQRCodes = [];
     var currentQRSort = 'timestamp_desc';
     var qrDatabase = null;
-    var currentSelectedDate = null; // Track current selected date for QR tab
-    var currentSelectedFlight = null; // Track current selected flight for QR tab
+    var currentSelectedDate = null;
+    var currentSelectedFlight = null;
+    var flightStatuses = {}; // Store flight statuses by date+flight key
 
     // ========== QR DATABASE FUNCTIONS ==========
     function getQRDatabase() {
@@ -894,6 +917,7 @@
         if (forceReload) {
             flightsByDate = {};
             allDates = [];
+            flightStatuses = {};
         }
         
         try {
@@ -996,12 +1020,18 @@
                 var reportDate = reportData.date;
                 var isClosed = reportData.isClosed || false;
                 
+                // Format date consistently
                 var formattedDate = reportDate;
-                if (reportDate.includes('-')) {
+                if (reportDate && reportDate.includes('-')) {
                     var parts = reportDate.split('-');
                     formattedDate = parts[0] + '-' + parts[1] + '-' + parts[2];
                 }
                 
+                // Store in flightStatuses object
+                var key = formattedDate + '_' + flightNo;
+                flightStatuses[key] = isClosed;
+                
+                // Update flightsByDate
                 if (flightsByDate[formattedDate]) {
                     flightsByDate[formattedDate].forEach(function(flight, key) {
                         if (flight.flightNo === flightNo) {
@@ -1011,7 +1041,7 @@
                 }
             });
             
-            console.log("✅ Flight statuses loaded");
+            console.log("✅ Flight statuses loaded:", flightStatuses);
         } catch (error) {
             console.error("Error loading flight statuses:", error);
         }
@@ -1045,6 +1075,7 @@
         document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a date and flight to view QR codes</div>';
         document.getElementById('sortControls').style.display = 'none';
         document.getElementById('statsSection').style.display = 'none';
+        document.getElementById('qrFlightStatus').style.display = 'none';
     }
 
     function onDateSelected() {
@@ -1094,35 +1125,42 @@
         var selectedDate = qrDateSelect.value;
         
         currentSelectedDate = selectedDate;
-        currentSelectedFlight = null; // Reset selected flight
+        currentSelectedFlight = null;
         
         // Clear any existing QR data
         clearQRData();
         
         if (selectedDate && flightsByDate[selectedDate]) {
             // Update flight dropdown with flights for this date
-            var flights = new Set();
+            var flights = [];
             flightsByDate[selectedDate].forEach(function(flight) {
-                flights.add(flight.flightNo);
+                flights.push({
+                    flightNo: flight.flightNo,
+                    isClosed: flight.isClosed
+                });
+            });
+            
+            // Sort flights
+            flights.sort(function(a, b) {
+                return a.flightNo.localeCompare(b.flightNo);
             });
             
             var options = '<option value="">✈️ Select a flight</option>';
-            Array.from(flights).sort().forEach(function(flight) {
-                options += `<option value="${flight}">${flight}</option>`;
+            flights.forEach(function(flight) {
+                var statusIcon = flight.isClosed ? '🔒' : '🔓';
+                var statusText = flight.isClosed ? 'Closed' : 'Open';
+                options += `<option value="${flight.flightNo}">${statusIcon} ${flight.flightNo} (${statusText})</option>`;
             });
             qrFlightSelect.innerHTML = options;
             qrFlightSelect.disabled = false;
             
-            // Show message to select a flight
             document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a flight to view QR codes</div>';
         } else {
-            // No date selected - reset flight dropdown
             qrFlightSelect.innerHTML = '<option value="">-- Select date first --</option>';
             qrFlightSelect.disabled = true;
         }
     }
 
-    // NEW FUNCTION: Called when flight is selected in QR tab
     async function onQrFlightSelected() {
         var qrDateSelect = document.getElementById('qrDateSelect');
         var qrFlightSelect = document.getElementById('qrFlightSelect');
@@ -1136,6 +1174,16 @@
         
         currentSelectedFlight = selectedFlight;
         
+        // Get flight status
+        var flightStatus = getFlightStatus(selectedDate, selectedFlight);
+        
+        // Display flight status
+        var statusDiv = document.getElementById('qrFlightStatus');
+        var statusText = document.getElementById('qrFlightStatusText');
+        statusDiv.style.display = 'block';
+        statusText.textContent = flightStatus ? 'CLOSED' : 'OPEN';
+        statusText.className = flightStatus ? 'flight-status status-closed' : 'flight-status status-open';
+        
         // Show loading indicator
         document.getElementById('qrContainer').innerHTML = `
             <div class="loading">
@@ -1146,7 +1194,11 @@
         await loadQRCodesForFlight(selectedDate, selectedFlight);
     }
 
-    // NEW FUNCTION: Load QR codes for specific flight
+    function getFlightStatus(date, flightNo) {
+        var key = date + '_' + flightNo;
+        return flightStatuses[key] || false;
+    }
+
     async function loadQRCodesForFlight(selectedDate, selectedFlight) {
         clearMessages();
         
@@ -1192,7 +1244,7 @@
                 });
             });
             
-            // Set filtered codes to all codes (since we're already filtered by flight)
+            // Set filtered codes to all codes
             filteredQRCodes = [...allQRCodes];
             
             // Sort by timestamp (newest first)
@@ -1215,17 +1267,6 @@
             qrContainer.innerHTML = '<div class="qr-no-data">Error loading data: ' + error.message + '</div>';
             showMessage("Error loading codes: " + error.message, 'error');
         }
-    }
-
-    // Update filterQRCodes function to work with the new flow
-    function filterQRCodes() {
-        // This function is now mainly for sorting, since we're already filtering by flight
-        // We'll keep it for future use if needed
-        if (allQRCodes.length === 0) return;
-        
-        filteredQRCodes = [...allQRCodes];
-        updateStats();
-        sortAndDisplayQRCodes();
     }
 
     function sortAndDisplayQRCodes() {
@@ -1563,7 +1604,6 @@
     window.switchTab = switchTab;
     window.onQrDateSelected = onQrDateSelected;
     window.onQrFlightSelected = onQrFlightSelected;
-    window.filterQRCodes = filterQRCodes;
     window.sortAndDisplayQRCodes = sortAndDisplayQRCodes;
     </script>
 </body>
