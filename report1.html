@@ -562,6 +562,19 @@
                 margin-bottom: 20px;
             }
         }
+
+        /* PNR badge for FZ flights */
+        .pnr-badge {
+            display: inline-block;
+            background-color: #4a6fa5;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 5px;
+            letter-spacing: 0.5px;
+        }
     </style>
 </head>
 <body>
@@ -648,7 +661,7 @@
             </div>
         </div>
 
-        <!-- passenger table – with duplicate detection -->
+        <!-- passenger table – with duplicate detection and PNR for FZ -->
         <div id="tableContainer" class="table-container" style="display: none;">
             <div class="table-header">
                 <h3>✈ PASSENGER LIST</h3>
@@ -658,20 +671,10 @@
             <div class="table-wrapper">
                 <table>
                     <thead id="tableHeader">
-                        <tr>
-                            <th>No.</th>
-                            <th id="nameColumnHeader">Name</th>
-                            <th>Seat</th>
-                            <th>Pax</th>
-                            <th>FQTV</th>
-                            <th>Serial No</th>
-                            <th>Time</th>
-                            <th>Remarks</th>
-                            <th>Actions</th>
-                        </tr>
+                        <!-- Header will be dynamically updated based on flight type -->
                     </thead>
                     <tbody id="passengerTableBody">
-                        <tr><td colspan="9" class="no-data">Select a flight to view passengers</td></tr>
+                        <tr><td colspan="10" class="no-data">Select a flight to view passengers</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1375,7 +1378,7 @@
             if (start < mleIndex) {
                 const possiblePNR = hiddenCode.substring(start, mleIndex);
                 // Check if it's a reasonable length (4-8 characters)
-                if (possiblePNR.length >= 4 && possiblePNR.length <= 7) {
+                if (possiblePNR.length >= 4 && possiblePNR.length <= 8) {
                     return possiblePNR.toUpperCase();
                 }
             }
@@ -1392,7 +1395,7 @@
                     const mlePos = word.indexOf('mle');
                     if (mlePos > 0) {
                         const possiblePNR = word.substring(0, mlePos);
-                        if (possiblePNR.length >= 4 && possiblePNR.length <= 7) {
+                        if (possiblePNR.length >= 4 && possiblePNR.length <= 8) {
                             return possiblePNR.toUpperCase();
                         }
                     }
@@ -1403,15 +1406,80 @@
         return '';
     }
 
-    // Modified displayPassengerTable function with duplicate highlighting and SQ-specific labels
+    // Modified displayPassengerTable function with duplicate highlighting and FZ-specific PNR display
     function displayPassengerTable(passengers) {
         const tbody = document.getElementById('passengerTableBody');
+        const tableHeader = document.getElementById('tableHeader');
         const isSQ = isSQFlight();
+        const isFZ = isFZFlight();
         
         if (!passengers || passengers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="no-data">No passengers found for this flight</td></tr>';
+            // Set appropriate headers based on flight type
+            if (isFZ) {
+                tableHeader.innerHTML = `
+                    <tr>
+                        <th>No.</th>
+                        <th>Name</th>
+                        <th>PNR</th>
+                        <th>Seat</th>
+                        <th>Pax</th>
+                        <th>FQTV</th>
+                        <th>Serial No</th>
+                        <th>Time</th>
+                        <th>Remarks</th>
+                        <th>Actions</th>
+                    </tr>
+                `;
+            } else {
+                tableHeader.innerHTML = `
+                    <tr>
+                        <th>No.</th>
+                        <th id="nameColumnHeader">${isSQ ? 'Voucher No.' : 'Name'}</th>
+                        <th>Seat</th>
+                        <th>Pax</th>
+                        <th>FQTV</th>
+                        <th>Serial No</th>
+                        <th>Time</th>
+                        <th>Remarks</th>
+                        <th>Actions</th>
+                    </tr>
+                `;
+            }
+            tbody.innerHTML = '<tr><td colspan="10" class="no-data">No passengers found for this flight</td></tr>';
             document.getElementById('tableContainer').style.display = 'block';
             return;
+        }
+        
+        // Update table headers based on flight type
+        if (isFZ) {
+            tableHeader.innerHTML = `
+                <tr>
+                    <th>No.</th>
+                    <th>Name</th>
+                    <th>PNR</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                    <th>Actions</th>
+                </tr>
+            `;
+        } else {
+            tableHeader.innerHTML = `
+                <tr>
+                    <th>No.</th>
+                    <th id="nameColumnHeader">${isSQ ? 'Voucher No.' : 'Name'}</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                    <th>Actions</th>
+                </tr>
+            `;
         }
         
         // Detect duplicates
@@ -1439,50 +1507,111 @@
             // Add duplicate class for highlighting
             const rowClass = isDuplicate ? 'duplicate-row' : '';
             
+            // Extract PNR for FZ flights
+            const pnr = isFZ ? extractPNRFromHiddenCode(p.hiddenCode) : '';
+            
             if (editingRowId === p.docId) {
-                // Edit mode with SQ-specific placeholder
+                // Edit mode with flight-specific placeholders
                 const namePlaceholder = isSQ ? 'Voucher No.' : 'Name';
                 
-                html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
-                    <td class="serial-no">${serial}</td>
-                    <td>
-                        <input type="text" id="edit-pName-${p.docId}" 
-                               value="${escapeHtml(p.pName||'')}" 
-                               class="edit-mode-input" 
-                               placeholder="${namePlaceholder}">
-                    </td>
-                    <td>
-                        <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
-                        <div id="pax-warning-${p.docId}" class="pax-warning"></div>
-                    </td>
-                    <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
-                    <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
-                    <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
-                    <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
-                    <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
-                    <td class="action-cell">
-                        <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
-                        <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
-                    </td>
-                </tr>`;
+                if (isFZ) {
+                    // FZ flight edit mode with PNR field
+                    html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
+                        <td class="serial-no">${serial}</td>
+                        <td>
+                            <input type="text" id="edit-pName-${p.docId}" 
+                                   value="${escapeHtml(p.pName||'')}" 
+                                   class="edit-mode-input" 
+                                   placeholder="${namePlaceholder}">
+                        </td>
+                        <td>
+                            <input type="text" id="edit-pnr-${p.docId}" 
+                                   value="${escapeHtml(pnr||'')}" 
+                                   class="edit-mode-input" 
+                                   placeholder="PNR"
+                                   readonly
+                                   style="background-color:#f5f5f5;"
+                                   title="PNR is automatically extracted from hiddenCode and cannot be edited">
+                        </td>
+                        <td>
+                            <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
+                            <div id="pax-warning-${p.docId}" class="pax-warning"></div>
+                        </td>
+                        <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
+                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
+                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
+                        <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
+                        <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
+                        <td class="action-cell">
+                            <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
+                            <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                        </td>
+                    </tr>`;
+                } else {
+                    // Non-FZ flight edit mode
+                    html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
+                        <td class="serial-no">${serial}</td>
+                        <td>
+                            <input type="text" id="edit-pName-${p.docId}" 
+                                   value="${escapeHtml(p.pName||'')}" 
+                                   class="edit-mode-input" 
+                                   placeholder="${namePlaceholder}">
+                        </td>
+                        <td>
+                            <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
+                            <div id="pax-warning-${p.docId}" class="pax-warning"></div>
+                        </td>
+                        <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChange('${p.docId}')"></td>
+                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
+                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
+                        <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
+                        <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
+                        <td class="action-cell">
+                            <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
+                            <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                        </td>
+                    </tr>`;
+                }
             } else {
                 // View mode - add duplicate indicator if needed
                 const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate entry based on same Name, Seat, and Flight Number">⚠️ DUPLICATE</span>' : '';
                 
-                html += `<tr class="${rowClass}">
-                    <td class="serial-no">${serial}</td>
-                    <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge}</td>
-                    <td>${escapeHtml(p.seatNo) || '-'}</td>
-                    <td style="text-align:center;">${p.pax || '1'}</td>
-                    <td>${escapeHtml(p.FQTV) || '-'}</td>
-                    <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
-                    <td>${p.entryTime || '-'}</td>
-                    <td>${escapeHtml(p.remarks) || '-'}</td>
-                    <td class="action-cell">
-                        <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                        <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
-                    </td>
-                </tr>`;
+                if (isFZ) {
+                    // FZ flight view mode with PNR column
+                    html += `<tr class="${rowClass}">
+                        <td class="serial-no">${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge}</td>
+                        <td>
+                            ${pnr ? `<span class="pnr-badge" title="PNR extracted from hiddenCode">${pnr}</span>` : '-'}
+                        </td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                        <td class="action-cell">
+                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                        </td>
+                    </tr>`;
+                } else {
+                    // Non-FZ flight view mode
+                    html += `<tr class="${rowClass}">
+                        <td class="serial-no">${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge}</td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                        <td class="action-cell">
+                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                        </td>
+                    </tr>`;
+                }
             }
         });
         
@@ -1505,7 +1634,7 @@
         // Show loading state
         document.getElementById('flightPanel').style.display = 'block';
         document.getElementById('airlineDisplay').textContent = 'Loading...';
-        document.getElementById('passengerTableBody').innerHTML = '<tr><td colspan="9" class="loading"><span class="spinner"></span> Loading passengers...</td></tr>';
+        document.getElementById('passengerTableBody').innerHTML = '<tr><td colspan="10" class="loading"><span class="spinner"></span> Loading passengers...</td></tr>';
         
         const [flightNo, shift, dbName] = selectedFlight.split('|');
         const flightKey = `${flightNo}_${shift}`;
@@ -1520,16 +1649,6 @@
         currentDatabase = flightData.dbRef;
         editingRowId = null;
         
-        // Update column header based on flight number
-        const nameColumnHeader = document.getElementById('nameColumnHeader');
-        if (flightNo && flightNo.toUpperCase().startsWith('SQ')) {
-            nameColumnHeader.textContent = 'Voucher No.';
-            nameColumnHeader.title = 'Voucher Number for SQ flights';
-        } else {
-            nameColumnHeader.textContent = 'Name';
-            nameColumnHeader.title = 'Passenger Name';
-        }
-        
         // Dismiss any existing duplicate warning
         dismissDuplicateWarning();
         
@@ -1539,21 +1658,25 @@
             passengers: flightData.passengers.length,
             firstPax: flightData.firstPax,
             lastPax: flightData.lastPax,
-            database: flightData.database
+            database: flightData.database,
+            isFZ: flightData.flightNo.toUpperCase().startsWith('FZ')
         });
         
-        // Log ALL passengers with their hiddenCode
-        console.log('All passengers with hiddenCode:');
-        flightData.passengers.forEach((p, i) => {
-            console.log(`Passenger ${i+1}:`, {
-                name: p.pName,
-                seat: p.seatNo,
-                hiddenCode: p.hiddenCode,
-                hiddenCodeLength: p.hiddenCode ? p.hiddenCode.length : 0,
-                hasHiddenCode: !!p.hiddenCode,
-                extractedPNR: extractPNRFromHiddenCode(p.hiddenCode)
+        // For FZ flights, log all passengers with their hiddenCode and extracted PNR
+        if (flightData.flightNo.toUpperCase().startsWith('FZ')) {
+            console.log('FZ Flight - All passengers with hiddenCode:');
+            flightData.passengers.forEach((p, i) => {
+                const pnr = extractPNRFromHiddenCode(p.hiddenCode);
+                console.log(`Passenger ${i+1}:`, {
+                    name: p.pName,
+                    seat: p.seatNo,
+                    hiddenCode: p.hiddenCode,
+                    hiddenCodeLength: p.hiddenCode ? p.hiddenCode.length : 0,
+                    hasHiddenCode: !!p.hiddenCode,
+                    extractedPNR: pnr
+                });
             });
-        });
+        }
         
         // Update database display
         document.getElementById('databaseDisplay').textContent = `${flightData.database} (${flightData.databaseProject || 'unknown'})`;
@@ -1639,7 +1762,7 @@
             validateCloseButton();
         }
         
-        // Display passenger table with duplicate detection
+        // Display passenger table with duplicate detection and PNR for FZ
         displayPassengerTable(flightData.passengers);
     }
 
