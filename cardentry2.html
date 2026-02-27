@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Koveli Lounge - Delay Charge</title>
+    <title>Koveli Lounge - Available Flights</title>
     <!-- Firebase SDK (must come first) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -139,9 +139,12 @@
             background: linear-gradient(135deg, #e67e22, #d35400);
         }
 
-        /* Delay Charge Button - New */
         .fab-button[data-tooltip="Delay Charge"] {
             background: linear-gradient(135deg, #8B4513, #5a2e0c);
+        }
+
+        .fab-button[data-tooltip="Available Flights"] {
+            background: linear-gradient(135deg, #1E90FF, #104E8B);
         }
 
         /* Main Container */
@@ -1246,8 +1249,8 @@
             }
         }
 
-        /* Error Details Popup */
-        .error-details-popup {
+        /* Flights Popup */
+        .flights-popup {
             position: fixed;
             top: 50%;
             left: 50%;
@@ -1257,7 +1260,7 @@
             padding: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
             z-index: 2000;
-            max-width: 500px;
+            max-width: 600px;
             width: 95%;
             display: none;
             border: 2px solid #e6b800;
@@ -1265,7 +1268,7 @@
             overflow-y: auto;
         }
 
-        .error-details-popup.active {
+        .flights-popup.active {
             display: block;
             animation: fadeIn 0.3s;
         }
@@ -1301,38 +1304,68 @@
             color: #a67244;
         }
 
-        .error-detail-item {
-            background: #f9f9f9;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            border-left: 4px solid;
+        .flight-group {
+            margin-bottom: 20px;
         }
 
-        .error-detail-item.flight-closed {
+        .flight-group h5 {
+            color: #8b6913;
+            font-size: 14px;
+            margin-bottom: 8px;
+            padding-left: 8px;
+            border-left: 3px solid;
+        }
+
+        .flight-group.open h5 {
+            border-left-color: #6b8e23;
+        }
+
+        .flight-group.closed h5 {
             border-left-color: #c68b5e;
         }
 
-        .error-detail-item.duplicate {
-            border-left-color: #e6b800;
-        }
-
-        .error-detail-item.database {
-            border-left-color: #9e9e9e;
-        }
-
-        .popup-footer {
-            margin-top: 15px;
+        .flight-item {
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
             display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-            position: sticky;
-            bottom: 0;
-            background: white;
-            padding-top: 8px;
-            border-top: 1px solid #eee;
+            justify-content: space-between;
+            align-items: center;
         }
 
+        .flight-info {
+            font-weight: 600;
+            color: #5e4a1a;
+        }
+
+        .flight-status {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 12px;
+        }
+
+        .status-open {
+            background: #6b8e23;
+            color: white;
+        }
+
+        .status-closed {
+            background: #c68b5e;
+            color: white;
+        }
+
+        .flight-detail {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .flight-detail span {
+            margin-right: 12px;
+        }
+
+        /* Overlay */
         .overlay {
             position: fixed;
             top: 0;
@@ -1346,6 +1379,30 @@
 
         .overlay.active {
             display: block;
+        }
+
+        /* Error Details Popup */
+        .error-details-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            z-index: 2000;
+            max-width: 500px;
+            width: 95%;
+            display: none;
+            border: 2px solid #e6b800;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .error-details-popup.active {
+            display: block;
+            animation: fadeIn 0.3s;
         }
 
         /* Print Styles */
@@ -1367,7 +1424,8 @@
             .error-summary,
             .action-buttons button,
             .overlay,
-            .error-details-popup {
+            .error-details-popup,
+            .flights-popup {
                 display: none !important;
             }
             
@@ -1429,6 +1487,9 @@
 <body>
     <!-- Floating Action Buttons -->
     <div class="fab-container">
+        <button class="fab-button" data-tooltip="Available Flights" onclick="showAvailableFlights()">
+            <i class="fas fa-plane"></i>
+        </button>
         <button class="fab-button" data-tooltip="Delay Charge" onclick="calculateDelayCharges()">
             <i class="fas fa-hourglass-half"></i>
         </button>
@@ -1447,6 +1508,22 @@
         <button class="fab-button" data-tooltip="Shift End" onclick="window.location.href='shiftend.html'">
             <i class="fas fa-clock"></i>
         </button>
+    </div>
+
+    <!-- Flights Popup -->
+    <div class="overlay" id="flightsOverlay" onclick="closeFlightsPopup()"></div>
+    <div class="flights-popup" id="flightsPopup">
+        <div class="popup-header">
+            <h4><i class="fas fa-plane" style="color: #1E90FF; margin-right: 8px;"></i>Available Flights for <span id="flightsDate"></span></h4>
+            <button class="popup-close" onclick="closeFlightsPopup()">&times;</button>
+        </div>
+        <div id="flightsContent" style="max-height: 400px; overflow-y: auto;">
+            <div class="loading" style="text-align: center; padding: 20px;">Loading flights...</div>
+        </div>
+        <div class="popup-footer" style="margin-top: 15px; display: flex; gap: 10px; justify-content: flex-end;">
+            <button class="retry-all-btn" onclick="refreshFlights()"><i class="fas fa-sync-alt"></i> REFRESH</button>
+            <button class="clear-all-errors-btn" onclick="closeFlightsPopup()"><i class="fas fa-times"></i> CLOSE</button>
+        </div>
     </div>
 
     <!-- Error Details Popup -->
@@ -4040,6 +4117,180 @@ async function approveEntry(id) {
     }
 }
 
+// ========== SHOW AVAILABLE FLIGHTS ==========
+async function showAvailableFlights() {
+    if (!currentShiftData.date) {
+        alert('Please wait for shift data to load.');
+        return;
+    }
+    
+    const popup = document.getElementById('flightsPopup');
+    const overlay = document.getElementById('flightsOverlay');
+    const dateSpan = document.getElementById('flightsDate');
+    const content = document.getElementById('flightsContent');
+    
+    dateSpan.textContent = currentShiftData.date;
+    content.innerHTML = '<div class="loading" style="text-align: center; padding: 20px;">Loading flights...</div>';
+    popup.classList.add('active');
+    overlay.classList.add('active');
+    
+    try {
+        // Get all databases we need to check
+        const databases = [
+            { db: window.baDb, name: 'BA' },
+            { db: window.ekDb, name: 'EK' },
+            { db: window.qrDb, name: 'QR' },
+            { db: window.sqDb, name: 'SQ' },
+            { db: window.defaultCardDb, name: 'Default' }
+        ];
+        
+        const allFlights = [];
+        const today = currentShiftData.date;
+        
+        // Format date for Firestore document ID (YYYY-MM-DD)
+        let formattedDate = today;
+        if (today.includes('/')) {
+            const parts = today.split('/');
+            if (parts[0].length === 4) {
+                formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+            } else {
+                formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+        } else if (today.includes('-')) {
+            const parts = today.split('-');
+            if (parts[0].length === 4) {
+                formattedDate = today;
+            } else {
+                formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+        } else {
+            const cleanDate = today.replace(/[^0-9]/g, '');
+            if (cleanDate.length === 8) {
+                formattedDate = `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
+            } else if (cleanDate.length === 6) {
+                const day = cleanDate.substring(0,2);
+                const month = cleanDate.substring(2,4);
+                const year = `20${cleanDate.substring(4,6)}`;
+                formattedDate = `${year}-${month}-${day}`;
+            }
+        }
+        
+        // Query each database for flight reports
+        for (const dbInfo of databases) {
+            if (!dbInfo.db) continue;
+            
+            try {
+                const flightReportsRef = dbInfo.db.collection('FlightReports');
+                const snapshot = await flightReportsRef.where('date', '==', today).get();
+                
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const docId = doc.id;
+                    // Extract flight number from docId (format: FLIGHTNO_DATE)
+                    const flightNo = docId.split('_')[0];
+                    
+                    allFlights.push({
+                        flightNo: flightNo,
+                        airline: data.airline || getAirlineName(flightNo.substring(0,2)) || 'Unknown',
+                        date: data.date || today,
+                        std: data.std || '--:--',
+                        totalPax: data.totalPax || 0,
+                        firstPax: data.firstPax || '--:--',
+                        lastPax: data.lastPax || '--:--',
+                        isClosed: data.isClosed === true,
+                        database: dbInfo.name,
+                        paxCount: data.paxCount || 0
+                    });
+                });
+            } catch (err) {
+                console.warn(`Error querying ${dbInfo.name} database:`, err);
+            }
+        }
+        
+        if (allFlights.length === 0) {
+            content.innerHTML = '<div style="text-align: center; padding: 20px; color: #c68b5e;">No flights found for today.</div>';
+            return;
+        }
+        
+        // Sort flights: open first, then closed, then by flight number
+        allFlights.sort((a, b) => {
+            if (a.isClosed !== b.isClosed) {
+                return a.isClosed ? 1 : -1; // open first
+            }
+            return a.flightNo.localeCompare(b.flightNo);
+        });
+        
+        // Group by status
+        const openFlights = allFlights.filter(f => !f.isClosed);
+        const closedFlights = allFlights.filter(f => f.isClosed);
+        
+        let html = '';
+        
+        if (openFlights.length > 0) {
+            html += '<div class="flight-group open"><h5><i class="fas fa-check-circle" style="color: #6b8e23;"></i> OPEN FLIGHTS</h5>';
+            openFlights.forEach(f => {
+                html += `
+                    <div class="flight-item">
+                        <div>
+                            <div class="flight-info">${f.flightNo} - ${f.airline}</div>
+                            <div class="flight-detail">
+                                <span><i class="fas fa-clock"></i> STD: ${f.std}</span>
+                                <span><i class="fas fa-users"></i> PAX: ${f.totalPax}</span>
+                                <span><i class="fas fa-plane-departure"></i> ${f.database}</span>
+                            </div>
+                            <div class="flight-detail">
+                                <span>First: ${f.firstPax}</span>
+                                <span>Last: ${f.lastPax}</span>
+                            </div>
+                        </div>
+                        <span class="flight-status status-open">OPEN</span>
+                    </div>
+                `;
+            });
+            html += '</div>';
+        }
+        
+        if (closedFlights.length > 0) {
+            html += '<div class="flight-group closed"><h5><i class="fas fa-times-circle" style="color: #c68b5e;"></i> CLOSED FLIGHTS</h5>';
+            closedFlights.forEach(f => {
+                html += `
+                    <div class="flight-item">
+                        <div>
+                            <div class="flight-info">${f.flightNo} - ${f.airline}</div>
+                            <div class="flight-detail">
+                                <span><i class="fas fa-clock"></i> STD: ${f.std}</span>
+                                <span><i class="fas fa-users"></i> PAX: ${f.totalPax}</span>
+                                <span><i class="fas fa-plane-departure"></i> ${f.database}</span>
+                            </div>
+                            <div class="flight-detail">
+                                <span>First: ${f.firstPax}</span>
+                                <span>Last: ${f.lastPax}</span>
+                            </div>
+                        </div>
+                        <span class="flight-status status-closed">CLOSED</span>
+                    </div>
+                `;
+            });
+            html += '</div>';
+        }
+        
+        content.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error fetching flights:', error);
+        content.innerHTML = `<div style="text-align: center; padding: 20px; color: #c68b5e;">Error loading flights: ${error.message}</div>`;
+    }
+}
+
+function refreshFlights() {
+    showAvailableFlights();
+}
+
+function closeFlightsPopup() {
+    document.getElementById('flightsPopup').classList.remove('active');
+    document.getElementById('flightsOverlay').classList.remove('active');
+}
+
 // ========== DELAY CHARGE FUNCTION ==========
 async function calculateDelayCharges() {
     if (!isShiftOpen()) return;
@@ -4116,7 +4367,6 @@ async function calculateDelayCharges() {
         lastPaxDate.setHours(lastHour, lastMinute, lastSecond, 0);
         
         // Now get all passengers for this flight from the savedPasses (local) that are synced (no error)
-        // But also we could query Firestore for passengers who were entered before lastPax? We'll use local savedPasses for simplicity.
         const relevantPassengers = savedPasses.filter(p => 
             p.flightNo === flightNo && 
             p.date === todayDate && 
@@ -4831,7 +5081,10 @@ window.validateEntryForSave = validateEntryForSave;
 window.isFlightOpen = isFlightOpen;
 window.checkPassengerExistsInDatabase = checkPassengerExistsInDatabase;
 window.testFlightDatabaseMapping = testFlightDatabaseMapping;
-window.calculateDelayCharges = calculateDelayCharges; // Expose the new function
+window.calculateDelayCharges = calculateDelayCharges;
+window.showAvailableFlights = showAvailableFlights;
+window.closeFlightsPopup = closeFlightsPopup;
+window.refreshFlights = refreshFlights;
 </script>
 </body>   
 </html>
