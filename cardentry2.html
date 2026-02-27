@@ -2109,6 +2109,23 @@ function getFirestoreNameForFlight(flightNo) {
 }
 
 /**
+ * Gets color for database based on flight number
+ * @param {string} flightNo - The flight number
+ * @returns {string} - Color code
+ */
+function getDatabaseColor(flightNo) {
+    if (!flightNo) return '#8b6913';
+    const prefix = flightNo.substring(0, 2).toUpperCase();
+    switch(prefix) {
+        case 'BA': return '#0B2A5C'; // BA blue
+        case 'EK': return '#FF0000'; // EK red
+        case 'QR': return '#730039'; // QR purple
+        case 'SQ': return '#F5A623'; // SQ gold
+        default: return '#6b8e23';    // Default green
+    }
+}
+
+/**
  * Validates that entry has required flight number and date
  * @param {Object} entry - The entry to validate
  * @returns {Object} - Validation result
@@ -4117,265 +4134,167 @@ async function approveEntry(id) {
     }
 }
 
-// ========== SHOW AVAILABLE FLIGHTS ==========
-async function showAvailableFlights() {
-    if (!currentShiftData.date) {
-        alert('Please wait for shift data to load.');
-        return;
-    }
-    
-    const popup = document.getElementById('flightsPopup');
-    const overlay = document.getElementById('flightsOverlay');
-    const dateSpan = document.getElementById('flightsDate');
-    const content = document.getElementById('flightsContent');
-    
-    dateSpan.textContent = currentShiftData.date;
-    content.innerHTML = '<div class="loading" style="text-align: center; padding: 20px;">Loading flights...</div>';
-    popup.classList.add('active');
-    overlay.classList.add('active');
-    
-    try {
-        // Get all databases we need to check
-        const databases = [
-            { db: window.baDb, name: 'BA' },
-            { db: window.ekDb, name: 'EK' },
-            { db: window.qrDb, name: 'QR' },
-            { db: window.sqDb, name: 'SQ' },
-            { db: window.defaultCardDb, name: 'Default' }
-        ];
-        
-        const allFlights = [];
-        const today = currentShiftData.date;
-        
-        // Format date for Firestore document ID (YYYY-MM-DD)
-        let formattedDate = today;
-        if (today.includes('/')) {
-            const parts = today.split('/');
-            if (parts[0].length === 4) {
-                formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-            } else {
-                formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-            }
-        } else if (today.includes('-')) {
-            const parts = today.split('-');
-            if (parts[0].length === 4) {
-                formattedDate = today;
-            } else {
-                formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-            }
-        } else {
-            const cleanDate = today.replace(/[^0-9]/g, '');
-            if (cleanDate.length === 8) {
-                formattedDate = `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
-            } else if (cleanDate.length === 6) {
-                const day = cleanDate.substring(0,2);
-                const month = cleanDate.substring(2,4);
-                const year = `20${cleanDate.substring(4,6)}`;
-                formattedDate = `${year}-${month}-${day}`;
-            }
-        }
-        
-        // Query each database for flight reports
-        for (const dbInfo of databases) {
-            if (!dbInfo.db) continue;
-            
-            try {
-                const flightReportsRef = dbInfo.db.collection('FlightReports');
-                const snapshot = await flightReportsRef.where('date', '==', today).get();
-                
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const docId = doc.id;
-                    // Extract flight number from docId (format: FLIGHTNO_DATE)
-                    const flightNo = docId.split('_')[0];
-                    
-                    allFlights.push({
-                        flightNo: flightNo,
-                        airline: data.airline || getAirlineName(flightNo.substring(0,2)) || 'Unknown',
-                        date: data.date || today,
-                        std: data.std || '--:--',
-                        totalPax: data.totalPax || 0,
-                        firstPax: data.firstPax || '--:--',
-                        lastPax: data.lastPax || '--:--',
-                        isClosed: data.isClosed === true,
-                        database: dbInfo.name,
-                        paxCount: data.paxCount || 0
-                    });
-                });
-            } catch (err) {
-                console.warn(`Error querying ${dbInfo.name} database:`, err);
-            }
-        }
-        
-        if (allFlights.length === 0) {
-            content.innerHTML = '<div style="text-align: center; padding: 20px; color: #c68b5e;">No flights found for today.</div>';
-            return;
-        }
-        
-        // Sort flights: open first, then closed, then by flight number
-        allFlights.sort((a, b) => {
-            if (a.isClosed !== b.isClosed) {
-                return a.isClosed ? 1 : -1; // open first
-            }
-            return a.flightNo.localeCompare(b.flightNo);
-        });
-        
-        // Group by status
-        const openFlights = allFlights.filter(f => !f.isClosed);
-        const closedFlights = allFlights.filter(f => f.isClosed);
-        
-        let html = '';
-        
-        if (openFlights.length > 0) {
-            html += '<div class="flight-group open"><h5><i class="fas fa-check-circle" style="color: #6b8e23;"></i> OPEN FLIGHTS</h5>';
-            openFlights.forEach(f => {
-                html += `
-                    <div class="flight-item">
-                        <div>
-                            <div class="flight-info">${f.flightNo} - ${f.airline}</div>
-                            <div class="flight-detail">
-                                <span><i class="fas fa-clock"></i> STD: ${f.std}</span>
-                                <span><i class="fas fa-users"></i> PAX: ${f.totalPax}</span>
-                                <span><i class="fas fa-plane-departure"></i> ${f.database}</span>
-                            </div>
-                            <div class="flight-detail">
-                                <span>First: ${f.firstPax}</span>
-                                <span>Last: ${f.lastPax}</span>
-                            </div>
-                        </div>
-                        <span class="flight-status status-open">OPEN</span>
-                    </div>
-                `;
-            });
-            html += '</div>';
-        }
-        
-        if (closedFlights.length > 0) {
-            html += '<div class="flight-group closed"><h5><i class="fas fa-times-circle" style="color: #c68b5e;"></i> CLOSED FLIGHTS</h5>';
-            closedFlights.forEach(f => {
-                html += `
-                    <div class="flight-item">
-                        <div>
-                            <div class="flight-info">${f.flightNo} - ${f.airline}</div>
-                            <div class="flight-detail">
-                                <span><i class="fas fa-clock"></i> STD: ${f.std}</span>
-                                <span><i class="fas fa-users"></i> PAX: ${f.totalPax}</span>
-                                <span><i class="fas fa-plane-departure"></i> ${f.database}</span>
-                            </div>
-                            <div class="flight-detail">
-                                <span>First: ${f.firstPax}</span>
-                                <span>Last: ${f.lastPax}</span>
-                            </div>
-                        </div>
-                        <span class="flight-status status-closed">CLOSED</span>
-                    </div>
-                `;
-            });
-            html += '</div>';
-        }
-        
-        content.innerHTML = html;
-        
-    } catch (error) {
-        console.error('Error fetching flights:', error);
-        content.innerHTML = `<div style="text-align: center; padding: 20px; color: #c68b5e;">Error loading flights: ${error.message}</div>`;
-    }
+// ========== DELAY CHARGE FUNCTIONS ==========
+
+/**
+ * Main function called when Delay Charge button is clicked
+ * Shows a popup with all available flights for the current day
+ */
+function calculateDelayCharges() {
+    showFlightSelectionPopup();
 }
 
-function refreshFlights() {
-    showAvailableFlights();
-}
-
-function closeFlightsPopup() {
-    document.getElementById('flightsPopup').classList.remove('active');
-    document.getElementById('flightsOverlay').classList.remove('active');
-}
-
-// ========== DELAY CHARGE FUNCTION ==========
-async function calculateDelayCharges() {
+/**
+ * Shows a popup with all flights available for delay charge calculation
+ */
+function showFlightSelectionPopup() {
     if (!isShiftOpen()) return;
     
-    // Get all saved (synced) entries for the current date
     const todayDate = currentShiftData.date;
     if (!todayDate) {
         showTemporaryNotification('❌ No date available for shift', 'error');
         return;
     }
     
-    // We need to check each flight's last passenger time
-    // For simplicity, we'll process one flight at a time via a prompt
-    const flightNo = prompt('Enter flight number to check delay charges (e.g., SQ123):', '').toUpperCase().trim();
-    if (!flightNo) return;
+    // Get unique flights from both pending and saved passes
+    const allFlights = new Set();
     
-    // Get the target database for this flight
-    const targetDb = getFirestoreForFlight(flightNo);
-    if (!targetDb) {
-        alert('Database not available for this flight');
+    // Add flights from pending passes
+    pendingPasses.forEach(entry => {
+        if (entry.flightNo && entry.flightNo.trim() !== '') {
+            allFlights.add(entry.flightNo);
+        }
+    });
+    
+    // Add flights from saved passes
+    savedPasses.forEach(entry => {
+        if (entry.flightNo && entry.flightNo.trim() !== '') {
+            allFlights.add(entry.flightNo);
+        }
+    });
+    
+    const flightList = Array.from(allFlights).sort();
+    
+    if (flightList.length === 0) {
+        alert('No flights found for today. Please add some boarding passes first.');
         return;
     }
     
-    showTemporaryNotification(`⏳ Fetching flight data for ${flightNo}...`, 'info');
+    // Close any existing popup
+    closeFlightSelectionPopup();
+    
+    // Create popup HTML
+    const popupHtml = `
+        <div id="flightSelectionPopup" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 15px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); z-index: 2000; max-width: 600px; width: 95%; border: 2px solid #e6b800;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid rgba(230, 184, 0, 0.3); padding-bottom: 10px;">
+                <h3 style="color: #8b6913; font-size: 20px; margin: 0;"><i class="fas fa-clock" style="margin-right: 10px; color: #e6b800;"></i>SELECT FLIGHT FOR DELAY CHARGE</h3>
+                <button onclick="closeFlightSelectionPopup()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #c68b5e;">&times;</button>
+            </div>
+            
+            <div style="background: linear-gradient(135deg, #fff9e6, #fff2d7); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 10px; color: #5e4a1a;">
+                    <i class="fas fa-calendar-alt" style="color: #e6b800;"></i>
+                    <span style="font-weight: 600;">DATE: ${todayDate}</span>
+                    <span style="color: #6b8e23; margin-left: auto;">SHIFT: ${currentShiftData.shift || '—'}</span>
+                </div>
+                <div style="margin-top: 8px; font-size: 12px; color: #8b6913;">
+                    <i class="fas fa-info-circle"></i> Select a flight to calculate delay charges (passengers who checked in more than 3 hours ago)
+                </div>
+            </div>
+            
+            <div style="max-height: 350px; overflow-y: auto; margin-bottom: 20px; border: 1px solid rgba(230, 184, 0, 0.2); border-radius: 10px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead style="position: sticky; top: 0; background: #faf3e0;">
+                        <tr>
+                            <th style="padding: 12px 10px; text-align: left; color: #8b6913; font-size: 13px; border-bottom: 2px solid #e6b800;">FLIGHT</th>
+                            <th style="padding: 12px 10px; text-align: center; color: #8b6913; font-size: 13px; border-bottom: 2px solid #e6b800;">DATABASE</th>
+                            <th style="padding: 12px 10px; text-align: center; color: #8b6913; font-size: 13px; border-bottom: 2px solid #e6b800;">PASSENGERS</th>
+                            <th style="padding: 12px 10px; text-align: center; color: #8b6913; font-size: 13px; border-bottom: 2px solid #e6b800;">ACTION</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${flightList.map(flight => {
+                            // Count passengers for this flight
+                            const pendingCount = pendingPasses.filter(p => p.flightNo === flight && !p.isGuest).length;
+                            const savedCount = savedPasses.filter(p => p.flightNo === flight && !p.firebaseError).length;
+                            const totalPassengers = pendingCount + savedCount;
+                            
+                            return `
+                                <tr style="border-bottom: 1px solid rgba(230, 184, 0, 0.1);">
+                                    <td style="padding: 12px 10px; font-weight: 600; color: #5e4a1a;">${flight}</td>
+                                    <td style="padding: 12px 10px; text-align: center;">
+                                        <span style="background: ${getDatabaseColor(flight)}20; color: ${getDatabaseColor(flight)}; padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 600;">
+                                            ${getFirestoreNameForFlight(flight).split(' ')[0]}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 12px 10px; text-align: center;">
+                                        <span style="background: #e6b80020; color: #8b6913; padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 600;">
+                                            ${totalPassengers}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 12px 10px; text-align: center;">
+                                        <button onclick="calculateDelayChargesForFlight('${flight}')" style="background: linear-gradient(135deg, #e6b800, #d4a900); color: white; border: none; padding: 8px 20px; border-radius: 30px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                                            <i class="fas fa-calculator"></i> CALCULATE
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="closeFlightSelectionPopup()" style="background: linear-gradient(135deg, #c68b5e, #a67244); color: white; border: none; padding: 8px 25px; border-radius: 30px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                    <i class="fas fa-times"></i> CANCEL
+                </button>
+            </div>
+        </div>
+        <div id="popupOverlay" class="overlay active" onclick="closeFlightSelectionPopup()"></div>
+    `;
+    
+    // Add popup to body
+    const popupContainer = document.createElement('div');
+    popupContainer.innerHTML = popupHtml;
+    document.body.appendChild(popupContainer);
+}
+
+/**
+ * Closes the flight selection popup
+ */
+function closeFlightSelectionPopup() {
+    const popup = document.getElementById('flightSelectionPopup');
+    const overlay = document.getElementById('popupOverlay');
+    if (popup) popup.remove();
+    if (overlay) overlay.remove();
+}
+
+/**
+ * Calculates delay charges for a specific flight
+ * @param {string} flightNo - The flight number to calculate charges for
+ */
+async function calculateDelayChargesForFlight(flightNo) {
+    closeFlightSelectionPopup();
+    
+    const todayDate = currentShiftData.date;
+    if (!todayDate) {
+        showTemporaryNotification('❌ No date available for shift', 'error');
+        return;
+    }
+    
+    showTemporaryNotification(`⏳ Calculating delay charges for flight ${flightNo}...`, 'info');
     
     try {
-        // Format date for document ID
-        let formattedDate = todayDate;
-        if (todayDate.includes('/')) {
-            const parts = todayDate.split('/');
-            if (parts[0].length === 4) {
-                formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-            } else {
-                formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-            }
-        } else if (todayDate.includes('-')) {
-            const parts = todayDate.split('-');
-            if (parts[0].length === 4) {
-                formattedDate = todayDate;
-            } else {
-                formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-            }
-        } else {
-            const cleanDate = todayDate.replace(/[^0-9]/g, '');
-            if (cleanDate.length === 8) {
-                formattedDate = `${cleanDate.substring(0,4)}-${cleanDate.substring(4,6)}-${cleanDate.substring(6,8)}`;
-            } else if (cleanDate.length === 6) {
-                const day = cleanDate.substring(0,2);
-                const month = cleanDate.substring(2,4);
-                const year = `20${cleanDate.substring(4,6)}`;
-                formattedDate = `${year}-${month}-${day}`;
-            }
-        }
-        
-        const docId = `${flightNo}_${formattedDate}`;
-        const flightReportRef = targetDb.collection('FlightReports').doc(docId);
-        const flightDoc = await flightReportRef.get();
-        
-        if (!flightDoc.exists) {
-            alert('Flight report not found. Cannot determine last passenger time.');
-            return;
-        }
-        
-        const flightData = flightDoc.data();
-        const lastPaxTimeStr = flightData.lastPax; // e.g., "10:45:22"
-        if (!lastPaxTimeStr) {
-            alert('No last passenger time recorded for this flight.');
-            return;
-        }
-        
-        // Parse last passenger time (HH:MM:SS)
-        const [lastHour, lastMinute, lastSecond] = lastPaxTimeStr.split(':').map(Number);
-        const lastPaxDate = new Date();
-        lastPaxDate.setHours(lastHour, lastMinute, lastSecond, 0);
-        
-        // Now get all passengers for this flight from the savedPasses (local) that are synced (no error)
+        // Get all saved (synced) entries for the current date and selected flight
         const relevantPassengers = savedPasses.filter(p => 
             p.flightNo === flightNo && 
             p.date === todayDate && 
             !p.firebaseError && // synced successfully
-            !p.isGuest // exclude guests? Include them? We'll include all for calculation, but PAX field matters.
+            p.entryTime // has entry time
         );
         
         if (relevantPassengers.length === 0) {
-            alert('No passengers found for this flight in today\'s saved entries.');
+            alert(`No passengers found for flight ${flightNo} in today's saved entries.`);
             return;
         }
         
@@ -4388,6 +4307,12 @@ async function calculateDelayCharges() {
         };
         
         const now = new Date();
+        const passengersByGroup = {
+            1: [],
+            2: [],
+            3: [],
+            4: []
+        };
         
         relevantPassengers.forEach(p => {
             const entryTimeStr = p.entryTime;
@@ -4397,15 +4322,14 @@ async function calculateDelayCharges() {
             const entryDate = new Date();
             entryDate.setHours(entryHour, entryMinute, entrySecond, 0);
             
-            // Calculate hours difference from last passenger time
-            const diffMs = now - entryDate; // from entry time to now
+            // Calculate hours difference from entry time to now
+            const diffMs = now - entryDate;
             const diffHours = diffMs / (1000 * 60 * 60);
             
             if (diffHours <= 3) return; // free within 3 hours
             
             // Determine extra hours completed
             const extraHours = diffHours - 3; // e.g., if stayed 4.5h, extra = 1.5h -> group 1
-            if (extraHours < 1) return; // shouldn't happen due to above condition
             
             // Count each passenger based on PAX value (number of people)
             const paxCount = parseInt(p.pax) || 1;
@@ -4413,66 +4337,121 @@ async function calculateDelayCharges() {
             // Determine which group (full hours only)
             if (extraHours >= 4) {
                 hourGroups[4] += paxCount;
+                passengersByGroup[4].push({...p, paxCount});
             } else if (extraHours >= 3) {
                 hourGroups[3] += paxCount;
+                passengersByGroup[3].push({...p, paxCount});
             } else if (extraHours >= 2) {
                 hourGroups[2] += paxCount;
+                passengersByGroup[2].push({...p, paxCount});
             } else if (extraHours >= 1) {
                 hourGroups[1] += paxCount;
+                passengersByGroup[1].push({...p, paxCount});
             }
         });
         
-        // Create summary entries
+        // Check if any delay charges apply
+        const totalDelayPassengers = Object.values(hourGroups).reduce((a, b) => a + b, 0);
+        
+        if (totalDelayPassengers === 0) {
+            alert(`No passengers for flight ${flightNo} have exceeded the 3-hour free limit.`);
+            return;
+        }
+        
+        // Build summary message
         const summaryLines = [];
-        const entryTimeNow = getCurrentEntryTime();
+        summaryLines.push(`📊 DELAY CHARGE SUMMARY - Flight ${flightNo}`);
+        summaryLines.push(`━━━━━━━━━━━━━━━━━━━━━━━━`);
+        summaryLines.push(`Date: ${todayDate}`);
+        summaryLines.push(`Shift: ${currentShiftData.shift}`);
+        summaryLines.push(`Total passengers checked: ${relevantPassengers.length}`);
+        summaryLines.push(`Passengers exceeding 3h: ${totalDelayPassengers}`);
+        summaryLines.push(``);
         
         for (let h = 1; h <= 4; h++) {
             if (hourGroups[h] > 0) {
-                const remarks = `${hourGroups[h]} passengers for ${h} extra hour${h > 1 ? 's' : ''}`;
-                const delayEntry = {
-                    pName: 'DELAY CHARGE',
-                    flightNo: flightNo,
-                    seatNo: '',
-                    class: '',
-                    airline: '',
-                    FQTV: '',
-                    pax: '0',
-                    serialNo: '',
-                    remarks: remarks,
-                    date: todayDate,
-                    shift: currentShiftData.shift,
-                    entryTime: entryTimeNow,
-                    hiddenCode: `DELAY-${flightNo}-${h}H-${Date.now()}`,
-                    isGuest: false,
-                    mainPassengerId: '',
-                    mainPassengerName: '',
-                    mainPassengerSeat: '',
-                    enteredBy: currentUser.name || currentUser.username || 'UNKNOWN',
-                    enteredByUsername: currentUser.username || 'UNKNOWN',
-                    enteredByRCNo: currentUser.rcno || 'N/A',
-                    enteredByLevel: currentUser.level || 'OPERATOR',
-                    enteredAt: new Date().toISOString()
-                };
-                
-                const newEntry = {
-                    id: generateId(),
-                    ...delayEntry,
-                    approved: false
-                };
-                
-                pendingPasses.push(newEntry);
-                summaryLines.push(`• ${remarks}`);
+                summaryLines.push(`• ${hourGroups[h]} passenger${hourGroups[h] > 1 ? 's' : ''} for ${h} extra hour${h > 1 ? 's' : ''}`);
+                if (passengersByGroup[h].length > 0) {
+                    passengersByGroup[h].slice(0, 3).forEach(p => {
+                        const paxInfo = p.pax > 1 ? ` (PAX: ${p.pax})` : '';
+                        summaryLines.push(`  - ${p.pName || 'Unknown'} at ${p.entryTime}${paxInfo}`);
+                    });
+                    if (passengersByGroup[h].length > 3) {
+                        summaryLines.push(`  ... and ${passengersByGroup[h].length - 3} more`);
+                    }
+                }
+                summaryLines.push(``);
             }
         }
         
-        savePendingToLocalStorage();
-        renderTables();
+        const confirmMessage = summaryLines.join('\n') + `\nCreate delay charge entries for these passengers?`;
         
-        if (summaryLines.length > 0) {
-            alert(`Delay charge entries created:\n${summaryLines.join('\n')}`);
+        if (confirm(confirmMessage)) {
+            const entryTimeNow = getCurrentEntryTime();
+            let createdCount = 0;
+            
+            for (let h = 1; h <= 4; h++) {
+                if (hourGroups[h] > 0) {
+                    // Create detailed passenger list for remarks
+                    const passengerDetails = passengersByGroup[h].map(p => 
+                        `${p.pName || 'Unknown'} (${p.entryTime})${p.pax > 1 ? ` - PAX: ${p.pax}` : ''}`
+                    ).join('\n  ');
+                    
+                    const fullRemarks = `${hourGroups[h]} passengers for ${h} extra hour${h > 1 ? 's' : ''}\nPassengers:\n  ${passengerDetails}`;
+                    
+                    const delayEntry = {
+                        pName: `DELAY CHARGE - ${flightNo}`,
+                        flightNo: flightNo,
+                        seatNo: '',
+                        class: '',
+                        airline: getAirlineName(flightNo.substring(0, 2)) || '',
+                        FQTV: '',
+                        pax: hourGroups[h].toString(),
+                        serialNo: '',
+                        remarks: fullRemarks,
+                        date: todayDate,
+                        shift: currentShiftData.shift,
+                        entryTime: entryTimeNow,
+                        hiddenCode: `DELAY-${flightNo}-${h}H-${Date.now()}`,
+                        isGuest: false,
+                        mainPassengerId: '',
+                        mainPassengerName: '',
+                        mainPassengerSeat: '',
+                        enteredBy: currentUser.name || currentUser.username || 'UNKNOWN',
+                        enteredByUsername: currentUser.username || 'UNKNOWN',
+                        enteredByRCNo: currentUser.rcno || 'N/A',
+                        enteredByLevel: currentUser.level || 'OPERATOR',
+                        enteredAt: new Date().toISOString(),
+                        delayChargeGroup: h,
+                        delayChargePassengers: passengersByGroup[h].map(p => ({
+                            name: p.pName,
+                            entryTime: p.entryTime,
+                            pax: p.pax,
+                            originalEntryId: p.id
+                        }))
+                    };
+                    
+                    const newEntry = {
+                        id: generateId(),
+                        ...delayEntry,
+                        approved: false
+                    };
+                    
+                    pendingPasses.push(newEntry);
+                    createdCount++;
+                }
+            }
+            
+            savePendingToLocalStorage();
+            renderTables();
+            
+            // Show success message with details
+            const successMessage = `✅ Created ${createdCount} delay charge ${createdCount === 1 ? 'entry' : 'entries'} for flight ${flightNo}\n\n`;
+            alert(successMessage + `These have been added to the PENDING tab for review.`);
             showTemporaryNotification(`✅ Delay charge entries added to PENDING tab`, 'success');
-        } else {
-            alert('No passengers exceeded the 3-hour free limit.');
+            
+            // Switch to pending tab to show the new entries
+            switchTab('pending');
         }
         
     } catch (error) {
@@ -5075,6 +5054,7 @@ window.retryAllErrors = retryAllErrors;
 window.clearAllErrors = clearAllErrors;
 window.getFirestoreForFlight = getFirestoreForFlight;
 window.getFirestoreNameForFlight = getFirestoreNameForFlight;
+window.getDatabaseColor = getDatabaseColor;
 window.saveEntryToFirebase = saveEntryToFirebase;
 window.backgroundSaveToFirebase = backgroundSaveToFirebase;
 window.validateEntryForSave = validateEntryForSave;
@@ -5082,9 +5062,9 @@ window.isFlightOpen = isFlightOpen;
 window.checkPassengerExistsInDatabase = checkPassengerExistsInDatabase;
 window.testFlightDatabaseMapping = testFlightDatabaseMapping;
 window.calculateDelayCharges = calculateDelayCharges;
-window.showAvailableFlights = showAvailableFlights;
-window.closeFlightsPopup = closeFlightsPopup;
-window.refreshFlights = refreshFlights;
+window.calculateDelayChargesForFlight = calculateDelayChargesForFlight;
+window.showFlightSelectionPopup = showFlightSelectionPopup;
+window.closeFlightSelectionPopup = closeFlightSelectionPopup;
 </script>
 </body>   
 </html>
