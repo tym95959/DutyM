@@ -313,7 +313,7 @@
             border: 3px solid #e6b800;
             border-radius: 20px;
             width: 90%;
-            max-width: 900px;
+            max-width: 1000px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
             max-height: 85vh;
             overflow-y: auto;
@@ -412,7 +412,7 @@
         
         .passenger-item {
             display: grid;
-            grid-template-columns: 80px 1fr 100px 100px 100px 60px;
+            grid-template-columns: 80px 1fr 100px 100px 80px 80px;
             gap: 10px;
             padding: 10px;
             border-bottom: 1px solid rgba(230,184,0,0.2);
@@ -793,6 +793,11 @@
             margin-left: 5px;
             letter-spacing: 0.5px;
         }
+        
+        .delay-charge-row {
+            background-color: rgba(220, 53, 69, 0.05) !important;
+            border-left: 4px solid #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -919,6 +924,11 @@
                     <label>📅 DATE</label>
                     <input type="text" id="delayFlightDate" class="form-control" readonly>
                 </div>
+                <div class="form-group">
+                    <label>⏱️ USER UPDATED LAST PAX</label>
+                    <input type="time" id="globalLastPax" class="form-control" onchange="updateAllLastPax()">
+                    <small style="color: #8b6913;">Set same last pax for all passengers</small>
+                </div>
             </div>
             
             <div class="time-filters">
@@ -932,6 +942,8 @@
                 </div>
                 <button class="filter-btn" onclick="filterPassengersByTime()">FILTER</button>
                 <button class="filter-btn" style="background: #6c757d;" onclick="resetTimeFilter()">RESET</button>
+                <button class="filter-btn" style="background: #28a745;" onclick="selectAllPassengers(true)">SELECT ALL</button>
+                <button class="filter-btn" style="background: #dc3545;" onclick="selectAllPassengers(false)">DESELECT ALL</button>
             </div>
             
             <div id="noFlightSelectedMessage" style="text-align: center; padding: 30px; color: #8b6913; display: none;">
@@ -943,7 +955,7 @@
                     <div>Select</div>
                     <div>Name</div>
                     <div>Entry Time</div>
-                    <div>Last Pax</div>
+                    <div>Last Pax (User Updated)</div>
                     <div>Pax</div>
                     <div>Hours Used</div>
                 </div>
@@ -965,7 +977,7 @@
             
             <div class="modal-actions">
                 <button class="btn-primary" onclick="calculateDelayCharges()">CALCULATE CHARGES</button>
-                <button class="btn-danger" onclick="submitDelayCharges()">SUBMIT CHARGES</button>
+                <button class="btn-danger" onclick="submitDelayCharges()">SUBMIT CHARGES (Pax: 0)</button>
                 <button class="btn-secondary" onclick="closeDelayChargeModal()">CANCEL</button>
             </div>
         </div>
@@ -1285,7 +1297,8 @@
                                     entryTime: data.entryTime || data.time || data.Time || '',
                                     remarks: data.remarks || data.Remark || data.remark || '',
                                     serialNo: data.serialNo || data.serial || data.Serial || '',
-                                    hiddenCode: hiddenCode
+                                    hiddenCode: hiddenCode,
+                                    isDelayCharge: data.delayCharge || false
                                 };
                                 
                                 flightData.passengers.push(passenger);
@@ -1409,6 +1422,9 @@
         const seen = new Map();
         
         passengers.forEach((passenger, index) => {
+            // Skip delay charge entries for duplicate detection
+            if (passenger.isDelayCharge) return;
+            
             // Create a unique key from name, seatNo, and flightNo (case-insensitive, trimmed)
             const name = (passenger.pName || '').toLowerCase().trim();
             const seat = (passenger.seatNo || '').toUpperCase().trim();
@@ -1784,7 +1800,7 @@
             `;
         }
         
-        // Detect duplicates
+        // Detect duplicates (skip delay charge entries)
         const duplicates = detectDuplicates(passengers);
         const duplicateIndices = new Set(duplicates.map(d => d.duplicateIndex));
         
@@ -1807,13 +1823,16 @@
             const isDuplicate = duplicateIndices.has(originalIndex);
             
             // Add duplicate class for highlighting
-            const rowClass = isDuplicate ? 'duplicate-row' : '';
+            let rowClass = isDuplicate ? 'duplicate-row' : '';
+            if (p.isDelayCharge) {
+                rowClass += ' delay-charge-row';
+            }
             
             // Extract PNR for FZ flights
             const pnr = isFZ ? extractPNRFromHiddenCode(p.hiddenCode) : '';
             
-            if (editingRowId === p.docId) {
-                // Edit mode with flight-specific placeholders
+            if (editingRowId === p.docId && !p.isDelayCharge) {
+                // Edit mode with flight-specific placeholders (skip editing for delay charge entries)
                 const namePlaceholder = isSQ ? 'Voucher No.' : 'Name';
                 
                 if (isFZ) {
@@ -1877,40 +1896,49 @@
             } else {
                 // View mode - add duplicate indicator if needed
                 const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate entry based on same Name, Seat, and Flight Number">⚠️ DUPLICATE</span>' : '';
+                const delayBadge = p.isDelayCharge ? '<span class="duplicate-badge" style="background: #dc3545;" title="Delay Charge Entry">⏰ DELAY CHARGE</span>' : '';
                 
                 if (isFZ) {
                     // FZ flight view mode with PNR column
                     html += `<tr class="${rowClass}">
                         <td class="serial-no">${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge}</td>
+                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge} ${delayBadge}</td>
                         <td>
                             ${pnr ? `<span class="pnr-badge" title="PNR extracted from hiddenCode">${pnr}</span>` : '-'}
                         </td>
                         <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
                         <td>${p.entryTime || '-'}</td>
                         <td>${escapeHtml(p.remarks) || '-'}</td>
                         <td class="action-cell">
-                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                            ${!p.isDelayCharge ? `
+                                <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                                <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                            ` : `
+                                <span style="color: #dc3545; font-size: 10px;">(Charge Entry)</span>
+                            `}
                         </td>
                     </tr>`;
                 } else {
                     // Non-FZ flight view mode
                     html += `<tr class="${rowClass}">
                         <td class="serial-no">${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge}</td>
+                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge} ${delayBadge}</td>
                         <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
                         <td>${p.entryTime || '-'}</td>
                         <td>${escapeHtml(p.remarks) || '-'}</td>
                         <td class="action-cell">
-                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                            ${!p.isDelayCharge ? `
+                                <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                                <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                            ` : `
+                                <span style="color: #dc3545; font-size: 10px;">(Charge Entry)</span>
+                            `}
                         </td>
                     </tr>`;
                 }
@@ -1963,22 +1991,6 @@
             database: flightData.database,
             isFZ: flightData.flightNo.toUpperCase().startsWith('FZ')
         });
-        
-        // For FZ flights, log all passengers with their hiddenCode and extracted PNR
-        if (flightData.flightNo.toUpperCase().startsWith('FZ')) {
-            console.log('FZ Flight - All passengers with hiddenCode:');
-            flightData.passengers.forEach((p, i) => {
-                const pnr = extractPNRFromHiddenCode(p.hiddenCode);
-                console.log(`Passenger ${i+1}:`, {
-                    name: p.pName,
-                    seat: p.seatNo,
-                    hiddenCode: p.hiddenCode,
-                    hiddenCodeLength: p.hiddenCode ? p.hiddenCode.length : 0,
-                    hasHiddenCode: !!p.hiddenCode,
-                    extractedPNR: pnr
-                });
-            });
-        }
         
         // Update database display
         document.getElementById('databaseDisplay').textContent = `${flightData.database} (${flightData.databaseProject || 'unknown'})`;
@@ -2128,11 +2140,11 @@
                 passenger.serialNo = serialNo; 
                 passenger.entryTime = entryTime;
                 passenger.remarks = remarks; 
-                // Note: hiddenCode is not updated here as it's typically not edited
             }
             
-            // Update first and last pax times
-            const times = currentFlightData.passengers.map(p => p.entryTime).filter(t => t);
+            // Update first and last pax times (skip delay charge entries)
+            const regularPassengers = currentFlightData.passengers.filter(p => !p.isDelayCharge);
+            const times = regularPassengers.map(p => p.entryTime).filter(t => t);
             if (times.length > 0) {
                 currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
                 currentFlightData.lastPax = times.reduce((a, b) => a > b ? a : b);
@@ -2233,7 +2245,8 @@
             const std = document.getElementById('stdInput').value || currentFlightData.std || '';
             const lastPax = document.getElementById('lastPaxInput').value || currentFlightData.lastPax || '';
             const firstPax = currentFlightData.firstPax || '';
-            const totalPax = currentFlightData.passengers.length;
+            // Count only regular passengers for total pax (exclude delay charge entries)
+            const totalPax = currentFlightData.passengers.filter(p => !p.isDelayCharge).length;
             const isClosed = currentFlightData.isClosed || false;
             
             // Format date for document ID
@@ -2364,24 +2377,11 @@
         const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
         const shift = currentFlightData.shift || '—';
         
+        // Sort passengers by entry time
         const sortedPassengers = [...currentFlightData.passengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
-
-        // Debug: Log ALL passengers with their hiddenCode and extracted PNR for FZ flights
-        if (isFZ) {
-            console.log('FZ Flight - All Passengers with PNR (Print Report):');
-            sortedPassengers.forEach((p, idx) => {
-                const pnr = extractPNRFromHiddenCode(p.hiddenCode);
-                console.log(`Passenger ${idx+1}:`, {
-                    name: p.pName,
-                    hiddenCode: p.hiddenCode,
-                    hiddenCodeType: typeof p.hiddenCode,
-                    hiddenCodeLength: p.hiddenCode ? p.hiddenCode.length : 0,
-                    extractedPNR: pnr,
-                    hasHiddenCode: !!p.hiddenCode
-                });
-            });
-        }
+        
+        // Calculate total pax sum including delay charges
+        const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 0), 0);
 
         // Create print window
         const printWindow = window.open('', '_blank');
@@ -2529,6 +2529,10 @@
                     tr:nth-child(even) {
                         background: #f9f9f9;
                     }
+                    .delay-charge-row {
+                        background-color: rgba(220, 53, 69, 0.05);
+                        font-style: italic;
+                    }
                     .signature-section {
                         margin-top: 50px;
                         display: flex;
@@ -2628,17 +2632,18 @@
         // Add passenger rows
         sortedPassengers.forEach((p, idx) => {
             const serial = String(idx+1).padStart(3,'0');
+            const rowClass = p.isDelayCharge ? 'delay-charge-row' : '';
             
             if (isFZ) {
                 // For FZ flights, include PNR column - extract from this passenger's own hiddenCode
                 const pnr = extractPNRFromHiddenCode(p.hiddenCode);
                 printWindow.document.write(`
-                    <tr>
+                    <tr class="${rowClass}">
                         <td>${serial}</td>
                         <td>${escapeHtml(p.pName) || '-'}</td>
                         <td>${pnr || '-'}</td>
                         <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td>${escapeHtml(p.serialNo) || '-'}</td>
                         <td>${p.entryTime || '-'}</td>
@@ -2648,11 +2653,11 @@
             } else {
                 // Regular flights (including SQ)
                 printWindow.document.write(`
-                    <tr>
+                    <tr class="${rowClass}">
                         <td>${serial}</td>
                         <td>${escapeHtml(p.pName) || '-'}</td>
                         <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td>${escapeHtml(p.serialNo) || '-'}</td>
                         <td>${p.entryTime || '-'}</td>
@@ -2713,6 +2718,7 @@
         document.getElementById('passengerListContainer').style.display = 'none';
         document.getElementById('chargeSummary').style.display = 'none';
         document.getElementById('delayFlightDate').value = '';
+        document.getElementById('globalLastPax').value = '';
         
         // Reset time filters
         document.getElementById('startTimeFilter').value = '00:00';
@@ -2779,16 +2785,46 @@
         delaySelectedFlight = flightData;
         document.getElementById('delayFlightDate').value = selectedDate;
         
-        // Initialize delay passengers with pax and lastPax from flight data
-        delayPassengers = flightData.passengers.map(p => ({
-            ...p,
-            lastPax: flightData.lastPax || '',
-            selected: true,
-            editedPax: p.pax || 1,
-            editedLastPax: flightData.lastPax || ''
-        }));
+        // Initialize delay passengers with pax and empty lastPax (to be filled by user)
+        delayPassengers = flightData.passengers
+            .filter(p => !p.isDelayCharge) // Exclude existing delay charge entries
+            .map(p => ({
+                ...p,
+                lastPax: '', // User will update this
+                selected: true,
+                editedPax: parseInt(p.pax) || 1,
+                editedLastPax: '' // User will update this
+            }));
         
         // Filter passengers by time
+        filterPassengersByTime();
+    }
+    
+    /**
+     * Update all passengers with the same last pax time
+     */
+    function updateAllLastPax() {
+        const globalLastPax = document.getElementById('globalLastPax').value;
+        if (!globalLastPax) return;
+        
+        delayPassengers.forEach(p => {
+            p.editedLastPax = globalLastPax;
+        });
+        
+        // Refresh display
+        filterPassengersByTime();
+    }
+    
+    /**
+     * Select or deselect all passengers
+     * @param {boolean} select - True to select all, false to deselect all
+     */
+    function selectAllPassengers(select) {
+        delayPassengers.forEach(p => {
+            p.selected = select;
+        });
+        
+        // Refresh display
         filterPassengersByTime();
     }
     
@@ -2851,10 +2887,10 @@
                     </div>
                     <div>${escapeHtml(p.pName) || '-'}</div>
                     <div>
-                        <input type="time" id="entryTime-${p.docId}" value="${p.entryTime || ''}" class="edit-input" onchange="updatePassengerTime('${p.docId}', 'entryTime')">
+                        <input type="time" id="entryTime-${p.docId}" value="${p.entryTime || ''}" class="edit-input" readonly style="background-color:#f5f5f5;">
                     </div>
                     <div>
-                        <input type="time" id="lastPax-${p.docId}" value="${p.editedLastPax || ''}" class="edit-input" onchange="updatePassengerTime('${p.docId}', 'lastPax')">
+                        <input type="time" id="lastPax-${p.docId}" value="${p.editedLastPax || ''}" class="edit-input" onchange="updatePassengerTime('${p.docId}', 'lastPax')" placeholder="Enter Last Pax">
                     </div>
                     <div>
                         <input type="number" id="pax-${p.docId}" value="${p.editedPax || 1}" class="edit-input" min="1" onchange="updatePassengerPax('${p.docId}')">
@@ -2921,18 +2957,14 @@
     /**
      * Update passenger time
      * @param {string} docId - Document ID of passenger
-     * @param {string} field - Field to update ('entryTime' or 'lastPax')
+     * @param {string} field - Field to update (only 'lastPax' now)
      */
     function updatePassengerTime(docId, field) {
         const input = document.getElementById(`${field}-${docId}`);
         const passenger = filteredDelayPassengers.find(p => p.docId === docId);
         
         if (passenger && input) {
-            if (field === 'entryTime') {
-                passenger.entryTime = input.value;
-            } else if (field === 'lastPax') {
-                passenger.editedLastPax = input.value;
-            }
+            passenger.editedLastPax = input.value;
             
             // Update the displayed hours
             const hoursUsed = calculateHoursUsed(passenger.entryTime, passenger.editedLastPax);
@@ -2968,6 +3000,13 @@
         
         if (selectedPassengers.length === 0) {
             alert('Please select at least one passenger');
+            return;
+        }
+        
+        // Check if all selected passengers have last pax time entered
+        const missingLastPax = selectedPassengers.filter(p => !p.editedLastPax);
+        if (missingLastPax.length > 0) {
+            alert(`Please enter Last Pax time for ${missingLastPax.length} selected passenger(s)`);
             return;
         }
         
@@ -3008,7 +3047,7 @@
         const summaryContainer = document.getElementById('chargeSummary');
         
         if (delayCalculatedCharges.length === 0) {
-            summaryDiv.innerHTML = '<div style="text-align:center; padding:20px;">No delay charges for selected passengers</div>';
+            summaryDiv.innerHTML = '<div style="text-align:center; padding:20px;">No delay charges for selected passengers (all within 3 hours)</div>';
             totalSpan.textContent = '0 hours';
             summaryContainer.style.display = 'block';
             return;
@@ -3073,7 +3112,7 @@
             return;
         }
         
-        if (!confirm('Submit delay charges to the passenger list?')) {
+        if (!confirm('Submit delay charges to the passenger list? These will be added as separate entries with Pax: 0')) {
             return;
         }
         
@@ -3116,13 +3155,13 @@
                     const passengerCount = lg.passengerNames.length;
                     const remarks = `Delay Charge: ${passengerCount} passenger${passengerCount > 1 ? 's' : ''} for ${group.hours} hour${group.hours > 1 ? 's' : ''} (Last Pax: ${lastPax})`;
                     
-                    // Create passenger name list for reference
+                    // Create passenger name list for reference (truncate if too long)
                     const nameList = lg.passengerNames.join(', ').substring(0, 100);
                     
                     const delayData = {
                         pName: 'Delay Charge',
                         seatNo: 'Nill',
-                        pax: lg.totalPax,
+                        pax: 0, // Set to 0 as requested
                         FQTV: '',
                         entryTime: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
                         remarks: remarks,
@@ -3142,11 +3181,11 @@
                     // Add to database
                     await targetDb.collection('KoveliPass').add(delayData);
                     
-                    console.log(`✅ Delay charge added for ${lg.totalPax} pax for ${group.hours} hours`);
+                    console.log(`✅ Delay charge added for ${lg.totalPax} pax for ${group.hours} hours (Pax: 0)`);
                 }
             }
             
-            alert(`✅ Delay charges submitted successfully to ${delaySelectedFlight.database}`);
+            alert(`✅ Delay charges submitted successfully to ${delaySelectedFlight.database} (All entries have Pax: 0)`);
             
             // Refresh the flight data
             await refreshCurrentFlightData();
@@ -3207,12 +3246,13 @@
                     entryTime: data.entryTime || data.time || data.Time || '',
                     remarks: data.remarks || data.Remark || data.remark || '',
                     serialNo: data.serialNo || data.serial || data.Serial || '',
-                    hiddenCode: hiddenCode
+                    hiddenCode: hiddenCode,
+                    isDelayCharge: data.delayCharge || false
                 };
                 
                 passengers.push(passenger);
                 
-                if (data.entryTime) {
+                if (data.entryTime && !data.delayCharge) {
                     if (!firstPax || data.entryTime < firstPax) {
                         firstPax = data.entryTime;
                     }
@@ -3300,6 +3340,8 @@
     window.updatePassengerPax = updatePassengerPax;
     window.calculateDelayCharges = calculateDelayCharges;
     window.submitDelayCharges = submitDelayCharges;
+    window.updateAllLastPax = updateAllLastPax;
+    window.selectAllPassengers = selectAllPassengers;
 </script>
 </body>
 </html>
