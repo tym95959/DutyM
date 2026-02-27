@@ -1129,6 +1129,10 @@
         document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a date and click Generate to create QR codes</div>';
         document.getElementById('sortControls').style.display = 'none';
         document.getElementById('statsSection').style.display = 'none';
+        
+        // Clear data when date changes
+        allQRCodes = [];
+        filteredQRCodes = [];
     }
 
     async function onFlightSelected() {
@@ -1340,6 +1344,9 @@
                 });
             });
             
+            // Log all flight numbers to debug
+            console.log("All flight numbers in data:", allQRCodes.map(item => item.flightNo));
+            
             // Reset filtered codes to all codes initially
             filteredQRCodes = [...allQRCodes];
             
@@ -1371,7 +1378,7 @@
         }
     }
 
-    // FIXED: Filter QR codes by flight - Now properly updates display
+    // FIXED: Filter QR codes by flight - Now properly filters and displays
     function filterQRCodes() {
         var flightSelect = document.getElementById('qrFlightSelect');
         var selectedFlight = flightSelect.value;
@@ -1379,24 +1386,35 @@
         console.log("Filtering by flight:", selectedFlight);
         console.log("Total allQRCodes:", allQRCodes.length);
         
-        if (selectedFlight) {
-            filteredQRCodes = allQRCodes.filter(function(item) { 
-                return item.flightNo === selectedFlight; 
-            });
-        } else {
-            filteredQRCodes = [...allQRCodes];
+        if (allQRCodes.length === 0) {
+            console.log("No QR codes loaded yet");
+            return;
         }
         
-        console.log("Filtered count:", filteredQRCodes.length);
+        if (selectedFlight) {
+            // Case-insensitive comparison to handle any formatting issues
+            filteredQRCodes = allQRCodes.filter(function(item) { 
+                var itemFlight = (item.flightNo || '').toString().trim();
+                var selectedFlightTrimmed = selectedFlight.toString().trim();
+                var matches = itemFlight === selectedFlightTrimmed;
+                
+                console.log(`Comparing: "${itemFlight}" with "${selectedFlightTrimmed}" -> ${matches}`);
+                return matches;
+            });
+            
+            console.log(`Found ${filteredQRCodes.length} records for flight ${selectedFlight}`);
+        } else {
+            filteredQRCodes = [...allQRCodes];
+            console.log("Showing all flights:", filteredQRCodes.length);
+        }
         
         updateStats();
         
-        // Always sort and display the filtered codes
-        // Use the current sort setting
+        // Force display update with current sort
         sortAndDisplayQRCodes();
         
         // Show a message if no results
-        if (filteredQRCodes.length === 0) {
+        if (filteredQRCodes.length === 0 && selectedFlight) {
             showMessage(`No records found for flight ${selectedFlight}`, 'warning');
         }
     }
