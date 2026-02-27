@@ -34,9 +34,6 @@
             margin: 0 auto;
         }
         
-        /* ===== smaller top ribbon - REMOVED for third party ===== */
-        /* Shift ribbon completely removed */
-        
         /* ===== Tab Navigation ===== */
         .tab-container {
             display: flex;
@@ -691,13 +688,102 @@
 </head>
 <body>
     <div class="container">
-        <!-- Tab Navigation - Only QR tab for third party -->
-        <div class="tab-container" style="justify-content: center;">
-            <button class="tab-button active" onclick="switchTab('qr')" id="tabQrBtn">📱 QR CODES</button>
+        <!-- Tab Navigation - Both tabs available, no shift ribbon -->
+        <div class="tab-container">
+            <button class="tab-button active" onclick="switchTab('flight')" id="tabFlightBtn">✈ FLIGHT REPORT</button>
+            <button class="tab-button" onclick="switchTab('qr')" id="tabQrBtn">📱 QR CODES</button>
         </div>
 
-        <!-- QR CODES TAB - Only tab shown -->
-        <div id="qrTab" class="tab-content active">
+        <!-- FLIGHT REPORT TAB -->
+        <div id="flightTab" class="tab-content active">
+            <!-- main card – compact & rearranged -->
+            <div class="card">
+                <!-- Row: Date and Flight No on left side, extra right box for visual balance -->
+                <div class="selection-flight-row">
+                    <div class="left-selectors">
+                        <div class="form-group">
+                            <label>📅 DATE</label>
+                            <select id="dateSelect" class="form-control" onchange="onDateSelected()">
+                                <option value="">-- Click to load dates --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>✈ FLIGHT NO</label>
+                            <select id="flightSelect" class="form-control" onchange="onFlightSelected()" disabled>
+                                <option value="">-- Select date first --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="quick-shift-box" id="quickShiftDisplay">
+                        <span id="quickShiftText">Select flight</span>
+                        <span id="databaseBadge" class="database-badge" style="display: none;">QR ONLY</span>
+                    </div>
+                </div>
+                
+                <!-- flight panel – now two columns: left details+stats, right ops+buttons under last pax -->
+                <div id="flightPanel" style="display: none;">
+                    <div class="flight-panel-revised">
+                        <!-- LEFT SIDE: airline, flight, date, status + stats -->
+                        <div class="left-details-block">
+                            <div class="info-grid">
+                                <span class="info-label">Airline:</span><span class="info-value" id="airlineDisplay">-</span>
+                                <span class="info-label">Flight No:</span><span class="info-value" id="flightNoDisplay">-</span>
+                                <span class="info-label">Date:</span><span class="info-value" id="dateDisplay">-</span>
+                                <span class="info-label">Database:</span><span class="info-value" id="databaseDisplay">QR Database</span>
+                                <span class="info-label">Status:</span>
+                                <span class="info-value"><span id="flightStatus" class="flight-status status-open">OPEN</span></span>
+                            </div>
+                            <!-- stats moved inside left block (right below basic info) -->
+                            <div class="stats-mini">
+                                <div class="stat-item"><div class="stat-label">Total Pax</div><div class="stat-number" id="totalPaxStat">0</div></div>
+                                <div class="stat-item"><div class="stat-label">First Pax</div><div class="stat-number" id="firstPaxStat">--:--</div></div>
+                                <div class="stat-item"><div class="stat-label">Last Pax</div><div class="stat-number" id="lastPaxStat">--:--</div></div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT SIDE: STD, Last Pax (view only) + print button -->
+                        <div class="right-ops-block">
+                            <div class="ops-grid">
+                                <span class="ops-label">STD:</span><span class="ops-value" id="stdDisplay">-</span>
+                                <span class="ops-label">First Pax:</span><span class="ops-value first-pax" id="firstPaxDisplay">-</span>
+                                <span class="ops-label">Last Pax:</span><span class="ops-value" id="lastPaxDisplay">-</span>
+                            </div>
+                            
+                            <!-- Message when flight not closed -->
+                            <div id="notClosedMessage" class="not-closed-message" style="display: none;">
+                                <i>⏳</i> Flight is not closed yet. Report can only be printed after flight is closed.
+                            </div>
+                            
+                            <!-- BUTTONS: only PRINT -->
+                            <div class="action-buttons-vertical">
+                                <button id="printReportBtn" class="print-btn" onclick="printReport()" disabled>🖨️ PRINT REPORT</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- passenger table – shows message when flight not closed -->
+            <div id="tableContainer" class="table-container" style="display: none;">
+                <div class="table-header">
+                    <h3>✈ PASSENGER LIST - QR DATABASE ONLY</h3>
+                    <span class="passenger-count" id="passengerCount">0</span>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr><th>No.</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th></tr>
+                        </thead>
+                        <tbody id="passengerTableBody">
+                            <tr><td colspan="8" class="no-data">Select a flight to view passengers</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- QR CODES TAB - Fixed filtering -->
+        <div id="qrTab" class="tab-content">
             <div class="card">
                 <!-- Message Container -->
                 <div id="messageContainer" class="message-container"></div>
@@ -797,10 +883,25 @@
         return window.qrDb;
     }
 
-    // ========== TAB SWITCHING (Simplified - only QR tab) ==========
+    // ========== TAB SWITCHING ==========
     function switchTab(tabName) {
-        // Only QR tab exists, so this is just a placeholder
-        console.log("Only QR tab is available");
+        document.getElementById('tabFlightBtn').classList.remove('active');
+        document.getElementById('tabQrBtn').classList.remove('active');
+        document.getElementById('flightTab').classList.remove('active');
+        document.getElementById('qrTab').classList.remove('active');
+        
+        if (tabName === 'flight') {
+            document.getElementById('tabFlightBtn').classList.add('active');
+            document.getElementById('flightTab').classList.add('active');
+        } else {
+            document.getElementById('tabQrBtn').classList.add('active');
+            document.getElementById('qrTab').classList.add('active');
+            if (!datesLoaded) {
+                loadDates();
+            } else {
+                updateQrDateSelect();
+            }
+        }
     }
 
     // ========== LOAD DATES FROM QR DATABASE ==========
@@ -813,7 +914,11 @@
         
         if (isLoadingDates) return;
         
+        var dateSelect = document.getElementById('dateSelect');
         isLoadingDates = true;
+        
+        dateSelect.innerHTML = '<option value="">🔍 Scanning QR database...</option>';
+        dateSelect.disabled = true;
         
         if (forceReload) {
             flightsByDate = {};
@@ -888,12 +993,24 @@
             allDates = Object.keys(flightsByDate).sort().reverse();
             datesLoaded = true;
             
+            if (allDates.length === 0) {
+                dateSelect.innerHTML = '<option value="">❌ No dates found in QR database</option>';
+            } else {
+                var options = '<option value="">📅 Select a date</option>';
+                allDates.forEach(d => { 
+                    var flightCount = flightsByDate[d]?.size || 0;
+                    options += `<option value="${d}">${d} (${flightCount} flight${flightCount !== 1 ? 's' : ''})</option>`; 
+                });
+                dateSelect.innerHTML = options;
+            }
+            
+            dateSelect.disabled = false;
             updateQrDateSelect();
             
         } catch (error) {
             console.error('Error loading dates:', error);
-            var qrDateSelect = document.getElementById('qrDateSelect');
-            qrDateSelect.innerHTML = '<option value="">❌ Error loading dates</option>';
+            dateSelect.innerHTML = '<option value="">❌ Error loading dates</option>';
+            dateSelect.disabled = false;
         } finally { 
             isLoadingDates = false; 
         }
@@ -950,6 +1067,47 @@
         loadBtn.disabled = true;
     }
 
+    function onDateSelected() {
+        var dateSelect = document.getElementById('dateSelect');
+        var flightSelect = document.getElementById('flightSelect');
+        var selectedDate = dateSelect.value;
+        
+        flightSelect.innerHTML = '<option value="">⏳ Loading flights...</option>';
+        flightSelect.disabled = true;
+        
+        document.getElementById('flightPanel').style.display = 'none';
+        document.getElementById('tableContainer').style.display = 'none';
+        document.getElementById('quickShiftText').innerText = 'Select flight';
+        document.getElementById('databaseBadge').style.display = 'inline-block';
+        
+        currentFlightData = null;
+        
+        if (!selectedDate) {
+            flightSelect.innerHTML = '<option value="">-- Select date first --</option>';
+            return;
+        }
+        
+        var flights = flightsByDate[selectedDate];
+        if (!flights || flights.size === 0) {
+            flightSelect.innerHTML = '<option value="">❌ No flights for this date</option>';
+            return;
+        }
+        
+        var flightsArray = Array.from(flights.values()).sort(function(a,b) { 
+            return a.flightNo.localeCompare(b.flightNo); 
+        });
+        
+        var options = '<option value="">✈️ Select a flight</option>';
+        flightsArray.forEach(function(f) { 
+            var passengerCount = f.passengers.length;
+            var statusIcon = f.isClosed ? '🔒' : '🔓';
+            options += `<option value="${f.flightNo}">${statusIcon} ${f.flightNo} - ${passengerCount} pax ${f.isClosed ? '(Closed)' : '(Open)'}</option>`; 
+        });
+        
+        flightSelect.innerHTML = options;
+        flightSelect.disabled = false;
+    }
+
     function onQrDateSelected() {
         var qrDateSelect = document.getElementById('qrDateSelect');
         var loadBtn = document.getElementById('loadQrBtn');
@@ -983,6 +1141,128 @@
         document.getElementById('qrContainer').innerHTML = '<div class="qr-no-data">Select a date and click Generate to create QR codes</div>';
         document.getElementById('sortControls').style.display = 'none';
         document.getElementById('statsSection').style.display = 'none';
+    }
+
+    async function onFlightSelected() {
+        var dateSelect = document.getElementById('dateSelect');
+        var flightSelect = document.getElementById('flightSelect');
+        var selectedDate = dateSelect.value;
+        var selectedFlight = flightSelect.value;
+        
+        if (!selectedDate || !selectedFlight) {
+            document.getElementById('flightPanel').style.display = 'none';
+            document.getElementById('tableContainer').style.display = 'none';
+            return;
+        }
+        
+        document.getElementById('flightPanel').style.display = 'block';
+        document.getElementById('airlineDisplay').textContent = 'Loading...';
+        
+        var flights = flightsByDate[selectedDate];
+        var flightData = null;
+        
+        // Find the flight data
+        flights.forEach(function(flight) {
+            if (flight.flightNo === selectedFlight) {
+                flightData = flight;
+            }
+        });
+        
+        if (!flightData) {
+            alert('Flight data not found');
+            return;
+        }
+        
+        currentFlightData = flightData;
+        
+        document.getElementById('databaseDisplay').textContent = 'QR Database (cardentryqr)';
+        document.getElementById('databaseBadge').style.display = 'inline-block';
+        
+        try {
+            // Update UI with loaded data
+            document.getElementById('airlineDisplay').textContent = flightData.airline || '-';
+            document.getElementById('flightNoDisplay').textContent = selectedFlight;
+            document.getElementById('dateDisplay').textContent = selectedDate;
+            document.getElementById('firstPaxDisplay').textContent = flightData.firstPax || '-';
+            document.getElementById('stdDisplay').textContent = '-';
+            document.getElementById('lastPaxDisplay').textContent = flightData.lastPax || '-';
+            document.getElementById('totalPaxStat').textContent = flightData.passengers.length;
+            document.getElementById('firstPaxStat').textContent = flightData.firstPax || '--:--';
+            document.getElementById('lastPaxStat').textContent = flightData.lastPax || '--:--';
+            document.getElementById('passengerCount').textContent = flightData.passengers.length + ' PAX';
+            document.getElementById('quickShiftText').innerHTML = selectedFlight + ' <span style="font-size:10px; opacity:0.8;">(QR Database)</span>';
+            
+            // Set status based on flight.isClosed
+            if (flightData.isClosed) {
+                document.getElementById('flightStatus').textContent = 'CLOSED';
+                document.getElementById('flightStatus').className = 'flight-status status-closed';
+                document.getElementById('printReportBtn').disabled = false;
+                document.getElementById('notClosedMessage').style.display = 'none';
+                
+                // Show passenger table
+                displayPassengerTable(flightData.passengers);
+            } else {
+                document.getElementById('flightStatus').textContent = 'OPEN';
+                document.getElementById('flightStatus').className = 'flight-status status-open';
+                document.getElementById('printReportBtn').disabled = true;
+                document.getElementById('notClosedMessage').style.display = 'block';
+                
+                // Show "flight not closed" message in table
+                showNotClosedMessage();
+            }
+            
+        } catch (error) {
+            console.error('Error loading flight:', error);
+        }
+    }
+
+    // Display message when flight is not closed
+    function showNotClosedMessage() {
+        var tbody = document.getElementById('passengerTableBody');
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="table-not-closed">
+                    <i>⏳</i>
+                    <strong>Flight is not closed yet</strong><br>
+                    <span style="font-size: 12px; margin-top: 8px; display: block;">
+                        Passenger list will be available only after the flight is closed.
+                    </span>
+                </td>
+            </tr>
+        `;
+        document.getElementById('tableContainer').style.display = 'block';
+    }
+
+    function displayPassengerTable(passengers) {
+        var tbody = document.getElementById('passengerTableBody');
+        
+        if (!passengers || passengers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="no-data">No passengers found</td></tr>';
+            document.getElementById('tableContainer').style.display = 'block';
+            return;
+        }
+        
+        var sorted = [...passengers].sort(function(a,b) { 
+            return (a.entryTime||'').localeCompare(b.entryTime||''); 
+        });
+        var html = '';
+        
+        sorted.forEach(function(p, idx) {
+            var serial = String(idx+1).padStart(3,'0');
+            html += `<tr>
+                <td class="serial-no">${serial}</td>
+                <td>${p.pName || '-'}</td>
+                <td>${p.seatNo || '-'}</td>
+                <td style="text-align:center;">${p.pax || '1'}</td>
+                <td>${p.FQTV || '-'}</td>
+                <td class="${p.serialNo ? 'serial-no' : ''}">${p.serialNo || '—'}</td>
+                <td>${p.entryTime || '-'}</td>
+                <td>${p.remarks || '-'}</td>
+            </tr>`;
+        });
+        
+        tbody.innerHTML = html;
+        document.getElementById('tableContainer').style.display = 'block';
     }
 
     // ========== MESSAGE FUNCTIONS ==========
@@ -1298,6 +1578,148 @@
         document.getElementById('qrCodes').textContent = filteredQRCodes.length;
     }
 
+    // Print report function - only works if flight is closed
+    function printReport() {
+        if (!currentFlightData) { 
+            alert('No flight data to print'); 
+            return; 
+        }
+        
+        // Check if flight is closed
+        if (!currentFlightData.isClosed) {
+            alert('Flight is not closed yet. Report can only be printed after the flight is closed.');
+            return;
+        }
+
+        var company = window.companyInfo || { 
+            name: 'MACL', 
+            address: '123 Aviation Road', 
+            phone: '+123 456 7890',
+            logo: 'macl.png'
+        };
+        
+        var dateStr = document.getElementById('dateDisplay').textContent; 
+        var dateParts = dateStr.split('-');
+        var formattedDate = dateParts.length === 3 ? dateParts[2] + '/' + dateParts[1] + '/' + dateParts[0] : dateStr;
+
+        var airline = currentFlightData.airline || '—';
+        var flightNo = currentFlightData.flightNo || '—';
+        var std = document.getElementById('stdDisplay').textContent || '—';
+        var firstPax = currentFlightData.firstPax || '—';
+        var lastPax = currentFlightData.lastPax || '—';
+        
+        var sortedPassengers = [...currentFlightData.passengers].sort(function(a,b) { 
+            return (a.entryTime||'').localeCompare(b.entryTime||''); 
+        });
+        var totalPaxSum = sortedPassengers.reduce(function(sum, p) { 
+            return sum + (parseInt(p.pax) || 1); 
+        }, 0);
+
+        var printWindow = window.open('', '_blank');
+        
+        var html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Flight Report - ${flightNo} - ${formattedDate}</title>
+                <style>
+                    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0.5in; color: #333; }
+                    .header { display: flex; justify-content: space-between; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #8b1e3f; }
+                    .logo-section { display: flex; flex-direction: column; }
+                    .company-address { font-size: 11px; color: #666; line-height: 1.4; }
+                    .flight-details { margin-top: 5px; }
+                    .flight-detail-item { font-size: 13px; margin-bottom: 3px; }
+                    .flight-detail-label { font-weight: 600; color: #8b1e3f; display: inline-block; width: 60px; }
+                    .right-section { display: flex; flex-direction: column; justify-content: flex-start; padding-top: 95px; }
+                    .info-item { display: flex; gap: 15px; margin-bottom: 8px; justify-content: flex-end; }
+                    .label { font-weight: 600; color: #8b1e3f; min-width: 80px; text-align: right; }
+                    .value { color: #333; min-width: 60px; text-align: left; }
+                    .total-pax { margin: 15px 0; text-align: right; font-size: 14px; font-weight: 600; }
+                    .total-pax span { background: #8b1e3f; color: white; padding: 5px 15px; border-radius: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                    th { background: #8b1e3f; color: white; padding: 10px; text-align: left; font-size: 12px; }
+                    td { padding: 8px 10px; border-bottom: 1px solid #ddd; }
+                    tr:nth-child(even) { background: #f9f9f9; }
+                    .signature-section { margin-top: 50px; display: flex; justify-content: space-between; padding: 0 20px; }
+                    .signature-box { text-align: center; width: 200px; }
+                    .signature-line { margin-top: 40px; border-bottom: 1px solid #333; width: 100%; }
+                    .signature-label { font-size: 12px; color: #8b1e3f; font-weight: 600; margin-top: 5px; }
+                    .date-info { margin-top: 20px; text-align: right; font-size: 11px; color: #666; }
+                    .footer { margin-top: 30px; text-align: center; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 20px; }
+                    .qr-badge { background: #800080; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
+                    @media print { body { margin: 0.25in; } }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="left-section">
+                        <div class="logo-section">
+                            <div class="company-address">
+                                <strong>${company.name}</strong><br>
+                                ${company.address}<br>
+                                ${company.phone}
+                            </div>
+                        </div>
+                        <div class="flight-details">
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Airline:</span> ${airline}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Flight No:</span> ${flightNo}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Date:</span> ${formattedDate}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="right-section">
+                        <div class="info-item"><span class="label">STD:</span><span class="value">${std}</span></div>
+                        <div class="info-item"><span class="label">First Pax:</span><span class="value">${firstPax}</span></div>
+                        <div class="info-item"><span class="label">Last Pax:</span><span class="value">${lastPax}</span></div>
+                    </div>
+                </div>
+                
+                <div class="total-pax"><span>TOTAL PAX: ${totalPaxSum}</span></div>
+                
+                <table>
+                    <thead><tr><th>No.</th><th>Name</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th></tr></thead>
+                    <tbody>
+        `;
+        
+        sortedPassengers.forEach(function(p, idx) {
+            var serial = String(idx+1).padStart(3,'0');
+            html += `
+                <tr><td>${serial}</td><td>${p.pName || '-'}</td><td>${p.seatNo || '-'}</td>
+                <td style="text-align:center;">${p.pax || '1'}</td><td>${p.FQTV || '-'}</td>
+                <td>${p.serialNo || '-'}</td><td>${p.entryTime || '-'}</td><td>${p.remarks || '-'}</td></tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+                
+                <div class="signature-section">
+                    <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Prepared by:</div></div>
+                    <div class="signature-box"><div class="signature-line"></div><div class="signature-label">Checked by:</div></div>
+                </div>
+                
+                <div class="date-info">Date: ____________________</div>
+                
+                <div class="footer">
+                    <p>This is a computer generated report. Valid without signature.</p>
+                    <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
+                </div>
+                
+                <script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }<\/script>
+            </body>
+            </html>
+        `;
+        
+        printWindow.document.write(html);
+        printWindow.document.close();
+    }
+
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(function() {
@@ -1307,6 +1729,9 @@
 
     // Global functions - make sure all are attached to window
     window.loadDates = loadDates; 
+    window.onDateSelected = onDateSelected; 
+    window.onFlightSelected = onFlightSelected;
+    window.printReport = printReport;
     window.switchTab = switchTab;
     window.onQrDateSelected = onQrDateSelected;
     window.loadQRCodes = loadQRCodes;
