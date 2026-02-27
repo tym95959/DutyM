@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Delay Charge Calculator - Koveli Lounge</title>
+    <title>Koveli Lounge - Delay Charge</title>
     <!-- Firebase SDK (must come first) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -11,396 +11,461 @@
     <!-- Your combined firebase config file -->
     <script src="fireshift.js"></script>
     
-    <!-- Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Your iata.js file -->
+    <script src="iata.js"></script>
     
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        /* ===== DELAY CHARGE POPUP STYLES ===== */
+        .delay-charge-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9999;
+            display: none;
+            backdrop-filter: blur(5px);
         }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(120deg, #faf3e0, #fff5e6);
-            min-height: 100vh;
-            padding: 20px;
+        .delay-charge-overlay.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
         }
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            background-color: rgba(255, 255, 255, 0.95);
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(230, 184, 0, 0.15);
-            border: 1px solid rgba(230, 184, 0, 0.2);
-            overflow: hidden;
+        .delay-charge-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(145deg, #fff9e6, #fff2d7);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            width: 95%;
+            max-width: 1200px;
+            max-height: 90vh;
+            overflow-y: auto;
+            display: none;
+            border: 3px solid #e6b800;
         }
 
-        .header {
+        .delay-charge-popup.active {
+            display: block;
+            animation: slideUp 0.4s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -40%);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%);
+            }
+        }
+
+        .popup-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 25px;
-            background: linear-gradient(90deg, #fff9e6, #ffffff);
-            border-bottom: 2px solid rgba(230, 184, 0, 0.3);
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid rgba(230, 184, 0, 0.3);
+            position: sticky;
+            top: 0;
+            background: linear-gradient(145deg, #fff9e6, #fff2d7);
+            z-index: 10;
         }
 
-        .header h2 {
+        .popup-header h2 {
             color: #8b6913;
             font-size: 24px;
             font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .close-btn {
-            background: linear-gradient(135deg, #c68b5e, #a67244);
-            color: white;
-            border: none;
+        .popup-header h2 i {
+            color: #e6b800;
+            font-size: 28px;
+        }
+
+        .popup-close-btn {
             width: 40px;
             height: 40px;
             border-radius: 50%;
-            cursor: pointer;
+            background: linear-gradient(135deg, #c68b5e, #a67244);
+            border: 2px solid white;
+            color: white;
             font-size: 20px;
+            cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.3s;
         }
 
-        .close-btn:hover {
+        .popup-close-btn:hover {
             transform: rotate(90deg);
             background: linear-gradient(135deg, #a67244, #8b5a3c);
         }
 
-        .main-content {
-            padding: 25px;
+        .shift-info-bar {
+            background: linear-gradient(135deg, #e6b80020, #d4a90020);
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            border: 1px solid #e6b800;
         }
 
-        /* Flight Selection Section */
-        .flight-selection {
-            background: linear-gradient(145deg, #fff9e6, #fff2d7);
-            border: 2px solid #e6b800;
-            border-radius: 15px;
-            padding: 20px;
+        .shift-info-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #5e4a1a;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .shift-info-item i {
+            color: #e6b800;
+            font-size: 18px;
+        }
+
+        .shift-info-item strong {
+            color: #8b6913;
+            margin-right: 5px;
+        }
+
+        .flight-selector {
             margin-bottom: 25px;
         }
 
-        .flight-selection h3 {
+        .flight-selector label {
+            display: block;
             color: #8b6913;
-            margin-bottom: 15px;
-            font-size: 18px;
             font-weight: 600;
-            border-bottom: 2px solid rgba(230, 184, 0, 0.3);
-            padding-bottom: 8px;
+            margin-bottom: 8px;
+            font-size: 14px;
         }
 
-        .flight-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr auto;
-            gap: 15px;
-            align-items: center;
-        }
-
-        .flight-grid select, .flight-grid input {
+        .flight-selector select {
+            width: 100%;
             padding: 12px 15px;
             border: 2px solid rgba(230, 184, 0, 0.3);
-            border-radius: 8px;
-            font-size: 14px;
+            border-radius: 12px;
+            font-size: 15px;
             background: white;
+            color: #5e4a1a;
             transition: all 0.3s;
+            cursor: pointer;
         }
 
-        .flight-grid select:focus, .flight-grid input:focus {
+        .flight-selector select:focus {
             outline: none;
             border-color: #e6b800;
             box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.1);
         }
 
-        .flight-grid button {
-            padding: 12px 25px;
-            background: linear-gradient(135deg, #e6b800, #d4a900);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            white-space: nowrap;
+        .flight-selector select option {
+            padding: 10px;
         }
 
-        .flight-grid button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(230, 184, 0, 0.3);
-        }
-
-        .flight-grid button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* Flight Info Cards */
-        .flight-info-cards {
+        .flight-summary {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
+            gap: 15px;
             margin-bottom: 25px;
         }
 
-        .info-card {
+        .summary-card {
             background: white;
             border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 10px rgba(230, 184, 0, 0.1);
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(230, 184, 0, 0.1);
             border: 1px solid rgba(230, 184, 0, 0.2);
+            text-align: center;
         }
 
-        .info-card h4 {
+        .summary-card .label {
             color: #8b6913;
-            font-size: 14px;
-            margin-bottom: 10px;
+            font-size: 13px;
+            font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            margin-bottom: 8px;
         }
 
-        .info-card .value {
+        .summary-card .value {
+            color: #5e4a1a;
             font-size: 28px;
             font-weight: 700;
-            color: #5e4a1a;
-            margin-bottom: 5px;
         }
 
-        .info-card .subtitle {
-            font-size: 12px;
+        .summary-card .sub-value {
             color: #c68b5e;
+            font-size: 14px;
+            margin-top: 5px;
         }
 
-        .info-card.highlight {
-            background: linear-gradient(135deg, #fff9e6, #fff2d7);
-            border: 2px solid #e6b800;
-        }
-
-        /* Passenger Table */
-        .passenger-section {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 10px rgba(230, 184, 0, 0.1);
+        .passenger-table-container {
+            max-height: 300px;
+            overflow-y: auto;
             margin-bottom: 25px;
+            border-radius: 12px;
+            border: 2px solid rgba(230, 184, 0, 0.2);
         }
 
-        .passenger-section h3 {
-            color: #8b6913;
-            margin-bottom: 15px;
-            font-size: 16px;
-            font-weight: 600;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .table-container {
-            overflow-x: auto;
-            max-height: 400px;
-            border-radius: 8px;
-            border: 1px solid rgba(230, 184, 0, 0.2);
-        }
-
-        table {
+        .passenger-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 1000px;
+            background: white;
         }
 
-        th {
+        .passenger-table th {
             background: linear-gradient(135deg, #faf3e0, #fff5e6);
             color: #8b6913;
             padding: 12px 8px;
-            text-align: left;
             font-size: 12px;
             font-weight: 600;
+            text-align: left;
             border-bottom: 2px solid #e6b800;
             position: sticky;
             top: 0;
-            z-index: 10;
+            z-index: 5;
         }
 
-        td {
+        .passenger-table td {
             padding: 10px 8px;
             border-bottom: 1px solid rgba(230, 184, 0, 0.1);
             color: #5e4a1a;
             font-size: 12px;
         }
 
-        tr:hover td {
+        .passenger-table tr:hover td {
             background: rgba(230, 184, 0, 0.05);
         }
 
-        .editable-input {
-            width: 100%;
-            padding: 6px 8px;
-            border: 2px solid #e6b800;
+        .passenger-table .warning-row {
+            background: rgba(230, 184, 0, 0.1);
+        }
+
+        .passenger-table .delay-row {
+            background: rgba(198, 139, 94, 0.1);
+        }
+
+        .editable-time {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .editable-time input {
+            width: 70px;
+            padding: 4px 6px;
+            border: 1px solid rgba(230, 184, 0, 0.3);
             border-radius: 4px;
-            font-size: 12px;
-            background: white;
+            font-size: 11px;
+            text-align: center;
         }
 
-        .editable-input:focus {
+        .editable-time input:focus {
             outline: none;
-            border-color: #d4a900;
+            border-color: #e6b800;
         }
 
-        .delay-badge {
-            background: #c68b5e;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 20px;
+        .time-badge {
+            background: #e6b80020;
+            color: #8b6913;
+            padding: 2px 8px;
+            border-radius: 12px;
             font-size: 11px;
             font-weight: 600;
-            text-align: center;
-            display: inline-block;
+            white-space: nowrap;
         }
 
-        .delay-badge.warning {
-            background: #e6b800;
+        .hours-badge {
+            background: #6b8e2320;
+            color: #556b2f;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
         }
 
-        .delay-badge.success {
-            background: #6b8e23;
-        }
-
-        /* Checkbox styling */
-        .passenger-checkbox {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-            accent-color: #e6b800;
-        }
-
-        /* Summary Section */
-        .summary-section {
-            background: linear-gradient(135deg, #6b8e23, #556b2f);
+        .delay-charge-summary {
+            background: linear-gradient(135deg, #fff2d7, #ffe6c0);
             border-radius: 12px;
             padding: 20px;
-            color: white;
             margin-bottom: 25px;
+            border: 2px solid #e6b800;
         }
 
-        .summary-section h3 {
-            margin-bottom: 15px;
+        .charge-groups {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .charge-group {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .charge-group-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid rgba(230, 184, 0, 0.2);
+        }
+
+        .charge-group-header h4 {
+            color: #8b6913;
             font-size: 16px;
             font-weight: 600;
-            border-bottom: 1px solid rgba(255,255,255,0.3);
-            padding-bottom: 8px;
         }
 
-        .summary-grid {
+        .charge-group-header .group-hours {
+            background: #e6b800;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .charge-group-content {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
+            gap: 15px;
         }
 
-        .summary-item {
-            background: rgba(255,255,255,0.1);
-            padding: 15px;
+        .charge-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f9f9f9;
             border-radius: 8px;
         }
 
-        .summary-item .label {
-            font-size: 12px;
-            opacity: 0.9;
-            margin-bottom: 5px;
+        .charge-item .passenger-info {
+            display: flex;
+            flex-direction: column;
         }
 
-        .summary-item .value {
+        .charge-item .passenger-name {
+            font-weight: 600;
+            color: #5e4a1a;
+            font-size: 13px;
+        }
+
+        .charge-item .passenger-detail {
+            font-size: 10px;
+            color: #8b6913;
+        }
+
+        .charge-item .extra-hours {
+            background: #c68b5e;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .total-charge-box {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, #8b6913, #5e4a1a);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .total-charge-box .total-label {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .total-charge-box .total-value {
             font-size: 24px;
             font-weight: 700;
         }
 
-        .summary-item .sub {
-            font-size: 11px;
-            opacity: 0.8;
-            margin-top: 5px;
-        }
-
-        /* Hours Breakdown */
-        .hours-breakdown {
+        .popup-footer {
             display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-top: 15px;
-        }
-
-        .hour-badge {
-            background: rgba(255,255,255,0.15);
-            padding: 10px 15px;
-            border-radius: 30px;
-            font-size: 13px;
-            font-weight: 600;
-            border: 1px solid rgba(255,255,255,0.3);
-        }
-
-        .hour-badge span {
-            font-size: 18px;
-            margin-right: 5px;
-        }
-
-        /* Action Buttons */
-        .action-buttons {
-            display: flex;
-            gap: 15px;
             justify-content: flex-end;
+            gap: 15px;
             margin-top: 20px;
+            padding-top: 15px;
+            border-top: 2px solid rgba(230, 184, 0, 0.2);
         }
 
-        .primary-btn, .secondary-btn {
+        .popup-footer button {
             padding: 12px 30px;
             border: none;
-            border-radius: 8px;
+            border-radius: 40px;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
         }
 
-        .primary-btn {
+        .calculate-btn {
             background: linear-gradient(135deg, #e6b800, #d4a900);
             color: white;
         }
 
-        .primary-btn:hover {
+        .calculate-btn:hover {
+            background: linear-gradient(135deg, #d4a900, #c29800);
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(230, 184, 0, 0.3);
+            box-shadow: 0 8px 20px rgba(230, 184, 0, 0.3);
         }
 
-        .primary-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
+        .submit-btn {
+            background: linear-gradient(135deg, #6b8e23, #556b2f);
+            color: white;
         }
 
-        .secondary-btn {
-            background: white;
-            color: #8b6913;
-            border: 2px solid #e6b800;
+        .submit-btn:hover {
+            background: linear-gradient(135deg, #556b2f, #445d25);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(107, 142, 35, 0.3);
         }
 
-        .secondary-btn:hover {
-            background: #fff9e6;
+        .cancel-btn {
+            background: linear-gradient(135deg, #c68b5e, #a67244);
+            color: white;
         }
 
-        /* Loading Spinner */
-        .loading-spinner {
+        .cancel-btn:hover {
+            background: linear-gradient(135deg, #a67244, #8b5a3c);
+            transform: translateY(-2px);
+        }
+
+        .loading-spinner-lg {
             display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255,255,255,0.3);
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
             border-radius: 50%;
             border-top-color: white;
-            animation: spin 0.8s linear infinite;
+            animation: spin 1s linear infinite;
             margin-right: 8px;
         }
 
@@ -408,908 +473,897 @@
             to { transform: rotate(360deg); }
         }
 
-        /* Status Messages */
-        .status-message {
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            font-size: 13px;
-            font-weight: 500;
-        }
-
-        .status-message.success {
-            background: #e8f5e8;
-            color: #6b8e23;
-            border-left: 4px solid #6b8e23;
-        }
-
-        .status-message.error {
-            background: #fff1f0;
-            color: #c68b5e;
-            border-left: 4px solid #c68b5e;
-        }
-
-        .status-message.warning {
-            background: #fff9e6;
-            color: #e6b800;
-            border-left: 4px solid #e6b800;
-        }
-
-        /* Manual Edit Section */
-        .manual-edit-section {
-            background: #fff9e6;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 15px;
-            display: none;
-        }
-
-        .manual-edit-section.visible {
-            display: block;
-        }
-
-        .edit-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .edit-grid input {
-            padding: 8px;
-            border: 2px solid rgba(230, 184, 0, 0.3);
-            border-radius: 4px;
+        /* Floating Action Button for Delay Charge */
+        .fab-button[data-tooltip="Delay Charge"] {
+            background: linear-gradient(135deg, #c68b5e, #a67244);
         }
 
         /* Responsive */
-        @media (max-width: 768px) {
-            .flight-grid {
+        @media screen and (max-width: 768px) {
+            .delay-charge-popup {
+                padding: 15px;
+                width: 98%;
+            }
+
+            .flight-summary {
                 grid-template-columns: 1fr;
             }
-            
-            .summary-grid {
+
+            .charge-group-content {
                 grid-template-columns: 1fr;
             }
-            
-            .action-buttons {
+
+            .popup-footer {
                 flex-direction: column;
+            }
+
+            .popup-footer button {
+                width: 100%;
             }
         }
     </style>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h2><i class="fas fa-clock" style="margin-right: 10px;"></i>Delay Charge Calculator</h2>
-            <button class="close-btn" onclick="window.close()"><i class="fas fa-times"></i></button>
+    <!-- Delay Charge Popup -->
+    <div class="delay-charge-overlay" id="delayChargeOverlay"></div>
+    <div class="delay-charge-popup" id="delayChargePopup">
+        <div class="popup-header">
+            <h2>
+                <i class="fas fa-clock"></i>
+                DELAY CHARGE CALCULATOR
+            </h2>
+            <button class="popup-close-btn" onclick="closeDelayChargePopup()">
+                <i class="fas fa-times"></i>
+            </button>
         </div>
 
-        <div class="main-content">
-            <!-- Status Message -->
-            <div id="statusMessage" class="status-message" style="display: none;"></div>
+        <div class="shift-info-bar" id="shiftInfoBar">
+            <div class="shift-info-item">
+                <i class="fas fa-calendar-alt"></i>
+                <strong>DATE:</strong> <span id="popupDate">Loading...</span>
+            </div>
+            <div class="shift-info-item">
+                <i class="fas fa-clock"></i>
+                <strong>SHIFT:</strong> <span id="popupShift">Loading...</span>
+            </div>
+            <div class="shift-info-item">
+                <i class="fas fa-users"></i>
+                <strong>CURRENT TIME:</strong> <span id="popupCurrentTime">Loading...</span>
+            </div>
+        </div>
 
-            <!-- Flight Selection Section -->
-            <div class="flight-selection">
-                <h3><i class="fas fa-plane" style="margin-right: 8px;"></i>Select Flight</h3>
-                <div class="flight-grid">
-                    <select id="flightSelect" onchange="handleFlightSelection()">
-                        <option value="">-- Select a flight --</option>
-                    </select>
-                    <input type="date" id="flightDate" value="" onchange="handleFlightSelection()">
-                    <input type="time" id="currentTime" value="" onchange="updatePassengerCalculations()">
-                    <button id="loadFlightBtn" onclick="loadFlightPassengers()" disabled>
-                        <i class="fas fa-sync-alt"></i> Load Passengers
-                    </button>
+        <div class="flight-selector">
+            <label><i class="fas fa-plane"></i> SELECT FLIGHT FOR DELAY CALCULATION</label>
+            <select id="flightSelect" onchange="loadFlightPassengers()">
+                <option value="">-- Select a flight --</option>
+            </select>
+        </div>
+
+        <div id="flightSummarySection" style="display: none;">
+            <div class="flight-summary">
+                <div class="summary-card">
+                    <div class="label">TOTAL PASSENGERS</div>
+                    <div class="value" id="totalPax">0</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">FIRST ENTRY TIME</div>
+                    <div class="value" id="firstEntryTime">--:--:--</div>
+                    <div class="sub-value" id="firstEntryPassenger">-</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">LAST ENTRY TIME</div>
+                    <div class="value" id="lastEntryTime">--:--:--</div>
+                    <div class="sub-value" id="lastEntryPassenger">-</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">ELAPSED TIME</div>
+                    <div class="value" id="elapsedTime">0h 0m</div>
                 </div>
             </div>
 
-            <!-- Flight Info Cards -->
-            <div class="flight-info-cards" id="flightInfoCards" style="display: none;">
-                <div class="info-card highlight">
-                    <h4>Total Passengers</h4>
-                    <div class="value" id="totalPassengers">0</div>
-                    <div class="subtitle">on selected flight</div>
-                </div>
-                <div class="info-card">
-                    <h4>First Entry</h4>
-                    <div class="value" id="firstEntry">--:--</div>
-                    <div class="subtitle">earliest check-in</div>
-                </div>
-                <div class="info-card">
-                    <h4>Last Entry</h4>
-                    <div class="value" id="lastEntry">--:--</div>
-                    <div class="subtitle">latest check-in</div>
-                </div>
-                <div class="info-card">
-                    <h4>Free Period</h4>
-                    <div class="value" id="freePeriod">3 hours</div>
-                    <div class="subtitle">per passenger</div>
-                </div>
+            <h3 style="color: #8b6913; margin: 20px 0 10px; font-size: 16px;">
+                <i class="fas fa-users"></i> PASSENGER DETAILS (3 HOURS FREE)
+            </h3>
+            <div class="passenger-table-container">
+                <table class="passenger-table" id="passengerTable">
+                    <thead>
+                        <tr>
+                            <th>PASSENGER</th>
+                            <th>SEAT</th>
+                            <th>ENTRY TIME</th>
+                            <th>ELAPSED</th>
+                            <th>FREE HOURS</th>
+                            <th>EXTRA HOURS</th>
+                            <th>ADJUST TIME</th>
+                        </tr>
+                    </thead>
+                    <tbody id="passengerTableBody">
+                        <tr><td colspan="7" style="text-align: center; padding: 30px;">Select a flight to load passengers</td></tr>
+                    </tbody>
+                </table>
             </div>
 
-            <!-- Passenger Table Section -->
-            <div class="passenger-section" id="passengerSection" style="display: none;">
-                <h3>
-                    <span><i class="fas fa-users"></i> Passenger List</span>
-                    <span>
-                        <button class="secondary-btn" onclick="toggleManualEdit()" style="padding: 6px 12px; font-size: 12px;">
-                            <i class="fas fa-pencil-alt"></i> Manual Edit
-                        </button>
-                    </span>
+            <div class="delay-charge-summary" id="delaySummary" style="display: none;">
+                <h3 style="color: #8b6913; margin-bottom: 15px;">
+                    <i class="fas fa-chart-pie"></i> DELAY CHARGE BREAKDOWN
                 </h3>
-                
-                <!-- Manual Edit Section -->
-                <div id="manualEditSection" class="manual-edit-section">
-                    <h4 style="color: #8b6913; margin-bottom: 10px;">Manual Adjustment</h4>
-                    <div class="edit-grid">
-                        <input type="number" id="manualPax" placeholder="Total PAX" min="0">
-                        <input type="time" id="manualFirstTime" placeholder="First Entry">
-                        <input type="time" id="manualLastTime" placeholder="Last Entry">
-                        <button class="primary-btn" onclick="applyManualEdit()" style="padding: 8px;">Apply</button>
-                    </div>
-                </div>
-
-                <div class="table-container">
-                    <table id="passengerTable">
-                        <thead>
-                            <tr>
-                                <th style="width: 40px;"><input type="checkbox" id="selectAll" onchange="toggleAllPassengers()"></th>
-                                <th>Passenger Name</th>
-                                <th>Seat No</th>
-                                <th>Entry Time</th>
-                                <th>Current Time</th>
-                                <th>Hours Used</th>
-                                <th>Extra Hours</th>
-                                <th>Charge Hours</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="passengerTableBody"></tbody>
-                    </table>
+                <div class="charge-groups" id="chargeGroups"></div>
+                <div class="total-charge-box" id="totalChargeBox">
+                    <span class="total-label">TOTAL DELAY HOURS</span>
+                    <span class="total-value" id="totalDelayHours">0</span>
                 </div>
             </div>
+        </div>
 
-            <!-- Summary Section -->
-            <div class="summary-section" id="summarySection" style="display: none;">
-                <h3><i class="fas fa-chart-bar"></i> Delay Charge Summary</h3>
-                
-                <div class="summary-grid">
-                    <div class="summary-item">
-                        <div class="label">Total Passengers</div>
-                        <div class="value" id="summaryTotalPassengers">0</div>
-                    </div>
-                    <div class="summary-item">
-                        <div class="label">Passengers with Extra Hours</div>
-                        <div class="value" id="summaryExtraPassengers">0</div>
-                    </div>
-                    <div class="summary-item">
-                        <div class="label">Total Extra Hours</div>
-                        <div class="value" id="summaryTotalHours">0</div>
-                    </div>
-                    <div class="summary-item">
-                        <div class="label">Total Charge Hours</div>
-                        <div class="value" id="summaryChargeHours">0</div>
-                    </div>
-                </div>
-
-                <div id="hoursBreakdown" class="hours-breakdown"></div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="action-buttons">
-                <button class="secondary-btn" onclick="resetCalculator()">
-                    <i class="fas fa-redo-alt"></i> Reset
-                </button>
-                <button class="primary-btn" id="createChargeBtn" onclick="createDelayCharge()" disabled>
-                    <i class="fas fa-plus-circle"></i> Create Delay Charge Entry
-                </button>
-            </div>
+        <div class="popup-footer">
+            <button class="cancel-btn" onclick="closeDelayChargePopup()">
+                <i class="fas fa-times"></i> CANCEL
+            </button>
+            <button class="calculate-btn" onclick="calculateDelays()" id="calculateBtn">
+                <i class="fas fa-calculator"></i> CALCULATE DELAYS
+            </button>
+            <button class="submit-btn" onclick="submitDelayCharges()" id="submitBtn">
+                <i class="fas fa-save"></i> SUBMIT DELAY CHARGES
+            </button>
         </div>
     </div>
 
-    <script>
-        // ========== GLOBAL VARIABLES ==========
-        let currentFlightPassengers = [];
-        let selectedPassengers = new Set();
-        let currentTime = new Date();
-        let selectedFlight = '';
-        let selectedDate = '';
-        let manualEditActive = false;
+    <!-- Rest of your existing HTML remains the same -->
+    <!-- ... (keep all your existing HTML structure) ... -->
 
-        // User data from localStorage
-        let currentUser = {
-            name: localStorage.getItem('username') || 'UNKNOWN',
-            rcno: localStorage.getItem('rcno') || 'N/A',
-            level: localStorage.getItem('level') || 'OPERATOR',
-            username: localStorage.getItem('username') || 'UNKNOWN'
-        };
+<script>
+// ========== DELAY CHARGE GLOBAL VARIABLES ==========
+let currentFlightPassengers = [];
+let delayChargeGroups = [];
+let delayCalculationResult = null;
 
-        // ========== INITIALIZATION ==========
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('Delay Charge Calculator loaded');
-            
-            // Set current date and time
-            const today = new Date();
-            const year = today.getFullYear();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const day = String(today.getDate()).padStart(2, '0');
-            document.getElementById('flightDate').value = `${year}-${month}-${day}`;
-            
-            const hours = String(today.getHours()).padStart(2, '0');
-            const minutes = String(today.getMinutes()).padStart(2, '0');
-            document.getElementById('currentTime').value = `${hours}:${minutes}`;
-            
-            // Load available flights
-            loadAvailableFlights();
-            
-            // Update time every minute
-            setInterval(updateCurrentTime, 60000);
+// ========== DELAY CHARGE FUNCTIONS ==========
+
+/**
+ * Open the delay charge popup
+ */
+function openDelayChargePopup() {
+    const overlay = document.getElementById('delayChargeOverlay');
+    const popup = document.getElementById('delayChargePopup');
+    
+    if (!overlay || !popup) {
+        console.error('Delay charge popup elements not found');
+        return;
+    }
+    
+    // Check if shift is open
+    if (!isShiftOpen()) {
+        return;
+    }
+    
+    // Update shift info in popup
+    updatePopupShiftInfo();
+    
+    // Load available flights
+    loadAvailableFlights();
+    
+    // Reset displays
+    document.getElementById('flightSummarySection').style.display = 'none';
+    document.getElementById('delaySummary').style.display = 'none';
+    document.getElementById('passengerTableBody').innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px;">Select a flight to load passengers</td></tr>';
+    
+    overlay.classList.add('active');
+    popup.classList.add('active');
+    
+    // Start updating current time
+    startPopupTimeUpdate();
+}
+
+/**
+ * Close the delay charge popup
+ */
+function closeDelayChargePopup() {
+    const overlay = document.getElementById('delayChargeOverlay');
+    const popup = document.getElementById('delayChargePopup');
+    
+    overlay.classList.remove('active');
+    popup.classList.remove('active');
+    
+    // Stop time update
+    if (window.popupTimeInterval) {
+        clearInterval(window.popupTimeInterval);
+    }
+}
+
+/**
+ * Update popup with current shift info
+ */
+function updatePopupShiftInfo() {
+    const dateSpan = document.getElementById('popupDate');
+    const shiftSpan = document.getElementById('popupShift');
+    
+    if (dateSpan) {
+        dateSpan.textContent = currentShiftData.date || 'NO DATE';
+    }
+    
+    if (shiftSpan) {
+        shiftSpan.textContent = (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') 
+            ? currentShiftData.shift 
+            : 'NO OPEN SHIFT';
+    }
+}
+
+/**
+ * Start updating current time in popup
+ */
+function startPopupTimeUpdate() {
+    const timeSpan = document.getElementById('popupCurrentTime');
+    
+    if (!timeSpan) return;
+    
+    // Clear existing interval
+    if (window.popupTimeInterval) {
+        clearInterval(window.popupTimeInterval);
+    }
+    
+    // Update immediately
+    const updateTime = () => {
+        const now = new Date();
+        timeSpan.textContent = now.toLocaleTimeString('en-US', {
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
         });
+    };
+    
+    updateTime();
+    window.popupTimeInterval = setInterval(updateTime, 1000);
+}
 
-        // ========== TIME FUNCTIONS ==========
-        function updateCurrentTime() {
-            const now = new Date();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            document.getElementById('currentTime').value = `${hours}:${minutes}`;
-            currentTime = now;
-            
-            if (currentFlightPassengers.length > 0) {
-                updatePassengerCalculations();
-            }
+/**
+ * Load available flights from saved passengers for current shift
+ */
+async function loadAvailableFlights() {
+    const flightSelect = document.getElementById('flightSelect');
+    
+    if (!flightSelect) return;
+    
+    // Clear existing options except first
+    flightSelect.innerHTML = '<option value="">-- Select a flight --</option>';
+    
+    try {
+        // Get all saved passengers that have been synced (not errors)
+        const syncedPassengers = savedPasses.filter(p => !p.firebaseError);
+        
+        // Filter passengers for current shift date
+        const shiftDate = currentShiftData.date;
+        const shift = currentShiftData.shift;
+        
+        if (!shiftDate || !shift || (shift !== 'MORNING' && shift !== 'EVENING')) {
+            flightSelect.innerHTML = '<option value="">No open shift - cannot load flights</option>';
+            return;
         }
-
-        function parseTime(timeStr) {
-            if (!timeStr) return null;
-            
-            // Handle different time formats
-            if (timeStr.includes(':')) {
-                const [hours, minutes] = timeStr.split(':').map(Number);
-                const date = new Date();
-                date.setHours(hours, minutes, 0, 0);
-                return date;
-            }
-            
-            // Handle HHMM format
-            if (timeStr.length === 4 && !isNaN(timeStr)) {
-                const hours = parseInt(timeStr.substring(0, 2));
-                const minutes = parseInt(timeStr.substring(2, 4));
-                const date = new Date();
-                date.setHours(hours, minutes, 0, 0);
-                return date;
-            }
-            
-            return null;
-        }
-
-        function formatTime(date) {
-            if (!date) return '--:--';
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            return `${hours}:${minutes}`;
-        }
-
-        function calculateHoursUsed(entryTime, currentTime) {
-            if (!entryTime || !currentTime) return 0;
-            
-            const entry = parseTime(entryTime);
-            const current = parseTime(currentTime);
-            
-            if (!entry || !current) return 0;
-            
-            // If current time is earlier than entry time (next day), add 24 hours
-            if (current < entry) {
-                current.setDate(current.getDate() + 1);
-            }
-            
-            const diffMs = current - entry;
-            const diffHours = diffMs / (1000 * 60 * 60);
-            
-            return Math.round(diffHours * 10) / 10; // Round to 1 decimal
-        }
-
-        function calculateExtraHours(hoursUsed) {
-            if (hoursUsed <= 3) return 0;
-            
-            const extra = hoursUsed - 3;
-            
-            // Round up to nearest hour for charge calculation
-            // 1 hour 30 mins = 2 hours charge
-            return Math.ceil(extra);
-        }
-
-        // ========== FLIGHT FUNCTIONS ==========
-        async function loadAvailableFlights() {
-            try {
-                const flightSelect = document.getElementById('flightSelect');
-                flightSelect.innerHTML = '<option value="">Loading flights...</option>';
-                
-                // Get today's date
-                const today = document.getElementById('flightDate').value;
-                const formattedDate = today.replace(/-/g, '');
-                
-                // Array of all database configurations
-                const databases = [
-                    { db: window.baDb, name: 'BA', prefix: 'BA' },
-                    { db: window.ekDb, name: 'EK', prefix: 'EK' },
-                    { db: window.qrDb, name: 'QR', prefix: 'QR' },
-                    { db: window.sqDb, name: 'SQ', prefix: 'SQ' },
-                    { db: window.defaultCardDb, name: 'UL/Other', prefix: '' }
-                ];
-                
-                let flights = [];
-                
-                // Query each database for flights on this date
-                for (const dbConfig of databases) {
-                    if (!dbConfig.db) continue;
-                    
-                    try {
-                        const snapshot = await dbConfig.db.collection('KoveliPass')
-                            .where('date', '==', formattedDate)
-                            .get();
-                        
-                        const flightNumbers = new Set();
-                        snapshot.forEach(doc => {
-                            const data = doc.data();
-                            if (data.flightNo) {
-                                flightNumbers.add(data.flightNo);
-                            }
+        
+        // Group by flight number
+        const flightMap = new Map();
+        
+        syncedPassengers.forEach(passenger => {
+            if (passenger.date === shiftDate && passenger.shift === shift) {
+                const flightNo = passenger.flightNo;
+                if (flightNo && flightNo.trim() !== '') {
+                    if (!flightMap.has(flightNo)) {
+                        flightMap.set(flightNo, {
+                            count: 0,
+                            firstEntry: null,
+                            lastEntry: null
                         });
-                        
-                        flightNumbers.forEach(flight => {
-                            flights.push({
-                                flightNo: flight,
-                                database: dbConfig.name,
-                                db: dbConfig.db
-                            });
-                        });
-                        
-                    } catch (error) {
-                        console.error(`Error loading from ${dbConfig.name} database:`, error);
                     }
-                }
-                
-                // Sort flights
-                flights.sort((a, b) => a.flightNo.localeCompare(b.flightNo));
-                
-                // Update select
-                flightSelect.innerHTML = '<option value="">-- Select a flight --</option>';
-                
-                flights.forEach(flight => {
-                    const option = document.createElement('option');
-                    option.value = flight.flightNo;
-                    option.textContent = `${flight.flightNo} [${flight.database}]`;
-                    option.dataset.db = JSON.stringify(flight.db);
-                    flightSelect.appendChild(option);
-                });
-                
-                if (flights.length === 0) {
-                    flightSelect.innerHTML = '<option value="">No flights found for this date</option>';
-                }
-                
-            } catch (error) {
-                console.error('Error loading flights:', error);
-                showStatus('Error loading flights', 'error');
-            }
-        }
-
-        function handleFlightSelection() {
-            const flightSelect = document.getElementById('flightSelect');
-            const flightDate = document.getElementById('flightDate');
-            const loadBtn = document.getElementById('loadFlightBtn');
-            
-            if (flightSelect.value && flightDate.value) {
-                loadBtn.disabled = false;
-            } else {
-                loadBtn.disabled = true;
-            }
-        }
-
-        async function loadFlightPassengers() {
-            const flightSelect = document.getElementById('flightSelect');
-            const flightDate = document.getElementById('flightDate');
-            
-            selectedFlight = flightSelect.value;
-            selectedDate = flightDate.value.replace(/-/g, '');
-            
-            if (!selectedFlight || !selectedDate) {
-                showStatus('Please select flight and date', 'warning');
-                return;
-            }
-            
-            showStatus('Loading passengers...', 'warning');
-            
-            try {
-                // Get the database for this flight
-                const targetDb = getFirestoreForFlight(selectedFlight);
-                
-                if (!targetDb) {
-                    showStatus('Database not found for this flight', 'error');
-                    return;
-                }
-                
-                // Query passengers
-                const snapshot = await targetDb.collection('KoveliPass')
-                    .where('flightNo', '==', selectedFlight)
-                    .where('date', '==', selectedDate)
-                    .get();
-                
-                currentFlightPassengers = [];
-                
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    currentFlightPassengers.push({
-                        id: doc.id,
-                        pName: data.pName || 'Unknown',
-                        seatNo: data.seatNo || '—',
-                        entryTime: data.entryTime || data.enteredAt || '00:00',
-                        pax: parseInt(data.pax) || 1,
-                        originalEntryTime: data.entryTime || data.enteredAt || '00:00'
-                    });
-                });
-                
-                // Sort by entry time
-                currentFlightPassengers.sort((a, b) => {
-                    return (a.entryTime || '').localeCompare(b.entryTime || '');
-                });
-                
-                // Show sections
-                document.getElementById('flightInfoCards').style.display = 'grid';
-                document.getElementById('passengerSection').style.display = 'block';
-                document.getElementById('summarySection').style.display = 'block';
-                document.getElementById('createChargeBtn').disabled = true;
-                
-                // Update flight info
-                updateFlightInfo();
-                
-                // Render passenger table
-                renderPassengerTable();
-                
-                showStatus(`Loaded ${currentFlightPassengers.length} passengers`, 'success');
-                
-            } catch (error) {
-                console.error('Error loading passengers:', error);
-                showStatus('Error loading passengers: ' + error.message, 'error');
-            }
-        }
-
-        function updateFlightInfo() {
-            if (currentFlightPassengers.length === 0) return;
-            
-            document.getElementById('totalPassengers').textContent = currentFlightPassengers.length;
-            
-            // Get first and last entry times
-            const entryTimes = currentFlightPassengers
-                .map(p => p.entryTime)
-                .filter(t => t && t !== '00:00')
-                .sort();
-            
-            if (entryTimes.length > 0) {
-                document.getElementById('firstEntry').textContent = entryTimes[0];
-                document.getElementById('lastEntry').textContent = entryTimes[entryTimes.length - 1];
-            }
-        }
-
-        // ========== PASSENGER TABLE RENDERING ==========
-        function renderPassengerTable() {
-            const tbody = document.getElementById('passengerTableBody');
-            tbody.innerHTML = '';
-            
-            const currentTimeStr = document.getElementById('currentTime').value;
-            
-            currentFlightPassengers.forEach((passenger, index) => {
-                const row = document.createElement('tr');
-                row.setAttribute('data-id', passenger.id);
-                
-                // Calculate hours
-                const hoursUsed = calculateHoursUsed(passenger.entryTime, currentTimeStr);
-                const extraHours = calculateExtraHours(hoursUsed);
-                const chargeHours = extraHours; // Already rounded up
-                
-                // Status class
-                let statusClass = '';
-                let statusText = 'Within Free Period';
-                if (extraHours > 0) {
-                    statusClass = 'warning';
-                    statusText = `${extraHours}h Extra Charge`;
-                }
-                
-                // Checkbox
-                const checkboxCell = document.createElement('td');
-                checkboxCell.style.textAlign = 'center';
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'passenger-checkbox';
-                checkbox.dataset.id = passenger.id;
-                checkbox.dataset.hours = extraHours;
-                checkbox.dataset.chargeHours = chargeHours;
-                checkbox.checked = selectedPassengers.has(passenger.id);
-                checkbox.onchange = function() {
-                    if (this.checked) {
-                        selectedPassengers.add(passenger.id);
-                    } else {
-                        selectedPassengers.delete(passenger.id);
-                    }
-                    document.getElementById('selectAll').checked = selectedPassengers.size === currentFlightPassengers.length;
-                    updateSummary();
-                };
-                checkboxCell.appendChild(checkbox);
-                
-                // Name
-                const nameCell = document.createElement('td');
-                nameCell.textContent = passenger.pName;
-                
-                // Seat
-                const seatCell = document.createElement('td');
-                seatCell.textContent = passenger.seatNo;
-                
-                // Entry Time (editable)
-                const entryTimeCell = document.createElement('td');
-                const entryTimeInput = document.createElement('input');
-                entryTimeInput.type = 'text';
-                entryTimeInput.className = 'editable-input';
-                entryTimeInput.value = passenger.entryTime;
-                entryTimeInput.style.width = '80px';
-                entryTimeInput.onchange = function() {
-                    passenger.entryTime = this.value;
-                    renderPassengerTable(); // Re-render to update calculations
-                };
-                entryTimeCell.appendChild(entryTimeInput);
-                
-                // Current Time
-                const currentTimeCell = document.createElement('td');
-                currentTimeCell.textContent = currentTimeStr;
-                
-                // Hours Used
-                const hoursUsedCell = document.createElement('td');
-                hoursUsedCell.textContent = hoursUsed.toFixed(1);
-                
-                // Extra Hours
-                const extraHoursCell = document.createElement('td');
-                extraHoursCell.textContent = extraHours > 0 ? extraHours : '0';
-                if (extraHours > 0) extraHoursCell.style.fontWeight = 'bold';
-                
-                // Charge Hours
-                const chargeHoursCell = document.createElement('td');
-                chargeHoursCell.textContent = chargeHours > 0 ? chargeHours : '0';
-                if (chargeHours > 0) chargeHoursCell.style.fontWeight = 'bold';
-                
-                // Status
-                const statusCell = document.createElement('td');
-                statusCell.innerHTML = `<span class="delay-badge ${statusClass}">${statusText}</span>`;
-                
-                row.appendChild(checkboxCell);
-                row.appendChild(nameCell);
-                row.appendChild(seatCell);
-                row.appendChild(entryTimeCell);
-                row.appendChild(currentTimeCell);
-                row.appendChild(hoursUsedCell);
-                row.appendChild(extraHoursCell);
-                row.appendChild(chargeHoursCell);
-                row.appendChild(statusCell);
-                
-                tbody.appendChild(row);
-            });
-            
-            updateSummary();
-        }
-
-        function updatePassengerCalculations() {
-            if (currentFlightPassengers.length > 0) {
-                renderPassengerTable();
-            }
-        }
-
-        function toggleAllPassengers() {
-            const selectAll = document.getElementById('selectAll');
-            const checkboxes = document.querySelectorAll('.passenger-checkbox');
-            
-            selectedPassengers.clear();
-            
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = selectAll.checked;
-                if (selectAll.checked) {
-                    selectedPassengers.add(checkbox.dataset.id);
-                }
-            });
-            
-            updateSummary();
-        }
-
-        // ========== SUMMARY CALCULATIONS ==========
-        function updateSummary() {
-            const checkboxes = document.querySelectorAll('.passenger-checkbox:checked');
-            const createBtn = document.getElementById('createChargeBtn');
-            
-            if (checkboxes.length === 0) {
-                createBtn.disabled = true;
-                document.getElementById('summaryTotalPassengers').textContent = '0';
-                document.getElementById('summaryExtraPassengers').textContent = '0';
-                document.getElementById('summaryTotalHours').textContent = '0';
-                document.getElementById('summaryChargeHours').textContent = '0';
-                document.getElementById('hoursBreakdown').innerHTML = '';
-                return;
-            }
-            
-            createBtn.disabled = false;
-            
-            let totalPassengers = checkboxes.length;
-            let extraPassengers = 0;
-            let totalExtraHours = 0;
-            let totalChargeHours = 0;
-            
-            // Track hours distribution
-            const hoursDistribution = {};
-            
-            checkboxes.forEach(checkbox => {
-                const hours = parseFloat(checkbox.dataset.hours) || 0;
-                const chargeHours = parseFloat(checkbox.dataset.chargeHours) || 0;
-                
-                if (hours > 0) {
-                    extraPassengers++;
-                    totalExtraHours += hours;
                     
-                    // Round to nearest hour for distribution
-                    const roundedHours = Math.ceil(hours);
-                    hoursDistribution[roundedHours] = (hoursDistribution[roundedHours] || 0) + 1;
-                }
-                
-                totalChargeHours += chargeHours;
-            });
-            
-            document.getElementById('summaryTotalPassengers').textContent = totalPassengers;
-            document.getElementById('summaryExtraPassengers').textContent = extraPassengers;
-            document.getElementById('summaryTotalHours').textContent = totalExtraHours.toFixed(1);
-            document.getElementById('summaryChargeHours').textContent = totalChargeHours;
-            
-            // Render hours breakdown
-            let hoursHtml = '';
-            Object.keys(hoursDistribution).sort((a, b) => a - b).forEach(hours => {
-                const count = hoursDistribution[hours];
-                hoursHtml += `<span class="hour-badge"><span>${hours}h</span> ${count} pax</span>`;
-            });
-            
-            if (hoursHtml === '') {
-                hoursHtml = '<span class="hour-badge">No extra hours selected</span>';
-            }
-            
-            document.getElementById('hoursBreakdown').innerHTML = hoursHtml;
-        }
-
-        // ========== MANUAL EDIT FUNCTIONS ==========
-        function toggleManualEdit() {
-            manualEditActive = !manualEditActive;
-            const manualSection = document.getElementById('manualEditSection');
-            manualSection.classList.toggle('visible', manualEditActive);
-        }
-
-        function applyManualEdit() {
-            const manualPax = document.getElementById('manualPax').value;
-            const manualFirstTime = document.getElementById('manualFirstTime').value;
-            const manualLastTime = document.getElementById('manualLastTime').value;
-            
-            if (manualPax && manualPax > 0) {
-                // Create manual passenger entries
-                for (let i = 0; i < manualPax; i++) {
-                    currentFlightPassengers.push({
-                        id: 'manual_' + Date.now() + '_' + i,
-                        pName: `MANUAL PAX ${i + 1}`,
-                        seatNo: '—',
-                        entryTime: manualFirstTime || '00:00',
-                        pax: 1,
-                        originalEntryTime: manualFirstTime || '00:00',
-                        isManual: true
-                    });
-                }
-            }
-            
-            if (manualFirstTime) {
-                // Update all selected passengers with new first time
-                const checkboxes = document.querySelectorAll('.passenger-checkbox:checked');
-                checkboxes.forEach(checkbox => {
-                    const passenger = currentFlightPassengers.find(p => p.id === checkbox.dataset.id);
-                    if (passenger) {
-                        passenger.entryTime = manualFirstTime;
+                    const flightData = flightMap.get(flightNo);
+                    flightData.count++;
+                    
+                    // Track earliest and latest entry times
+                    if (passenger.entryTime) {
+                        const entryTime = passenger.entryTime;
+                        if (!flightData.firstEntry || entryTime < flightData.firstEntry) {
+                            flightData.firstEntry = entryTime;
+                        }
+                        if (!flightData.lastEntry || entryTime > flightData.lastEntry) {
+                            flightData.lastEntry = entryTime;
+                        }
                     }
-                });
+                }
             }
-            
-            if (manualLastTime) {
-                // Update current time for calculations
-                document.getElementById('currentTime').value = manualLastTime;
+        });
+        
+        // Convert to array and sort
+        const flights = Array.from(flightMap.entries())
+            .map(([flightNo, data]) => ({
+                flightNo,
+                count: data.count,
+                firstEntry: data.firstEntry,
+                lastEntry: data.lastEntry
+            }))
+            .sort((a, b) => a.flightNo.localeCompare(b.flightNo));
+        
+        // Add to select
+        flights.forEach(flight => {
+            const option = document.createElement('option');
+            option.value = flight.flightNo;
+            option.textContent = `${flight.flightNo} - ${flight.count} passenger${flight.count > 1 ? 's' : ''}`;
+            if (flight.firstEntry && flight.lastEntry) {
+                option.textContent += ` (${flight.firstEntry} - ${flight.lastEntry})`;
             }
-            
+            flightSelect.appendChild(option);
+        });
+        
+        if (flights.length === 0) {
+            flightSelect.innerHTML = '<option value="">No passengers found for this shift</option>';
+        }
+        
+    } catch (error) {
+        console.error('Error loading flights:', error);
+        flightSelect.innerHTML = '<option value="">Error loading flights</option>';
+    }
+}
+
+/**
+ * Load passengers for selected flight
+ */
+async function loadFlightPassengers() {
+    const flightSelect = document.getElementById('flightSelect');
+    const selectedFlight = flightSelect.value;
+    
+    if (!selectedFlight) {
+        document.getElementById('flightSummarySection').style.display = 'none';
+        document.getElementById('delaySummary').style.display = 'none';
+        return;
+    }
+    
+    try {
+        // Get saved passengers for this flight and current shift
+        const shiftDate = currentShiftData.date;
+        const shift = currentShiftData.shift;
+        
+        if (!shiftDate || !shift) {
+            showTemporaryNotification('⚠️ Shift data not loaded', 'warning');
+            return;
+        }
+        
+        // Filter passengers (include both synced and unsynced for calculation)
+        // But for delay charges, we only count successful entries
+        currentFlightPassengers = savedPasses.filter(p => 
+            p.flightNo === selectedFlight && 
+            p.date === shiftDate && 
+            p.shift === shift &&
+            !p.firebaseError // Only count successfully synced passengers
+        );
+        
+        // Sort by entry time
+        currentFlightPassengers.sort((a, b) => {
+            if (!a.entryTime) return 1;
+            if (!b.entryTime) return -1;
+            return a.entryTime.localeCompare(b.entryTime);
+        });
+        
+        // Update summary
+        updateFlightSummary();
+        
+        // Render passenger table
+        renderPassengerTable();
+        
+        // Show summary section
+        document.getElementById('flightSummarySection').style.display = 'block';
+        document.getElementById('delaySummary').style.display = 'none';
+        
+    } catch (error) {
+        console.error('Error loading passengers:', error);
+        showTemporaryNotification('Error loading passengers: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Update flight summary with first/last entry times
+ */
+function updateFlightSummary() {
+    if (currentFlightPassengers.length === 0) {
+        document.getElementById('totalPax').textContent = '0';
+        document.getElementById('firstEntryTime').textContent = '--:--:--';
+        document.getElementById('firstEntryPassenger').textContent = '-';
+        document.getElementById('lastEntryTime').textContent = '--:--:--';
+        document.getElementById('lastEntryPassenger').textContent = '-';
+        document.getElementById('elapsedTime').textContent = '0h 0m';
+        return;
+    }
+    
+    const totalPax = currentFlightPassengers.length;
+    
+    const firstEntry = currentFlightPassengers[0];
+    const lastEntry = currentFlightPassengers[currentFlightPassengers.length - 1];
+    
+    document.getElementById('totalPax').textContent = totalPax;
+    document.getElementById('firstEntryTime').textContent = firstEntry.entryTime || '--:--:--';
+    document.getElementById('firstEntryPassenger').textContent = firstEntry.pName || '-';
+    document.getElementById('lastEntryTime').textContent = lastEntry.entryTime || '--:--:--';
+    document.getElementById('lastEntryPassenger').textContent = lastEntry.pName || '-';
+    
+    // Calculate elapsed time
+    if (firstEntry.entryTime && lastEntry.entryTime) {
+        const elapsed = calculateTimeDifference(firstEntry.entryTime, lastEntry.entryTime);
+        document.getElementById('elapsedTime').textContent = elapsed;
+    } else {
+        document.getElementById('elapsedTime').textContent = '0h 0m';
+    }
+}
+
+/**
+ * Calculate time difference between two time strings (HH:MM:SS)
+ */
+function calculateTimeDifference(startTime, endTime) {
+    if (!startTime || !endTime) return '0h 0m';
+    
+    const start = new Date(`1970-01-01T${startTime}Z`);
+    const end = new Date(`1970-01-01T${endTime}Z`);
+    
+    let diffMs = end - start;
+    
+    // Handle overnight (if end is less than start, assume next day)
+    if (diffMs < 0) {
+        diffMs += 24 * 60 * 60 * 1000;
+    }
+    
+    const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
+    const diffMinutes = Math.floor((diffMs % (60 * 60 * 1000)) / (60 * 1000));
+    
+    return `${diffHours}h ${diffMinutes}m`;
+}
+
+/**
+ * Calculate hours between two times (returns decimal hours)
+ */
+function calculateHours(startTime, endTime) {
+    if (!startTime || !endTime) return 0;
+    
+    const start = new Date(`1970-01-01T${startTime}Z`);
+    const end = new Date(`1970-01-01T${endTime}Z`);
+    
+    let diffMs = end - start;
+    
+    // Handle overnight
+    if (diffMs < 0) {
+        diffMs += 24 * 60 * 60 * 1000;
+    }
+    
+    return diffMs / (60 * 60 * 1000);
+}
+
+/**
+ * Render passenger table with editable times
+ */
+function renderPassengerTable() {
+    const tbody = document.getElementById('passengerTableBody');
+    
+    if (currentFlightPassengers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px;">No passengers found for this flight</td></tr>';
+        return;
+    }
+    
+    const now = new Date();
+    const currentTime = now.toLocaleTimeString('en-US', {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    
+    let html = '';
+    
+    currentFlightPassengers.forEach((passenger, index) => {
+        // Calculate elapsed hours from entry to now
+        const entryTime = passenger.entryTime || '--:--:--';
+        const hoursElapsed = entryTime !== '--:--:--' ? calculateHours(entryTime, currentTime) : 0;
+        
+        // Calculate free hours (3 hours free)
+        const freeHours = 3;
+        const extraHours = Math.max(0, Math.ceil(hoursElapsed - freeHours));
+        
+        // Determine row class
+        let rowClass = '';
+        if (extraHours > 0) {
+            rowClass = 'delay-row';
+        } else if (hoursElapsed > freeHours - 1) {
+            rowClass = 'warning-row';
+        }
+        
+        html += `
+            <tr class="${rowClass}" data-id="${passenger.id}">
+                <td>
+                    <strong>${passenger.pName || 'Unknown'}</strong>
+                    ${passenger.isGuest ? '<span style="color:#6b8e23; font-size:10px;"> (GUEST)</span>' : ''}
+                </td>
+                <td>${passenger.seatNo || '—'}</td>
+                <td>
+                    <div class="editable-time">
+                        <input type="text" 
+                               value="${entryTime}" 
+                               maxlength="8" 
+                               placeholder="HH:MM:SS"
+                               pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}"
+                               onchange="updatePassengerTime('${passenger.id}', this.value)"
+                               oninput="formatTimeInput(this)">
+                        <span class="time-badge">ENTRY</span>
+                    </div>
+                </td>
+                <td>
+                    <span class="hours-badge">${hoursElapsed.toFixed(1)}h</span>
+                </td>
+                <td>
+                    <span style="color: #6b8e23; font-weight:600;">${freeHours}h</span>
+                </td>
+                <td>
+                    ${extraHours > 0 
+                        ? `<span style="color: #c68b5e; font-weight:700;">${extraHours}h EXTRA</span>` 
+                        : '<span style="color: #6b8e23;">—</span>'}
+                </td>
+                <td>
+                    <button class="edit-btn" style="padding: 3px 8px; font-size:10px;" onclick="adjustPassengerTime('${passenger.id}')">
+                        <i class="fas fa-pen"></i> ADJUST
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+/**
+ * Format time input as user types
+ */
+function formatTimeInput(input) {
+    let value = input.value.replace(/[^0-9]/g, '');
+    
+    if (value.length >= 2) {
+        value = value.substring(0, 2) + ':' + value.substring(2);
+    }
+    if (value.length >= 5) {
+        value = value.substring(0, 5) + ':' + value.substring(5, 7);
+    }
+    
+    input.value = value;
+}
+
+/**
+ * Update passenger entry time
+ */
+function updatePassengerTime(passengerId, newTime) {
+    // Validate time format (HH:MM:SS)
+    const timeRegex = /^([0-1][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$/;
+    
+    if (!timeRegex.test(newTime)) {
+        showTemporaryNotification('❌ Invalid time format. Use HH:MM:SS', 'error');
+        loadFlightPassengers(); // Reload to revert
+        return;
+    }
+    
+    // Find passenger in currentFlightPassengers
+    const passengerIndex = currentFlightPassengers.findIndex(p => p.id === passengerId);
+    
+    if (passengerIndex !== -1) {
+        currentFlightPassengers[passengerIndex].entryTime = newTime;
+        
+        // Also update in savedPasses if it exists
+        const savedIndex = savedPasses.findIndex(p => p.id === passengerId);
+        if (savedIndex !== -1) {
+            savedPasses[savedIndex].entryTime = newTime;
+            saveSavedToLocalStorage();
+        }
+        
+        showTemporaryNotification('✓ Time updated', 'success');
+        
+        // Recalculate delays if already calculated
+        if (delayCalculationResult) {
+            calculateDelays();
+        } else {
             renderPassengerTable();
-            toggleManualEdit();
-            
-            // Clear manual inputs
-            document.getElementById('manualPax').value = '';
-            document.getElementById('manualFirstTime').value = '';
-            document.getElementById('manualLastTime').value = '';
+            updateFlightSummary();
         }
+    }
+}
 
-        // ========== CREATE DELAY CHARGE ENTRY ==========
-        function createDelayCharge() {
-            const checkboxes = document.querySelectorAll('.passenger-checkbox:checked');
-            
-            if (checkboxes.length === 0) {
-                showStatus('Please select passengers', 'warning');
-                return;
-            }
-            
-            // Group by charge hours
-            const chargeGroups = {};
-            
-            checkboxes.forEach(checkbox => {
-                const chargeHours = parseFloat(checkbox.dataset.chargeHours) || 0;
-                if (chargeHours > 0) {
-                    chargeGroups[chargeHours] = (chargeGroups[chargeHours] || 0) + 1;
-                }
-            });
-            
-            if (Object.keys(chargeGroups).length === 0) {
-                showStatus('No passengers with extra hours selected', 'warning');
-                return;
-            }
-            
-            // Create remarks
-            let remarks = [];
-            Object.keys(chargeGroups).sort((a, b) => a - b).forEach(hours => {
-                const count = chargeGroups[hours];
-                remarks.push(`${count} pax @ ${hours}h`);
-            });
-            
-            const totalChargeHours = Object.keys(chargeGroups).reduce((sum, hours) => {
-                return sum + (chargeGroups[hours] * parseInt(hours));
-            }, 0);
-            
-            const finalRemarks = `DELAY CHARGE: ${remarks.join(' • ')} | TOTAL: ${totalChargeHours} charge hours`;
-            
-            // Get current date and time
-            const now = new Date();
-            const entryTime = formatTime(now);
-            const date = now.toISOString().split('T')[0].replace(/-/g, '');
-            
-            // Create delay charge entry
-            const delayEntry = {
-                pName: 'DELAY CHARGE',
-                flightNo: selectedFlight,
-                seatNo: 'NILL',
-                class: '—',
-                airline: getAirlineName(selectedFlight.substring(0, 2)),
-                FQTV: '—',
-                pax: '0',
-                serialNo: '—',
-                remarks: finalRemarks,
-                date: date,
-                shift: getCurrentShift(),
-                entryTime: entryTime,
-                hiddenCode: `DELAY_${selectedFlight}_${date}`,
-                isGuest: false,
-                mainPassengerId: '',
-                mainPassengerName: '',
-                mainPassengerSeat: '',
-                enteredBy: currentUser.name || currentUser.username || 'UNKNOWN',
-                enteredByUsername: currentUser.username || 'UNKNOWN',
-                enteredByRCNo: currentUser.rcno || 'N/A',
-                enteredByLevel: currentUser.level || 'OPERATOR',
-                enteredAt: now.toISOString(),
-                isDelayCharge: true,
-                delayDetails: {
-                    totalPassengers: checkboxes.length,
-                    chargeGroups: chargeGroups,
-                    totalChargeHours: totalChargeHours,
-                    flightNo: selectedFlight,
-                    date: date
-                }
+/**
+ * Adjust passenger time with simple +/- buttons
+ */
+function adjustPassengerTime(passengerId) {
+    const passenger = currentFlightPassengers.find(p => p.id === passengerId);
+    
+    if (!passenger) return;
+    
+    const currentTime = passenger.entryTime || '00:00:00';
+    
+    // Create a simple prompt (in a real app, you'd show a small modal)
+    const adjustHours = prompt(`Adjust time for ${passenger.pName}\nCurrent: ${currentTime}\n\nEnter adjustment in minutes (e.g., +30, -15):`, '+30');
+    
+    if (adjustHours === null) return;
+    
+    // Parse adjustment
+    const match = adjustHours.match(/^([+-])(\d+)$/);
+    if (!match) {
+        showTemporaryNotification('❌ Invalid format. Use +30, -15, etc.', 'error');
+        return;
+    }
+    
+    const sign = match[1];
+    const minutes = parseInt(match[2]);
+    
+    if (isNaN(minutes) || minutes <= 0) {
+        showTemporaryNotification('❌ Invalid minutes', 'error');
+        return;
+    }
+    
+    // Parse current time
+    const [hours, mins, secs] = currentTime.split(':').map(Number);
+    
+    let date = new Date();
+    date.setHours(hours, mins, secs);
+    
+    // Apply adjustment
+    if (sign === '+') {
+        date.setMinutes(date.getMinutes() + minutes);
+    } else {
+        date.setMinutes(date.getMinutes() - minutes);
+    }
+    
+    // Format new time
+    const newHours = String(date.getHours()).padStart(2, '0');
+    const newMins = String(date.getMinutes()).padStart(2, '0');
+    const newSecs = String(date.getSeconds()).padStart(2, '0');
+    const newTime = `${newHours}:${newMins}:${newSecs}`;
+    
+    updatePassengerTime(passengerId, newTime);
+}
+
+/**
+ * Calculate delay charges based on passenger entry times
+ */
+function calculateDelays() {
+    const now = new Date();
+    const currentTime = now.toLocaleTimeString('en-US', {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    
+    // Free hours allowed
+    const FREE_HOURS = 3;
+    
+    // Calculate extra hours for each passenger
+    const delayData = currentFlightPassengers.map(passenger => {
+        const entryTime = passenger.entryTime;
+        
+        if (!entryTime) {
+            return {
+                ...passenger,
+                hoursElapsed: 0,
+                extraHours: 0
             };
-            
-            // Save to localStorage (will be picked up by main page)
-            saveDelayChargeToStorage(delayEntry);
-            
-            // Show success and close
-            showStatus('Delay charge entry created successfully!', 'success');
-            
-            setTimeout(() => {
-                window.close();
-            }, 1500);
         }
-
-        function saveDelayChargeToStorage(entry) {
-            // Get existing pending passes
-            let pendingPasses = [];
-            const stored = localStorage.getItem('pendingPasses');
-            if (stored) {
-                try {
-                    pendingPasses = JSON.parse(stored);
-                } catch (e) {
-                    console.error('Error parsing pending passes:', e);
-                }
-            }
-            
-            // Add new entry
-            entry.id = Date.now() + Math.random().toString(36).substr(2, 9);
-            pendingPasses.push(entry);
-            
-            // Save back
-            localStorage.setItem('pendingPasses', JSON.stringify(pendingPasses));
+        
+        const hoursElapsed = calculateHours(entryTime, currentTime);
+        const extraHours = Math.max(0, Math.ceil(hoursElapsed - FREE_HOURS));
+        
+        return {
+            ...passenger,
+            hoursElapsed,
+            extraHours
+        };
+    });
+    
+    // Filter passengers with extra hours
+    const delayedPassengers = delayData.filter(p => p.extraHours > 0);
+    
+    if (delayedPassengers.length === 0) {
+        document.getElementById('delaySummary').style.display = 'none';
+        showTemporaryNotification('✅ No delayed passengers found', 'success');
+        return;
+    }
+    
+    // Group by extra hours
+    const groups = {};
+    delayedPassengers.forEach(p => {
+        if (!groups[p.extraHours]) {
+            groups[p.extraHours] = [];
         }
+        groups[p.extraHours].push(p);
+    });
+    
+    // Sort groups by hours
+    const sortedHours = Object.keys(groups).map(Number).sort((a, b) => a - b);
+    
+    delayCalculationResult = {
+        groups,
+        sortedHours,
+        totalDelayed: delayedPassengers.length,
+        totalExtraHours: delayedPassengers.reduce((sum, p) => sum + p.extraHours, 0)
+    };
+    
+    // Render delay summary
+    renderDelaySummary(delayCalculationResult);
+    
+    document.getElementById('delaySummary').style.display = 'block';
+}
 
-        function getCurrentShift() {
-            const now = new Date();
-            const hours = now.getHours();
-            
-            if (hours >= 5 && hours < 17) {
-                return 'MORNING';
-            } else {
-                return 'EVENING';
-            }
+/**
+ * Render delay charge summary
+ */
+function renderDelaySummary(result) {
+    const chargeGroupsDiv = document.getElementById('chargeGroups');
+    const totalDelayHoursSpan = document.getElementById('totalDelayHours');
+    
+    let groupsHtml = '';
+    
+    result.sortedHours.forEach(hours => {
+        const passengers = result.groups[hours];
+        
+        groupsHtml += `
+            <div class="charge-group">
+                <div class="charge-group-header">
+                    <h4>
+                        <i class="fas fa-hourglass-half"></i> 
+                        ${hours} EXTRA HOUR${hours > 1 ? 'S' : ''}
+                    </h4>
+                    <span class="group-hours">${passengers.length} Passenger${passengers.length > 1 ? 's' : ''}</span>
+                </div>
+                <div class="charge-group-content">
+        `;
+        
+        passengers.forEach(p => {
+            groupsHtml += `
+                <div class="charge-item">
+                    <div class="passenger-info">
+                        <span class="passenger-name">${p.pName || 'Unknown'}</span>
+                        <span class="passenger-detail">
+                            Seat: ${p.seatNo || '—'} | Entry: ${p.entryTime || '—'}
+                        </span>
+                    </div>
+                    <span class="extra-hours">+${p.extraHours}h</span>
+                </div>
+            `;
+        });
+        
+        groupsHtml += `
+                </div>
+            </div>
+        `;
+    });
+    
+    chargeGroupsDiv.innerHTML = groupsHtml;
+    totalDelayHoursSpan.textContent = result.totalExtraHours;
+}
+
+/**
+ * Submit delay charges to main list
+ */
+function submitDelayCharges() {
+    if (!delayCalculationResult) {
+        showTemporaryNotification('⚠️ Please calculate delays first', 'warning');
+        return;
+    }
+    
+    const selectedFlight = document.getElementById('flightSelect').value;
+    
+    if (!selectedFlight) {
+        showTemporaryNotification('⚠️ No flight selected', 'warning');
+        return;
+    }
+    
+    const now = new Date();
+    const entryTime = now.toLocaleTimeString('en-US', {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    
+    // Create remarks for each group
+    const remarks = [];
+    delayCalculationResult.sortedHours.forEach(hours => {
+        const passengers = delayCalculationResult.groups[hours];
+        remarks.push(`${passengers.length} pax for ${hours} hour${hours > 1 ? 's' : ''}`);
+    });
+    
+    // Create main delay charge entry
+    const delayEntry = {
+        pName: 'DELAY CHARGE',
+        flightNo: selectedFlight,
+        seatNo: 'NILL',
+        class: '',
+        airline: '',
+        FQTV: '',
+        pax: '0',
+        serialNo: '',
+        remarks: remarks.join(' • '),
+        date: currentShiftData.date || '',
+        shift: currentShiftData.shift || '',
+        entryTime: entryTime,
+        hiddenCode: `DELAY_${Date.now()}`,
+        isGuest: false,
+        mainPassengerId: '',
+        mainPassengerName: '',
+        mainPassengerSeat: '',
+        enteredBy: currentUser.name || currentUser.username || 'DELAY SYSTEM',
+        enteredByUsername: currentUser.username || 'DELAY SYSTEM',
+        enteredByRCNo: currentUser.rcno || 'DELAY',
+        enteredByLevel: currentUser.level || 'OPERATOR',
+        enteredAt: new Date().toISOString(),
+        
+        // Store detailed breakdown for reference
+        delayBreakdown: {
+            flight: selectedFlight,
+            date: currentShiftData.date,
+            shift: currentShiftData.shift,
+            totalDelayed: delayCalculationResult.totalDelayed,
+            totalExtraHours: delayCalculationResult.totalExtraHours,
+            groups: delayCalculationResult.sortedHours.map(hours => ({
+                hours: hours,
+                count: delayCalculationResult.groups[hours].length,
+                passengers: delayCalculationResult.groups[hours].map(p => ({
+                    name: p.pName,
+                    seat: p.seatNo,
+                    entryTime: p.entryTime,
+                    extraHours: p.extraHours
+                }))
+            }))
         }
+    };
+    
+    // Add to pending passes
+    pendingPasses.push({
+        id: generateId(),
+        ...delayEntry,
+        approved: false
+    });
+    
+    savePendingToLocalStorage();
+    
+    showTemporaryNotification(`✅ Delay charges submitted for ${selectedFlight}`, 'success');
+    
+    // Close popup and refresh main table
+    closeDelayChargePopup();
+    
+    // Switch to pending tab to show the entry
+    switchTab('pending');
+    
+    // Render tables to show new entry
+    renderTables();
+}
 
-        function getAirlineName(iataCode) {
-            if (!iataCode) return '';
-            // This should use your iata.js data
-            return iataCode.toUpperCase();
-        }
+// ========== ADD DELAY CHARGE BUTTON TO FAB CONTAINER ==========
+// This will add the delay charge button to the existing FAB container
+document.addEventListener('DOMContentLoaded', function() {
+    // Add delay charge button to FAB container
+    const fabContainer = document.querySelector('.fab-container');
+    
+    if (fabContainer) {
+        const delayChargeBtn = document.createElement('button');
+        delayChargeBtn.className = 'fab-button';
+        delayChargeBtn.setAttribute('data-tooltip', 'Delay Charge');
+        delayChargeBtn.setAttribute('onclick', 'openDelayChargePopup()');
+        delayChargeBtn.innerHTML = '<i class="fas fa-hourglass-half"></i>';
+        
+        // Insert before the last button or at the end
+        fabContainer.appendChild(delayChargeBtn);
+    }
+});
 
-        function getFirestoreForFlight(flightNo) {
-            if (!flightNo) return window.defaultCardDb;
-            
-            const flightPrefix = flightNo.substring(0, 2).toUpperCase();
-            
-            switch(flightPrefix) {
-                case 'BA': return window.baDb;
-                case 'EK': return window.ekDb;
-                case 'QR': return window.qrDb;
-                case 'SQ': return window.sqDb;
-                case 'UL': return window.defaultCardDb;
-                default: return window.defaultCardDb;
-            }
-        }
-
-        // ========== UTILITY FUNCTIONS ==========
-        function showStatus(message, type) {
-            const statusDiv = document.getElementById('statusMessage');
-            statusDiv.textContent = message;
-            statusDiv.className = `status-message ${type}`;
-            statusDiv.style.display = 'block';
-            
-            setTimeout(() => {
-                statusDiv.style.display = 'none';
-            }, 5000);
-        }
-
-        function resetCalculator() {
-            currentFlightPassengers = [];
-            selectedPassengers.clear();
-            selectedFlight = '';
-            selectedDate = '';
-            
-            document.getElementById('flightSelect').value = '';
-            document.getElementById('flightInfoCards').style.display = 'none';
-            document.getElementById('passengerSection').style.display = 'none';
-            document.getElementById('summarySection').style.display = 'none';
-            document.getElementById('createChargeBtn').disabled = true;
-            document.getElementById('selectAll').checked = false;
-            
-            loadAvailableFlights();
-        }
-
-        // ========== FLOATING BUTTON FUNCTION (to be added to main page) ==========
-        function openDelayChargeCalculator() {
-            window.open('delaycharge.html', 'DelayCharge', 'width=1400,height=800,scrollbars=yes,resizable=yes');
-        }
-
-        // Make functions global
-        window.handleFlightSelection = handleFlightSelection;
-        window.loadFlightPassengers = loadFlightPassengers;
-        window.toggleAllPassengers = toggleAllPassengers;
-        window.updatePassengerCalculations = updatePassengerCalculations;
-        window.toggleManualEdit = toggleManualEdit;
-        window.applyManualEdit = applyManualEdit;
-        window.createDelayCharge = createDelayCharge;
-        window.resetCalculator = resetCalculator;
-        window.openDelayChargeCalculator = openDelayChargeCalculator;
-    </script>
+// Make functions global
+window.openDelayChargePopup = openDelayChargePopup;
+window.closeDelayChargePopup = closeDelayChargePopup;
+window.loadFlightPassengers = loadFlightPassengers;
+window.calculateDelays = calculateDelays;
+window.submitDelayCharges = submitDelayCharges;
+window.updatePassengerTime = updatePassengerTime;
+window.formatTimeInput = formatTimeInput;
+window.adjustPassengerTime = adjustPassengerTime;
+</script>
 </body>
 </html>
