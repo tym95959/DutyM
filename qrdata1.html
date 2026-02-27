@@ -1060,7 +1060,7 @@
                             flightNo: data.flightNo || '',
                             date: data.date || '',
                             timestamp: data.timestamp || null,
-                            code: data.code || '' // Original code for QR
+                            code: data.code || '' // IMPORTANT: This is the hidden code field from Firebase
                         });
                         
                         if (data.entryTime) {
@@ -1386,7 +1386,7 @@
         }
     }
 
-    // Load QR codes for selected date
+    // Load QR codes for selected date - FETCHES HIDDEN CODE FIELD
     async function loadQRCodes() {
         clearMessages();
         
@@ -1394,6 +1394,7 @@
         var selectedDate = qrDateSelect.value;
         var qrContainer = document.getElementById('qrContainer');
         var loadBtn = document.getElementById('loadQrBtn');
+        var flightSelect = document.getElementById('qrFlightSelect');
         
         if (!selectedDate) {
             showMessage("Please select a date first", 'error');
@@ -1403,36 +1404,90 @@
         loadBtn.disabled = true;
         qrContainer.innerHTML = `
             <div class="loading">
-                Loading codes from Firebase for ${selectedDate}...
+                Loading hidden code fields from Firebase for ${selectedDate}...
             </div>
         `;
         
         try {
-            var flights = flightsByDate[selectedDate];
-            if (!flights || flights.size === 0) {
-                qrContainer.innerHTML = '<div class="qr-no-data">No passengers found for this date</div>';
+            // Clear previous data
+            allQRCodes = [];
+            
+            // Get QR database reference
+            qrDatabase = getQRDatabase();
+            
+            if (!qrDatabase) {
+                throw new Error("QR Database not available");
+            }
+            
+            console.log(`🔍 Loading hidden code fields from KoveliPass collection for date: ${selectedDate}`);
+            
+            // Direct query to Firebase for the selected date to ensure we get the latest data
+            // This ensures we fetch the actual code field from each document
+            var snapshot = await qrDatabase.collection('KoveliPass')
+                .where('date', '==', selectedDate)
+                .get();
+            
+            if (snapshot.empty) {
+                qrContainer.innerHTML = '<div class="qr-no-data">No records found for this date in Firebase</div>';
                 loadBtn.disabled = false;
                 return;
             }
             
-            // Collect all passengers
-            allQRCodes = [];
-            flights.forEach(function(flight) {
-                flight.passengers.forEach(function(passenger) {
-                    allQRCodes.push({
-                        id: passenger.docId,
-                        pName: passenger.pName || 'Unknown',
-                        seatNo: passenger.seatNo || 'N/A',
-                        FQTV: passenger.FQTV || 'N/A',
-                        flightNo: passenger.flightNo || flight.flightNo,
-                        date: passenger.date || selectedDate,
-                        entryTime: passenger.entryTime || '',
-                        code: passenger.code || (passenger.flightNo + ' ' + passenger.pName + ' ' + passenger.seatNo),
-                        timestamp: passenger.timestamp || null,
-                        shift: flight.shift || ''
+            console.log(`Found ${snapshot.size} records for date ${selectedDate}`);
+            
+            // Process each document
+            snapshot.forEach(doc => {
+                var data = doc.data();
+                
+                // CRITICAL: Get the hidden code field from Firebase
+                // The field name might be 'code', 'qrCode', 'hiddenCode', etc.
+                // Based on your original code, it's stored as 'code'
+                var hiddenCode = data.code || '';  // This is the hidden field from Firebase
+                
+                // If no code field exists, use a fallback for debugging
+                if (!hiddenCode) {
+                    console.warn(`No hidden code field found for document ${doc.id}, using fallback`);
+                    // Fallback to create a code from passenger data
+                    hiddenCode = JSON.stringify({
+                        name: data.pName || 'Unknown',
+                        seat: data.seatNo || 'N/A',
+                        flight: data.flightNo || 'N/A',
+                        date: data.date || selectedDate,
+                        time: data.entryTime || '',
+                        fqtv: data.FQTV || 'N/A',
+                        id: doc.id
                     });
+                } else {
+                    console.log(`Found hidden code for ${data.pName || 'Unknown'}: ${hiddenCode.substring(0, 30)}...`);
+                }
+                
+                allQRCodes.push({
+                    id: doc.id,
+                    pName: data.pName || 'Unknown',
+                    seatNo: data.seatNo || 'N/A',
+                    FQTV: data.FQTV || 'N/A',
+                    flightNo: data.flightNo || 'N/A',
+                    date: data.date || selectedDate,
+                    entryTime: data.entryTime || '',
+                    // IMPORTANT: Store the hidden code field for QR generation
+                    hiddenCode: hiddenCode,  // This is the actual code from Firebase
+                    timestamp: data.timestamp || null,
+                    shift: data.shift || ''
                 });
             });
+            
+            // Also update our cached data for consistency
+            if (flightsByDate[selectedDate]) {
+                flightsByDate[selectedDate].forEach(function(flight) {
+                    flight.passengers.forEach(function(passenger) {
+                        // Update the code field in cache if needed
+                        var matchingQR = allQRCodes.find(qr => qr.id === passenger.docId);
+                        if (matchingQR && matchingQR.hiddenCode) {
+                            passenger.code = matchingQR.hiddenCode;
+                        }
+                    });
+                });
+            }
             
             filteredQRCodes = [...allQRCodes];
             
@@ -1450,12 +1505,12 @@
             updateStats();
             displayQRCodes(filteredQRCodes);
             
-            showMessage('Successfully loaded ' + filteredQRCodes.length + ' passenger records.', 'success');
+            showMessage(`Successfully loaded ${filteredQRCodes.length} hidden code fields from Firebase.`, 'success');
             
         } catch (error) {
-            console.error("Error loading QR codes:", error);
+            console.error("Error loading hidden codes:", error);
             qrContainer.innerHTML = '<div class="qr-no-data">Error loading data: ' + error.message + '</div>';
-            showMessage("Error loading data: " + error.message, 'error');
+            showMessage("Error loading hidden codes: " + error.message, 'error');
         } finally {
             loadBtn.disabled = false;
         }
@@ -1535,7 +1590,7 @@
         displayQRCodes(sortedCodes);
     }
 
-    // Display QR codes (no delete buttons)
+    // Display QR codes using the hidden code field from Firebase
     function displayQRCodes(codesToDisplay) {
         var container = document.getElementById('qrContainer');
         
@@ -1554,6 +1609,15 @@
             var card = document.createElement('div');
             card.className = 'qr-card';
             card.id = 'card-' + item.id;
+            
+            // Use the hidden code field for QR generation
+            var qrCodeData = item.hiddenCode || '';
+            
+            // If no hidden code exists, show warning
+            if (!qrCodeData) {
+                console.warn(`No hidden code for ${item.pName}`);
+                qrCodeData = 'NO_CODE_FIELD';
+            }
             
             card.innerHTML = `
                 <div class="qr-info">
@@ -1591,24 +1655,17 @@
                     <div id="qr-${index}"></div>
                 </div>
                 
-                <div class="code-preview">
-                    ${(item.code || '').substring(0, 50)}${(item.code || '').length > 50 ? '...' : ''}
+                <div class="code-preview" title="Hidden code field from Firebase">
+                    <strong>Hidden Code:</strong> ${qrCodeData.substring(0, 50)}${qrCodeData.length > 50 ? '...' : ''}
                 </div>
             `;
             
             qrGrid.appendChild(card);
             
-            // Generate QR code
+            // Generate QR code using the hidden code field
             try {
                 new QRCode(document.getElementById('qr-' + index), {
-                    text: item.code || JSON.stringify({
-                        name: item.pName,
-                        seat: item.seatNo,
-                        flight: item.flightNo,
-                        date: item.date,
-                        time: item.entryTime,
-                        fqtv: item.FQTV
-                    }),
+                    text: qrCodeData,  // Use the hidden code from Firebase
                     width: 150,
                     height: 150,
                     colorDark: "#000000",
@@ -1617,7 +1674,7 @@
                 });
             } catch (qrError) {
                 console.error("Error generating QR code:", qrError);
-                document.getElementById('qr-' + index).innerHTML = '<div style="color: red; padding: 20px;">Error</div>';
+                document.getElementById('qr-' + index).innerHTML = '<div style="color: red; padding: 20px;">Error: Invalid code data</div>';
             }
         });
         
