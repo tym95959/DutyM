@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -255,6 +256,12 @@
         .action-group button:active { transform: translateY(5px); box-shadow: 0 3px 0 #bfa27b; }
         .btn-open { background: #f2fbe9; border-color: #b8d9a6; color: #2b6e2b; }
         .btn-close { background: #ffeee8; border-color: #fbb5b5; color: #b13e3e; }
+        .action-group button:disabled {
+            opacity: 0.4;
+            transform: translateY(4px);
+            box-shadow: 0 4px 0 #bfa27b;
+            cursor: not-allowed;
+        }
 
         /* bottom bar — new */
         .bottom-dock {
@@ -305,7 +312,7 @@
             box-shadow: 0 8px 0 #b88744, 0 10px 20px -8px #8b621f;
             display: flex; align-items: center; justify-content: center;
         }
-        .reset-super:disabled { opacity: 0.4; box-shadow: 0 4px 0 #886b40; transform: translateY(4px); }
+        .reset-super:disabled { opacity: 0.4; box-shadow: 0 4px 0 #886b40; transform: translateY(4px); cursor: not-allowed; }
 
         /* message — sleek */
         #message {
@@ -521,12 +528,46 @@
         } catch (error) { console.error(error); showMessage('error loading', true); }
     }
 
+    // ===== ENHANCED HANDLE SHIFT WITH AUTO RESET ON DATE MISMATCH =====
     async function handleShift(shift, action) {
         try {
             const doc = await passengerDb.collection('shifts').doc('currentshift').get();
             const currentData = doc.exists ? doc.data() : {};
             const existingDate = currentData.date;
             const todayStr = new Date().toISOString().split('T')[0];
+
+            // ===== AUTO RESET WHEN CLOSING SHIFT WITH DATE MISMATCH =====
+            if (action === 'close' && existingDate && existingDate !== todayStr) {
+                const confirmReset = confirm(`⚠️ Date Mismatch Detected!\n\nShift Date: ${formatDateForDisplay(existingDate)}\nToday's Date: ${formatDateForDisplay(todayStr)}\n\nDo you want to reset for the new day?`);
+                
+                if (confirmReset) {
+                    const now = new Date().toLocaleString();
+                    await passengerDb.collection('shifts').doc('currentshift').set({
+                        morning: 'pending',
+                        evening: 'pending',
+                        date: todayStr,
+                        updated: now,
+                        updatedBy: currentUser.name,
+                        updatedByLevel: currentUser.level,
+                        updatedByRC: currentUser.rcno,
+                        resetBy: currentUser.name,
+                        resetAt: now,
+                        resetReason: 'auto_reset_on_shift_close_date_mismatch'
+                    });
+                    showMessage(`✅ Reset to new day: ${formatDateForDisplay(todayStr)}`);
+                    await loadTodayData();
+                    return;
+                } else {
+                    showMessage('Operation cancelled', true);
+                    return;
+                }
+            }
+
+            // Normal shift operations - only proceed if dates match or no existing date
+            if (existingDate && existingDate !== todayStr && action !== 'close') {
+                showMessage(`⚠️ Date mismatch. Please refresh or contact supervisor.`, true);
+                return;
+            }
 
             // validations
             if (shift === 'morning') {
@@ -551,9 +592,20 @@
             if (!existingDate) updateData.date = todayStr; else updateData.date = existingDate;
 
             await passengerDb.collection('shifts').doc('currentshift').set(updateData, { merge: true });
-            showMessage(`✓ ${shift} ${newStatus} · returning to dashboard`);
-            setTimeout(() => window.location.href = 'dashboard.html', 900);
-        } catch (error) { console.error(error); showMessage('error', true); }
+            
+            // ===== REDIRECT LOGIC - ONLY FOR OPEN ACTIONS =====
+            if (action === 'open') {
+                showMessage(`✓ ${shift} ${newStatus} · redirecting to dashboard...`);
+                setTimeout(() => window.location.href = 'dashboard.html', 900);
+            } else {
+                // For close actions, just show success message and refresh
+                showMessage(`✓ ${shift} ${newStatus}`);
+                await loadTodayData(); // Refresh the current page data
+            }
+        } catch (error) { 
+            console.error(error); 
+            showMessage('error', true); 
+        }
     }
 
     async function supervisorReset() {
