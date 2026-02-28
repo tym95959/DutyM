@@ -2165,120 +2165,267 @@
         }
 
         // ========== SALES FUNCTIONS - ENHANCED ==========
-        async function fetchSalesData() {
-            try {
-                if (typeof db === 'undefined') {
-                    console.error('Database not initialized');
-                    return;
-                }
-
-                // Get today's date
-                const today = new Date().toISOString().split('T')[0];
-                console.log('Fetching sales data for date:', today);
-                
-                let totalMVR = 0;
-                let totalUSD = 0;
-                let transactions = [];
-                
-                // Method 1: Try querying by date field
-                try {
-                    const kovelipaySnapshot = await db.collection('Kovelipay')
-                        .where('date', '==', today)
-                        .get();
-                    
-                    if (!kovelipaySnapshot.empty) {
-                        console.log(`Found ${kovelipaySnapshot.size} records using date field`);
-                        kovelipaySnapshot.forEach(doc => {
-                            const data = doc.data();
-                            transactions.push(data);
-                            
-                            // Check for different possible field names
-                            const mvrAmount = parseFloat(data.mvrAmount || data.mvr || data.MVR || data.totalMVR || 0);
-                            const usdAmount = parseFloat(data.usdAmount || data.usd || data.USD || data.totalUSD || 0);
-                            
-                            totalMVR += mvrAmount;
-                            totalUSD += usdAmount;
-                            
-                            console.log('Transaction:', {
-                                method: data.paymentMethod,
-                                mvr: mvrAmount,
-                                usd: usdAmount
-                            });
-                        });
-                    }
-                } catch (e) {
-                    console.log('Date field query failed:', e);
-                }
-                
-                // Method 2: Try using submissionDateTime
-                if (transactions.length === 0) {
-                    console.log('Trying submissionDateTime filter...');
-                    const allSnapshot = await db.collection('Kovelipay').get();
-                    
-                    allSnapshot.forEach(doc => {
-                        const data = doc.data();
-                        let transactionDate = '';
-                        
-                        // Check various date fields
-                        if (data.date) {
-                            transactionDate = data.date;
-                        } else if (data.submissionDateTime) {
-                            // Extract date from submissionDateTime
-                            const datePart = data.submissionDateTime.split(',')[0];
-                            if (datePart.includes('/')) {
-                                const [m, d, y] = datePart.split('/');
-                                transactionDate = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-                            }
-                        } else if (data.timestamp) {
-                            if (data.timestamp.toDate) {
-                                transactionDate = data.timestamp.toDate().toISOString().split('T')[0];
-                            }
-                        }
-                        
-                        if (transactionDate === today) {
-                            transactions.push(data);
-                            
-                            const mvrAmount = parseFloat(data.mvrAmount || data.mvr || data.MVR || data.totalMVR || 0);
-                            const usdAmount = parseFloat(data.usdAmount || data.usd || data.USD || data.totalUSD || 0);
-                            
-                            totalMVR += mvrAmount;
-                            totalUSD += usdAmount;
-                        }
-                    });
-                    
-                    console.log(`Found ${transactions.length} records using submissionDateTime`);
-                }
-                
-                // Round USD to whole numbers
-                totalUSD = Math.round(totalUSD);
-                
-                salesData = {
-                    mvr: totalMVR,
-                    usd: totalUSD
-                };
-                
-                console.log('Final sales totals:', salesData);
-                
-                document.getElementById('mvrSales').textContent = totalMVR.toFixed(2);
-                document.getElementById('usdSales').textContent = totalUSD;
-                
-                // Show message if no transactions
-                if (transactions.length === 0) {
-                    showMessage('No sales transactions found for today. Please ensure Kovelipay has records.', 'info');
-                } else {
-                    showMessage(`Loaded ${transactions.length} transactions: MVR ${totalMVR.toFixed(2)} / USD ${totalUSD}`, 'success');
-                }
-                
-            } catch (error) {
-                console.error('Error fetching sales:', error);
-                // Don't use demo data, show zero
-                salesData = { mvr: 0, usd: 0 };
-                document.getElementById('mvrSales').textContent = '0.00';
-                document.getElementById('usdSales').textContent = '0';
-                showMessage('Error fetching sales data. Please check console.', 'danger');
-            }
+        // ========== SALES FUNCTIONS - FIXED ==========
+async function fetchSalesData() {
+    try {
+        if (typeof db === 'undefined') {
+            console.error('Database not initialized');
+            return;
         }
 
+        // Get today's date from the shift (or use current date)
+        let targetDate = today;
+        
+        // If shift is open, use the shift date
+        if (currentShift && currentShift.date) {
+            targetDate = currentShift.date;
+            console.log('Using shift date:', targetDate);
+        } else {
+            targetDate = new Date().toISOString().split('T')[0];
+            console.log('Using current date:', targetDate);
+        }
+        
+        console.log('Fetching sales data for date:', targetDate);
+        
+        let totalMVR = 0;
+        let totalUSD = 0;
+        let transactions = [];
+        
+        // Method 1: Try querying by date field (most common)
+        try {
+            const kovelipaySnapshot = await db.collection('Kovelipay')
+                .where('date', '==', targetDate)
+                .get();
+            
+            if (!kovelipaySnapshot.empty) {
+                console.log(`Found ${kovelipaySnapshot.size} records using date field`);
+                kovelipaySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    transactions.push(data);
+                    
+                    // Check for ALL possible field names that might contain the amount
+                    // Based on your cash report page, the fields might be:
+                    // - totalAmount (from your report page)
+                    // - mvrAmount, usdAmount
+                    // - mvr, usd
+                    // - MVR, USD
+                    
+                    const currency = (data.currency || 'USD').toUpperCase();
+                    
+                    // Try to get the amount from various possible field names
+                    let amount = 0;
+                    
+                    // Check for totalAmount first (from your report page)
+                    if (data.totalAmount !== undefined) {
+                        amount = parseFloat(data.totalAmount) || 0;
+                    }
+                    // Check for currency-specific fields
+                    else if (currency === 'MVR') {
+                        amount = parseFloat(
+                            data.mvrAmount || 
+                            data.mvr || 
+                            data.MVR || 
+                            data.totalMVR || 
+                            0
+                        );
+                    } else {
+                        amount = parseFloat(
+                            data.usdAmount || 
+                            data.usd || 
+                            data.USD || 
+                            data.totalUSD || 
+                            0
+                        );
+                    }
+                    
+                    // Also check for payment method to help with debugging
+                    const paymentMethod = data.paymentMethod || 'CASH';
+                    
+                    console.log(`Transaction: ${paymentMethod}, Currency: ${currency}, Amount: ${amount}`);
+                    
+                    // Add to appropriate total based on currency
+                    if (currency === 'MVR') {
+                        totalMVR += amount;
+                    } else {
+                        totalUSD += amount;
+                    }
+                });
+            }
+        } catch (e) {
+            console.log('Date field query failed:', e);
+        }
+        
+        // Method 2: Try using submissionDateTime (like in your report page)
+        if (transactions.length === 0) {
+            console.log('Trying submissionDateTime filter...');
+            try {
+                const allSnapshot = await db.collection('Kovelipay').get();
+                
+                allSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    let transactionDate = '';
+                    
+                    // Check submissionDateTime field (format: "MM/DD/YYYY, HH:MM:SS")
+                    if (data.submissionDateTime) {
+                        const datePart = data.submissionDateTime.split(',')[0].trim();
+                        if (datePart.includes('/')) {
+                            const [m, d, y] = datePart.split('/');
+                            // Handle 2-digit year
+                            const year = y.length === 2 ? '20' + y : y;
+                            transactionDate = `${year}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+                        }
+                    }
+                    // Check timestamp field
+                    else if (data.timestamp) {
+                        if (data.timestamp.toDate) {
+                            transactionDate = data.timestamp.toDate().toISOString().split('T')[0];
+                        } else if (typeof data.timestamp === 'string') {
+                            transactionDate = data.timestamp.split('T')[0];
+                        }
+                    }
+                    
+                    if (transactionDate === targetDate) {
+                        transactions.push(data);
+                        
+                        const currency = (data.currency || 'USD').toUpperCase();
+                        
+                        // Get amount - same logic as above
+                        let amount = 0;
+                        if (data.totalAmount !== undefined) {
+                            amount = parseFloat(data.totalAmount) || 0;
+                        } else if (currency === 'MVR') {
+                            amount = parseFloat(
+                                data.mvrAmount || 
+                                data.mvr || 
+                                data.MVR || 
+                                data.totalMVR || 
+                                0
+                            );
+                        } else {
+                            amount = parseFloat(
+                                data.usdAmount || 
+                                data.usd || 
+                                data.USD || 
+                                data.totalUSD || 
+                                0
+                            );
+                        }
+                        
+                        if (currency === 'MVR') {
+                            totalMVR += amount;
+                        } else {
+                            totalUSD += amount;
+                        }
+                    }
+                });
+                
+                console.log(`Found ${transactions.length} records using submissionDateTime`);
+            } catch (e) {
+                console.log('SubmissionDateTime query failed:', e);
+            }
+        }
+        
+        // Round USD to whole numbers
+        totalUSD = Math.round(totalUSD);
+        
+        salesData = {
+            mvr: totalMVR,
+            usd: totalUSD
+        };
+        
+        console.log('Final sales totals:', salesData);
+        console.log('Number of transactions:', transactions.length);
+        
+        // Update the display
+        document.getElementById('mvrSales').textContent = totalMVR.toFixed(2);
+        document.getElementById('usdSales').textContent = totalUSD;
+        
+        // Show message with details
+        if (transactions.length === 0) {
+            showMessage(`No sales transactions found for date: ${targetDate}. Please check if Kovelipay has records.`, 'info');
+        } else {
+            showMessage(`Loaded ${transactions.length} transactions for ${targetDate}: MVR ${totalMVR.toFixed(2)} / USD ${totalUSD}`, 'success');
+            
+            // Also log all transactions to console for debugging
+            console.log('All transactions:', transactions);
+        }
+        
+    } catch (error) {
+        console.error('Error fetching sales:', error);
+        salesData = { mvr: 0, usd: 0 };
+        document.getElementById('mvrSales').textContent = '0.00';
+        document.getElementById('usdSales').textContent = '0';
+        showMessage('Error fetching sales data: ' + error.message, 'danger');
+    }
+}
+
+// Also update the initializePage function to ensure shift data is loaded first
+async function initializePage() {
+    try {
+        console.log('Initializing page...');
+        
+        // Load user first
+        if (!loadUserFromStorage()) return;
+        
+        // Fetch shift data FIRST - this is important
+        await fetchShiftData();
+        
+        // THEN fetch sales data using the shift date
+        await fetchSalesData();
+        
+        // Load petty cash data
+        await loadPettyCashData();
+        
+        // Load current cashier data
+        await loadCurrentCashier();
+        
+        // Load recent activity
+        await loadRecentActivity();
+        
+        // Hide loading, show content
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('mainContent').style.display = 'block';
+        
+        // Initialize inputs with zero
+        document.getElementById('countedMVR').value = '0';
+        document.getElementById('countedUSD').value = '0';
+        document.getElementById('countedPettyMVR').value = '0';
+        document.getElementById('countedPettyUSD').value = '0';
+        document.getElementById('setPettyMVR').value = '0';
+        document.getElementById('setPettyUSD').value = '0';
+        
+        // Setup event listeners
+        document.getElementById('openCashierBtn').addEventListener('click', handleOpenCashier);
+        document.getElementById('closeCashierBtn').addEventListener('click', handleCloseCashier);
+        
+        // Setup admin-only listeners
+        if (currentUser && currentUser.level.toLowerCase() === 'admin') {
+            document.getElementById('savePettyCashBtn').addEventListener('click', savePettyCash);
+        }
+        
+        // Auto-refresh every 30 seconds
+        refreshInterval = setInterval(async () => {
+            await fetchShiftData();
+            await fetchSalesData(); // This will now use the updated shift date
+            await loadPettyCashData();
+            await loadCurrentCashier();
+        }, 30000);
+        
+        // Refresh activity every 10 seconds
+        activityInterval = setInterval(async () => {
+            await loadRecentActivity();
+        }, 10000);
+        
+    } catch (error) {
+        console.error('Initialization error:', error);
+        document.getElementById('loading').innerHTML = `
+            <div class="alert alert-danger">
+                Failed to load data. Please refresh the page.
+                <br><small>${error.message}</small>
+            </div>
+        `;
+    }
+}
         // ========== COMPARISON FUNCTIONS ==========
         function handleCountedInput() {
             countedData.mvr = parseFloat(document.getElementById('countedMVR').value) || 0;
