@@ -292,6 +292,7 @@
         .print-btn { background: #4a6fa5; color: white; }
         .print-btn:disabled { background: #a0b8d0; cursor: not-allowed; }
         .delay-charge-btn { background: #dc3545; color: white; }
+        .delay-charge-btn:disabled { background: #e0a0a8; cursor: not-allowed; opacity: 0.6; }
         
         /* Modal Styles */
         .modal {
@@ -813,6 +814,23 @@
             margin-left: 6px;
             text-transform: uppercase;
         }
+        
+        .disabled-action {
+            opacity: 0.5;
+            pointer-events: none;
+            cursor: not-allowed;
+        }
+        
+        .flight-closed-message {
+            background: #c68b5e;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -893,7 +911,10 @@
                             <button id="closeFlightBtn" class="close-btn" onclick="closeFlight()" disabled>🔒 CLOSE</button>
                             <button id="reopenFlightBtn" class="reopen-btn" onclick="reopenFlight()" style="display: none;">🔓 REOPEN</button>
                             <button id="printReportBtn" class="print-btn" onclick="printReport()" disabled>🖨️ PRINT</button>
-                            <button class="delay-charge-btn" onclick="openDelayChargeModal()">⏰ DELAY CHARGE</button>
+                            <button id="delayChargeBtn" class="delay-charge-btn" onclick="openDelayChargeModal()" disabled>⏰ DELAY CHARGE</button>
+                        </div>
+                        <div id="flightClosedMessage" class="flight-closed-message" style="display: none;">
+                            ⚠️ Flight is CLOSED - No edits, additions, or deletions allowed
                         </div>
                     </div>
                 </div>
@@ -1153,10 +1174,6 @@
             paxInput.value = calculatePaxFromSeat(seatInput.value);
             if (warningDiv) warningDiv.textContent = '';
         }
-    }
-
-    function showNotification(msg, type = 'info') { 
-        console.log(msg); 
     }
 
     // ========== SHIFT ==========
@@ -1491,15 +1508,11 @@
             const remainingDuplicates = detectDuplicates(currentFlightData.passengers);
             if (remainingDuplicates.length === 0) {
                 dismissDuplicateWarning();
-                showNotification('All duplicates resolved!', 'success');
             } else {
                 showDuplicateWarning(remainingDuplicates);
             }
-            
-            showNotification('✅ Duplicate deleted successfully', 'success');
         } catch (error) {
-            alert('❌ Error deleting duplicate: ' + error.message);
-            console.error(error);
+            console.error('Error deleting duplicate:', error);
         }
     }
 
@@ -1507,7 +1520,6 @@
         const duplicates = detectDuplicates(currentFlightData.passengers);
         
         if (duplicates.length === 0) {
-            alert('No duplicates found');
             return;
         }
         
@@ -1535,11 +1547,8 @@
             document.getElementById('passengerCount').textContent = currentFlightData.passengers.length + ' PAX';
             
             dismissDuplicateWarning();
-            
-            showNotification(`✅ Deleted ${duplicateIds.length} duplicate entr${duplicateIds.length > 1 ? 'ies' : 'y'}`, 'success');
         } catch (error) {
-            alert('❌ Error deleting duplicates: ' + error.message);
-            console.error(error);
+            console.error('Error deleting duplicates:', error);
         }
     }
 
@@ -1636,12 +1645,13 @@
         return '';
     }
 
-    // Modified displayPassengerTable function - delay charge entries go to the end
+    // Modified displayPassengerTable function - delay charge entries go to the end, disabled when flight closed
     function displayPassengerTable(passengers) {
         const tbody = document.getElementById('passengerTableBody');
         const tableHeader = document.getElementById('tableHeader');
         const isSQ = isSQFlight();
         const isFZ = isFZFlight();
+        const isFlightClosed = currentFlightData && currentFlightData.isClosed;
         
         if (!passengers || passengers.length === 0) {
             if (isFZ) {
@@ -1713,7 +1723,7 @@
         const duplicates = detectDuplicates(passengers);
         const duplicateIndices = new Set(duplicates.map(d => d.duplicateIndex));
         
-        if (duplicates.length > 0) {
+        if (duplicates.length > 0 && !isFlightClosed) {
             showDuplicateWarning(duplicates);
         } else {
             dismissDuplicateWarning();
@@ -1747,8 +1757,8 @@
             
             const pnr = isFZ ? extractPNRFromHiddenCode(p.hiddenCode) : '';
             
-            if (editingRowId === p.docId) {
-                // Edit mode - allow editing for all entries including delay charges
+            if (editingRowId === p.docId && !isFlightClosed) {
+                // Edit mode - only if flight is not closed
                 const namePlaceholder = isSQ ? 'Voucher No.' : 'Name';
                 
                 if (isFZ) {
@@ -1824,8 +1834,12 @@
                         <td>${p.entryTime || '-'}</td>
                         <td>${escapeHtml(p.remarks) || '-'}</td>
                         <td class="action-cell">
-                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                            ${!isFlightClosed ? `
+                                <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                                <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                            ` : `
+                                <span style="color: #999; font-size: 10px;">Flight Closed</span>
+                            `}
                         </td>
                     </tr>`;
                 } else {
@@ -1839,8 +1853,12 @@
                         <td>${p.entryTime || '-'}</td>
                         <td>${escapeHtml(p.remarks) || '-'}</td>
                         <td class="action-cell">
-                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                            ${!isFlightClosed ? `
+                                <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                                <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                            ` : `
+                                <span style="color: #999; font-size: 10px;">Flight Closed</span>
+                            `}
                         </td>
                     </tr>`;
                 }
@@ -1872,7 +1890,6 @@
         const flightData = flightsByDate[selectedDate]?.get(flightKey);
         
         if (!flightData) {
-            alert('Flight data not found');
             return;
         }
         
@@ -1881,15 +1898,6 @@
         editingRowId = null;
         
         dismissDuplicateWarning();
-        
-        console.log('Flight Data:', {
-            flightNo: flightData.flightNo,
-            passengers: flightData.passengers.length,
-            firstPax: flightData.firstPax,
-            lastPax: flightData.lastPax,
-            database: flightData.database,
-            isFZ: flightData.flightNo.toUpperCase().startsWith('FZ')
-        });
         
         document.getElementById('databaseDisplay').textContent = `${flightData.database} (${flightData.databaseProject || 'unknown'})`;
         document.getElementById('databaseBadge').textContent = flightData.database;
@@ -1918,7 +1926,6 @@
             }
             
             const reportId = `${flightNo}_${formattedDate}`;
-            console.log(`🔍 Looking for flight report: ${reportId} in ${flightData.database}`);
             
             const targetDb = flightData.dbRef || getFirestoreForFlight(flightNo);
             const reportDoc = await targetDb.collection('FlightReports').doc(reportId).get();
@@ -1928,14 +1935,8 @@
                 currentFlightData.isClosed = reportData.isClosed || false;
                 currentFlightData.std = reportData.std || '';
                 currentFlightData.lastPax = reportData.lastPax || '';
-                console.log('Loaded flight status:', { 
-                    isClosed: currentFlightData.isClosed, 
-                    std: currentFlightData.std, 
-                    lastPax: currentFlightData.lastPax
-                });
             } else {
                 currentFlightData.isClosed = false;
-                console.log('No report found, flight is open by default');
             }
         } catch (error) {
             console.error('Error loading flight status:', error);
@@ -1961,12 +1962,20 @@
             document.getElementById('closeFlightBtn').style.display = 'none';
             document.getElementById('reopenFlightBtn').style.display = 'block';
             document.getElementById('printReportBtn').disabled = false;
+            document.getElementById('delayChargeBtn').disabled = true;
+            document.getElementById('stdInput').disabled = true;
+            document.getElementById('lastPaxInput').disabled = true;
+            document.getElementById('flightClosedMessage').style.display = 'block';
         } else {
             document.getElementById('flightStatus').textContent = 'OPEN';
             document.getElementById('flightStatus').className = 'flight-status status-open';
             document.getElementById('closeFlightBtn').style.display = 'block';
             document.getElementById('reopenFlightBtn').style.display = 'none';
             document.getElementById('printReportBtn').disabled = true;
+            document.getElementById('delayChargeBtn').disabled = false;
+            document.getElementById('stdInput').disabled = false;
+            document.getElementById('lastPaxInput').disabled = false;
+            document.getElementById('flightClosedMessage').style.display = 'none';
             validateCloseButton();
         }
         
@@ -1986,6 +1995,7 @@
     }
 
     function startEdit(docId) { 
+        if (currentFlightData && currentFlightData.isClosed) return;
         editingRowId = docId; 
         displayPassengerTable(currentFlightData.passengers); 
     }
@@ -1996,6 +2006,8 @@
     }
 
     async function savePassenger(docId) {
+        if (currentFlightData && currentFlightData.isClosed) return;
+        
         try {
             const pName = document.getElementById(`edit-pName-${docId}`).value;
             const seatNo = document.getElementById(`edit-seatNo-${docId}`).value;
@@ -2004,12 +2016,6 @@
             const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
             const entryTime = document.getElementById(`edit-entryTime-${docId}`).value;
             const remarks = document.getElementById(`edit-remarks-${docId}`).value;
-            
-            // Skip seat-pax validation for delay charge entries (seatNo is "Nill")
-            if (seatNo !== 'Nill') {
-                const calculated = calculatePaxFromSeat(seatNo);
-                if (parseInt(pax) !== calculated && !confirm(`PAX mismatch (seat->${calculated}). Save anyway?`)) return;
-            }
             
             const targetDb = currentDatabase || getFirestoreForFlight(currentFlightData.flightNo);
             
@@ -2053,20 +2059,19 @@
             if (remainingDuplicates.length === 0) {
                 dismissDuplicateWarning();
             }
-            
-            alert(`✅ Updated in ${currentFlightData.database || 'database'}`);
         } catch (error) { 
-            alert('❌ Error: '+error.message); 
-            console.error(error);
+            console.error('Error saving passenger:', error);
         }
     }
 
     function confirmDelete(docId, name) { 
-        const itemType = isSQFlight() ? 'voucher' : 'passenger';
-        if (confirm(`Delete ${itemType} ${name}?`)) deletePassenger(docId); 
+        if (currentFlightData && currentFlightData.isClosed) return;
+        if (confirm(`Delete ${name}?`)) deletePassenger(docId); 
     }
     
     async function deletePassenger(docId) {
+        if (currentFlightData && currentFlightData.isClosed) return;
+        
         try {
             const targetDb = currentDatabase || getFirestoreForFlight(currentFlightData.flightNo);
             
@@ -2084,22 +2089,19 @@
             if (remainingDuplicates.length === 0) {
                 dismissDuplicateWarning();
             }
-            
-            alert(`✅ Deleted from ${currentFlightData.database || 'database'}`);
         } catch (error) { 
-            alert('❌ Error: '+error.message);
-            console.error(error);
+            console.error('Error deleting passenger:', error);
         }
     }
 
     async function updateSTD() { 
+        if (currentFlightData && currentFlightData.isClosed) return;
         const v = document.getElementById('stdInput').value; 
         if(v && currentFlightData) { 
             currentFlightData.std = v; 
             validateCloseButton();
             try {
                 await saveFlightDataToFirebase();
-                console.log('STD auto-saved');
             } catch (error) {
                 console.error('Error saving STD:', error);
             }
@@ -2107,6 +2109,7 @@
     }
     
     async function updateLastPax() { 
+        if (currentFlightData && currentFlightData.isClosed) return;
         const v = document.getElementById('lastPaxInput').value; 
         if(v && currentFlightData) { 
             currentFlightData.lastPax = v; 
@@ -2115,7 +2118,6 @@
             validateCloseButton();
             try {
                 await saveFlightDataToFirebase();
-                console.log('Last Pax auto-saved');
             } catch (error) {
                 console.error('Error saving Last Pax:', error);
             }
@@ -2160,10 +2162,6 @@
             const reportId = `${flightNo}_${formattedDate}`;
             const targetDb = currentDatabase || getFirestoreForFlight(flightNo);
             
-            console.log(`💾 Saving to ${currentFlightData.database}:`, { 
-                reportId, flightNo, date: formattedDate, shift, airline, std, lastPax, firstPax, totalPax, isClosed 
-            });
-            
             await targetDb.collection('FlightReports').doc(reportId).set({
                 flightNo: flightNo,
                 date: formattedDate,
@@ -2177,7 +2175,6 @@
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
             
-            console.log(`✅ Flight data saved successfully`);
             return true;
         } catch (error) { 
             console.error('Error saving flight data:', error);
@@ -2192,7 +2189,6 @@
         const lastPax = document.getElementById('lastPaxInput').value;
         
         if (!std || !lastPax) {
-            alert('STD and Last Pax must be entered before closing the flight.');
             return;
         }
         
@@ -2208,16 +2204,19 @@
             document.getElementById('closeFlightBtn').style.display = 'none';
             document.getElementById('reopenFlightBtn').style.display = 'block';
             document.getElementById('printReportBtn').disabled = false;
+            document.getElementById('delayChargeBtn').disabled = true;
+            document.getElementById('stdInput').disabled = true;
+            document.getElementById('lastPaxInput').disabled = true;
+            document.getElementById('flightClosedMessage').style.display = 'block';
             
-            alert(`✅ Flight closed and data saved to ${currentFlightData.database}`);
+            displayPassengerTable(currentFlightData.passengers);
         } catch (error) {
-            alert('❌ Error saving to Firebase: ' + error.message);
             console.error('Close flight error:', error);
         }
     }
 
     async function reopenFlight() {
-        if (!currentFlightData || !confirm('Reopen flight?')) return;
+        if (!currentFlightData) return;
         
         try {
             currentFlightData.isClosed = false;
@@ -2228,18 +2227,20 @@
             document.getElementById('closeFlightBtn').style.display = 'block';
             document.getElementById('reopenFlightBtn').style.display = 'none';
             document.getElementById('printReportBtn').disabled = true;
+            document.getElementById('delayChargeBtn').disabled = false;
+            document.getElementById('stdInput').disabled = false;
+            document.getElementById('lastPaxInput').disabled = false;
+            document.getElementById('flightClosedMessage').style.display = 'none';
             validateCloseButton();
             
-            alert(`✅ Flight reopened and data saved to ${currentFlightData.database}`);
+            displayPassengerTable(currentFlightData.passengers);
         } catch (error) {
-            alert('❌ Error saving to Firebase: ' + error.message);
             console.error('Reopen flight error:', error);
         }
     }
 
     function printReport() {
         if (!currentFlightData || !currentFlightData.isClosed) { 
-            alert('Flight must be closed'); 
             return; 
         }
 
@@ -2586,6 +2587,8 @@
     // ========== DELAY CHARGE FUNCTIONS ==========
     
     function openDelayChargeModal() {
+        if (currentFlightData && currentFlightData.isClosed) return;
+        
         const modal = document.getElementById('delayChargeModal');
         modal.style.display = 'block';
         
@@ -2645,7 +2648,6 @@
         const flightData = flightsByDate[selectedDate]?.get(flightKey);
         
         if (!flightData) {
-            alert('Flight data not found');
             return;
         }
         
@@ -2814,13 +2816,11 @@
         const selectedPassengers = filteredDelayPassengers.filter(p => p.selected);
         
         if (selectedPassengers.length === 0) {
-            alert('Please select at least one passenger');
             return;
         }
         
         const missingLastPax = selectedPassengers.filter(p => !p.editedLastPax);
         if (missingLastPax.length > 0) {
-            alert(`Please enter Last Pax time for ${missingLastPax.length} selected passenger(s)`);
             return;
         }
         
@@ -2907,16 +2907,10 @@
     
     async function submitDelayCharges() {
         if (delayCalculatedCharges.length === 0) {
-            alert('Please calculate charges first');
             return;
         }
         
         if (!delaySelectedFlight) {
-            alert('No flight selected');
-            return;
-        }
-        
-        if (!confirm('Submit delay charges to the passenger list? These will be added as separate entries with Pax: 0 and will be editable/deletable like normal entries.')) {
             return;
         }
         
@@ -2957,7 +2951,6 @@
                     
                     const nameList = lg.passengerNames.join(', ').substring(0, 100);
                     
-                    // Get current time for entry time
                     const now = new Date();
                     const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
                     
@@ -2982,20 +2975,15 @@
                     };
                     
                     await targetDb.collection('KoveliPass').add(delayData);
-                    
-                    console.log(`✅ Delay charge added for ${lg.totalPax} pax for ${group.hours} hours (Pax: 0)`);
                 }
             }
-            
-            alert(`✅ Delay charges submitted successfully to ${delaySelectedFlight.database}\n\nThese entries:\n- Have Pax: 0\n- Appear at the end of the list\n- Can be edited and deleted like normal entries`);
             
             await refreshCurrentFlightData();
             
             closeDelayChargeModal();
             
         } catch (error) {
-            alert('❌ Error submitting delay charges: ' + error.message);
-            console.error(error);
+            console.error('Error submitting delay charges:', error);
         }
     }
     
