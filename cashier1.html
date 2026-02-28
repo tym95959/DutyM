@@ -127,7 +127,7 @@
             cursor: pointer;
         }
 
-        /* summary area */
+        /* summary area – cash total, non-cash by currency, and totals row (no exchange rate) */
         .summary-section {
             padding: 16px 32px 8px 32px;
         }
@@ -175,7 +175,7 @@
             margin-top: 8px;
         }
 
-        /* totals row */
+        /* totals row (receipts, adults, children) – no exchange rate */
         .totals-row {
             display: flex;
             flex-wrap: wrap;
@@ -195,7 +195,7 @@
             font-size: 1.3rem;
         }
 
-        /* non-cash breakdown table */
+        /* non-cash breakdown table – shows every payment method present (Amex, Visa, Master, Unionpay, etc) */
         .noncash-breakdown {
             padding: 8px 32px 0 32px;
         }
@@ -311,7 +311,7 @@
         </div>
     </div>
 
-    <!-- summary area -->
+    <!-- summary area: cash total, non-cash by currency, and totals row (exchange rate removed) -->
     <div class="summary-section">
         <div class="summary-grid">
             <!-- Block 1: Total cash (by currency) -->
@@ -321,7 +321,7 @@
                 <div class="currency-line"><span class="currency-code">MVR</span><span class="currency-amount" id="cashMVR">0.00</span></div>
                 <div class="sub-foot">includes all cash payments</div>
             </div>
-            <!-- Block 2: Non‑cash total by currency -->
+            <!-- Block 2: Non‑cash total by currency (all card & other non-cash combined) -->
             <div class="stat-block">
                 <div class="stat-label">💳 NON‑CASH TOTAL (by currency)</div>
                 <div class="currency-line"><span class="currency-code">USD</span><span class="currency-amount" id="noncashUSD">0.00</span></div>
@@ -337,20 +337,14 @@
                 <div class="sub-foot">total passengers</div>
             </div>
         </div>
+        <!-- exchange rate row removed as requested -->
     </div>
 
-    <!-- Non‑cash breakdown by card type -->
+    <!-- Non‑cash breakdown by card type (shows every method present: Amex, Visa, Master, Unionpay, etc) -->
     <div class="noncash-breakdown">
         <h3>💳 PAYMENT METHOD DETAILS (all non‑cash methods)</h3>
         <table class="method-table" id="noncashTable">
-            <thead>
-                <tr>
-                    <th>Payment method</th>
-                    <th>USD total</th>
-                    <th>MVR total</th>
-                    <th>Transactions</th>
-                </tr>
-            </thead>
+            <thead><tr><th>Payment method</th><th>USD total</th><th>MVR total</th><th>Transactions</th></tr></thead>
             <tbody id="noncashBody">
                 <tr><td colspan="4" style="text-align:center;">loading ...</td></tr>
             </tbody>
@@ -360,19 +354,7 @@
     <!-- detailed transaction list -->
     <div class="table-wrapper">
         <table class="list-table" id="reportTable">
-            <thead>
-                <tr>
-                    <th>Receipt</th>
-                    <th>Date/time</th>
-                    <th>Shift</th>
-                    <th>Passenger</th>
-                    <th>Flight</th>
-                    <th>A/C</th>
-                    <th>Curr</th>
-                    <th>Total</th>
-                    <th>Method</th>
-                </tr>
-            </thead>
+            <thead><tr><th>Receipt</th><th>Date/time</th><th>Shift</th><th>Passenger</th><th>Flight</th><th>A/C</th><th>Curr</th><th>Total</th><th>Method</th></tr></thead>
             <tbody id="tableBody"></tbody>
         </table>
     </div>
@@ -381,7 +363,7 @@
 
 <script>
     (function() {
-        // ----- configuration -----
+        // ========== CONFIGURATION ==========
         let allTransactions = [];
 
         // DOM elements
@@ -403,7 +385,7 @@
         const tableBody = document.getElementById('tableBody');
         const footGen = document.getElementById('generatedFoot');
 
-        // optionally set company info from Co.js if available
+        // Company info from Co.js if available
         if (typeof companyInfo !== 'undefined') {
             const nameEl = document.getElementById('companyName');
             const addrEl = document.getElementById('companyAddress');
@@ -411,17 +393,29 @@
             if (companyInfo.address) addrEl.innerText = companyInfo.address;
         }
 
-        // set default date = today
+        // Set default date = today
         const today = new Date().toISOString().split('T')[0];
         dateInput.value = today;
 
-        // helper: extract YYYY-MM-DD from "MM/DD/YYYY, ..." or ISO format
+        // ========== HELPER FUNCTIONS ==========
+        
+        // Extract YYYY-MM-DD from various date formats
         function extractDateFromDateTimeField(dt) {
             if (!dt) return '';
             
             // Check if it's already in YYYY-MM-DD format
             if (dt.match(/^\d{4}-\d{2}-\d{2}/)) {
                 return dt.substring(0, 10);
+            }
+            
+            // Handle Firestore timestamp
+            if (dt && typeof dt === 'object' && dt.toDate) {
+                return dt.toDate().toISOString().split('T')[0];
+            }
+            
+            // Handle Date object
+            if (dt instanceof Date) {
+                return dt.toISOString().split('T')[0];
             }
             
             // Handle "MM/DD/YYYY, HH:MM:SS" format
@@ -434,14 +428,48 @@
                     return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
                 }
             }
+            
+            // Try parsing as ISO string
+            try {
+                const date = new Date(dt);
+                if (!isNaN(date.getTime())) {
+                    return date.toISOString().split('T')[0];
+                }
+            } catch (e) {}
+            
             return '';
         }
 
-        // format date for display
+        // Format date/time for display
         function formatDateTime(dt) {
             if (!dt) return '';
+            
             try {
-                // Try to parse the date
+                // Handle Firestore timestamp
+                if (dt && typeof dt === 'object' && dt.toDate) {
+                    return dt.toDate().toLocaleString('en-US', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    }).replace(',', '');
+                }
+                
+                // Handle Date object
+                if (dt instanceof Date) {
+                    return dt.toLocaleString('en-US', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    }).replace(',', '');
+                }
+                
+                // Try to parse the date string
                 let date = new Date(dt);
                 if (isNaN(date.getTime())) {
                     // If parsing fails, return the original string truncated
@@ -460,7 +488,7 @@
             }
         }
 
-        // show loading state
+        // Show loading state
         function showLoading() {
             tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 30px;">
                 <div class="loading-spinner"></div> loading transactions...
@@ -468,104 +496,25 @@
             noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">loading payment methods...</td></tr>';
         }
 
-        // ----- fetch data from Firestore (same as cashier page) -----
-        async function fetchReportData() {
-            const selectedDate = dateInput.value;
-            const shiftFilter = shiftSelect.value;
-            
-            if (!selectedDate) { 
-                alert('Please select a date'); 
-                return; 
-            }
-            
-            if (typeof passengerDb === 'undefined') { 
-                alert('Database connection not available. Please check fireshift.js'); 
-                return; 
-            }
-
-            showLoading();
-            footGen.innerText = `loading data for ${selectedDate}...`;
-
-            try {
-                console.log('Fetching Kovelipay records for date:', selectedDate);
-                
-                // Query using the 'date' field (like cashier page does)
-                const snapshot = await passengerDb.collection('Kovelipay')
-                    .where('date', '==', selectedDate)
-                    .get();
-                
-                const docs = [];
-                snapshot.forEach(doc => {
-                    docs.push({ 
-                        id: doc.id, 
-                        ...doc.data() 
-                    });
-                });
-
-                console.log(`Found ${docs.length} records for date ${selectedDate}`);
-
-                // If no records found with 'date' field, try fallback method
-                if (docs.length === 0) {
-                    console.log('No records found with date field, trying submissionDateTime filter...');
-                    const allSnapshot = await passengerDb.collection('Kovelipay').get();
-                    const allDocs = [];
-                    allSnapshot.forEach(doc => allDocs.push({ id: doc.id, ...doc.data() }));
-                    
-                    // Filter by submissionDateTime
-                    allDocs.forEach(doc => {
-                        if (doc.submissionDateTime) {
-                            const docDate = extractDateFromDateTimeField(doc.submissionDateTime);
-                            if (docDate === selectedDate) {
-                                docs.push(doc);
-                            }
-                        }
-                    });
-                    console.log(`Found ${docs.length} records using submissionDateTime fallback`);
-                }
-
-                // filter by shift if needed
-                let filtered = docs;
-                if (shiftFilter !== 'ALL') {
-                    filtered = docs.filter(d => {
-                        const shift = (d.shift || '').toUpperCase();
-                        return shift === shiftFilter;
-                    });
-                }
-
-                // Sort by date/time (newest first)
-                filtered.sort((a, b) => {
-                    const dateA = a.submissionDateTime || a.timestamp || '';
-                    const dateB = b.submissionDateTime || b.timestamp || '';
-                    return dateB.localeCompare(dateA);
-                });
-                
-                allTransactions = filtered;
-                renderAll();
-                
-                const summary = filtered.length === 1 ? 'receipt' : 'receipts';
-                footGen.innerText = `generated: ${new Date().toLocaleString()}  |  ${filtered.length} ${summary} for ${selectedDate} ${shiftFilter !== 'ALL' ? '(' + shiftFilter + ')' : ''}`;
-                
-            } catch (err) {
-                console.error('Error fetching data:', err);
-                tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center; color: #dc3545; padding: 30px;">
-                    ❌ Error loading data: ${err.message}
-                </td></tr>`;
-                noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: #dc3545;">error loading payment methods</td></tr>';
-                footGen.innerText = `error at ${new Date().toLocaleString()}`;
+        // Show message
+        function showMessage(text, type) {
+            footGen.innerText = text;
+            if (type === 'error') {
+                console.error(text);
             }
         }
 
-        // ----- render everything (same calculation logic as cashier page) -----
-        function renderAll() {
-            // totals for cash / non-cash by currency
+        // ========== FETCH CASH TOTALS (like cashier page) ==========
+        async function fetchCashTotals(date, transactions) {
+            // This function calculates totals the same way as cashier page
             let cashUSD = 0, cashMVR = 0;
             let noncashUSD = 0, noncashMVR = 0;
             let totalAdults = 0, totalChildren = 0;
 
-            // detailed non-cash breakdown (per method)
-            const noncashMap = new Map(); // key: method name -> { usd, mvr, count }
+            // Detailed non-cash breakdown per method
+            const noncashMap = new Map();
 
-            allTransactions.forEach(tx => {
+            transactions.forEach(tx => {
                 const method = (tx.paymentMethod || 'CASH').trim();
                 const curr = (tx.currency || 'USD').toUpperCase();
                 const amt = parseFloat(tx.totalAmount) || 0;
@@ -583,7 +532,7 @@
                     if (curr === 'USD') noncashUSD += amt;
                     else noncashMVR += amt;
 
-                    // update map for non-cash breakdown (preserve original method name)
+                    // Update map for non-cash breakdown
                     let entry = noncashMap.get(method) || { usd: 0, mvr: 0, count: 0 };
                     if (curr === 'USD') entry.usd += amt;
                     else entry.mvr += amt;
@@ -596,79 +545,224 @@
             cashUSD = Math.round(cashUSD);
             noncashUSD = Math.round(noncashUSD);
 
-            // Update summary blocks
-            cashUSDspan.innerText = cashUSD.toFixed(2);
-            cashMVRspan.innerText = cashMVR.toFixed(2);
-            noncashUSDspan.innerText = noncashUSD.toFixed(2);
-            noncashMVRspan.innerText = noncashMVR.toFixed(2);
-            totalReceiptsSpan.innerText = allTransactions.length;
-            totalAdultsSpan.innerText = totalAdults;
-            totalChildrenSpan.innerText = totalChildren;
-
-            // Build non-cash breakdown table
-            let noncashHtml = '';
-            if (noncashMap.size === 0) {
-                noncashHtml = '<tr><td colspan="4" style="text-align:center; padding: 20px;">— no non‑cash transactions —</td></tr>';
-            } else {
-                // Sort by method name
-                const sortedMethods = Array.from(noncashMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-                for (let [method, val] of sortedMethods) {
-                    noncashHtml += `<tr>
-                        <td>${method}</td>
-                        <td>USD ${val.usd.toFixed(2)}</td>
-                        <td>MVR ${val.mvr.toFixed(2)}</td>
-                        <td>${val.count}</td>
-                    </tr>`;
-                }
-            }
-            noncashBody.innerHTML = noncashHtml;
-
-            // Transaction list (full detail)
-            let listHtml = '';
-            if (allTransactions.length === 0) {
-                listHtml = '<tr><td colspan="9" style="text-align:center; padding: 30px;">no transactions found for selected criteria</td></tr>';
-            } else {
-                allTransactions.forEach(tx => {
-                    // Format adult/child count
-                    const pax = `${tx.adult || 0}/${tx.children || 0}`;
-                    
-                    // Format amount based on currency
-                    const amount = (tx.totalAmount || 0).toFixed(tx.currency === 'USD' ? 0 : 2);
-                    
-                    listHtml += `<tr>
-                        <td>${tx.receiptNo || tx.id?.substring(0, 8) || '-'}</td>
-                        <td>${formatDateTime(tx.submissionDateTime || tx.timestamp || '')}</td>
-                        <td>${tx.shift || '-'}</td>
-                        <td>${(tx.passengerName || '').substring(0, 20) || '-'}</td>
-                        <td>${tx.flightNo || '-'}</td>
-                        <td>${pax}</td>
-                        <td>${tx.currency || 'USD'}</td>
-                        <td>${amount}</td>
-                        <td>${(tx.paymentMethod || 'CASH').substring(0, 12)}</td>
-                    </tr>`;
-                });
-            }
-            tableBody.innerHTML = listHtml;
+            return {
+                cashUSD,
+                cashMVR,
+                noncashUSD,
+                noncashMVR,
+                totalAdults,
+                totalChildren,
+                noncashMap
+            };
         }
 
-        // print function
+        // ========== FETCH DATA FROM FIRESTORE ==========
+        async function fetchReportData() {
+            const selectedDate = dateInput.value;
+            const shiftFilter = shiftSelect.value;
+            
+            if (!selectedDate) { 
+                alert('Please select a date'); 
+                return; 
+            }
+            
+            if (typeof passengerDb === 'undefined') { 
+                alert('Database connection not available. Please check fireshift.js'); 
+                return; 
+            }
+
+            showLoading();
+            showMessage(`loading data for ${selectedDate}...`, 'info');
+
+            try {
+                console.log('Fetching Kovelipay records for date:', selectedDate);
+                
+                // Try querying by date field first (like cashier page)
+                let docs = [];
+                
+                // Method 1: Query using 'date' field
+                try {
+                    const snapshot = await passengerDb.collection('Kovelipay')
+                        .where('date', '==', selectedDate)
+                        .get();
+                    
+                    snapshot.forEach(doc => {
+                        docs.push({ 
+                            id: doc.id, 
+                            ...doc.data() 
+                        });
+                    });
+                    
+                    console.log(`Found ${docs.length} records using date field`);
+                } catch (e) {
+                    console.log('Date field query failed, trying alternative methods:', e);
+                }
+
+                // Method 2: If no results, try using submissionDateTime
+                if (docs.length === 0) {
+                    console.log('Trying submissionDateTime filter...');
+                    const allSnapshot = await passengerDb.collection('Kovelipay').get();
+                    const allDocs = [];
+                    allSnapshot.forEach(doc => allDocs.push({ id: doc.id, ...doc.data() }));
+                    
+                    // Filter by submissionDateTime
+                    allDocs.forEach(doc => {
+                        if (doc.submissionDateTime) {
+                            const docDate = extractDateFromDateTimeField(doc.submissionDateTime);
+                            if (docDate === selectedDate) {
+                                docs.push(doc);
+                            }
+                        } else if (doc.timestamp) {
+                            const docDate = extractDateFromDateTimeField(doc.timestamp);
+                            if (docDate === selectedDate) {
+                                docs.push(doc);
+                            }
+                        }
+                    });
+                    console.log(`Found ${docs.length} records using submissionDateTime/timestamp`);
+                }
+
+                // Method 3: Try using Firestore timestamp
+                if (docs.length === 0) {
+                    console.log('Trying Firestore timestamp query...');
+                    const startOfDay = new Date(selectedDate);
+                    startOfDay.setHours(0, 0, 0, 0);
+                    
+                    const endOfDay = new Date(selectedDate);
+                    endOfDay.setHours(23, 59, 59, 999);
+                    
+                    try {
+                        const snapshot = await passengerDb.collection('Kovelipay')
+                            .where('createdAt', '>=', startOfDay)
+                            .where('createdAt', '<=', endOfDay)
+                            .get();
+                        
+                        snapshot.forEach(doc => {
+                            docs.push({ 
+                                id: doc.id, 
+                                ...doc.data() 
+                            });
+                        });
+                        
+                        console.log(`Found ${docs.length} records using createdAt timestamp`);
+                    } catch (e) {
+                        console.log('Timestamp query failed:', e);
+                    }
+                }
+
+                // Filter by shift if needed
+                let filtered = docs;
+                if (shiftFilter !== 'ALL') {
+                    filtered = docs.filter(d => {
+                        const shift = (d.shift || '').toUpperCase();
+                        return shift === shiftFilter;
+                    });
+                }
+
+                // Sort by date/time (newest first)
+                filtered.sort((a, b) => {
+                    const dateA = a.submissionDateTime || a.timestamp || a.createdAt || '';
+                    const dateB = b.submissionDateTime || b.timestamp || b.createdAt || '';
+                    return String(dateB).localeCompare(String(dateA));
+                });
+                
+                allTransactions = filtered;
+                
+                // Calculate totals using the same logic as cashier page
+                const totals = await fetchCashTotals(selectedDate, filtered);
+                
+                // Update UI with calculated totals
+                cashUSDspan.innerText = totals.cashUSD.toFixed(2);
+                cashMVRspan.innerText = totals.cashMVR.toFixed(2);
+                noncashUSDspan.innerText = totals.noncashUSD.toFixed(2);
+                noncashMVRspan.innerText = totals.noncashMVR.toFixed(2);
+                totalReceiptsSpan.innerText = filtered.length;
+                totalAdultsSpan.innerText = totals.totalAdults;
+                totalChildrenSpan.innerText = totals.totalChildren;
+
+                // Build non-cash breakdown table
+                let noncashHtml = '';
+                if (totals.noncashMap.size === 0) {
+                    noncashHtml = '<tr><td colspan="4" style="text-align:center; padding: 20px;">— no non‑cash transactions —</td></tr>';
+                } else {
+                    // Sort by method name
+                    const sortedMethods = Array.from(totals.noncashMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+                    for (let [method, val] of sortedMethods) {
+                        noncashHtml += `<tr>
+                            <td>${method}</td>
+                            <td>USD ${val.usd.toFixed(2)}</td>
+                            <td>MVR ${val.mvr.toFixed(2)}</td>
+                            <td>${val.count}</td>
+                        </tr>`;
+                    }
+                }
+                noncashBody.innerHTML = noncashHtml;
+
+                // Build transaction list
+                let listHtml = '';
+                if (filtered.length === 0) {
+                    listHtml = '<tr><td colspan="9" style="text-align:center; padding: 30px;">no transactions found for selected criteria</td></tr>';
+                } else {
+                    filtered.forEach(tx => {
+                        // Format adult/child count
+                        const pax = `${tx.adult || 0}/${tx.children || 0}`;
+                        
+                        // Format amount based on currency
+                        const amount = (tx.totalAmount || 0).toFixed(tx.currency === 'USD' ? 0 : 2);
+                        
+                        listHtml += `<tr>
+                            <td>${tx.receiptNo || tx.id?.substring(0, 8) || '-'}</td>
+                            <td>${formatDateTime(tx.submissionDateTime || tx.timestamp || tx.createdAt || '')}</td>
+                            <td>${tx.shift || '-'}</td>
+                            <td>${(tx.passengerName || '').substring(0, 20) || '-'}</td>
+                            <td>${tx.flightNo || '-'}</td>
+                            <td>${pax}</td>
+                            <td>${tx.currency || 'USD'}</td>
+                            <td>${amount}</td>
+                            <td>${(tx.paymentMethod || 'CASH').substring(0, 12)}</td>
+                        </tr>`;
+                    });
+                }
+                tableBody.innerHTML = listHtml;
+
+                // Update footer
+                const summary = filtered.length === 1 ? 'receipt' : 'receipts';
+                const shiftText = shiftFilter !== 'ALL' ? ` (${shiftFilter})` : '';
+                showMessage(`generated: ${new Date().toLocaleString()} | ${filtered.length} ${summary} for ${selectedDate}${shiftText} | Cash USD: $${totals.cashUSD} | Cash MVR: ${totals.cashMVR.toFixed(2)}`, 'success');
+                
+            } catch (err) {
+                console.error('Error fetching data:', err);
+                tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center; color: #dc3545; padding: 30px;">
+                    ❌ Error loading data: ${err.message}
+                </td></tr>`;
+                noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: #dc3545;">error loading payment methods</td></tr>';
+                showMessage(`error at ${new Date().toLocaleString()}: ${err.message}`, 'error');
+            }
+        }
+
+        // ========== PRINT FUNCTION ==========
         function printReport() { 
             window.print(); 
         }
 
-        // Event listeners
+        // ========== EVENT LISTENERS ==========
         loadBtn.addEventListener('click', fetchReportData);
         printBtn.addEventListener('click', printReport);
         
-        // Load initial data
+        // Load initial data after a short delay
         setTimeout(() => fetchReportData(), 300);
 
-        // Add keyboard shortcut: Ctrl+Enter to load
+        // Keyboard shortcut: Ctrl+Enter to load
         document.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
                 fetchReportData();
             }
         });
+
+        // Auto-refresh if needed (optional - commented out)
+        // setInterval(fetchReportData, 60000); // Refresh every minute
+        
     })();
 </script>
 </body>
