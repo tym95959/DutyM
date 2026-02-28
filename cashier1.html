@@ -1560,6 +1560,20 @@
         }
     }
 
+    // ========== USD ROUNDING FUNCTION ==========
+    function roundUSD(amount) {
+        // Round to nearest whole number with 0.5 rounding up
+        // 1.49 -> 1, 1.50 -> 2, 1.51 -> 2
+        const integer = Math.floor(amount);
+        const decimal = amount - integer;
+        
+        if (decimal >= 0.5) {
+            return integer + 1;
+        } else {
+            return integer;
+        }
+    }
+
     // ========== USER FUNCTIONS ==========
     function loadUserFromStorage() {
         try {
@@ -1731,7 +1745,7 @@
                 salesSection.style.display = 'none';
                 // Reset sales display
                 document.getElementById('mvrSales').textContent = '0.00';
-                document.getElementById('usdSales').textContent = '0';
+                document.getElementById('usdSales').textContent = '0.00';
             }
             if (countSection) countSection.style.display = 'block'; // Keep count section visible
             if (pettyCashSection) pettyCashSection.style.display = 'block'; // Keep petty cash visible
@@ -1876,7 +1890,14 @@
             activitySnapshot.forEach(doc => {
                 const data = doc.data();
                 const time = new Date(data.timestamp).toLocaleTimeString();
-                const amount = data.amount ? ` ${data.currency} ${data.amount.toFixed(data.currency === 'USD' ? 0 : 2)}` : '';
+                let amount = '';
+                if (data.amount) {
+                    if (data.currency === 'USD') {
+                        amount = ` USD ${roundUSD(data.amount).toFixed(2)}`;
+                    } else {
+                        amount = ` MVR ${data.amount.toFixed(2)}`;
+                    }
+                }
                 
                 html += `
                     <div class="recent-activity-item">
@@ -1884,7 +1905,7 @@
                         <div class="recent-activity-desc">${data.description}</div>
                         <div class="recent-activity-meta">
                             <span class="recent-activity-user">${data.username}</span>
-                            ${data.amount ? `<span class="recent-activity-amount">${data.currency} ${data.amount.toFixed(data.currency === 'USD' ? 0 : 2)}</span>` : ''}
+                            ${amount ? `<span class="recent-activity-amount">${amount}</span>` : ''}
                         </div>
                     </div>
                 `;
@@ -1912,6 +1933,12 @@
             
             console.log('Adding activity:', activity);
             
+            // Round USD amount if present
+            let amount = activity.amount;
+            if (activity.currency === 'USD' && amount !== null) {
+                amount = roundUSD(amount);
+            }
+            
             await database.collection('CashierActivity').add({
                 date: today,
                 timestamp: now,
@@ -1919,7 +1946,7 @@
                 rcno: currentUser.rcno,
                 type: activity.type,
                 action: activity.action,
-                amount: activity.amount,
+                amount: amount,
                 currency: activity.currency,
                 description: activity.description
             });
@@ -2024,15 +2051,16 @@
                 break;
                 
             case 'USD':
-                document.getElementById('countedUSD').value = Math.round(total);
-                countedData.usd = Math.round(total);
+                const roundedTotal = roundUSD(total);
+                document.getElementById('countedUSD').value = roundedTotal.toFixed(2);
+                countedData.usd = roundedTotal;
                 handleCountedInput();
                 addActivity({
                     type: 'count',
                     action: 'counted',
-                    amount: Math.round(total),
+                    amount: total,
                     currency: 'USD',
-                    description: `Counted USD ${Math.round(total)} using denominations`
+                    description: `Counted USD ${total.toFixed(2)} (rounded to ${roundedTotal}) using denominations`
                 });
                 break;
                 
@@ -2050,15 +2078,16 @@
                 break;
                 
             case 'PETTY_USD':
-                document.getElementById('countedPettyUSD').value = Math.round(total);
-                countedPettyData.usd = Math.round(total);
+                const roundedPettyTotal = roundUSD(total);
+                document.getElementById('countedPettyUSD').value = roundedPettyTotal.toFixed(2);
+                countedPettyData.usd = roundedPettyTotal;
                 handlePettyCashTally();
                 addActivity({
                     type: 'petty',
                     action: 'counted',
-                    amount: Math.round(total),
+                    amount: total,
                     currency: 'USD',
-                    description: `Counted petty cash USD ${Math.round(total)}`
+                    description: `Counted petty cash USD ${total.toFixed(2)} (rounded to ${roundedPettyTotal})`
                 });
                 break;
                 
@@ -2068,7 +2097,8 @@
                 break;
                 
             case 'SET_USD':
-                document.getElementById('setPettyUSD').value = Math.round(total);
+                const roundedSetTotal = roundUSD(total);
+                document.getElementById('setPettyUSD').value = roundedSetTotal.toFixed(2);
                 handleAdminPettyCashInput();
                 break;
         }
@@ -2102,7 +2132,7 @@
                 console.log('Loaded persistent petty cash:', pettyCashData);
                 
                 document.getElementById('storedPettyMVR').textContent = pettyCashData.mvr.toFixed(2);
-                document.getElementById('storedPettyUSD').textContent = Math.round(pettyCashData.usd);
+                document.getElementById('storedPettyUSD').textContent = pettyCashData.usd.toFixed(2);
                 
                 if (pettyCashData.lastUpdated) {
                     const date = new Date(pettyCashData.lastUpdated);
@@ -2140,14 +2170,14 @@
             };
             
             document.getElementById('storedPettyMVR').textContent = '0.00';
-            document.getElementById('storedPettyUSD').textContent = '0';
+            document.getElementById('storedPettyUSD').textContent = '0.00';
             document.getElementById('pettyMVRDate').textContent = 'Not set yet';
             document.getElementById('pettyUSDDate').textContent = 'Not set yet';
             
         } catch (error) {
             console.error('Error loading petty cash:', error);
             document.getElementById('storedPettyMVR').textContent = '0.00';
-            document.getElementById('storedPettyUSD').textContent = '0';
+            document.getElementById('storedPettyUSD').textContent = '0.00';
         }
     }
 
@@ -2159,7 +2189,7 @@
             
             // Get the new amounts from admin input
             const newMVR = parseFloat(document.getElementById('setPettyMVR').value) || 0;
-            const newUSD = Math.round(parseFloat(document.getElementById('setPettyUSD').value) || 0);
+            const newUSD = roundUSD(parseFloat(document.getElementById('setPettyUSD').value) || 0);
             
             console.log('Saving persistent petty cash:', { mvr: newMVR, usd: newUSD });
             
@@ -2196,7 +2226,7 @@
             
             // Update display
             document.getElementById('storedPettyMVR').textContent = newMVR.toFixed(2);
-            document.getElementById('storedPettyUSD').textContent = newUSD;
+            document.getElementById('storedPettyUSD').textContent = newUSD.toFixed(2);
             
             const date = new Date(now);
             const timeStr = date.toLocaleTimeString();
@@ -2221,7 +2251,7 @@
                 action: 'set_persistent',
                 amount: newUSD,
                 currency: 'USD',
-                description: `Set persistent petty cash USD ${newUSD} (will remain until changed)`
+                description: `Set persistent petty cash USD ${newUSD.toFixed(2)} (will remain until changed)`
             });
             
             showMessage('Petty cash saved persistently! This amount will remain across all dates and shifts until changed again.', 'success');
@@ -2239,7 +2269,10 @@
 
     function handlePettyCashTally() {
         countedPettyData.mvr = parseFloat(document.getElementById('countedPettyMVR').value) || 0;
-        countedPettyData.usd = Math.round(parseFloat(document.getElementById('countedPettyUSD').value) || 0);
+        countedPettyData.usd = roundUSD(parseFloat(document.getElementById('countedPettyUSD').value) || 0);
+        
+        // Update input with rounded value
+        document.getElementById('countedPettyUSD').value = countedPettyData.usd.toFixed(2);
         
         comparePettyCashTally();
         checkAllMatches();
@@ -2247,7 +2280,10 @@
 
     function handleAdminPettyCashInput() {
         const mvr = parseFloat(document.getElementById('setPettyMVR').value) || 0;
-        const usd = parseFloat(document.getElementById('setPettyUSD').value) || 0;
+        const usd = roundUSD(parseFloat(document.getElementById('setPettyUSD').value) || 0);
+        
+        // Update input with rounded value
+        document.getElementById('setPettyUSD').value = usd.toFixed(2);
         
         // Enable save button
         document.getElementById('savePettyCashBtn').disabled = false;
@@ -2269,7 +2305,7 @@
         
         // Update USD comparison
         document.getElementById('pettyUSDComparison').textContent = 
-            `${countedPettyData.usd} USD / ${pettyCashData.usd} USD`;
+            `${countedPettyData.usd.toFixed(2)} USD / ${pettyCashData.usd.toFixed(2)} USD`;
         
         const usdStatus = document.getElementById('pettyUSDStatus');
         usdStatus.textContent = usdMatch ? '✓ MATCHED' : '✗ MISMATCH';
@@ -2287,7 +2323,7 @@
                 console.log('Shift is closed - not fetching sales data');
                 salesData = { mvr: 0, usd: 0 };
                 document.getElementById('mvrSales').textContent = '0.00';
-                document.getElementById('usdSales').textContent = '0';
+                document.getElementById('usdSales').textContent = '0.00';
                 document.getElementById('comparisonSection').style.display = 'none';
                 return;
             }
@@ -2364,8 +2400,8 @@
                         }
                     });
                     
-                    // Round USD to whole numbers
-                    totalUSD = Math.round(totalUSD);
+                    // Round USD according to the rule (>=0.5 rounds up)
+                    totalUSD = roundUSD(totalUSD);
                     
                     salesData = {
                         mvr: totalMVR,
@@ -2374,9 +2410,9 @@
                     
                     console.log('Sales totals from date field:', salesData);
                     
-                    // Update display
+                    // Update display with 2 decimals
                     document.getElementById('mvrSales').textContent = totalMVR.toFixed(2);
-                    document.getElementById('usdSales').textContent = totalUSD;
+                    document.getElementById('usdSales').textContent = totalUSD.toFixed(2);
                     
                     if (transactions.length > 0) {
                         showMessage(`Loaded ${transactions.length} transactions for ${targetDate} (${currentShiftType} shift)`, 'success');
@@ -2433,8 +2469,8 @@
                     }
                 });
                 
-                // Round USD to whole numbers
-                totalUSD = Math.round(totalUSD);
+                // Round USD according to the rule (>=0.5 rounds up)
+                totalUSD = roundUSD(totalUSD);
                 
                 salesData = {
                     mvr: totalMVR,
@@ -2444,15 +2480,15 @@
                 console.log('Final sales totals:', salesData);
                 console.log('Number of transactions:', transactions.length);
                 
-                // Update the display
+                // Update the display with 2 decimals
                 document.getElementById('mvrSales').textContent = totalMVR.toFixed(2);
-                document.getElementById('usdSales').textContent = totalUSD;
+                document.getElementById('usdSales').textContent = totalUSD.toFixed(2);
                 
                 // Show message with details
                 if (transactions.length === 0) {
                     showMessage(`No sales transactions found for ${targetDate} (${currentShiftType} shift)`, 'info');
                 } else {
-                    showMessage(`Loaded ${transactions.length} transactions for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD}`, 'success');
+                    showMessage(`Loaded ${transactions.length} transactions for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
                 }
                 
             } catch (e) {
@@ -2464,7 +2500,7 @@
             console.error('Error fetching sales:', error);
             salesData = { mvr: 0, usd: 0 };
             document.getElementById('mvrSales').textContent = '0.00';
-            document.getElementById('usdSales').textContent = '0';
+            document.getElementById('usdSales').textContent = '0.00';
             
             // Only show error if shift is open
             const isShiftOpen = currentShift && 
@@ -2478,7 +2514,14 @@
     // ========== COMPARISON FUNCTIONS ==========
     function handleCountedInput() {
         countedData.mvr = parseFloat(document.getElementById('countedMVR').value) || 0;
-        countedData.usd = Math.round(parseFloat(document.getElementById('countedUSD').value) || 0);
+        
+        // Round USD input value
+        const usdInput = parseFloat(document.getElementById('countedUSD').value) || 0;
+        countedData.usd = roundUSD(usdInput);
+        
+        // Update input with rounded value
+        document.getElementById('countedUSD').value = countedData.usd.toFixed(2);
+        
         compareAmounts();
         checkAllMatches();
     }
@@ -2506,9 +2549,9 @@
         mvrStatus.textContent = mvrMatch ? '✓ MATCHED' : '✗ MISMATCH';
         mvrStatus.className = `match-status ${mvrMatch ? 'status-matched' : 'status-mismatched'}`;
         
-        // Update USD comparison
+        // Update USD comparison with 2 decimals
         document.getElementById('usdComparison').textContent = 
-            `${countedData.usd} USD / ${salesData.usd} USD`;
+            `${countedData.usd.toFixed(2)} USD / ${salesData.usd.toFixed(2)} USD`;
         
         const usdStatus = document.getElementById('usdStatus');
         usdStatus.textContent = usdMatch ? '✓ MATCHED' : '✗ MISMATCH';
@@ -2546,9 +2589,9 @@
         
         // Show message if mismatch
         if (!salesMatch) {
-            showMessage(`Cash amounts do not match sales records. MVR: ${countedData.mvr.toFixed(2)} vs ${salesData.mvr.toFixed(2)}, USD: ${countedData.usd} vs ${salesData.usd}`, 'warning');
+            showMessage(`Cash amounts do not match sales records. MVR: ${countedData.mvr.toFixed(2)} vs ${salesData.mvr.toFixed(2)}, USD: ${countedData.usd.toFixed(2)} vs ${salesData.usd.toFixed(2)}`, 'warning');
         } else if (!pettyCashMatch) {
-            showMessage(`Petty cash tally does not match. MVR: ${countedPettyData.mvr.toFixed(2)} vs ${pettyCashData.mvr.toFixed(2)}, USD: ${countedPettyData.usd} vs ${pettyCashData.usd}`, 'warning');
+            showMessage(`Petty cash tally does not match. MVR: ${countedPettyData.mvr.toFixed(2)} vs ${pettyCashData.mvr.toFixed(2)}, USD: ${countedPettyData.usd.toFixed(2)} vs ${pettyCashData.usd.toFixed(2)}`, 'warning');
         } else {
             hideMessage();
         }
