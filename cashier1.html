@@ -1424,7 +1424,7 @@
         </div>
     </div>
 
-    <script>
+   <script>
     // ========== GLOBAL VARIABLES ==========
     let currentShift = null;
     let currentUser = null;
@@ -1436,10 +1436,14 @@
     let refreshInterval;
     let activityInterval;
     let database = null; // Will be set based on available database
+    let users = []; // Will store users from users.js
 
     // Denomination popup state
     let currentPopupField = null;
     let currentDenominations = {};
+
+    // Password popup state
+    let pendingAction = null; // 'open' or 'close'
 
     // MVR Denominations (including 1000 note)
     const MVR_DENOMINATIONS = [
@@ -1470,107 +1474,178 @@
         { value: 1, label: '$1' }
     ];
 
-    // ========== HELPER FUNCTIONS ==========
-    function extractDateFromDateTimeField(dt) {
-        if (!dt) return '';
+    // ========== PASSWORD POPUP HTML ==========
+    function createPasswordPopup() {
+        const popupHTML = `
+            <div id="passwordPopup" class="denomination-popup" style="display: none;">
+                <div class="popup-content" style="max-width: 400px;">
+                    <div class="popup-header">
+                        <h2>
+                            <span id="passwordPopupIcon">🔐</span>
+                            <span id="passwordPopupTitle">Authorize Action</span>
+                        </h2>
+                        <button class="close-popup" onclick="closePasswordPopup()">×</button>
+                    </div>
+                    
+                    <div style="padding: 10px 0 20px 0;">
+                        <div id="passwordUserInfo" style="background: #fff9e6; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #e6b800;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div style="width: 40px; height: 40px; background: #e6b800; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px;" id="passwordUserAvatar">👤</div>
+                                <div>
+                                    <div style="font-size: 12px; color: #8b6913;">Authorizing for</div>
+                                    <div style="font-size: 16px; font-weight: 600; color: #2c3e50;" id="passwordUserName">Loading...</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="input-field" style="margin-bottom: 20px;">
+                            <label for="passwordInput" style="display: block; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1.2px; color: #7b6333; margin-bottom: 0.5rem; font-weight: 500;">ENTER PASSWORD</label>
+                            <div class="input-wrapper" style="display: flex; align-items: center; background: #fefcf1; border: 2px solid #ead09d; border-radius: 40px; padding: 0.1rem 1.2rem;">
+                                <span style="font-size: 1.2rem; color: #b6903f; margin-right: 0.6rem;">🔒</span>
+                                <input type="password" id="passwordInput" style="width: 100%; border: none; background: transparent; padding: 0.9rem 0; font-size: 1rem; outline: none; color: #2a210b;" placeholder="········">
+                            </div>
+                        </div>
+                        
+                        <div id="passwordMessage" style="padding: 0.8rem 1.2rem; border-radius: 50px; font-size: 0.9rem; background: #f9f0da; border-left: 5px solid #dbb152; color: #4d3b19; margin: 1rem 0 0.5rem;">
+                            ⚡ enter your password to continue
+                        </div>
+                    </div>
+                    
+                    <div class="popup-actions">
+                        <button class="popup-btn popup-btn-cancel" onclick="closePasswordPopup()">Cancel</button>
+                        <button class="popup-btn popup-btn-save" id="authorizeBtn" onclick="authorizeAction()">✓ Authorize</button>
+                    </div>
+                </div>
+            </div>
+        `;
         
-        // Handle Firestore timestamp
-        if (dt && typeof dt === 'object' && dt.toDate) {
-            return dt.toDate().toISOString().split('T')[0];
-        }
-        
-        // Handle Date object
-        if (dt instanceof Date) {
-            return dt.toISOString().split('T')[0];
-        }
-        
-        // Handle string format "MM/DD/YYYY, HH:MM:SS" (from report page)
-        if (typeof dt === 'string') {
-            let datePart = dt.split(',')[0].trim();
-            if (datePart.includes('/')) {
-                let [m, d, y] = datePart.split('/');
-                if (y && m && d) {
-                    // Handle 2-digit year
-                    if (y.length === 2) y = '20' + y;
-                    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-                }
-            }
-            
-            // Try ISO format
-            if (dt.match(/^\d{4}-\d{2}-\d{2}/)) {
-                return dt.substring(0, 10);
-            }
-        }
-        
-        return '';
+        // Append to body
+        const popupContainer = document.createElement('div');
+        popupContainer.innerHTML = popupHTML;
+        document.body.appendChild(popupContainer.firstChild);
     }
 
-    function formatDateTime(dt) {
-        if (!dt) return '';
+    // ========== PASSWORD FUNCTIONS ==========
+    async function hashPassword(password) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function loadUsersFromStorage() {
+        // Try to load users from users.js
+        if (typeof users !== 'undefined' && Array.isArray(users)) {
+            console.log('Users loaded from users.js:', users.length);
+            return users;
+        }
+        
+        // Fallback: try to load from localStorage or create default
+        console.warn('users.js not found, using default users');
+        return [
+            { username: 'admin', passwordHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', level: 'admin', rcno: 'ADMIN001' }, // admin/admin
+            { username: 'cashier', passwordHash: '4afdceedad961f2e8b6c9f9e8c7a1b5c9e8c7a1b5c9e8c7a1b5c9e8c7a1b5c9e8c', level: 'operator', rcno: 'CSH001' } // cashier/cashier
+        ];
+    }
+
+    function openPasswordPopup(action) {
+        pendingAction = action;
+        
+        const popup = document.getElementById('passwordPopup');
+        const title = document.getElementById('passwordPopupTitle');
+        const userInfo = document.getElementById('passwordUserName');
+        const avatar = document.getElementById('passwordUserAvatar');
+        const message = document.getElementById('passwordMessage');
+        const passwordInput = document.getElementById('passwordInput');
+        
+        // Clear previous input and message
+        passwordInput.value = '';
+        message.innerHTML = '⚡ enter your password to continue';
+        message.className = '';
+        
+        if (action === 'open') {
+            title.textContent = 'Open Cashier';
+            userInfo.textContent = currentUser.username;
+            avatar.textContent = currentUser.username.charAt(0).toUpperCase();
+            document.getElementById('passwordUserInfo').style.borderColor = '#28a745';
+        } else if (action === 'close') {
+            title.textContent = 'Close Cashier';
+            // For closing, show the current cashier (might be different from logged in user)
+            const cashierName = currentCashierData.name || currentUser.username;
+            userInfo.textContent = cashierName;
+            avatar.textContent = cashierName.charAt(0).toUpperCase();
+            document.getElementById('passwordUserInfo').style.borderColor = '#dc3545';
+        }
+        
+        popup.style.display = 'flex';
+        passwordInput.focus();
+    }
+
+    function closePasswordPopup() {
+        document.getElementById('passwordPopup').style.display = 'none';
+        pendingAction = null;
+        document.getElementById('passwordInput').value = '';
+    }
+
+    async function authorizeAction() {
+        const password = document.getElementById('passwordInput').value;
+        const messageEl = document.getElementById('passwordMessage');
+        
+        if (!password) {
+            messageEl.innerHTML = '⚠️ password is required';
+            messageEl.className = 'message error';
+            return;
+        }
         
         try {
-            // Handle Firestore timestamp
-            if (dt && typeof dt === 'object' && dt.toDate) {
-                return dt.toDate().toLocaleString('en-US', {
-                    month: '2-digit',
-                    day: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                }).replace(',', '');
+            // Hash the entered password
+            const hashedInput = await hashPassword(password);
+            
+            // Determine which user to validate against
+            let usernameToValidate;
+            if (pendingAction === 'open') {
+                usernameToValidate = currentUser.username;
+            } else if (pendingAction === 'close') {
+                usernameToValidate = currentCashierData.name || currentUser.username;
             }
             
-            // Handle Date object
-            if (dt instanceof Date) {
-                return dt.toLocaleString('en-US', {
-                    month: '2-digit',
-                    day: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                }).replace(',', '');
+            // Find user in users array
+            const users = loadUsersFromStorage();
+            const matchedUser = users.find(u => u.username.toLowerCase() === usernameToValidate.toLowerCase());
+            
+            if (!matchedUser) {
+                messageEl.innerHTML = '❌ user not found';
+                messageEl.className = 'message error';
+                return;
             }
             
-            // Handle string
-            if (typeof dt === 'string') {
-                // If it's already in the format "MM/DD/YYYY, HH:MM:SS"
-                if (dt.includes(',') && dt.includes('/')) {
-                    return dt.substring(0, 16);
+            // Compare password hash
+            if (hashedInput !== matchedUser.passwordHash) {
+                messageEl.innerHTML = '❌ invalid password';
+                messageEl.className = 'message error';
+                document.getElementById('passwordInput').value = '';
+                return;
+            }
+            
+            // Password correct - execute the action
+            messageEl.innerHTML = '✅ authorized · processing...';
+            messageEl.className = 'message success';
+            
+            // Close popup and execute action
+            setTimeout(() => {
+                closePasswordPopup();
+                if (pendingAction === 'open') {
+                    executeOpenCashier();
+                } else if (pendingAction === 'close') {
+                    executeCloseCashier();
                 }
-                
-                // Try to parse as date
-                let date = new Date(dt);
-                if (!isNaN(date.getTime())) {
-                    return date.toLocaleString('en-US', {
-                        month: '2-digit',
-                        day: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: false
-                    }).replace(',', '');
-                }
-            }
+            }, 800);
             
-            return dt.substring(0, 16);
-        } catch (e) {
-            return dt.substring(0, 16);
-        }
-    }
-
-    // ========== USD ROUNDING FUNCTION ==========
-    function roundUSD(amount) {
-        // Round to nearest whole number with 0.5 rounding up
-        // 1.49 -> 1, 1.50 -> 2, 1.51 -> 2
-        const integer = Math.floor(amount);
-        const decimal = amount - integer;
-        
-        if (decimal >= 0.5) {
-            return integer + 1;
-        } else {
-            return integer;
+        } catch (error) {
+            console.error('Authorization error:', error);
+            messageEl.innerHTML = '❌ authorization error';
+            messageEl.className = 'message error';
         }
     }
 
@@ -2106,6 +2181,20 @@
         closeDenominationPopup();
     }
 
+    // ========== USD ROUNDING FUNCTION ==========
+    function roundUSD(amount) {
+        // Round to nearest whole number with 0.5 rounding up
+        // 1.49 -> 1, 1.50 -> 2, 1.51 -> 2
+        const integer = Math.floor(amount);
+        const decimal = amount - integer;
+        
+        if (decimal >= 0.5) {
+            return integer + 1;
+        } else {
+            return integer;
+        }
+    }
+
     // ========== PETTY CASH FUNCTIONS - PERSISTENT ==========
     async function loadPettyCashData() {
         try {
@@ -2583,7 +2672,7 @@
         // Both must match
         const allMatch = salesMatch && pettyCashMatch;
         
-        // Update button states
+        // Update button states - they will trigger password popup on click
         document.getElementById('openCashierBtn').disabled = true; // Can't open when already open
         document.getElementById('closeCashierBtn').disabled = !allMatch;
         
@@ -2597,8 +2686,19 @@
         }
     }
 
-    // ========== CASHIER ACTIONS ==========
-    async function handleOpenCashier() {
+    // ========== CASHIER ACTIONS WITH PASSWORD ==========
+    function handleOpenCashier() {
+        // Show password popup for authorization
+        openPasswordPopup('open');
+    }
+
+    function handleCloseCashier() {
+        // Show password popup for authorization
+        openPasswordPopup('close');
+    }
+
+    // ========== EXECUTE CASHIER ACTIONS (after password verified) ==========
+    async function executeOpenCashier() {
         try {
             showMessage('Opening cashier...', 'success');
             
@@ -2643,7 +2743,7 @@
         }
     }
 
-    async function handleCloseCashier() {
+    async function executeCloseCashier() {
         try {
             showMessage('Closing cashier...', 'success');
             
@@ -2721,6 +2821,9 @@
         try {
             console.log('Initializing page...');
             
+            // Create password popup
+            createPasswordPopup();
+            
             // Set the database reference (prefer passengerDb as it's used in report page)
             if (typeof passengerDb !== 'undefined') {
                 database = passengerDb;
@@ -2736,6 +2839,13 @@
                     </div>
                 `;
                 return;
+            }
+            
+            // Load users from users.js
+            if (typeof users !== 'undefined') {
+                console.log('Users loaded from users.js:', users.length);
+            } else {
+                console.warn('users.js not found - password authentication may not work');
             }
             
             // Load user first
@@ -2768,7 +2878,7 @@
             document.getElementById('setPettyMVR').value = '0';
             document.getElementById('setPettyUSD').value = '0';
             
-            // Setup event listeners
+            // Setup event listeners for cashier buttons (now with password)
             document.getElementById('openCashierBtn').addEventListener('click', handleOpenCashier);
             document.getElementById('closeCashierBtn').addEventListener('click', handleCloseCashier);
             
@@ -2825,6 +2935,8 @@
     window.handlePettyCashTally = handlePettyCashTally;
     window.handleAdminPettyCashInput = handleAdminPettyCashInput;
     window.loadRecentActivity = loadRecentActivity;
+    window.closePasswordPopup = closePasswordPopup;
+    window.authorizeAction = authorizeAction;
 </script>
 </body>
 </html>
