@@ -2056,9 +2056,9 @@
                     const updatedBy = pettyCashData.updatedBy ? ` by ${pettyCashData.updatedBy}` : '';
                     
                     document.getElementById('pettyMVRDate').textContent = 
-                        `Last updated: ${dateStr} ${timeStr}${updatedBy}`;
+                        `Last updated: ${dateStr} ${timeStr}${updatedBy} (persistent)`;
                     document.getElementById('pettyUSDDate').textContent = 
-                        `Last updated: ${dateStr} ${timeStr}${updatedBy}`;
+                        `Last updated: ${dateStr} ${timeStr}${updatedBy} (persistent)`;
                 }
                 
                 return;
@@ -2221,7 +2221,7 @@
         usdStatus.className = `match-status ${usdMatch ? 'status-matched' : 'status-mismatched'}`;
     }
 
-    // ========== SALES FUNCTIONS - MATCHING REPORT PAGE ==========
+    // ========== SALES FUNCTIONS - Fetch by date and shift ==========
     async function fetchSalesData() {
         try {
             // Use passengerDb (same as report page) or fallback to database
@@ -2242,10 +2242,23 @@
                 console.log('Using current date:', targetDate);
             }
             
+            // Get the current shift type (morning/evening)
+            let currentShiftType = null;
+            if (currentShift) {
+                if (currentShift.morning === 'open') {
+                    currentShiftType = 'MORNING';
+                } else if (currentShift.evening === 'open') {
+                    currentShiftType = 'EVENING';
+                }
+            }
+            
+            console.log('Current shift type:', currentShiftType);
+            
             // Update the sales date info
             const salesDateInfo = document.getElementById('salesDateInfo');
             if (salesDateInfo) {
-                salesDateInfo.textContent = `(Shift Date: ${targetDate})`;
+                let shiftText = currentShiftType ? ` - ${currentShiftType} SHIFT` : '';
+                salesDateInfo.textContent = `(Shift Date: ${targetDate}${shiftText})`;
             }
             
             console.log('Fetching sales data for date:', targetDate);
@@ -2254,84 +2267,137 @@
             let totalUSD = 0;
             let transactions = [];
             
-            // EXACTLY like the report page - get ALL documents and filter by submissionDateTime
+            // Method 1: Try querying by date field first (fastest)
             try {
-                console.log('Fetching all Kovelipay records...');
+                console.log('Trying date field query...');
+                let query = db_ref.collection('Kovelipay').where('date', '==', targetDate);
+                
+                // Add shift filter if a shift is open
+                if (currentShiftType) {
+                    query = query.where('shift', '==', currentShiftType);
+                }
+                
+                const snapshot = await query.get();
+                
+                if (!snapshot.empty) {
+                    console.log(`Found ${snapshot.size} records using date field`);
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        transactions.push(data);
+                        
+                        const currency = (data.currency || 'USD').toUpperCase();
+                        const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
+                        
+                        console.log(`Transaction: Currency=${currency}, Amount=${amount}`);
+                        
+                        if (currency === 'USD') {
+                            totalUSD += amount;
+                        } else {
+                            totalMVR += amount;
+                        }
+                    });
+                    
+                    // Round USD to whole numbers
+                    totalUSD = Math.round(totalUSD);
+                    
+                    salesData = {
+                        mvr: totalMVR,
+                        usd: totalUSD
+                    };
+                    
+                    console.log('Sales totals from date field:', salesData);
+                    
+                    // Update display
+                    document.getElementById('mvrSales').textContent = totalMVR.toFixed(2);
+                    document.getElementById('usdSales').textContent = totalUSD;
+                    
+                    if (transactions.length > 0) {
+                        showMessage(`Loaded ${transactions.length} transactions for ${targetDate}`, 'success');
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.log('Date field query failed, trying submissionDateTime:', e);
+            }
+            
+            // Method 2: If date field fails, use submissionDateTime (like report page)
+            console.log('Trying submissionDateTime filter...');
+            try {
                 const snapshot = await db_ref.collection('Kovelipay').get();
                 const docs = [];
                 snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
                 
                 console.log(`Total records in database: ${docs.length}`);
                 
-                // Filter by date using submissionDateTime (exactly like report page)
+                // Filter by date using submissionDateTime
                 const filteredByDate = docs.filter(d => {
-                    if (!d.submissionDateTime) {
-                        // Also check for other date fields as fallback
-                        if (d.date) {
-                            return d.date === targetDate;
-                        }
-                        if (d.timestamp) {
-                            if (d.timestamp.toDate) {
-                                const dateStr = d.timestamp.toDate().toISOString().split('T')[0];
-                                return dateStr === targetDate;
-                            }
-                            if (typeof d.timestamp === 'string') {
-                                return d.timestamp.split('T')[0] === targetDate;
-                            }
-                        }
-                        return false;
-                    }
+                    if (!d.submissionDateTime) return false;
                     const docDate = extractDateFromDateTimeField(d.submissionDateTime);
                     return docDate === targetDate;
                 });
                 
                 console.log(`Found ${filteredByDate.length} records for date ${targetDate}`);
                 
-                // Process each transaction (exactly like report page)
-                filteredByDate.forEach(tx => {
+                // Further filter by shift if needed
+                let filteredTransactions = filteredByDate;
+                if (currentShiftType) {
+                    filteredTransactions = filteredByDate.filter(d => {
+                        const shift = (d.shift || '').toUpperCase();
+                        return shift === currentShiftType;
+                    });
+                    console.log(`After shift filter: ${filteredTransactions.length} records`);
+                }
+                
+                // Process each transaction
+                filteredTransactions.forEach(tx => {
                     transactions.push(tx);
                     
-                    const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
-                    const curr = (tx.currency || 'USD').toUpperCase();
-                    const amt = parseFloat(tx.totalAmount) || 0;
+                    const currency = (tx.currency || 'USD').toUpperCase();
+                    const amount = parseFloat(tx.totalAmount || tx.amount || 0) || 0;
                     
-                    console.log(`Transaction: Method=${method}, Currency=${curr}, Amount=${amt}`);
+                    console.log(`Transaction: Currency=${currency}, Amount=${amount}`);
                     
-                    // Add to totals (same as report page)
-                    if (curr === 'USD') {
-                        totalUSD += amt;
+                    if (currency === 'USD') {
+                        totalUSD += amount;
                     } else {
-                        totalMVR += amt;
+                        totalMVR += amount;
                     }
                 });
                 
-            } catch (e) {
-                console.error('Error fetching from Kovelipay:', e);
-            }
-            
-            // Round USD to whole numbers (like cashier page)
-            totalUSD = Math.round(totalUSD);
-            
-            salesData = {
-                mvr: totalMVR,
-                usd: totalUSD
-            };
-            
-            console.log('Final sales totals:', salesData);
-            console.log('Number of transactions:', transactions.length);
-            
-            // Update the display
-            document.getElementById('mvrSales').textContent = totalMVR.toFixed(2);
-            document.getElementById('usdSales').textContent = totalUSD;
-            
-            // Show message with details
-            if (transactions.length === 0) {
-                showMessage(`No sales transactions found for date: ${targetDate}. Please check if Kovelipay has records.`, 'info');
-            } else {
-                showMessage(`Loaded ${transactions.length} transactions for ${targetDate}: MVR ${totalMVR.toFixed(2)} / USD ${totalUSD}`, 'success');
+                // Round USD to whole numbers
+                totalUSD = Math.round(totalUSD);
                 
-                // Log first few transactions to console for debugging
-                console.log('Sample transactions:', transactions.slice(0, 3));
+                salesData = {
+                    mvr: totalMVR,
+                    usd: totalUSD
+                };
+                
+                console.log('Final sales totals:', salesData);
+                console.log('Number of transactions:', transactions.length);
+                
+                // Update the display
+                document.getElementById('mvrSales').textContent = totalMVR.toFixed(2);
+                document.getElementById('usdSales').textContent = totalUSD;
+                
+                // Show message with details
+                if (transactions.length === 0) {
+                    let message = `No sales transactions found for date: ${targetDate}`;
+                    if (currentShiftType) {
+                        message += ` (${currentShiftType} shift)`;
+                    }
+                    showMessage(message, 'info');
+                } else {
+                    let message = `Loaded ${transactions.length} transactions for ${targetDate}`;
+                    if (currentShiftType) {
+                        message += ` (${currentShiftType} shift)`;
+                    }
+                    message += `: MVR ${totalMVR.toFixed(2)} / USD ${totalUSD}`;
+                    showMessage(message, 'success');
+                }
+                
+            } catch (e) {
+                console.error('Error in submissionDateTime filter:', e);
+                throw e;
             }
             
         } catch (error) {
@@ -2436,6 +2502,9 @@
                 
                 // Refresh shift data
                 await fetchShiftData();
+                
+                // Refresh sales data with new shift
+                await fetchSalesData();
             }
             
             showMessage('Cashier opened successfully!', 'success');
@@ -2474,6 +2543,9 @@
                 
                 // Refresh shift data
                 await fetchShiftData();
+                
+                // Refresh sales data (will now show no shift)
+                await fetchSalesData();
             }
             
             showMessage('Cashier closed successfully!', 'success');
@@ -2553,7 +2625,7 @@
             // Fetch shift data FIRST
             await fetchShiftData();
             
-            // THEN fetch sales data using the shift date
+            // THEN fetch sales data using the shift date and current shift
             await fetchSalesData();
             
             // Load persistent petty cash data (this will always get the same amount)
@@ -2589,9 +2661,8 @@
             // Auto-refresh every 30 seconds
             refreshInterval = setInterval(async () => {
                 await fetchShiftData();
-                await fetchSalesData();
+                await fetchSalesData(); // This will now use the updated shift info
                 // Note: We don't refresh petty cash data here because it's persistent
-                // and shouldn't change automatically
                 await loadCurrentCashier();
             }, 30000);
             
