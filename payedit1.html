@@ -106,17 +106,6 @@
             position: relative;
         }
         
-        .search-box input {
-            width: 100%;
-            padding: 15px 20px;
-            border: 2px solid rgba(230, 184, 0, 0.3);
-            border-radius: 50px;
-            font-size: 16px;
-            background: white;
-            transition: all 0.3s;
-            padding-left: 45px;
-        }
-        
         .search-box i {
             position: absolute;
             left: 15px;
@@ -124,6 +113,17 @@
             transform: translateY(-50%);
             color: #8b6913;
             font-size: 20px;
+            z-index: 1;
+        }
+        
+        .search-box input {
+            width: 100%;
+            padding: 15px 20px 15px 45px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 50px;
+            font-size: 16px;
+            background: white;
+            transition: all 0.3s;
         }
         
         .search-box input:focus {
@@ -540,6 +540,33 @@
             }
         }
 
+        .search-instruction {
+            background: rgba(230, 184, 0, 0.1);
+            border: 2px dashed #e6b800;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .search-instruction i {
+            font-size: 48px;
+            color: #e6b800;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .search-instruction h3 {
+            color: #8b6913;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .search-instruction p {
+            color: #5e4a1a;
+            font-size: 16px;
+        }
+
         .search-hint {
             color: #8b6913;
             font-size: 14px;
@@ -585,11 +612,11 @@
 
             <!-- Search Hint -->
             <div class="search-hint" id="searchHint">
-                🔍 Enter a Receipt Number above to search. Leave empty to see all receipts.
+                🔍 Enter a Receipt Number above to search
             </div>
 
-            <!-- Stats -->
-            <div class="stats-bar">
+            <!-- Stats (Hidden initially) -->
+            <div class="stats-bar" id="statsBar" style="display: none;">
                 <div class="stat-card">
                     <div class="label">TOTAL RECEIPTS</div>
                     <div class="value" id="totalReceipts">0</div>
@@ -608,8 +635,15 @@
                 </div>
             </div>
 
-            <!-- Receipts Table -->
-            <div class="table-container">
+            <!-- Search Instruction / Empty State -->
+            <div id="emptyState" class="search-instruction">
+                <i>🔍</i>
+                <h3>Search for a Receipt</h3>
+                <p>Enter a Receipt Number in the search box above to find and edit receipts</p>
+            </div>
+
+            <!-- Receipts Table (Hidden initially) -->
+            <div class="table-container" id="tableContainer" style="display: none;">
                 <table>
                     <thead>
                         <tr>
@@ -626,7 +660,7 @@
                     </thead>
                     <tbody id="tableBody">
                         <tr>
-                            <td colspan="9" class="loading">Enter a Receipt Number to search...</td>
+                            <td colspan="9" class="loading">Loading receipts...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -771,8 +805,12 @@ let currentEditReceipt = null;
 
 async function loadReceipts() {
     try {
-        const tbody = document.getElementById('tableBody');
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Loading receipts...</td></tr>';
+        // Show loading in table if table is visible
+        const tableContainer = document.getElementById('tableContainer');
+        if (tableContainer.style.display === 'block') {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '<tr><td colspan="9" class="loading">Loading receipts...</td></tr>';
+        }
         
         if (typeof passengerDb === 'undefined') {
             throw new Error('passengerDb not initialized');
@@ -789,15 +827,40 @@ async function loadReceipts() {
             });
         });
         
-        // Apply filters immediately after loading
-        applyFilters();
+        // Check if there's a search term and apply filters
+        const searchTerm = document.getElementById('searchInput').value.trim();
+        if (searchTerm !== '') {
+            applyFilters();
+        } else {
+            // If no search term, hide table and show empty state
+            showEmptyState();
+        }
+        
+        // Always update stats but keep hidden until search
         updateStats();
         
     } catch (error) {
         console.error('Error loading receipts:', error);
-        const tbody = document.getElementById('tableBody');
-        tbody.innerHTML = `<tr><td colspan="9" class="loading" style="color:#c68b5e;">Error: ${error.message}</td></tr>`;
+        const tableContainer = document.getElementById('tableContainer');
+        if (tableContainer.style.display === 'block') {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = `<tr><td colspan="9" class="loading" style="color:#c68b5e;">Error: ${error.message}</td></tr>`;
+        }
     }
+}
+
+// ========== SHOW/HIDE FUNCTIONS ==========
+
+function showEmptyState() {
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('tableContainer').style.display = 'none';
+    document.getElementById('statsBar').style.display = 'none';
+}
+
+function showResults() {
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('tableContainer').style.display = 'block';
+    document.getElementById('statsBar').style.display = 'grid';
 }
 
 // ========== UPDATE STATISTICS ==========
@@ -812,50 +875,47 @@ function updateStats() {
 // ========== FILTER FUNCTIONS ==========
 
 function applyFilters() {
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+    const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
     const paymentFilter = document.getElementById('paymentFilter').value;
     const statusFilter = document.getElementById('statusFilter').value;
     
     // Update search hint
     const searchHint = document.getElementById('searchHint');
+    
     if (searchTerm === '') {
-        searchHint.innerHTML = '🔍 Showing all receipts. Enter a Receipt Number to filter.';
-        searchHint.style.color = '#8b6913';
-    } else {
-        searchHint.innerHTML = `🔍 Searching for receipt containing "${searchTerm}"...`;
-        searchHint.style.color = '#e6b800';
+        searchHint.innerHTML = '🔍 Enter a Receipt Number above to search';
+        showEmptyState();
+        return;
     }
+    
+    searchHint.innerHTML = `🔍 Searching for receipt containing "${searchTerm}"...`;
     
     // Filter receipts based on search term
     filteredReceipts = allReceipts.filter(receipt => {
-        // If search term is empty, include all receipts
-        const matchesSearch = searchTerm === '' || 
-            (receipt.receiptNo && receipt.receiptNo.toLowerCase().includes(searchTerm));
-        
+        const matchesSearch = receipt.receiptNo && receipt.receiptNo.toLowerCase().includes(searchTerm);
         const matchesPayment = paymentFilter === 'ALL' || receipt.paymentMethod === paymentFilter;
         const matchesStatus = statusFilter === 'ALL' || receipt.paymentStatus === statusFilter;
         
         return matchesSearch && matchesPayment && matchesStatus;
     });
     
+    if (filteredReceipts.length > 0) {
+        showResults();
+    }
+    
     renderTable();
 }
 
 function renderTable() {
     const tbody = document.getElementById('tableBody');
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+    const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
     
-    if (allReceipts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">No receipts found in database</td></tr>';
+    if (searchTerm === '') {
         return;
     }
     
     if (filteredReceipts.length === 0) {
-        if (searchTerm === '') {
-            tbody.innerHTML = '<tr><td colspan="9" class="loading">Enter a Receipt Number to search</td></tr>';
-        } else {
-            tbody.innerHTML = `<tr><td colspan="9" class="loading">No receipts found matching "${searchTerm}"</td></tr>`;
-        }
+        tbody.innerHTML = `<tr><td colspan="9" class="loading">No receipts found matching "${searchTerm}"</td></tr>`;
         return;
     }
     
@@ -1253,6 +1313,10 @@ function printReceiptContent(receipt) {
 // ========== INITIALIZATION ==========
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Initially hide table and show empty state
+    showEmptyState();
+    
+    // Load receipts in background
     loadReceipts();
     
     // Event listeners
@@ -1269,7 +1333,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
-    // Refresh every 30 seconds
+    // Refresh every 30 seconds (keeps data fresh but doesn't show results without search)
     setInterval(loadReceipts, 30000);
 });
 </script>
