@@ -98,23 +98,13 @@
             margin-bottom: 30px;
             align-items: center;
             flex-wrap: wrap;
+            justify-content: center;
         }
         
         .search-box {
             flex: 1;
-            min-width: 300px;
+            min-width: 400px;
             position: relative;
-        }
-        
-        .search-box input {
-            width: 100%;
-            padding: 15px 20px;
-            border: 2px solid rgba(230, 184, 0, 0.3);
-            border-radius: 50px;
-            font-size: 16px;
-            background: white;
-            transition: all 0.3s;
-            padding-left: 45px;
         }
         
         .search-box i {
@@ -124,12 +114,44 @@
             transform: translateY(-50%);
             color: #8b6913;
             font-size: 20px;
+            z-index: 1;
+        }
+        
+        .search-box input {
+            width: 100%;
+            padding: 15px 20px 15px 45px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 50px;
+            font-size: 16px;
+            background: white;
+            transition: all 0.3s;
         }
         
         .search-box input:focus {
             outline: none;
             border-color: #e6b800;
             box-shadow: 0 5px 15px rgba(230, 184, 0, 0.1);
+        }
+        
+        .search-btn {
+            background: linear-gradient(135deg, #e6b800, #d4a900);
+            color: white;
+            border: none;
+            padding: 15px 35px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(230, 184, 0, 0.3);
         }
         
         .filter-select {
@@ -164,7 +186,6 @@
         .refresh-btn:hover {
             background: #e6b800;
             color: white;
-            transform: rotate(180deg);
         }
         
         .stats-bar {
@@ -539,6 +560,58 @@
                 color: black;
             }
         }
+
+        .search-instruction {
+            background: rgba(230, 184, 0, 0.1);
+            border: 2px dashed #e6b800;
+            border-radius: 16px;
+            padding: 60px 40px;
+            text-align: center;
+            margin: 40px 0;
+        }
+
+        .search-instruction i {
+            font-size: 64px;
+            color: #e6b800;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .search-instruction h3 {
+            color: #8b6913;
+            font-size: 28px;
+            margin-bottom: 15px;
+        }
+
+        .search-instruction p {
+            color: #5e4a1a;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .search-instruction .hint {
+            color: #8b6913;
+            font-size: 14px;
+            font-style: italic;
+        }
+
+        .search-hint {
+            color: #8b6913;
+            font-size: 14px;
+            margin: 10px 0;
+            text-align: center;
+            font-style: italic;
+        }
+
+        .no-results {
+            color: #c68b5e;
+            font-size: 18px;
+            text-align: center;
+            padding: 40px;
+            background: rgba(198, 139, 94, 0.1);
+            border-radius: 12px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
@@ -558,25 +631,27 @@
             <div class="search-section">
                 <div class="search-box">
                     <i>🔍</i>
-                    <input type="text" id="searchInput" placeholder="Search by Receipt No, Passenger Name, Flight No...">
+                    <input type="text" id="searchInput" placeholder="Enter Receipt Number (e.g., KOV-2024-001)" onkeypress="handleKeyPress(event)">
                 </div>
-                <select class="filter-select" id="paymentFilter">
+                <button class="search-btn" onclick="searchReceipt()">
+                    <span>🔍</span> SEARCH RECEIPT
+                </button>
+                <select class="filter-select" id="paymentFilter" onchange="searchReceipt()">
                     <option value="ALL">All Payments</option>
                     <option value="CASH">Cash</option>
                     <option value="CARD">Card</option>
                     <option value="BANK TRANSFER">Bank Transfer</option>
                     <option value="MOBILE PAYMENT">Mobile Payment</option>
                 </select>
-                <select class="filter-select" id="statusFilter">
+                <select class="filter-select" id="statusFilter" onchange="searchReceipt()">
                     <option value="ALL">All Status</option>
                     <option value="COMPLETED">Completed</option>
                     <option value="PENDING_APPROVAL">Pending Approval</option>
                 </select>
-                <button class="refresh-btn" id="refreshBtn">↻</button>
             </div>
 
-            <!-- Stats -->
-            <div class="stats-bar">
+            <!-- Stats (Hidden initially) -->
+            <div class="stats-bar" id="statsBar" style="display: none;">
                 <div class="stat-card">
                     <div class="label">TOTAL RECEIPTS</div>
                     <div class="value" id="totalReceipts">0</div>
@@ -595,8 +670,21 @@
                 </div>
             </div>
 
-            <!-- Receipts Table -->
-            <div class="table-container">
+            <!-- Search Instruction / Empty State -->
+            <div id="emptyState" class="search-instruction">
+                <i>🔍</i>
+                <h3>Search for a Receipt</h3>
+                <p>Enter a Receipt Number and click Search</p>
+                <p class="hint">Example: KOV-2024-001</p>
+            </div>
+
+            <!-- No Results Message -->
+            <div id="noResults" class="no-results" style="display: none;">
+                <p>❌ No receipt found matching the search criteria</p>
+            </div>
+
+            <!-- Receipts Table (Hidden initially) -->
+            <div class="table-container" id="tableContainer" style="display: none;">
                 <table>
                     <thead>
                         <tr>
@@ -751,16 +839,12 @@
 
 <script>
 let allReceipts = [];
-let filteredReceipts = [];
 let currentEditReceipt = null;
 
 // ========== LOAD RECEIPTS ==========
 
 async function loadReceipts() {
     try {
-        const tbody = document.getElementById('tableBody');
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Loading receipts...</td></tr>';
-        
         if (typeof passengerDb === 'undefined') {
             throw new Error('passengerDb not initialized');
         }
@@ -776,14 +860,35 @@ async function loadReceipts() {
             });
         });
         
-        applyFilters();
+        // Update stats but keep them hidden
         updateStats();
         
     } catch (error) {
         console.error('Error loading receipts:', error);
-        const tbody = document.getElementById('tableBody');
-        tbody.innerHTML = `<tr><td colspan="9" class="loading" style="color:#c68b5e;">Error: ${error.message}</td></tr>`;
     }
+}
+
+// ========== SHOW/HIDE FUNCTIONS ==========
+
+function showEmptyState() {
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('noResults').style.display = 'none';
+    document.getElementById('tableContainer').style.display = 'none';
+    document.getElementById('statsBar').style.display = 'none';
+}
+
+function showNoResults() {
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('noResults').style.display = 'block';
+    document.getElementById('tableContainer').style.display = 'none';
+    document.getElementById('statsBar').style.display = 'none';
+}
+
+function showResults() {
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('noResults').style.display = 'none';
+    document.getElementById('tableContainer').style.display = 'block';
+    document.getElementById('statsBar').style.display = 'grid';
 }
 
 // ========== UPDATE STATISTICS ==========
@@ -795,38 +900,52 @@ function updateStats() {
     document.getElementById('totalBank').textContent = allReceipts.filter(r => r.paymentMethod === 'BANK TRANSFER').length;
 }
 
-// ========== FILTER FUNCTIONS ==========
+// ========== SEARCH FUNCTION ==========
 
-function applyFilters() {
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+function handleKeyPress(event) {
+    if (event.key === 'Enter') {
+        searchReceipt();
+    }
+}
+
+function searchReceipt() {
+    const searchTerm = document.getElementById('searchInput').value.trim();
     const paymentFilter = document.getElementById('paymentFilter').value;
     const statusFilter = document.getElementById('statusFilter').value;
     
-    filteredReceipts = allReceipts.filter(receipt => {
-        const matchesSearch = searchTerm === '' || 
-            receipt.receiptNo?.toLowerCase().includes(searchTerm) ||
-            receipt.passengerName?.toLowerCase().includes(searchTerm) ||
-            receipt.flightNo?.toLowerCase().includes(searchTerm);
-        
+    if (searchTerm === '') {
+        alert('Please enter a receipt number');
+        showEmptyState();
+        return;
+    }
+    
+    // Show loading in table if we're about to show it
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '<tr><td colspan="9" class="loading">Searching for receipt...</td></tr>';
+    
+    // Filter receipts based on search term
+    const searchResults = allReceipts.filter(receipt => {
+        const matchesSearch = receipt.receiptNo && 
+            receipt.receiptNo.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesPayment = paymentFilter === 'ALL' || receipt.paymentMethod === paymentFilter;
         const matchesStatus = statusFilter === 'ALL' || receipt.paymentStatus === statusFilter;
         
         return matchesSearch && matchesPayment && matchesStatus;
     });
     
-    renderTable();
+    if (searchResults.length === 0) {
+        showNoResults();
+    } else {
+        renderTable(searchResults);
+        showResults();
+    }
 }
 
-function renderTable() {
+function renderTable(receipts) {
     const tbody = document.getElementById('tableBody');
     
-    if (filteredReceipts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">No receipts found</td></tr>';
-        return;
-    }
-    
     let html = '';
-    filteredReceipts.forEach(receipt => {
+    receipts.forEach(receipt => {
         const statusClass = receipt.paymentStatus === 'PENDING_APPROVAL' ? 'status-pending' : 'status-completed';
         const statusText = receipt.paymentStatus === 'PENDING_APPROVAL' ? 'PENDING' : 'COMPLETED';
         
@@ -864,7 +983,6 @@ function openEditModal(receiptNo) {
     document.getElementById('editReceiptNo').value = receiptNo;
     document.getElementById('editOriginalPaymentMethod').value = receipt.paymentMethod;
     
-    // Now these are editable fields - remove readonly attribute
     document.getElementById('editPName').value = receipt.passengerName || '';
     document.getElementById('editFlightNo').value = receipt.flightNo || '';
     document.getElementById('editSeatNo').value = receipt.seatNo || '';
@@ -1024,14 +1142,12 @@ async function saveEdit() {
         // Determine payment status
         let paymentStatus = 'COMPLETED';
         if (!isCash) {
-            // If it's non-cash and no approval codes yet, keep pending
             const approvalCode = document.getElementById('editApprovalCode').value.trim();
             const batchNo = document.getElementById('editBatchNo').value.trim();
             paymentStatus = (approvalCode && batchNo) ? 'COMPLETED' : 'PENDING_APPROVAL';
         }
         
         const updateData = {
-            // Add the newly editable fields
             passengerName: passengerName,
             flightNo: flightNo,
             seatNo: seatNo,
@@ -1053,7 +1169,7 @@ async function saveEdit() {
             batchNo: document.getElementById('editBatchNo').value.trim() || '',
             paymentStatus: paymentStatus,
             editedAt: new Date().toISOString(),
-            editedBy: 'user' // You can add user info here
+            editedBy: 'user'
         };
         
         const kovelipayRef = passengerDb.collection('Kovelipay').doc(receiptNo);
@@ -1061,8 +1177,9 @@ async function saveEdit() {
         
         alert(`Receipt ${receiptNo} updated successfully!`);
         
-        // Reload data
+        // Reload data and refresh search
         await loadReceipts();
+        searchReceipt(); // Refresh the search results
         closeEditModal();
         
     } catch (error) {
@@ -1090,7 +1207,6 @@ function printEditedReceipt() {
     // Create updated receipt object with current form values
     const updatedReceipt = {
         ...currentEditReceipt,
-        // Get the editable field values from the form
         passengerName: document.getElementById('editPName').value,
         flightNo: document.getElementById('editFlightNo').value,
         seatNo: document.getElementById('editSeatNo').value,
@@ -1219,13 +1335,14 @@ function printReceiptContent(receipt) {
 // ========== INITIALIZATION ==========
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Initially hide table and show empty state
+    showEmptyState();
+    
+    // Load receipts in background
     loadReceipts();
     
-    // Event listeners
-    document.getElementById('searchInput').addEventListener('input', applyFilters);
-    document.getElementById('paymentFilter').addEventListener('change', applyFilters);
-    document.getElementById('statusFilter').addEventListener('change', applyFilters);
-    document.getElementById('refreshBtn').addEventListener('click', loadReceipts);
+    // Remove auto-refresh interval - only refresh when explicitly needed
+    // setInterval(loadReceipts, 30000); // REMOVED
     
     // Close modal when clicking outside
     window.onclick = function(event) {
@@ -1234,9 +1351,6 @@ document.addEventListener('DOMContentLoaded', function() {
             closeEditModal();
         }
     };
-    
-    // Refresh every 30 seconds
-    setInterval(loadReceipts, 30000);
 });
 </script>
 </body>
