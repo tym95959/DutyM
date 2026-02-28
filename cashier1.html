@@ -1709,6 +1709,13 @@
         
         popup.style.display = 'flex';
         passwordInput.focus();
+        
+        // Add enter key handler
+        passwordInput.onkeypress = function(e) {
+            if (e.key === 'Enter') {
+                authorizeAction();
+            }
+        };
     }
 
     function closePasswordPopup() {
@@ -1720,14 +1727,16 @@
         const passwordInput = document.getElementById('passwordInput');
         if (passwordInput) {
             passwordInput.value = '';
+            passwordInput.onkeypress = null;
         }
     }
 
     async function authorizeAction() {
         const passwordInput = document.getElementById('passwordInput');
         const messageEl = document.getElementById('passwordMessage');
+        const authorizeBtn = document.getElementById('authorizeBtn');
         
-        if (!passwordInput || !messageEl) {
+        if (!passwordInput || !messageEl || !authorizeBtn) {
             console.error('Password elements not found');
             return;
         }
@@ -1739,6 +1748,10 @@
             messageEl.className = 'message error';
             return;
         }
+        
+        // Disable button to prevent double submission
+        authorizeBtn.disabled = true;
+        authorizeBtn.textContent = '⏳ Authorizing...';
         
         try {
             const hashedInput = await hashPassword(password);
@@ -1753,6 +1766,8 @@
             if (!usernameToValidate) {
                 messageEl.innerHTML = '❌ no user to validate';
                 messageEl.className = 'message error';
+                authorizeBtn.disabled = false;
+                authorizeBtn.textContent = '✓ Authorize';
                 return;
             }
             
@@ -1765,6 +1780,8 @@
                 console.log('Available users:', usersList);
                 messageEl.innerHTML = '❌ user not found in system';
                 messageEl.className = 'message error';
+                authorizeBtn.disabled = false;
+                authorizeBtn.textContent = '✓ Authorize';
                 return;
             }
             
@@ -1772,25 +1789,33 @@
                 messageEl.innerHTML = '❌ invalid password';
                 messageEl.className = 'message error';
                 passwordInput.value = '';
+                authorizeBtn.disabled = false;
+                authorizeBtn.textContent = '✓ Authorize';
                 return;
             }
             
             messageEl.innerHTML = '✅ authorized · processing...';
             messageEl.className = 'message success';
             
-            setTimeout(() => {
-                closePasswordPopup();
-                if (pendingAction === 'open') {
-                    executeOpenCashier();
-                } else if (pendingAction === 'close') {
-                    executeCloseCashier();
-                }
-            }, 800);
+            // Store the action to execute
+            const actionToExecute = pendingAction;
+            
+            // Close popup first
+            closePasswordPopup();
+            
+            // Then execute the action
+            if (actionToExecute === 'open') {
+                await executeOpenCashier();
+            } else if (actionToExecute === 'close') {
+                await executeCloseCashier();
+            }
             
         } catch (error) {
             console.error('Authorization error:', error);
             messageEl.innerHTML = '❌ authorization error: ' + error.message;
             messageEl.className = 'message error';
+            authorizeBtn.disabled = false;
+            authorizeBtn.textContent = '✓ Authorize';
         }
     }
 
@@ -2155,6 +2180,8 @@
     }
 
     // ========== DENOMINATION POPUP FUNCTIONS ==========
+    let currentPopupField = null;
+
     function openDenominationPopup(field) {
         currentPopupField = field;
         
@@ -2692,6 +2719,7 @@
         usdStatus.className = `match-status ${usdMatch ? 'status-matched' : 'status-mismatched'}`;
     }
 
+    // ========== CHECK ALL CONDITIONS FOR BUTTONS ==========
     function checkAllMatches() {
         const isShiftOpen = currentShift && 
             (currentShift.morning === 'open' || currentShift.evening === 'open');
@@ -2729,18 +2757,50 @@
         }
     }
 
-    // ========== CASHIER ACTIONS ==========
+    // ========== CASHIER ACTIONS WITH PASSWORD ==========
     function handleOpenCashier() {
+        // Check if shift is already open
+        const isShiftOpen = currentShift && 
+            (currentShift.morning === 'open' || currentShift.evening === 'open');
+        
+        if (isShiftOpen) {
+            showMessage('Cashier is already open!', 'warning');
+            return;
+        }
+        
+        // Show password popup for authorization
         openPasswordPopup('open');
     }
 
     function handleCloseCashier() {
+        // Check if shift is open
+        const isShiftOpen = currentShift && 
+            (currentShift.morning === 'open' || currentShift.evening === 'open');
+        
+        if (!isShiftOpen) {
+            showMessage('No open shift to close!', 'warning');
+            return;
+        }
+        
+        // Check if all matches are valid
+        const salesMVRMatch = Math.abs(countedData.mvr - salesData.mvr) < 0.01;
+        const salesUSDMatch = countedData.usd === salesData.usd;
+        const pettyMVRMatch = Math.abs(countedPettyData.mvr - pettyCashData.mvr) < 0.01;
+        const pettyUSDMatch = countedPettyData.usd === pettyCashData.usd;
+        
+        if (!salesMVRMatch || !salesUSDMatch || !pettyMVRMatch || !pettyUSDMatch) {
+            showMessage('Please ensure all counts match before closing!', 'warning');
+            return;
+        }
+        
+        // Show password popup for authorization
         openPasswordPopup('close');
     }
 
+    // ========== EXECUTE CASHIER ACTIONS ==========
     async function executeOpenCashier() {
         try {
-            showMessage('Opening cashier...', 'success');
+            showMessage('Opening cashier...', 'info');
             
             if (typeof passengerDb !== 'undefined') {
                 const shiftRef = passengerDb.collection('shifts').doc('currentshift');
@@ -2750,6 +2810,8 @@
                 const hours = now.getHours();
                 const shiftToOpen = hours < 12 ? 'morning' : 'evening';
                 
+                console.log('Opening cashier:', { shift: shiftToOpen, date: dateStr });
+                
                 await shiftRef.set({
                     [shiftToOpen]: 'open',
                     date: dateStr,
@@ -2757,70 +2819,119 @@
                     updated: now.toISOString()
                 }, { merge: true });
                 
+                // Update cashier tracking
                 await updateCashierTracking('open');
+                
+                // Refresh shift data
                 await fetchShiftData();
+                
+                // Refresh sales data with new shift
                 await fetchSalesData();
+                
+                showMessage('Cashier opened successfully!', 'success');
+                
+                // Clear inputs
+                const countedMVR = document.getElementById('countedMVR');
+                const countedUSD = document.getElementById('countedUSD');
+                const countedPettyMVR = document.getElementById('countedPettyMVR');
+                const countedPettyUSD = document.getElementById('countedPettyUSD');
+                
+                if (countedMVR) countedMVR.value = '0';
+                if (countedUSD) countedUSD.value = '0';
+                if (countedPettyMVR) countedPettyMVR.value = '0';
+                if (countedPettyUSD) countedPettyUSD.value = '0';
+                
+                // Reset counted data
+                countedData = { mvr: 0, usd: 0 };
+                countedPettyData = { mvr: 0, usd: 0 };
+                
+                // Hide comparison sections
+                const comparisonSection = document.getElementById('comparisonSection');
+                const pettyComparisonSection = document.getElementById('pettyComparisonSection');
+                
+                if (comparisonSection) comparisonSection.style.display = 'none';
+                if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
+                
+                // Log activity
+                await addActivity({
+                    type: 'cashier',
+                    action: 'open',
+                    amount: null,
+                    description: `Cashier opened by ${currentUser.username}`
+                });
+                
+            } else {
+                showMessage('Database not available', 'danger');
             }
-            
-            showMessage('Cashier opened successfully!', 'success');
-            
-            const countedMVR = document.getElementById('countedMVR');
-            const countedUSD = document.getElementById('countedUSD');
-            const countedPettyMVR = document.getElementById('countedPettyMVR');
-            const countedPettyUSD = document.getElementById('countedPettyUSD');
-            const comparisonSection = document.getElementById('comparisonSection');
-            const pettyComparisonSection = document.getElementById('pettyComparisonSection');
-            
-            if (countedMVR) countedMVR.value = '0';
-            if (countedUSD) countedUSD.value = '0';
-            if (countedPettyMVR) countedPettyMVR.value = '0';
-            if (countedPettyUSD) countedPettyUSD.value = '0';
-            if (comparisonSection) comparisonSection.style.display = 'none';
-            if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
             
         } catch (error) {
             console.error('Error opening cashier:', error);
-            showMessage('Failed to open cashier. Please try again.', 'danger');
+            showMessage('Failed to open cashier: ' + error.message, 'danger');
         }
     }
 
     async function executeCloseCashier() {
         try {
-            showMessage('Closing cashier...', 'success');
+            showMessage('Closing cashier...', 'info');
             
             if (typeof passengerDb !== 'undefined' && currentShift) {
                 const shiftRef = passengerDb.collection('shifts').doc('currentshift');
                 
+                // Determine which shift to close
                 const shiftToClose = currentShift.morning === 'open' ? 'morning' : 'evening';
+                
+                console.log('Closing cashier:', { shift: shiftToClose });
                 
                 await shiftRef.set({
                     [shiftToClose]: 'closed',
                     updated: new Date().toISOString()
                 }, { merge: true });
                 
+                // Update cashier tracking
                 await updateCashierTracking('close');
+                
+                // Refresh shift data
                 await fetchShiftData();
+                
+                showMessage('Cashier closed successfully!', 'success');
+                
+                // Clear inputs
+                const countedMVR = document.getElementById('countedMVR');
+                const countedUSD = document.getElementById('countedUSD');
+                const countedPettyMVR = document.getElementById('countedPettyMVR');
+                const countedPettyUSD = document.getElementById('countedPettyUSD');
+                
+                if (countedMVR) countedMVR.value = '0';
+                if (countedUSD) countedUSD.value = '0';
+                if (countedPettyMVR) countedPettyMVR.value = '0';
+                if (countedPettyUSD) countedPettyUSD.value = '0';
+                
+                // Reset counted data
+                countedData = { mvr: 0, usd: 0 };
+                countedPettyData = { mvr: 0, usd: 0 };
+                
+                // Hide comparison sections
+                const comparisonSection = document.getElementById('comparisonSection');
+                const pettyComparisonSection = document.getElementById('pettyComparisonSection');
+                
+                if (comparisonSection) comparisonSection.style.display = 'none';
+                if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
+                
+                // Log activity
+                await addActivity({
+                    type: 'cashier',
+                    action: 'close',
+                    amount: null,
+                    description: `Cashier closed by ${currentUser.username}`
+                });
+                
+            } else {
+                showMessage('No open shift to close', 'warning');
             }
-            
-            showMessage('Cashier closed successfully!', 'success');
-            
-            const countedMVR = document.getElementById('countedMVR');
-            const countedUSD = document.getElementById('countedUSD');
-            const countedPettyMVR = document.getElementById('countedPettyMVR');
-            const countedPettyUSD = document.getElementById('countedPettyUSD');
-            const comparisonSection = document.getElementById('comparisonSection');
-            const pettyComparisonSection = document.getElementById('pettyComparisonSection');
-            
-            if (countedMVR) countedMVR.value = '0';
-            if (countedUSD) countedUSD.value = '0';
-            if (countedPettyMVR) countedPettyMVR.value = '0';
-            if (countedPettyUSD) countedPettyUSD.value = '0';
-            if (comparisonSection) comparisonSection.style.display = 'none';
-            if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
             
         } catch (error) {
             console.error('Error closing cashier:', error);
-            showMessage('Failed to close cashier. Please try again.', 'danger');
+            showMessage('Failed to close cashier: ' + error.message, 'danger');
         }
     }
 
@@ -2870,8 +2981,10 @@
             
             if (typeof passengerDb !== 'undefined') {
                 database = passengerDb;
+                console.log('Using passengerDb for database operations');
             } else if (typeof db !== 'undefined') {
                 database = db;
+                console.log('Using db for database operations');
             } else {
                 document.getElementById('loading').innerHTML = `
                     <div class="alert alert-danger">
