@@ -2021,7 +2021,7 @@
         closeDenominationPopup();
     }
 
-    // ========== PETTY CASH FUNCTIONS ==========
+    // ========== PETTY CASH FUNCTIONS - PERSISTENT ==========
     async function loadPettyCashData() {
         try {
             if (typeof database === 'undefined' || !database) {
@@ -2029,9 +2029,10 @@
                 return;
             }
 
-            console.log('Loading petty cash data...');
+            console.log('Loading persistent petty cash data...');
             
-            // First try to get the 'current' document (persistent across days)
+            // ONLY get the 'current' document - this is the persistent one
+            // This ensures the same amount is used across all dates and shifts
             const currentDoc = await database.collection('PettyCash').doc('current').get();
             
             if (currentDoc.exists) {
@@ -2043,7 +2044,7 @@
                     updatedBy: data.updatedBy || null
                 };
                 
-                console.log('Loaded current petty cash:', pettyCashData);
+                console.log('Loaded persistent petty cash:', pettyCashData);
                 
                 document.getElementById('storedPettyMVR').textContent = pettyCashData.mvr.toFixed(2);
                 document.getElementById('storedPettyUSD').textContent = Math.round(pettyCashData.usd);
@@ -2063,53 +2064,30 @@
                 return;
             }
             
-            // If no current document, try to get today's document
-            const today = new Date().toISOString().split('T')[0];
-            const pettyCashDoc = await database.collection('PettyCash').doc(today).get();
+            // If no current document exists, create it with default values
+            console.log('No persistent petty cash found, creating with defaults');
+            const now = new Date().toISOString();
             
-            if (pettyCashDoc.exists) {
-                const data = pettyCashDoc.data();
-                pettyCashData = {
-                    mvr: data.mvr || 0,
-                    usd: data.usd || 0,
-                    lastUpdated: data.updated || null,
-                    updatedBy: data.updatedBy || null,
-                    updateHistory: data.updateHistory || []
-                };
-                
-                document.getElementById('storedPettyMVR').textContent = pettyCashData.mvr.toFixed(2);
-                document.getElementById('storedPettyUSD').textContent = Math.round(pettyCashData.usd);
-                
-                if (pettyCashData.lastUpdated) {
-                    const date = new Date(pettyCashData.lastUpdated);
-                    const timeStr = date.toLocaleTimeString();
-                    const dateStr = date.toLocaleDateString();
-                    const updatedBy = pettyCashData.updatedBy ? ` by ${pettyCashData.updatedBy}` : '';
-                    
-                    document.getElementById('pettyMVRDate').textContent = 
-                        `Last updated: ${dateStr} ${timeStr}${updatedBy}`;
-                    document.getElementById('pettyUSDDate').textContent = 
-                        `Last updated: ${dateStr} ${timeStr}${updatedBy}`;
-                }
-                
-                // Save as current for future
-                await database.collection('PettyCash').doc('current').set({
-                    mvr: data.mvr || 0,
-                    usd: data.usd || 0,
-                    updated: data.updated || null,
-                    updatedBy: data.updatedBy || null
-                }, { merge: true });
-                
-            } else {
-                // No petty cash set
-                console.log('No petty cash data found');
-                document.getElementById('storedPettyMVR').textContent = '0.00';
-                document.getElementById('storedPettyUSD').textContent = '0';
-                document.getElementById('pettyMVRDate').textContent = 'Not set yet';
-                document.getElementById('pettyUSDDate').textContent = 'Not set yet';
-                
-                pettyCashData = { mvr: 0, usd: 0, lastUpdated: null, updatedBy: null };
-            }
+            // Create default document
+            await database.collection('PettyCash').doc('current').set({
+                mvr: 0,
+                usd: 0,
+                updated: now,
+                updatedBy: 'system',
+                note: 'Default values - please update by admin'
+            });
+            
+            pettyCashData = {
+                mvr: 0,
+                usd: 0,
+                lastUpdated: now,
+                updatedBy: 'system'
+            };
+            
+            document.getElementById('storedPettyMVR').textContent = '0.00';
+            document.getElementById('storedPettyUSD').textContent = '0';
+            document.getElementById('pettyMVRDate').textContent = 'Not set yet';
+            document.getElementById('pettyUSDDate').textContent = 'Not set yet';
             
         } catch (error) {
             console.error('Error loading petty cash:', error);
@@ -2122,61 +2100,43 @@
         try {
             showMessage('Saving petty cash...', 'success');
             
-            const today = new Date().toISOString().split('T')[0];
             const now = new Date().toISOString();
             
             // Get the new amounts from admin input
             const newMVR = parseFloat(document.getElementById('setPettyMVR').value) || 0;
             const newUSD = Math.round(parseFloat(document.getElementById('setPettyUSD').value) || 0);
             
-            console.log('Saving petty cash:', { mvr: newMVR, usd: newUSD });
+            console.log('Saving persistent petty cash:', { mvr: newMVR, usd: newUSD });
             
-            // Save to today's document (for historical tracking)
-            const pettyCashRef = database.collection('PettyCash').doc(today);
-            
-            // Get current data to preserve history
-            const doc = await pettyCashRef.get();
-            let history = [];
-            
-            if (doc.exists) {
-                history = doc.data().updateHistory || [];
-            }
-            
-            // Add to history
-            history.push({
-                mvr: newMVR,
-                usd: newUSD,
-                updatedBy: currentUser.username,
-                rcno: currentUser.rcno,
-                time: now
-            });
-            
-            // Update today's document
-            await pettyCashRef.set({
-                mvr: newMVR,
-                usd: newUSD,
-                updated: now,
-                updatedBy: currentUser.username,
-                rcno: currentUser.rcno,
-                updateHistory: history
-            });
-            
-            // Update the 'current' document (persistent)
+            // Save ONLY to the 'current' document - this is the persistent one
+            // This will overwrite the previous value and be used for all future dates
             await database.collection('PettyCash').doc('current').set({
                 mvr: newMVR,
                 usd: newUSD,
                 updated: now,
                 updatedBy: currentUser.username,
-                rcno: currentUser.rcno
-            }, { merge: true });
+                rcno: currentUser.rcno,
+                note: 'Persistent petty cash amount - used across all dates and shifts'
+            });
+            
+            // Also save to a history document for tracking changes
+            const historyRef = database.collection('PettyCashHistory').doc();
+            await historyRef.set({
+                mvr: newMVR,
+                usd: newUSD,
+                updated: now,
+                updatedBy: currentUser.username,
+                rcno: currentUser.rcno,
+                previousMVR: pettyCashData.mvr,
+                previousUSD: pettyCashData.usd
+            });
             
             // Update local data
             pettyCashData = {
                 mvr: newMVR,
                 usd: newUSD,
                 lastUpdated: now,
-                updatedBy: currentUser.username,
-                updateHistory: history
+                updatedBy: currentUser.username
             };
             
             // Update display
@@ -2188,28 +2148,28 @@
             const dateStr = date.toLocaleDateString();
             
             document.getElementById('pettyMVRDate').textContent = 
-                `Last updated: ${dateStr} ${timeStr} by ${currentUser.username}`;
+                `Last updated: ${dateStr} ${timeStr} by ${currentUser.username} (persistent)`;
             document.getElementById('pettyUSDDate').textContent = 
-                `Last updated: ${dateStr} ${timeStr} by ${currentUser.username}`;
+                `Last updated: ${dateStr} ${timeStr} by ${currentUser.username} (persistent)`;
             
             // Add activity
             await addActivity({
                 type: 'petty',
-                action: 'set',
+                action: 'set_persistent',
                 amount: newMVR,
                 currency: 'MVR',
-                description: `Set petty cash MVR ${newMVR.toFixed(2)}`
+                description: `Set persistent petty cash MVR ${newMVR.toFixed(2)} (will remain until changed)`
             });
             
             await addActivity({
                 type: 'petty',
-                action: 'set',
+                action: 'set_persistent',
                 amount: newUSD,
                 currency: 'USD',
-                description: `Set petty cash USD ${newUSD}`
+                description: `Set persistent petty cash USD ${newUSD} (will remain until changed)`
             });
             
-            showMessage('Petty cash saved successfully! It will remain until admin changes it.', 'success');
+            showMessage('Petty cash saved persistently! This amount will remain across all dates and shifts until changed again.', 'success');
             
             // Clear admin inputs (set to zero)
             document.getElementById('setPettyMVR').value = '0';
@@ -2596,7 +2556,7 @@
             // THEN fetch sales data using the shift date
             await fetchSalesData();
             
-            // Load petty cash data
+            // Load persistent petty cash data (this will always get the same amount)
             await loadPettyCashData();
             
             // Load current cashier data
@@ -2630,7 +2590,8 @@
             refreshInterval = setInterval(async () => {
                 await fetchShiftData();
                 await fetchSalesData();
-                await loadPettyCashData();
+                // Note: We don't refresh petty cash data here because it's persistent
+                // and shouldn't change automatically
                 await loadCurrentCashier();
             }, 30000);
             
