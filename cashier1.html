@@ -1546,1202 +1546,1395 @@
     </div>
 
     <script>
-        // ========== GLOBAL VARIABLES ==========
-        let currentShift = null;
-        let currentUser = null;
-        let salesData = { mvr: 0, usd: 0 };
-        let countedData = { mvr: 0, usd: 0 };
-        let pettyCashData = { mvr: 0, usd: 0, lastUpdated: null, updatedBy: null };
-        let countedPettyData = { mvr: 0, usd: 0 };
-        let currentCashierData = { name: null, since: null, rcno: null, history: [] };
-        let refreshInterval;
-        let activityInterval;
-        let database = null;
-        let pendingAction = null;
+    // ========== GLOBAL VARIABLES ==========
+    let currentShift = null;
+    let currentUser = null;
+    let salesData = { mvr: 0, usd: 0 };
+    let countedData = { mvr: 0, usd: 0 };
+    let pettyCashData = { mvr: 0, usd: 0, lastUpdated: null, updatedBy: null };
+    let countedPettyData = { mvr: 0, usd: 0 };
+    let currentCashierData = { name: null, since: null, rcno: null, history: [] };
+    let refreshInterval;
+    let activityInterval;
+    let database = null;
+    let pendingAction = null;
+    let usersList = []; // Renamed from 'users' to avoid conflict
 
-        // MVR Denominations
-        const MVR_DENOMINATIONS = [
-            { value: 1000, label: '1000 Rufiyaa' },
-            { value: 500, label: '500 Rufiyaa' },
-            { value: 100, label: '100 Rufiyaa' },
-            { value: 50, label: '50 Rufiyaa' },
-            { value: 20, label: '20 Rufiyaa' },
-            { value: 10, label: '10 Rufiyaa' },
-            { value: 5, label: '5 Rufiyaa' },
-            { value: 2, label: '2 Rufiyaa' },
-            { value: 1, label: '1 Rufiyaa' },
-            { value: 0.50, label: '50 Laari' },
-            { value: 0.25, label: '25 Laari' },
-            { value: 0.10, label: '10 Laari' },
-            { value: 0.05, label: '5 Laari' },
-            { value: 0.01, label: '1 Laari' }
+    // MVR Denominations
+    const MVR_DENOMINATIONS = [
+        { value: 1000, label: '1000 Rufiyaa' },
+        { value: 500, label: '500 Rufiyaa' },
+        { value: 100, label: '100 Rufiyaa' },
+        { value: 50, label: '50 Rufiyaa' },
+        { value: 20, label: '20 Rufiyaa' },
+        { value: 10, label: '10 Rufiyaa' },
+        { value: 5, label: '5 Rufiyaa' },
+        { value: 2, label: '2 Rufiyaa' },
+        { value: 1, label: '1 Rufiyaa' },
+        { value: 0.50, label: '50 Laari' },
+        { value: 0.25, label: '25 Laari' },
+        { value: 0.10, label: '10 Laari' },
+        { value: 0.05, label: '5 Laari' },
+        { value: 0.01, label: '1 Laari' }
+    ];
+
+    // USD Denominations
+    const USD_DENOMINATIONS = [
+        { value: 100, label: '$100' },
+        { value: 50, label: '$50' },
+        { value: 20, label: '$20' },
+        { value: 10, label: '$10' },
+        { value: 5, label: '$5' },
+        { value: 2, label: '$2' },
+        { value: 1, label: '$1' }
+    ];
+
+    // ========== LOAD USERS FUNCTION ==========
+    function loadUsers() {
+        // Try to load users from the global scope (users.js)
+        if (typeof window.users !== 'undefined' && Array.isArray(window.users)) {
+            usersList = window.users;
+            console.log('Users loaded from users.js:', usersList.length);
+            return true;
+        }
+        
+        // Fallback: check if users is defined in the global scope without window
+        if (typeof users !== 'undefined' && Array.isArray(users)) {
+            usersList = users;
+            console.log('Users loaded from global scope:', usersList.length);
+            return true;
+        }
+        
+        console.warn('users.js not found or invalid, using default users');
+        // Default users (for testing only - in production, users.js should be present)
+        usersList = [
+            { 
+                username: 'admin', 
+                passwordHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 
+                level: 'admin', 
+                rcno: 'ADMIN001' 
+            },
+            { 
+                username: 'cashier', 
+                passwordHash: '4afdceedad961f2e8b6c9f9e8c7a1b5c9e8c7a1b5c9e8c7a1b5c9e8c7a1b5c9e8c', 
+                level: 'operator', 
+                rcno: 'CSH001' 
+            }
         ];
+        return false;
+    }
 
-        // USD Denominations
-        const USD_DENOMINATIONS = [
-            { value: 100, label: '$100' },
-            { value: 50, label: '$50' },
-            { value: 20, label: '$20' },
-            { value: 10, label: '$10' },
-            { value: 5, label: '$5' },
-            { value: 2, label: '$2' },
-            { value: 1, label: '$1' }
-        ];
-
-        // ========== HELPER FUNCTIONS ==========
-        function extractDateFromDateTimeField(dt) {
-            if (!dt) return '';
-            
-            if (dt && typeof dt === 'object' && dt.toDate) {
-                return dt.toDate().toISOString().split('T')[0];
-            }
-            
-            if (dt instanceof Date) {
-                return dt.toISOString().split('T')[0];
-            }
-            
-            if (typeof dt === 'string') {
-                let datePart = dt.split(',')[0].trim();
-                if (datePart.includes('/')) {
-                    let [m, d, y] = datePart.split('/');
-                    if (y && m && d) {
-                        if (y.length === 2) y = '20' + y;
-                        return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-                    }
-                }
-                
-                if (dt.match(/^\d{4}-\d{2}-\d{2}/)) {
-                    return dt.substring(0, 10);
+    // ========== HELPER FUNCTIONS ==========
+    function extractDateFromDateTimeField(dt) {
+        if (!dt) return '';
+        
+        if (dt && typeof dt === 'object' && dt.toDate) {
+            return dt.toDate().toISOString().split('T')[0];
+        }
+        
+        if (dt instanceof Date) {
+            return dt.toISOString().split('T')[0];
+        }
+        
+        if (typeof dt === 'string') {
+            let datePart = dt.split(',')[0].trim();
+            if (datePart.includes('/')) {
+                let [m, d, y] = datePart.split('/');
+                if (y && m && d) {
+                    if (y.length === 2) y = '20' + y;
+                    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
                 }
             }
             
-            return '';
-        }
-
-        function roundUSD(amount) {
-            const integer = Math.floor(amount);
-            const decimal = amount - integer;
-            
-            if (decimal >= 0.5) {
-                return integer + 1;
-            } else {
-                return integer;
+            if (dt.match(/^\d{4}-\d{2}-\d{2}/)) {
+                return dt.substring(0, 10);
             }
         }
+        
+        return '';
+    }
 
-        // ========== PASSWORD FUNCTIONS ==========
-        async function hashPassword(password) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(password);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    function roundUSD(amount) {
+        const integer = Math.floor(amount);
+        const decimal = amount - integer;
+        
+        if (decimal >= 0.5) {
+            return integer + 1;
+        } else {
+            return integer;
         }
+    }
 
-        function openPasswordPopup(action) {
-            pendingAction = action;
-            
-            const popup = document.getElementById('passwordPopup');
-            const title = document.getElementById('passwordPopupTitle');
-            const userInfo = document.getElementById('passwordUserName');
-            const avatar = document.getElementById('passwordUserAvatar');
-            const message = document.getElementById('passwordMessage');
-            const passwordInput = document.getElementById('passwordInput');
-            const userInfoDiv = document.getElementById('passwordUserInfo');
-            
+    // ========== PASSWORD FUNCTIONS ==========
+    async function hashPassword(password) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function openPasswordPopup(action) {
+        pendingAction = action;
+        
+        const popup = document.getElementById('passwordPopup');
+        const title = document.getElementById('passwordPopupTitle');
+        const userInfo = document.getElementById('passwordUserName');
+        const avatar = document.getElementById('passwordUserAvatar');
+        const message = document.getElementById('passwordMessage');
+        const passwordInput = document.getElementById('passwordInput');
+        const userInfoDiv = document.getElementById('passwordUserInfo');
+        
+        if (!popup || !title || !userInfo || !avatar || !message || !passwordInput || !userInfoDiv) {
+            console.error('Password popup elements not found');
+            return;
+        }
+        
+        passwordInput.value = '';
+        message.innerHTML = '⚡ enter your password to continue';
+        message.className = 'message';
+        
+        if (action === 'open') {
+            title.textContent = 'Open Cashier';
+            userInfo.textContent = currentUser ? currentUser.username : 'Unknown';
+            avatar.textContent = currentUser ? currentUser.username.charAt(0).toUpperCase() : '?';
+            userInfoDiv.style.borderColor = '#28a745';
+        } else if (action === 'close') {
+            title.textContent = 'Close Cashier';
+            const cashierName = (currentCashierData && currentCashierData.name) || (currentUser ? currentUser.username : 'Unknown');
+            userInfo.textContent = cashierName;
+            avatar.textContent = cashierName.charAt(0).toUpperCase();
+            userInfoDiv.style.borderColor = '#dc3545';
+        }
+        
+        popup.style.display = 'flex';
+        passwordInput.focus();
+    }
+
+    function closePasswordPopup() {
+        const popup = document.getElementById('passwordPopup');
+        if (popup) {
+            popup.style.display = 'none';
+        }
+        pendingAction = null;
+        const passwordInput = document.getElementById('passwordInput');
+        if (passwordInput) {
             passwordInput.value = '';
-            message.innerHTML = '⚡ enter your password to continue';
-            message.className = 'message';
+        }
+    }
+
+    async function authorizeAction() {
+        const passwordInput = document.getElementById('passwordInput');
+        const messageEl = document.getElementById('passwordMessage');
+        
+        if (!passwordInput || !messageEl) {
+            console.error('Password elements not found');
+            return;
+        }
+        
+        const password = passwordInput.value;
+        
+        if (!password) {
+            messageEl.innerHTML = '⚠️ password is required';
+            messageEl.className = 'message error';
+            return;
+        }
+        
+        try {
+            const hashedInput = await hashPassword(password);
             
-            if (action === 'open') {
-                title.textContent = 'Open Cashier';
-                userInfo.textContent = currentUser.username;
-                avatar.textContent = currentUser.username.charAt(0).toUpperCase();
-                userInfoDiv.style.borderColor = '#28a745';
-            } else if (action === 'close') {
-                title.textContent = 'Close Cashier';
-                const cashierName = currentCashierData.name || currentUser.username;
-                userInfo.textContent = cashierName;
-                avatar.textContent = cashierName.charAt(0).toUpperCase();
-                userInfoDiv.style.borderColor = '#dc3545';
+            let usernameToValidate;
+            if (pendingAction === 'open') {
+                usernameToValidate = currentUser ? currentUser.username : null;
+            } else if (pendingAction === 'close') {
+                usernameToValidate = (currentCashierData && currentCashierData.name) || (currentUser ? currentUser.username : null);
             }
             
-            popup.style.display = 'flex';
-            passwordInput.focus();
-        }
-
-        function closePasswordPopup() {
-            document.getElementById('passwordPopup').style.display = 'none';
-            pendingAction = null;
-            document.getElementById('passwordInput').value = '';
-        }
-
-        async function authorizeAction() {
-            const password = document.getElementById('passwordInput').value;
-            const messageEl = document.getElementById('passwordMessage');
-            
-            if (!password) {
-                messageEl.innerHTML = '⚠️ password is required';
+            if (!usernameToValidate) {
+                messageEl.innerHTML = '❌ no user to validate';
                 messageEl.className = 'message error';
                 return;
             }
             
-            try {
-                const hashedInput = await hashPassword(password);
-                
-                let usernameToValidate;
-                if (pendingAction === 'open') {
-                    usernameToValidate = currentUser.username;
-                } else if (pendingAction === 'close') {
-                    usernameToValidate = currentCashierData.name || currentUser.username;
-                }
-                
-                const users = typeof users !== 'undefined' ? users : [];
-                const matchedUser = users.find(u => u.username.toLowerCase() === usernameToValidate.toLowerCase());
-                
-                if (!matchedUser) {
-                    messageEl.innerHTML = '❌ user not found';
-                    messageEl.className = 'message error';
-                    return;
-                }
-                
-                if (hashedInput !== matchedUser.passwordHash) {
-                    messageEl.innerHTML = '❌ invalid password';
-                    messageEl.className = 'message error';
-                    document.getElementById('passwordInput').value = '';
-                    return;
-                }
-                
-                messageEl.innerHTML = '✅ authorized · processing...';
-                messageEl.className = 'message success';
-                
-                setTimeout(() => {
-                    closePasswordPopup();
-                    if (pendingAction === 'open') {
-                        executeOpenCashier();
-                    } else if (pendingAction === 'close') {
-                        executeCloseCashier();
-                    }
-                }, 800);
-                
-            } catch (error) {
-                console.error('Authorization error:', error);
-                messageEl.innerHTML = '❌ authorization error';
+            // Find user in usersList (our local copy)
+            const matchedUser = usersList.find(u => 
+                u.username && u.username.toLowerCase() === usernameToValidate.toLowerCase()
+            );
+            
+            if (!matchedUser) {
+                console.log('Available users:', usersList);
+                messageEl.innerHTML = '❌ user not found in system';
                 messageEl.className = 'message error';
+                return;
             }
+            
+            if (hashedInput !== matchedUser.passwordHash) {
+                messageEl.innerHTML = '❌ invalid password';
+                messageEl.className = 'message error';
+                passwordInput.value = '';
+                return;
+            }
+            
+            messageEl.innerHTML = '✅ authorized · processing...';
+            messageEl.className = 'message success';
+            
+            setTimeout(() => {
+                closePasswordPopup();
+                if (pendingAction === 'open') {
+                    executeOpenCashier();
+                } else if (pendingAction === 'close') {
+                    executeCloseCashier();
+                }
+            }, 800);
+            
+        } catch (error) {
+            console.error('Authorization error:', error);
+            messageEl.innerHTML = '❌ authorization error: ' + error.message;
+            messageEl.className = 'message error';
         }
+    }
 
-        // ========== USER FUNCTIONS ==========
-        function loadUserFromStorage() {
-            try {
-                const username = localStorage.getItem('username');
-                const level = localStorage.getItem('level');
-                const rcno = localStorage.getItem('rcno');
-                
-                if (!username) {
-                    redirectToLogin('No user session');
-                    return false;
-                }
-                
-                currentUser = {
-                    username: username,
-                    level: level || 'operator',
-                    rcno: rcno || 'N/A'
-                };
-                
-                console.log('Current user level:', currentUser.level);
-                updateUserUI();
-                
-                if (currentUser.level.toLowerCase() === 'admin') {
-                    document.getElementById('adminBadge').style.display = 'inline-block';
-                    document.getElementById('pettyCashAdminSection').style.display = 'block';
-                }
-                
-                return true;
-                
-            } catch (error) {
-                console.error('Error loading user:', error);
-                redirectToLogin('Error loading user');
+    // ========== USER FUNCTIONS ==========
+    function loadUserFromStorage() {
+        try {
+            const username = localStorage.getItem('username');
+            const level = localStorage.getItem('level');
+            const rcno = localStorage.getItem('rcno');
+            
+            if (!username) {
+                redirectToLogin('No user session');
                 return false;
             }
+            
+            currentUser = {
+                username: username,
+                level: level || 'operator',
+                rcno: rcno || 'N/A'
+            };
+            
+            console.log('Current user level:', currentUser.level);
+            updateUserUI();
+            
+            if (currentUser.level.toLowerCase() === 'admin') {
+                document.getElementById('adminBadge').style.display = 'inline-block';
+                document.getElementById('pettyCashAdminSection').style.display = 'block';
+            }
+            
+            return true;
+            
+        } catch (error) {
+            console.error('Error loading user:', error);
+            redirectToLogin('Error loading user');
+            return false;
         }
+    }
 
-        function updateUserUI() {
-            document.getElementById('userName').textContent = currentUser.username;
-            document.getElementById('userLevel').textContent = 
-                currentUser.level.charAt(0).toUpperCase() + currentUser.level.slice(1);
-            document.getElementById('userRcno').textContent = currentUser.rcno;
-            document.getElementById('userAvatar').textContent = currentUser.username.charAt(0).toUpperCase();
-        }
+    function updateUserUI() {
+        const userNameEl = document.getElementById('userName');
+        const userLevelEl = document.getElementById('userLevel');
+        const userRcnoEl = document.getElementById('userRcno');
+        const userAvatarEl = document.getElementById('userAvatar');
+        
+        if (userNameEl) userNameEl.textContent = currentUser.username;
+        if (userLevelEl) userLevelEl.textContent = 
+            currentUser.level.charAt(0).toUpperCase() + currentUser.level.slice(1);
+        if (userRcnoEl) userRcnoEl.textContent = currentUser.rcno;
+        if (userAvatarEl) userAvatarEl.textContent = currentUser.username.charAt(0).toUpperCase();
+    }
 
-        // ========== SHIFT FUNCTIONS ==========
-        async function fetchShiftData() {
-            try {
-                if (typeof passengerDb === 'undefined') {
-                    console.error('passengerDb not initialized');
-                    return;
-                }
+    // ========== SHIFT FUNCTIONS ==========
+    async function fetchShiftData() {
+        try {
+            if (typeof passengerDb === 'undefined') {
+                console.error('passengerDb not initialized');
+                return;
+            }
 
-                const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+            const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+            
+            if (shiftDoc.exists) {
+                const data = shiftDoc.data();
+                currentShift = data;
                 
-                if (shiftDoc.exists) {
-                    const data = shiftDoc.data();
-                    currentShift = data;
-                    
-                    const date = data.date || 'No date';
-                    const morning = data.morning || 'closed';
-                    const evening = data.evening || 'closed';
-                    
-                    const shiftType = document.getElementById('shiftType');
-                    const shiftDate = document.getElementById('shiftDate');
-                    const headerShiftDate = document.getElementById('headerShiftDate');
-                    const headerShiftType = document.getElementById('headerShiftType');
-                    const headerShiftStatus = document.getElementById('headerShiftStatus');
-                    
-                    let activeShift = '';
-                    let shiftTypeText = '';
-                    let shiftStatus = '';
-                    let isOpen = false;
-                    
-                    if (morning === 'open') {
-                        activeShift = 'MORNING SHIFT';
-                        shiftTypeText = 'Morning';
-                        shiftStatus = 'OPEN';
-                        headerShiftStatus.className = 'shift-status-badge status-open';
-                        isOpen = true;
-                    } else if (evening === 'open') {
-                        activeShift = 'EVENING SHIFT';
-                        shiftTypeText = 'Evening';
-                        shiftStatus = 'OPEN';
-                        headerShiftStatus.className = 'shift-status-badge status-open';
-                        isOpen = true;
-                    } else {
-                        activeShift = 'NO OPEN SHIFT';
-                        shiftTypeText = 'None';
-                        shiftStatus = 'CLOSED';
-                        headerShiftStatus.className = 'shift-status-badge status-closed';
-                        isOpen = false;
-                    }
-                    
-                    shiftType.textContent = activeShift;
-                    shiftDate.textContent = date;
-                    headerShiftDate.textContent = date;
-                    headerShiftType.textContent = shiftTypeText;
-                    headerShiftStatus.textContent = shiftStatus;
-                    
-                    updateSalesSectionVisibility(isOpen);
-                    
-                    const salesDateInfo = document.getElementById('salesDateInfo');
-                    if (salesDateInfo) {
-                        if (isOpen) {
-                            salesDateInfo.textContent = `(Shift Date: ${date} - ${shiftTypeText} SHIFT)`;
-                        } else {
-                            salesDateInfo.textContent = `(No open shift)`;
-                        }
-                    }
-                    
-                    return { isOpen, shiftType: shiftTypeText, date };
-                    
+                const date = data.date || 'No date';
+                const morning = data.morning || 'closed';
+                const evening = data.evening || 'closed';
+                
+                const shiftType = document.getElementById('shiftType');
+                const shiftDate = document.getElementById('shiftDate');
+                const headerShiftDate = document.getElementById('headerShiftDate');
+                const headerShiftType = document.getElementById('headerShiftType');
+                const headerShiftStatus = document.getElementById('headerShiftStatus');
+                
+                let activeShift = '';
+                let shiftTypeText = '';
+                let shiftStatus = '';
+                let isOpen = false;
+                
+                if (morning === 'open') {
+                    activeShift = 'MORNING SHIFT';
+                    shiftTypeText = 'Morning';
+                    shiftStatus = 'OPEN';
+                    if (headerShiftStatus) headerShiftStatus.className = 'shift-status-badge status-open';
+                    isOpen = true;
+                } else if (evening === 'open') {
+                    activeShift = 'EVENING SHIFT';
+                    shiftTypeText = 'Evening';
+                    shiftStatus = 'OPEN';
+                    if (headerShiftStatus) headerShiftStatus.className = 'shift-status-badge status-open';
+                    isOpen = true;
                 } else {
-                    console.warn('No currentshift document found');
-                    document.getElementById('shiftType').textContent = 'NO SHIFT';
-                    document.getElementById('shiftDate').textContent = '--';
-                    document.getElementById('headerShiftDate').textContent = '--';
-                    document.getElementById('headerShiftType').textContent = 'None';
-                    document.getElementById('headerShiftStatus').textContent = 'NO DATA';
-                    
-                    updateSalesSectionVisibility(false);
-                    
-                    return { isOpen: false, shiftType: 'None', date: '--' };
+                    activeShift = 'NO OPEN SHIFT';
+                    shiftTypeText = 'None';
+                    shiftStatus = 'CLOSED';
+                    if (headerShiftStatus) headerShiftStatus.className = 'shift-status-badge status-closed';
+                    isOpen = false;
                 }
                 
-            } catch (error) {
-                console.error('Error fetching shift:', error);
-                document.getElementById('shiftType').textContent = 'ERROR';
-                document.getElementById('shiftDate').textContent = '--';
-                updateSalesSectionVisibility(false);
-                return { isOpen: false, shiftType: 'Error', date: '--' };
-            }
-        }
-
-        function updateSalesSectionVisibility(isOpen) {
-            const salesSection = document.querySelector('.sales-section');
-            const countSection = document.querySelector('.count-section');
-            const pettyCashSection = document.getElementById('pettyCashTallySection');
-            const actionButtons = document.querySelector('.action-buttons');
-            
-            if (isOpen) {
-                if (salesSection) salesSection.style.display = 'block';
-                if (countSection) countSection.style.display = 'block';
-                if (pettyCashSection) pettyCashSection.style.display = 'block';
-                if (actionButtons) actionButtons.style.display = 'flex';
-            } else {
-                if (salesSection) {
-                    salesSection.style.display = 'none';
-                    document.getElementById('mvrSales').textContent = '0.00';
-                    document.getElementById('usdSales').textContent = '0.00';
-                }
-                if (countSection) countSection.style.display = 'block';
-                if (pettyCashSection) pettyCashSection.style.display = 'block';
-                if (actionButtons) {
-                    actionButtons.style.display = 'flex';
-                    document.getElementById('openCashierBtn').disabled = false;
-                    document.getElementById('closeCashierBtn').disabled = true;
-                }
-                document.getElementById('comparisonSection').style.display = 'none';
-                showMessage('No open shift. Please open a shift to view sales.', 'info');
-            }
-        }
-
-        // ========== CASHIER TRACKING FUNCTIONS ==========
-        async function loadCurrentCashier() {
-            try {
-                if (typeof database === 'undefined' || !database) return;
+                if (shiftType) shiftType.textContent = activeShift;
+                if (shiftDate) shiftDate.textContent = date;
+                if (headerShiftDate) headerShiftDate.textContent = date;
+                if (headerShiftType) headerShiftType.textContent = shiftTypeText;
+                if (headerShiftStatus) headerShiftStatus.textContent = shiftStatus;
                 
-                const today = new Date().toISOString().split('T')[0];
-                const cashierDoc = await database.collection('CashierTracking').doc(today).get();
+                updateSalesSectionVisibility(isOpen);
                 
-                if (cashierDoc.exists) {
-                    const data = cashierDoc.data();
-                    currentCashierData = {
-                        name: data.currentCashier || null,
-                        since: data.cashierSince || null,
-                        rcno: data.cashierRcno || null,
-                        history: data.cashierHistory || []
-                    };
-                    
-                    document.getElementById('currentCashierName').textContent = 
-                        currentCashierData.name || 'Not assigned';
-                    document.getElementById('cashierRcno').textContent = 
-                        currentCashierData.rcno || '---';
-                    
-                    if (currentCashierData.since) {
-                        const date = new Date(currentCashierData.since);
-                        document.getElementById('cashierSince').textContent = 
-                            date.toLocaleTimeString();
+                const salesDateInfo = document.getElementById('salesDateInfo');
+                if (salesDateInfo) {
+                    if (isOpen) {
+                        salesDateInfo.textContent = `(Shift Date: ${date} - ${shiftTypeText} SHIFT)`;
                     } else {
-                        document.getElementById('cashierSince').textContent = '--:--';
-                    }
-                    
-                    if (currentCashierData.history && currentCashierData.history.length > 0) {
-                        const last = currentCashierData.history[currentCashierData.history.length - 1];
-                        document.getElementById('cashierHistory').textContent = 
-                            `Previous: ${last.name} (${new Date(last.time).toLocaleTimeString()})`;
+                        salesDateInfo.textContent = `(No open shift)`;
                     }
                 }
                 
-            } catch (error) {
-                console.error('Error loading cashier:', error);
-            }
-        }
-
-        async function updateCashierTracking(action) {
-            try {
-                if (typeof database === 'undefined' || !database) return;
+                return { isOpen, shiftType: shiftTypeText, date };
                 
-                const today = new Date().toISOString().split('T')[0];
-                const now = new Date().toISOString();
-                const cashierRef = database.collection('CashierTracking').doc(today);
-                
-                const doc = await cashierRef.get();
-                let history = [];
-                
-                if (doc.exists) {
-                    history = doc.data().cashierHistory || [];
-                }
-                
-                history.push({
-                    name: currentUser.username,
-                    rcno: currentUser.rcno,
-                    action: action,
-                    time: now
-                });
-                
-                await cashierRef.set({
-                    currentCashier: action === 'open' ? currentUser.username : null,
-                    cashierSince: action === 'open' ? now : null,
-                    cashierRcno: action === 'open' ? currentUser.rcno : null,
-                    cashierHistory: history,
-                    lastUpdated: now,
-                    lastAction: action,
-                    lastActionBy: currentUser.username
-                }, { merge: true });
-                
-                await addActivity({
-                    type: 'cashier',
-                    action: action,
-                    amount: null,
-                    description: `${currentUser.username} ${action}ed cashier`
-                });
-                
-                await loadCurrentCashier();
-                
-            } catch (error) {
-                console.error('Error updating cashier tracking:', error);
-            }
-        }
-
-        // ========== RECENT ACTIVITY FUNCTIONS ==========
-        async function loadRecentActivity() {
-            try {
-                if (typeof database === 'undefined' || !database) return;
-                
-                const today = new Date().toISOString().split('T')[0];
-                const activitySnapshot = await database.collection('CashierActivity')
-                    .where('date', '==', today)
-                    .orderBy('timestamp', 'desc')
-                    .limit(20)
-                    .get();
-                
-                const activityList = document.getElementById('recentActivity');
-                
-                if (activitySnapshot.empty) {
-                    activityList.innerHTML = `
-                        <div class="recent-activity-item">
-                            <div class="recent-activity-time">--:--</div>
-                            <div class="recent-activity-desc">No recent activity</div>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                let html = '';
-                activitySnapshot.forEach(doc => {
-                    const data = doc.data();
-                    const time = new Date(data.timestamp).toLocaleTimeString();
-                    let amount = '';
-                    if (data.amount) {
-                        if (data.currency === 'USD') {
-                            amount = ` USD ${roundUSD(data.amount).toFixed(2)}`;
-                        } else {
-                            amount = ` MVR ${data.amount.toFixed(2)}`;
-                        }
-                    }
-                    
-                    html += `
-                        <div class="recent-activity-item">
-                            <div class="recent-activity-time">${time}</div>
-                            <div class="recent-activity-desc">${data.description}</div>
-                            <div class="recent-activity-meta">
-                                <span class="recent-activity-user">${data.username}</span>
-                                ${amount ? `<span class="recent-activity-amount">${amount}</span>` : ''}
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                activityList.innerHTML = html;
-                
-            } catch (error) {
-                console.error('Error loading activity:', error);
-            }
-        }
-
-        async function addActivity(activity) {
-            try {
-                if (typeof database === 'undefined' || !database) return;
-                
-                const today = new Date().toISOString().split('T')[0];
-                const now = new Date().toISOString();
-                
-                let amount = activity.amount;
-                if (activity.currency === 'USD' && amount !== null) {
-                    amount = roundUSD(amount);
-                }
-                
-                await database.collection('CashierActivity').add({
-                    date: today,
-                    timestamp: now,
-                    username: currentUser.username,
-                    rcno: currentUser.rcno,
-                    type: activity.type,
-                    action: activity.action,
-                    amount: amount,
-                    currency: activity.currency,
-                    description: activity.description
-                });
-                
-                await loadRecentActivity();
-                
-            } catch (error) {
-                console.error('Error adding activity:', error);
-            }
-        }
-
-        // ========== DENOMINATION POPUP FUNCTIONS ==========
-        function openDenominationPopup(field) {
-            currentPopupField = field;
-            
-            const popup = document.getElementById('denominationPopup');
-            const title = document.getElementById('popupTitle');
-            const currencyIcon = document.getElementById('popupCurrencyIcon');
-            const fieldsContainer = document.getElementById('denominationFields');
-            
-            let denominations = [];
-            
-            if (field.includes('MVR') || field.includes('SET_MVR')) {
-                title.textContent = 'Count MVR Denominations';
-                currencyIcon.textContent = 'ރ';
-                denominations = MVR_DENOMINATIONS;
             } else {
-                title.textContent = 'Count USD Denominations';
-                currencyIcon.textContent = '$';
-                denominations = USD_DENOMINATIONS;
+                console.warn('No currentshift document found');
+                const shiftType = document.getElementById('shiftType');
+                const shiftDate = document.getElementById('shiftDate');
+                const headerShiftDate = document.getElementById('headerShiftDate');
+                const headerShiftType = document.getElementById('headerShiftType');
+                const headerShiftStatus = document.getElementById('headerShiftStatus');
+                
+                if (shiftType) shiftType.textContent = 'NO SHIFT';
+                if (shiftDate) shiftDate.textContent = '--';
+                if (headerShiftDate) headerShiftDate.textContent = '--';
+                if (headerShiftType) headerShiftType.textContent = 'None';
+                if (headerShiftStatus) headerShiftStatus.textContent = 'NO DATA';
+                
+                updateSalesSectionVisibility(false);
+                
+                return { isOpen: false, shiftType: 'None', date: '--' };
             }
             
-            let fieldsHtml = '';
-            denominations.forEach(denom => {
-                const denomKey = denom.value.toString().replace('.', '_');
-                fieldsHtml += `
-                    <div class="denomination-item">
-                        <div class="denomination-label">${denom.label}</div>
-                        <input type="number" id="denom_${denomKey}" class="denomination-input" placeholder="Count" min="0" step="1" value="0" oninput="calculateDenominationTotal()">
-                        <div class="denomination-total">= ${denom.value.toFixed(2)} × <span id="total_${denomKey}">0</span></div>
+        } catch (error) {
+            console.error('Error fetching shift:', error);
+            const shiftType = document.getElementById('shiftType');
+            const shiftDate = document.getElementById('shiftDate');
+            if (shiftType) shiftType.textContent = 'ERROR';
+            if (shiftDate) shiftDate.textContent = '--';
+            updateSalesSectionVisibility(false);
+            return { isOpen: false, shiftType: 'Error', date: '--' };
+        }
+    }
+
+    function updateSalesSectionVisibility(isOpen) {
+        const salesSection = document.querySelector('.sales-section');
+        const countSection = document.querySelector('.count-section');
+        const pettyCashSection = document.getElementById('pettyCashTallySection');
+        const actionButtons = document.querySelector('.action-buttons');
+        const openBtn = document.getElementById('openCashierBtn');
+        const closeBtn = document.getElementById('closeCashierBtn');
+        
+        if (isOpen) {
+            if (salesSection) salesSection.style.display = 'block';
+            if (countSection) countSection.style.display = 'block';
+            if (pettyCashSection) pettyCashSection.style.display = 'block';
+            if (actionButtons) actionButtons.style.display = 'flex';
+        } else {
+            if (salesSection) {
+                salesSection.style.display = 'none';
+                const mvrSales = document.getElementById('mvrSales');
+                const usdSales = document.getElementById('usdSales');
+                if (mvrSales) mvrSales.textContent = '0.00';
+                if (usdSales) usdSales.textContent = '0.00';
+            }
+            if (countSection) countSection.style.display = 'block';
+            if (pettyCashSection) pettyCashSection.style.display = 'block';
+            if (actionButtons) actionButtons.style.display = 'flex';
+            if (openBtn) openBtn.disabled = false;
+            if (closeBtn) closeBtn.disabled = true;
+            
+            const comparisonSection = document.getElementById('comparisonSection');
+            if (comparisonSection) comparisonSection.style.display = 'none';
+            showMessage('No open shift. Please open a shift to view sales.', 'info');
+        }
+    }
+
+    // ========== CASHIER TRACKING FUNCTIONS ==========
+    async function loadCurrentCashier() {
+        try {
+            if (typeof database === 'undefined' || !database) return;
+            
+            const today = new Date().toISOString().split('T')[0];
+            const cashierDoc = await database.collection('CashierTracking').doc(today).get();
+            
+            if (cashierDoc.exists) {
+                const data = cashierDoc.data();
+                currentCashierData = {
+                    name: data.currentCashier || null,
+                    since: data.cashierSince || null,
+                    rcno: data.cashierRcno || null,
+                    history: data.cashierHistory || []
+                };
+                
+                const currentCashierName = document.getElementById('currentCashierName');
+                const cashierRcno = document.getElementById('cashierRcno');
+                const cashierSince = document.getElementById('cashierSince');
+                const cashierHistory = document.getElementById('cashierHistory');
+                
+                if (currentCashierName) currentCashierName.textContent = 
+                    currentCashierData.name || 'Not assigned';
+                if (cashierRcno) cashierRcno.textContent = 
+                    currentCashierData.rcno || '---';
+                
+                if (currentCashierData.since && cashierSince) {
+                    const date = new Date(currentCashierData.since);
+                    cashierSince.textContent = date.toLocaleTimeString();
+                } else if (cashierSince) {
+                    cashierSince.textContent = '--:--';
+                }
+                
+                if (currentCashierData.history && currentCashierData.history.length > 0 && cashierHistory) {
+                    const last = currentCashierData.history[currentCashierData.history.length - 1];
+                    cashierHistory.textContent = 
+                        `Previous: ${last.name} (${new Date(last.time).toLocaleTimeString()})`;
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error loading cashier:', error);
+        }
+    }
+
+    async function updateCashierTracking(action) {
+        try {
+            if (typeof database === 'undefined' || !database) return;
+            
+            const today = new Date().toISOString().split('T')[0];
+            const now = new Date().toISOString();
+            const cashierRef = database.collection('CashierTracking').doc(today);
+            
+            const doc = await cashierRef.get();
+            let history = [];
+            
+            if (doc.exists) {
+                history = doc.data().cashierHistory || [];
+            }
+            
+            history.push({
+                name: currentUser.username,
+                rcno: currentUser.rcno,
+                action: action,
+                time: now
+            });
+            
+            await cashierRef.set({
+                currentCashier: action === 'open' ? currentUser.username : null,
+                cashierSince: action === 'open' ? now : null,
+                cashierRcno: action === 'open' ? currentUser.rcno : null,
+                cashierHistory: history,
+                lastUpdated: now,
+                lastAction: action,
+                lastActionBy: currentUser.username
+            }, { merge: true });
+            
+            await addActivity({
+                type: 'cashier',
+                action: action,
+                amount: null,
+                description: `${currentUser.username} ${action}ed cashier`
+            });
+            
+            await loadCurrentCashier();
+            
+        } catch (error) {
+            console.error('Error updating cashier tracking:', error);
+        }
+    }
+
+    // ========== RECENT ACTIVITY FUNCTIONS ==========
+    async function loadRecentActivity() {
+        try {
+            if (typeof database === 'undefined' || !database) return;
+            
+            const today = new Date().toISOString().split('T')[0];
+            const activitySnapshot = await database.collection('CashierActivity')
+                .where('date', '==', today)
+                .orderBy('timestamp', 'desc')
+                .limit(20)
+                .get();
+            
+            const activityList = document.getElementById('recentActivity');
+            
+            if (!activityList) return;
+            
+            if (activitySnapshot.empty) {
+                activityList.innerHTML = `
+                    <div class="recent-activity-item">
+                        <div class="recent-activity-time">--:--</div>
+                        <div class="recent-activity-desc">No recent activity</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            activitySnapshot.forEach(doc => {
+                const data = doc.data();
+                const time = new Date(data.timestamp).toLocaleTimeString();
+                let amount = '';
+                if (data.amount) {
+                    if (data.currency === 'USD') {
+                        amount = ` USD ${roundUSD(data.amount).toFixed(2)}`;
+                    } else {
+                        amount = ` MVR ${data.amount.toFixed(2)}`;
+                    }
+                }
+                
+                html += `
+                    <div class="recent-activity-item">
+                        <div class="recent-activity-time">${time}</div>
+                        <div class="recent-activity-desc">${data.description}</div>
+                        <div class="recent-activity-meta">
+                            <span class="recent-activity-user">${data.username}</span>
+                            ${amount ? `<span class="recent-activity-amount">${amount}</span>` : ''}
+                        </div>
                     </div>
                 `;
             });
             
-            fieldsContainer.innerHTML = fieldsHtml;
-            document.getElementById('popupTotal').textContent = '0.00';
-            popup.style.display = 'flex';
-        }
-
-        function calculateDenominationTotal() {
-            const inputs = document.querySelectorAll('.denomination-input');
-            let total = 0;
+            activityList.innerHTML = html;
             
-            inputs.forEach(input => {
-                const count = parseInt(input.value) || 0;
-                const denomKey = input.id.replace('denom_', '');
-                const denomValue = parseFloat(denomKey.replace('_', '.'));
-                
-                const totalSpan = document.getElementById(`total_${denomKey}`);
-                if (totalSpan) {
-                    totalSpan.textContent = count;
-                }
-                
-                total += denomValue * count;
+        } catch (error) {
+            console.error('Error loading activity:', error);
+        }
+    }
+
+    async function addActivity(activity) {
+        try {
+            if (typeof database === 'undefined' || !database) return;
+            
+            const today = new Date().toISOString().split('T')[0];
+            const now = new Date().toISOString();
+            
+            let amount = activity.amount;
+            if (activity.currency === 'USD' && amount !== null) {
+                amount = roundUSD(amount);
+            }
+            
+            await database.collection('CashierActivity').add({
+                date: today,
+                timestamp: now,
+                username: currentUser.username,
+                rcno: currentUser.rcno,
+                type: activity.type,
+                action: activity.action,
+                amount: amount,
+                currency: activity.currency,
+                description: activity.description
             });
             
-            document.getElementById('popupTotal').textContent = total.toFixed(2);
-        }
-
-        function closeDenominationPopup() {
-            document.getElementById('denominationPopup').style.display = 'none';
-        }
-
-        function saveDenominationCount() {
-            const total = parseFloat(document.getElementById('popupTotal').textContent);
+            await loadRecentActivity();
             
-            switch(currentPopupField) {
-                case 'MVR':
-                    document.getElementById('countedMVR').value = total.toFixed(2);
-                    countedData.mvr = total;
-                    handleCountedInput();
-                    addActivity({
-                        type: 'count',
-                        action: 'counted',
-                        amount: total,
-                        currency: 'MVR',
-                        description: `Counted MVR ${total.toFixed(2)} using denominations`
-                    });
-                    break;
-                    
-                case 'USD':
-                    const roundedTotal = roundUSD(total);
-                    document.getElementById('countedUSD').value = roundedTotal.toFixed(2);
-                    countedData.usd = roundedTotal;
-                    handleCountedInput();
-                    addActivity({
-                        type: 'count',
-                        action: 'counted',
-                        amount: total,
-                        currency: 'USD',
-                        description: `Counted USD ${total.toFixed(2)} (rounded to ${roundedTotal}) using denominations`
-                    });
-                    break;
-                    
-                case 'PETTY_MVR':
-                    document.getElementById('countedPettyMVR').value = total.toFixed(2);
-                    countedPettyData.mvr = total;
-                    handlePettyCashTally();
-                    addActivity({
-                        type: 'petty',
-                        action: 'counted',
-                        amount: total,
-                        currency: 'MVR',
-                        description: `Counted petty cash MVR ${total.toFixed(2)}`
-                    });
-                    break;
-                    
-                case 'PETTY_USD':
-                    const roundedPettyTotal = roundUSD(total);
-                    document.getElementById('countedPettyUSD').value = roundedPettyTotal.toFixed(2);
-                    countedPettyData.usd = roundedPettyTotal;
-                    handlePettyCashTally();
-                    addActivity({
-                        type: 'petty',
-                        action: 'counted',
-                        amount: total,
-                        currency: 'USD',
-                        description: `Counted petty cash USD ${total.toFixed(2)} (rounded to ${roundedPettyTotal})`
-                    });
-                    break;
-                    
-                case 'SET_MVR':
-                    document.getElementById('setPettyMVR').value = total.toFixed(2);
-                    handleAdminPettyCashInput();
-                    break;
-                    
-                case 'SET_USD':
-                    const roundedSetTotal = roundUSD(total);
-                    document.getElementById('setPettyUSD').value = roundedSetTotal.toFixed(2);
-                    handleAdminPettyCashInput();
-                    break;
+        } catch (error) {
+            console.error('Error adding activity:', error);
+        }
+    }
+
+    // ========== DENOMINATION POPUP FUNCTIONS ==========
+    function openDenominationPopup(field) {
+        currentPopupField = field;
+        
+        const popup = document.getElementById('denominationPopup');
+        const title = document.getElementById('popupTitle');
+        const currencyIcon = document.getElementById('popupCurrencyIcon');
+        const fieldsContainer = document.getElementById('denominationFields');
+        
+        if (!popup || !title || !currencyIcon || !fieldsContainer) return;
+        
+        let denominations = [];
+        
+        if (field.includes('MVR') || field.includes('SET_MVR')) {
+            title.textContent = 'Count MVR Denominations';
+            currencyIcon.textContent = 'ރ';
+            denominations = MVR_DENOMINATIONS;
+        } else {
+            title.textContent = 'Count USD Denominations';
+            currencyIcon.textContent = '$';
+            denominations = USD_DENOMINATIONS;
+        }
+        
+        let fieldsHtml = '';
+        denominations.forEach(denom => {
+            const denomKey = denom.value.toString().replace('.', '_');
+            fieldsHtml += `
+                <div class="denomination-item">
+                    <div class="denomination-label">${denom.label}</div>
+                    <input type="number" id="denom_${denomKey}" class="denomination-input" placeholder="Count" min="0" step="1" value="0" oninput="calculateDenominationTotal()">
+                    <div class="denomination-total">= ${denom.value.toFixed(2)} × <span id="total_${denomKey}">0</span></div>
+                </div>
+            `;
+        });
+        
+        fieldsContainer.innerHTML = fieldsHtml;
+        const popupTotal = document.getElementById('popupTotal');
+        if (popupTotal) popupTotal.textContent = '0.00';
+        popup.style.display = 'flex';
+    }
+
+    function calculateDenominationTotal() {
+        const inputs = document.querySelectorAll('.denomination-input');
+        let total = 0;
+        
+        inputs.forEach(input => {
+            const count = parseInt(input.value) || 0;
+            const denomKey = input.id.replace('denom_', '');
+            const denomValue = parseFloat(denomKey.replace('_', '.'));
+            
+            const totalSpan = document.getElementById(`total_${denomKey}`);
+            if (totalSpan) {
+                totalSpan.textContent = count;
             }
             
-            closeDenominationPopup();
+            total += denomValue * count;
+        });
+        
+        const popupTotal = document.getElementById('popupTotal');
+        if (popupTotal) popupTotal.textContent = total.toFixed(2);
+    }
+
+    function closeDenominationPopup() {
+        const popup = document.getElementById('denominationPopup');
+        if (popup) popup.style.display = 'none';
+    }
+
+    function saveDenominationCount() {
+        const popupTotal = document.getElementById('popupTotal');
+        if (!popupTotal) return;
+        
+        const total = parseFloat(popupTotal.textContent);
+        
+        switch(currentPopupField) {
+            case 'MVR':
+                const countedMVR = document.getElementById('countedMVR');
+                if (countedMVR) countedMVR.value = total.toFixed(2);
+                countedData.mvr = total;
+                handleCountedInput();
+                addActivity({
+                    type: 'count',
+                    action: 'counted',
+                    amount: total,
+                    currency: 'MVR',
+                    description: `Counted MVR ${total.toFixed(2)} using denominations`
+                });
+                break;
+                
+            case 'USD':
+                const roundedTotal = roundUSD(total);
+                const countedUSD = document.getElementById('countedUSD');
+                if (countedUSD) countedUSD.value = roundedTotal.toFixed(2);
+                countedData.usd = roundedTotal;
+                handleCountedInput();
+                addActivity({
+                    type: 'count',
+                    action: 'counted',
+                    amount: total,
+                    currency: 'USD',
+                    description: `Counted USD ${total.toFixed(2)} (rounded to ${roundedTotal}) using denominations`
+                });
+                break;
+                
+            case 'PETTY_MVR':
+                const countedPettyMVR = document.getElementById('countedPettyMVR');
+                if (countedPettyMVR) countedPettyMVR.value = total.toFixed(2);
+                countedPettyData.mvr = total;
+                handlePettyCashTally();
+                addActivity({
+                    type: 'petty',
+                    action: 'counted',
+                    amount: total,
+                    currency: 'MVR',
+                    description: `Counted petty cash MVR ${total.toFixed(2)}`
+                });
+                break;
+                
+            case 'PETTY_USD':
+                const roundedPettyTotal = roundUSD(total);
+                const countedPettyUSD = document.getElementById('countedPettyUSD');
+                if (countedPettyUSD) countedPettyUSD.value = roundedPettyTotal.toFixed(2);
+                countedPettyData.usd = roundedPettyTotal;
+                handlePettyCashTally();
+                addActivity({
+                    type: 'petty',
+                    action: 'counted',
+                    amount: total,
+                    currency: 'USD',
+                    description: `Counted petty cash USD ${total.toFixed(2)} (rounded to ${roundedPettyTotal})`
+                });
+                break;
+                
+            case 'SET_MVR':
+                const setPettyMVR = document.getElementById('setPettyMVR');
+                if (setPettyMVR) setPettyMVR.value = total.toFixed(2);
+                handleAdminPettyCashInput();
+                break;
+                
+            case 'SET_USD':
+                const roundedSetTotal = roundUSD(total);
+                const setPettyUSD = document.getElementById('setPettyUSD');
+                if (setPettyUSD) setPettyUSD.value = roundedSetTotal.toFixed(2);
+                handleAdminPettyCashInput();
+                break;
         }
+        
+        closeDenominationPopup();
+    }
 
-        // ========== PETTY CASH FUNCTIONS ==========
-        async function loadPettyCashData() {
-            try {
-                if (typeof database === 'undefined' || !database) return;
+    // ========== PETTY CASH FUNCTIONS ==========
+    async function loadPettyCashData() {
+        try {
+            if (typeof database === 'undefined' || !database) return;
 
-                const currentDoc = await database.collection('PettyCash').doc('current').get();
-                
-                if (currentDoc.exists) {
-                    const data = currentDoc.data();
-                    pettyCashData = {
-                        mvr: data.mvr || 0,
-                        usd: data.usd || 0,
-                        lastUpdated: data.updated || null,
-                        updatedBy: data.updatedBy || null
-                    };
-                    
-                    document.getElementById('storedPettyMVR').textContent = pettyCashData.mvr.toFixed(2);
-                    document.getElementById('storedPettyUSD').textContent = pettyCashData.usd.toFixed(2);
-                    
-                    if (pettyCashData.lastUpdated) {
-                        const date = new Date(pettyCashData.lastUpdated);
-                        const timeStr = date.toLocaleTimeString();
-                        const dateStr = date.toLocaleDateString();
-                        const updatedBy = pettyCashData.updatedBy ? ` by ${pettyCashData.updatedBy}` : '';
-                        
-                        document.getElementById('pettyMVRDate').textContent = 
-                            `Last updated: ${dateStr} ${timeStr}${updatedBy} (persistent)`;
-                        document.getElementById('pettyUSDDate').textContent = 
-                            `Last updated: ${dateStr} ${timeStr}${updatedBy} (persistent)`;
-                    }
-                    
-                    return;
-                }
-                
-                console.log('No persistent petty cash found, creating with defaults');
-                const now = new Date().toISOString();
-                
-                await database.collection('PettyCash').doc('current').set({
-                    mvr: 0,
-                    usd: 0,
-                    updated: now,
-                    updatedBy: 'system',
-                    note: 'Default values - please update by admin'
-                });
-                
-                pettyCashData = { mvr: 0, usd: 0, lastUpdated: now, updatedBy: 'system' };
-                
-                document.getElementById('storedPettyMVR').textContent = '0.00';
-                document.getElementById('storedPettyUSD').textContent = '0.00';
-                document.getElementById('pettyMVRDate').textContent = 'Not set yet';
-                document.getElementById('pettyUSDDate').textContent = 'Not set yet';
-                
-            } catch (error) {
-                console.error('Error loading petty cash:', error);
-            }
-        }
-
-        async function savePettyCash() {
-            try {
-                showMessage('Saving petty cash...', 'success');
-                
-                const now = new Date().toISOString();
-                const newMVR = parseFloat(document.getElementById('setPettyMVR').value) || 0;
-                const newUSD = roundUSD(parseFloat(document.getElementById('setPettyUSD').value) || 0);
-                
-                await database.collection('PettyCash').doc('current').set({
-                    mvr: newMVR,
-                    usd: newUSD,
-                    updated: now,
-                    updatedBy: currentUser.username,
-                    rcno: currentUser.rcno,
-                    note: 'Persistent petty cash amount - used across all dates and shifts'
-                });
-                
-                const historyRef = database.collection('PettyCashHistory').doc();
-                await historyRef.set({
-                    mvr: newMVR,
-                    usd: newUSD,
-                    updated: now,
-                    updatedBy: currentUser.username,
-                    rcno: currentUser.rcno,
-                    previousMVR: pettyCashData.mvr,
-                    previousUSD: pettyCashData.usd
-                });
-                
+            const currentDoc = await database.collection('PettyCash').doc('current').get();
+            
+            const storedPettyMVR = document.getElementById('storedPettyMVR');
+            const storedPettyUSD = document.getElementById('storedPettyUSD');
+            const pettyMVRDate = document.getElementById('pettyMVRDate');
+            const pettyUSDDate = document.getElementById('pettyUSDDate');
+            
+            if (currentDoc.exists) {
+                const data = currentDoc.data();
                 pettyCashData = {
-                    mvr: newMVR,
-                    usd: newUSD,
-                    lastUpdated: now,
-                    updatedBy: currentUser.username
+                    mvr: data.mvr || 0,
+                    usd: data.usd || 0,
+                    lastUpdated: data.updated || null,
+                    updatedBy: data.updatedBy || null
                 };
                 
-                document.getElementById('storedPettyMVR').textContent = newMVR.toFixed(2);
-                document.getElementById('storedPettyUSD').textContent = newUSD.toFixed(2);
+                if (storedPettyMVR) storedPettyMVR.textContent = pettyCashData.mvr.toFixed(2);
+                if (storedPettyUSD) storedPettyUSD.textContent = pettyCashData.usd.toFixed(2);
                 
-                const date = new Date(now);
-                const timeStr = date.toLocaleTimeString();
-                const dateStr = date.toLocaleDateString();
+                if (pettyCashData.lastUpdated) {
+                    const date = new Date(pettyCashData.lastUpdated);
+                    const timeStr = date.toLocaleTimeString();
+                    const dateStr = date.toLocaleDateString();
+                    const updatedBy = pettyCashData.updatedBy ? ` by ${pettyCashData.updatedBy}` : '';
+                    
+                    if (pettyMVRDate) pettyMVRDate.textContent = 
+                        `Last updated: ${dateStr} ${timeStr}${updatedBy} (persistent)`;
+                    if (pettyUSDDate) pettyUSDDate.textContent = 
+                        `Last updated: ${dateStr} ${timeStr}${updatedBy} (persistent)`;
+                }
                 
-                document.getElementById('pettyMVRDate').textContent = 
-                    `Last updated: ${dateStr} ${timeStr} by ${currentUser.username} (persistent)`;
-                document.getElementById('pettyUSDDate').textContent = 
-                    `Last updated: ${dateStr} ${timeStr} by ${currentUser.username} (persistent)`;
-                
-                await addActivity({
-                    type: 'petty',
-                    action: 'set_persistent',
-                    amount: newMVR,
-                    currency: 'MVR',
-                    description: `Set persistent petty cash MVR ${newMVR.toFixed(2)}`
-                });
-                
-                await addActivity({
-                    type: 'petty',
-                    action: 'set_persistent',
-                    amount: newUSD,
-                    currency: 'USD',
-                    description: `Set persistent petty cash USD ${newUSD.toFixed(2)}`
-                });
-                
-                showMessage('Petty cash saved persistently!', 'success');
-                
-                document.getElementById('setPettyMVR').value = '0';
-                document.getElementById('setPettyUSD').value = '0';
-                document.getElementById('savePettyCashBtn').disabled = true;
-                
-            } catch (error) {
-                console.error('Error saving petty cash:', error);
-                showMessage('Failed to save petty cash. Please try again.', 'danger');
+                return;
             }
+            
+            console.log('No persistent petty cash found, creating with defaults');
+            const now = new Date().toISOString();
+            
+            await database.collection('PettyCash').doc('current').set({
+                mvr: 0,
+                usd: 0,
+                updated: now,
+                updatedBy: 'system',
+                note: 'Default values - please update by admin'
+            });
+            
+            pettyCashData = { mvr: 0, usd: 0, lastUpdated: now, updatedBy: 'system' };
+            
+            if (storedPettyMVR) storedPettyMVR.textContent = '0.00';
+            if (storedPettyUSD) storedPettyUSD.textContent = '0.00';
+            if (pettyMVRDate) pettyMVRDate.textContent = 'Not set yet';
+            if (pettyUSDDate) pettyUSDDate.textContent = 'Not set yet';
+            
+        } catch (error) {
+            console.error('Error loading petty cash:', error);
         }
+    }
 
-        function handlePettyCashTally() {
-            countedPettyData.mvr = parseFloat(document.getElementById('countedPettyMVR').value) || 0;
-            countedPettyData.usd = roundUSD(parseFloat(document.getElementById('countedPettyUSD').value) || 0);
+    async function savePettyCash() {
+        try {
+            showMessage('Saving petty cash...', 'success');
             
-            document.getElementById('countedPettyUSD').value = countedPettyData.usd.toFixed(2);
+            const now = new Date().toISOString();
+            const setPettyMVR = document.getElementById('setPettyMVR');
+            const setPettyUSD = document.getElementById('setPettyUSD');
             
-            comparePettyCashTally();
-            checkAllMatches();
+            if (!setPettyMVR || !setPettyUSD) return;
+            
+            const newMVR = parseFloat(setPettyMVR.value) || 0;
+            const newUSD = roundUSD(parseFloat(setPettyUSD.value) || 0);
+            
+            await database.collection('PettyCash').doc('current').set({
+                mvr: newMVR,
+                usd: newUSD,
+                updated: now,
+                updatedBy: currentUser.username,
+                rcno: currentUser.rcno,
+                note: 'Persistent petty cash amount - used across all dates and shifts'
+            });
+            
+            const historyRef = database.collection('PettyCashHistory').doc();
+            await historyRef.set({
+                mvr: newMVR,
+                usd: newUSD,
+                updated: now,
+                updatedBy: currentUser.username,
+                rcno: currentUser.rcno,
+                previousMVR: pettyCashData.mvr,
+                previousUSD: pettyCashData.usd
+            });
+            
+            pettyCashData = {
+                mvr: newMVR,
+                usd: newUSD,
+                lastUpdated: now,
+                updatedBy: currentUser.username
+            };
+            
+            const storedPettyMVR = document.getElementById('storedPettyMVR');
+            const storedPettyUSD = document.getElementById('storedPettyUSD');
+            const pettyMVRDate = document.getElementById('pettyMVRDate');
+            const pettyUSDDate = document.getElementById('pettyUSDDate');
+            
+            if (storedPettyMVR) storedPettyMVR.textContent = newMVR.toFixed(2);
+            if (storedPettyUSD) storedPettyUSD.textContent = newUSD.toFixed(2);
+            
+            const date = new Date(now);
+            const timeStr = date.toLocaleTimeString();
+            const dateStr = date.toLocaleDateString();
+            
+            if (pettyMVRDate) pettyMVRDate.textContent = 
+                `Last updated: ${dateStr} ${timeStr} by ${currentUser.username} (persistent)`;
+            if (pettyUSDDate) pettyUSDDate.textContent = 
+                `Last updated: ${dateStr} ${timeStr} by ${currentUser.username} (persistent)`;
+            
+            await addActivity({
+                type: 'petty',
+                action: 'set_persistent',
+                amount: newMVR,
+                currency: 'MVR',
+                description: `Set persistent petty cash MVR ${newMVR.toFixed(2)}`
+            });
+            
+            await addActivity({
+                type: 'petty',
+                action: 'set_persistent',
+                amount: newUSD,
+                currency: 'USD',
+                description: `Set persistent petty cash USD ${newUSD.toFixed(2)}`
+            });
+            
+            showMessage('Petty cash saved persistently!', 'success');
+            
+            setPettyMVR.value = '0';
+            setPettyUSD.value = '0';
+            
+            const saveBtn = document.getElementById('savePettyCashBtn');
+            if (saveBtn) saveBtn.disabled = true;
+            
+        } catch (error) {
+            console.error('Error saving petty cash:', error);
+            showMessage('Failed to save petty cash. Please try again.', 'danger');
         }
+    }
 
-        function handleAdminPettyCashInput() {
-            const mvr = parseFloat(document.getElementById('setPettyMVR').value) || 0;
-            const usd = roundUSD(parseFloat(document.getElementById('setPettyUSD').value) || 0);
-            
-            document.getElementById('setPettyUSD').value = usd.toFixed(2);
-            document.getElementById('savePettyCashBtn').disabled = false;
-        }
+    function handlePettyCashTally() {
+        const countedPettyMVR = document.getElementById('countedPettyMVR');
+        const countedPettyUSD = document.getElementById('countedPettyUSD');
+        
+        if (!countedPettyMVR || !countedPettyUSD) return;
+        
+        countedPettyData.mvr = parseFloat(countedPettyMVR.value) || 0;
+        countedPettyData.usd = roundUSD(parseFloat(countedPettyUSD.value) || 0);
+        
+        countedPettyUSD.value = countedPettyData.usd.toFixed(2);
+        
+        comparePettyCashTally();
+        checkAllMatches();
+    }
 
-        function comparePettyCashTally() {
-            const mvrMatch = Math.abs(countedPettyData.mvr - pettyCashData.mvr) < 0.01;
-            const usdMatch = countedPettyData.usd === pettyCashData.usd;
-            
-            document.getElementById('pettyComparisonSection').style.display = 'block';
-            
-            document.getElementById('pettyMVRComparison').textContent = 
-                `${countedPettyData.mvr.toFixed(2)} MVR / ${pettyCashData.mvr.toFixed(2)} MVR`;
-            
-            const mvrStatus = document.getElementById('pettyMVRStatus');
-            mvrStatus.textContent = mvrMatch ? '✓ MATCHED' : '✗ MISMATCH';
-            mvrStatus.className = `match-status ${mvrMatch ? 'status-matched' : 'status-mismatched'}`;
-            
-            document.getElementById('pettyUSDComparison').textContent = 
-                `${countedPettyData.usd.toFixed(2)} USD / ${pettyCashData.usd.toFixed(2)} USD`;
-            
-            const usdStatus = document.getElementById('pettyUSDStatus');
-            usdStatus.textContent = usdMatch ? '✓ MATCHED' : '✗ MISMATCH';
-            usdStatus.className = `match-status ${usdMatch ? 'status-matched' : 'status-mismatched'}`;
-        }
+    function handleAdminPettyCashInput() {
+        const setPettyMVR = document.getElementById('setPettyMVR');
+        const setPettyUSD = document.getElementById('setPettyUSD');
+        const saveBtn = document.getElementById('savePettyCashBtn');
+        
+        if (!setPettyMVR || !setPettyUSD || !saveBtn) return;
+        
+        const mvr = parseFloat(setPettyMVR.value) || 0;
+        const usd = roundUSD(parseFloat(setPettyUSD.value) || 0);
+        
+        setPettyUSD.value = usd.toFixed(2);
+        saveBtn.disabled = false;
+    }
 
-        // ========== SALES FUNCTIONS ==========
-        async function fetchSalesData() {
-            try {
-                const isShiftOpen = currentShift && 
-                    (currentShift.morning === 'open' || currentShift.evening === 'open');
-                
-                if (!isShiftOpen) {
-                    salesData = { mvr: 0, usd: 0 };
-                    document.getElementById('mvrSales').textContent = '0.00';
-                    document.getElementById('usdSales').textContent = '0.00';
-                    document.getElementById('comparisonSection').style.display = 'none';
-                    return;
-                }
+    function comparePettyCashTally() {
+        const pettyMVRComparison = document.getElementById('pettyMVRComparison');
+        const pettyUSDComparison = document.getElementById('pettyUSDComparison');
+        const pettyMVRStatus = document.getElementById('pettyMVRStatus');
+        const pettyUSDStatus = document.getElementById('pettyUSDStatus');
+        const pettyComparisonSection = document.getElementById('pettyComparisonSection');
+        
+        if (!pettyComparisonSection || !pettyMVRComparison || !pettyUSDComparison || !pettyMVRStatus || !pettyUSDStatus) return;
+        
+        const mvrMatch = Math.abs(countedPettyData.mvr - pettyCashData.mvr) < 0.01;
+        const usdMatch = countedPettyData.usd === pettyCashData.usd;
+        
+        pettyComparisonSection.style.display = 'block';
+        
+        pettyMVRComparison.textContent = 
+            `${countedPettyData.mvr.toFixed(2)} MVR / ${pettyCashData.mvr.toFixed(2)} MVR`;
+        
+        pettyMVRStatus.textContent = mvrMatch ? '✓ MATCHED' : '✗ MISMATCH';
+        pettyMVRStatus.className = `match-status ${mvrMatch ? 'status-matched' : 'status-mismatched'}`;
+        
+        pettyUSDComparison.textContent = 
+            `${countedPettyData.usd.toFixed(2)} USD / ${pettyCashData.usd.toFixed(2)} USD`;
+        
+        pettyUSDStatus.textContent = usdMatch ? '✓ MATCHED' : '✗ MISMATCH';
+        pettyUSDStatus.className = `match-status ${usdMatch ? 'status-matched' : 'status-mismatched'}`;
+    }
 
-                const db_ref = typeof passengerDb !== 'undefined' ? passengerDb : database;
-                
-                if (!db_ref) return;
-
-                let targetDate;
-                if (currentShift && currentShift.date) {
-                    targetDate = currentShift.date;
-                } else {
-                    targetDate = new Date().toISOString().split('T')[0];
-                }
-                
-                let currentShiftType = null;
-                if (currentShift) {
-                    if (currentShift.morning === 'open') {
-                        currentShiftType = 'MORNING';
-                    } else if (currentShift.evening === 'open') {
-                        currentShiftType = 'EVENING';
-                    }
-                }
-                
-                let totalMVR = 0;
-                let totalUSD = 0;
-                
-                try {
-                    let query = db_ref.collection('Kovelipay').where('date', '==', targetDate);
-                    
-                    if (currentShiftType) {
-                        query = query.where('shift', '==', currentShiftType);
-                    }
-                    
-                    const snapshot = await query.get();
-                    
-                    if (!snapshot.empty) {
-                        snapshot.forEach(doc => {
-                            const data = doc.data();
-                            const currency = (data.currency || 'USD').toUpperCase();
-                            const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
-                            
-                            if (currency === 'USD') {
-                                totalUSD += amount;
-                            } else {
-                                totalMVR += amount;
-                            }
-                        });
-                        
-                        totalUSD = roundUSD(totalUSD);
-                        
-                        salesData = { mvr: totalMVR, usd: totalUSD };
-                        
-                        document.getElementById('mvrSales').textContent = totalMVR.toFixed(2);
-                        document.getElementById('usdSales').textContent = totalUSD.toFixed(2);
-                        
-                        if (totalMVR > 0 || totalUSD > 0) {
-                            showMessage(`Loaded sales for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
-                        }
-                        return;
-                    }
-                } catch (e) {
-                    console.log('Date field query failed:', e);
-                }
-                
-                const snapshot = await db_ref.collection('Kovelipay').get();
-                const docs = [];
-                snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-                
-                const filteredByDate = docs.filter(d => {
-                    if (!d.submissionDateTime) return false;
-                    const docDate = extractDateFromDateTimeField(d.submissionDateTime);
-                    return docDate === targetDate;
-                });
-                
-                let filteredTransactions = filteredByDate;
-                if (currentShiftType) {
-                    filteredTransactions = filteredByDate.filter(d => {
-                        const shift = (d.shift || '').toUpperCase();
-                        return shift === currentShiftType;
-                    });
-                }
-                
-                filteredTransactions.forEach(tx => {
-                    const currency = (tx.currency || 'USD').toUpperCase();
-                    const amount = parseFloat(tx.totalAmount || tx.amount || 0) || 0;
-                    
-                    if (currency === 'USD') {
-                        totalUSD += amount;
-                    } else {
-                        totalMVR += amount;
-                    }
-                });
-                
-                totalUSD = roundUSD(totalUSD);
-                
-                salesData = { mvr: totalMVR, usd: totalUSD };
-                
-                document.getElementById('mvrSales').textContent = totalMVR.toFixed(2);
-                document.getElementById('usdSales').textContent = totalUSD.toFixed(2);
-                
-                if (totalMVR > 0 || totalUSD > 0) {
-                    showMessage(`Loaded ${filteredTransactions.length} transactions for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
-                } else {
-                    showMessage(`No sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
-                }
-                
-            } catch (error) {
-                console.error('Error fetching sales:', error);
+    // ========== SALES FUNCTIONS ==========
+    async function fetchSalesData() {
+        try {
+            const isShiftOpen = currentShift && 
+                (currentShift.morning === 'open' || currentShift.evening === 'open');
+            
+            const mvrSales = document.getElementById('mvrSales');
+            const usdSales = document.getElementById('usdSales');
+            const comparisonSection = document.getElementById('comparisonSection');
+            
+            if (!isShiftOpen) {
                 salesData = { mvr: 0, usd: 0 };
-                document.getElementById('mvrSales').textContent = '0.00';
-                document.getElementById('usdSales').textContent = '0.00';
-            }
-        }
-
-        // ========== COMPARISON FUNCTIONS ==========
-        function handleCountedInput() {
-            countedData.mvr = parseFloat(document.getElementById('countedMVR').value) || 0;
-            
-            const usdInput = parseFloat(document.getElementById('countedUSD').value) || 0;
-            countedData.usd = roundUSD(usdInput);
-            
-            document.getElementById('countedUSD').value = countedData.usd.toFixed(2);
-            
-            compareAmounts();
-            checkAllMatches();
-        }
-
-        function compareAmounts() {
-            const isShiftOpen = currentShift && 
-                (currentShift.morning === 'open' || currentShift.evening === 'open');
-            
-            if (!isShiftOpen) {
-                document.getElementById('comparisonSection').style.display = 'none';
+                if (mvrSales) mvrSales.textContent = '0.00';
+                if (usdSales) usdSales.textContent = '0.00';
+                if (comparisonSection) comparisonSection.style.display = 'none';
                 return;
             }
-            
-            const mvrMatch = Math.abs(countedData.mvr - salesData.mvr) < 0.01;
-            const usdMatch = countedData.usd === salesData.usd;
-            
-            document.getElementById('comparisonSection').style.display = 'block';
-            
-            document.getElementById('mvrComparison').textContent = 
-                `${countedData.mvr.toFixed(2)} MVR / ${salesData.mvr.toFixed(2)} MVR`;
-            
-            const mvrStatus = document.getElementById('mvrStatus');
-            mvrStatus.textContent = mvrMatch ? '✓ MATCHED' : '✗ MISMATCH';
-            mvrStatus.className = `match-status ${mvrMatch ? 'status-matched' : 'status-mismatched'}`;
-            
-            document.getElementById('usdComparison').textContent = 
-                `${countedData.usd.toFixed(2)} USD / ${salesData.usd.toFixed(2)} USD`;
-            
-            const usdStatus = document.getElementById('usdStatus');
-            usdStatus.textContent = usdMatch ? '✓ MATCHED' : '✗ MISMATCH';
-            usdStatus.className = `match-status ${usdMatch ? 'status-matched' : 'status-mismatched'}`;
-        }
 
-        function checkAllMatches() {
-            const isShiftOpen = currentShift && 
-                (currentShift.morning === 'open' || currentShift.evening === 'open');
+            const db_ref = typeof passengerDb !== 'undefined' ? passengerDb : database;
             
-            if (!isShiftOpen) {
-                document.getElementById('openCashierBtn').disabled = false;
-                document.getElementById('closeCashierBtn').disabled = true;
-                return;
-            }
-            
-            const salesMVRMatch = Math.abs(countedData.mvr - salesData.mvr) < 0.01;
-            const salesUSDMatch = countedData.usd === salesData.usd;
-            const salesMatch = salesMVRMatch && salesUSDMatch;
-            
-            const pettyMVRMatch = Math.abs(countedPettyData.mvr - pettyCashData.mvr) < 0.01;
-            const pettyUSDMatch = countedPettyData.usd === pettyCashData.usd;
-            const pettyCashMatch = pettyMVRMatch && pettyUSDMatch;
-            
-            const allMatch = salesMatch && pettyCashMatch;
-            
-            document.getElementById('openCashierBtn').disabled = true;
-            document.getElementById('closeCashierBtn').disabled = !allMatch;
-            
-            if (!salesMatch) {
-                showMessage(`Cash amounts do not match sales records. MVR: ${countedData.mvr.toFixed(2)} vs ${salesData.mvr.toFixed(2)}, USD: ${countedData.usd.toFixed(2)} vs ${salesData.usd.toFixed(2)}`, 'warning');
-            } else if (!pettyCashMatch) {
-                showMessage(`Petty cash tally does not match. MVR: ${countedPettyData.mvr.toFixed(2)} vs ${pettyCashData.mvr.toFixed(2)}, USD: ${countedPettyData.usd.toFixed(2)} vs ${pettyCashData.usd.toFixed(2)}`, 'warning');
+            if (!db_ref) return;
+
+            let targetDate;
+            if (currentShift && currentShift.date) {
+                targetDate = currentShift.date;
             } else {
-                hideMessage();
+                targetDate = new Date().toISOString().split('T')[0];
             }
-        }
-
-        // ========== CASHIER ACTIONS ==========
-        function handleOpenCashier() {
-            openPasswordPopup('open');
-        }
-
-        function handleCloseCashier() {
-            openPasswordPopup('close');
-        }
-
-        async function executeOpenCashier() {
-            try {
-                showMessage('Opening cashier...', 'success');
-                
-                if (typeof passengerDb !== 'undefined') {
-                    const shiftRef = passengerDb.collection('shifts').doc('currentshift');
-                    
-                    const now = new Date();
-                    const dateStr = now.toISOString().split('T')[0];
-                    const hours = now.getHours();
-                    const shiftToOpen = hours < 12 ? 'morning' : 'evening';
-                    
-                    await shiftRef.set({
-                        [shiftToOpen]: 'open',
-                        date: dateStr,
-                        openTime: now.toISOString(),
-                        updated: now.toISOString()
-                    }, { merge: true });
-                    
-                    await updateCashierTracking('open');
-                    await fetchShiftData();
-                    await fetchSalesData();
-                }
-                
-                showMessage('Cashier opened successfully!', 'success');
-                
-                document.getElementById('countedMVR').value = '0';
-                document.getElementById('countedUSD').value = '0';
-                document.getElementById('countedPettyMVR').value = '0';
-                document.getElementById('countedPettyUSD').value = '0';
-                document.getElementById('comparisonSection').style.display = 'none';
-                document.getElementById('pettyComparisonSection').style.display = 'none';
-                
-            } catch (error) {
-                console.error('Error opening cashier:', error);
-                showMessage('Failed to open cashier. Please try again.', 'danger');
-            }
-        }
-
-        async function executeCloseCashier() {
-            try {
-                showMessage('Closing cashier...', 'success');
-                
-                if (typeof passengerDb !== 'undefined' && currentShift) {
-                    const shiftRef = passengerDb.collection('shifts').doc('currentshift');
-                    
-                    const shiftToClose = currentShift.morning === 'open' ? 'morning' : 'evening';
-                    
-                    await shiftRef.set({
-                        [shiftToClose]: 'closed',
-                        updated: new Date().toISOString()
-                    }, { merge: true });
-                    
-                    await updateCashierTracking('close');
-                    await fetchShiftData();
-                }
-                
-                showMessage('Cashier closed successfully!', 'success');
-                
-                document.getElementById('countedMVR').value = '0';
-                document.getElementById('countedUSD').value = '0';
-                document.getElementById('countedPettyMVR').value = '0';
-                document.getElementById('countedPettyUSD').value = '0';
-                document.getElementById('comparisonSection').style.display = 'none';
-                document.getElementById('pettyComparisonSection').style.display = 'none';
-                
-            } catch (error) {
-                console.error('Error closing cashier:', error);
-                showMessage('Failed to close cashier. Please try again.', 'danger');
-            }
-        }
-
-        // ========== UTILITY FUNCTIONS ==========
-        function showMessage(text, type) {
-            const msgArea = document.getElementById('messageArea');
-            msgArea.style.display = 'block';
-            msgArea.className = `alert alert-${type}`;
-            msgArea.textContent = text;
             
-            if (type === 'success') {
-                setTimeout(hideMessage, 5000);
+            let currentShiftType = null;
+            if (currentShift) {
+                if (currentShift.morning === 'open') {
+                    currentShiftType = 'MORNING';
+                } else if (currentShift.evening === 'open') {
+                    currentShiftType = 'EVENING';
+                }
             }
-        }
-
-        function hideMessage() {
-            document.getElementById('messageArea').style.display = 'none';
-        }
-
-        function navigateTo(page) {
-            window.location.href = page;
-        }
-
-        async function logout() {
-            if (confirm('Are you sure you want to logout?')) {
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.href = 'login.html';
-            }
-        }
-
-        function redirectToLogin(reason) {
-            window.location.href = 'login.html';
-        }
-
-        // ========== INITIALIZATION ==========
-        async function initializePage() {
+            
+            let totalMVR = 0;
+            let totalUSD = 0;
+            
             try {
-                console.log('Initializing page...');
+                let query = db_ref.collection('Kovelipay').where('date', '==', targetDate);
                 
-                if (typeof passengerDb !== 'undefined') {
-                    database = passengerDb;
-                } else if (typeof db !== 'undefined') {
-                    database = db;
-                } else {
-                    document.getElementById('loading').innerHTML = `
-                        <div class="alert alert-danger">
-                            Database not initialized. Please check your configuration files.
-                        </div>
-                    `;
+                if (currentShiftType) {
+                    query = query.where('shift', '==', currentShiftType);
+                }
+                
+                const snapshot = await query.get();
+                
+                if (!snapshot.empty) {
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const currency = (data.currency || 'USD').toUpperCase();
+                        const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
+                        
+                        if (currency === 'USD') {
+                            totalUSD += amount;
+                        } else {
+                            totalMVR += amount;
+                        }
+                    });
+                    
+                    totalUSD = roundUSD(totalUSD);
+                    
+                    salesData = { mvr: totalMVR, usd: totalUSD };
+                    
+                    if (mvrSales) mvrSales.textContent = totalMVR.toFixed(2);
+                    if (usdSales) usdSales.textContent = totalUSD.toFixed(2);
+                    
+                    if (totalMVR > 0 || totalUSD > 0) {
+                        showMessage(`Loaded sales for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
+                    }
                     return;
                 }
+            } catch (e) {
+                console.log('Date field query failed:', e);
+            }
+            
+            const snapshot = await db_ref.collection('Kovelipay').get();
+            const docs = [];
+            snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+            
+            const filteredByDate = docs.filter(d => {
+                if (!d.submissionDateTime) return false;
+                const docDate = extractDateFromDateTimeField(d.submissionDateTime);
+                return docDate === targetDate;
+            });
+            
+            let filteredTransactions = filteredByDate;
+            if (currentShiftType) {
+                filteredTransactions = filteredByDate.filter(d => {
+                    const shift = (d.shift || '').toUpperCase();
+                    return shift === currentShiftType;
+                });
+            }
+            
+            filteredTransactions.forEach(tx => {
+                const currency = (tx.currency || 'USD').toUpperCase();
+                const amount = parseFloat(tx.totalAmount || tx.amount || 0) || 0;
                 
-                if (!loadUserFromStorage()) return;
+                if (currency === 'USD') {
+                    totalUSD += amount;
+                } else {
+                    totalMVR += amount;
+                }
+            });
+            
+            totalUSD = roundUSD(totalUSD);
+            
+            salesData = { mvr: totalMVR, usd: totalUSD };
+            
+            if (mvrSales) mvrSales.textContent = totalMVR.toFixed(2);
+            if (usdSales) usdSales.textContent = totalUSD.toFixed(2);
+            
+            if (totalMVR > 0 || totalUSD > 0) {
+                showMessage(`Loaded ${filteredTransactions.length} transactions for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
+            } else {
+                showMessage(`No sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
+            }
+            
+        } catch (error) {
+            console.error('Error fetching sales:', error);
+            salesData = { mvr: 0, usd: 0 };
+            const mvrSales = document.getElementById('mvrSales');
+            const usdSales = document.getElementById('usdSales');
+            if (mvrSales) mvrSales.textContent = '0.00';
+            if (usdSales) usdSales.textContent = '0.00';
+        }
+    }
+
+    // ========== COMPARISON FUNCTIONS ==========
+    function handleCountedInput() {
+        const countedMVR = document.getElementById('countedMVR');
+        const countedUSD = document.getElementById('countedUSD');
+        
+        if (!countedMVR || !countedUSD) return;
+        
+        countedData.mvr = parseFloat(countedMVR.value) || 0;
+        
+        const usdInput = parseFloat(countedUSD.value) || 0;
+        countedData.usd = roundUSD(usdInput);
+        
+        countedUSD.value = countedData.usd.toFixed(2);
+        
+        compareAmounts();
+        checkAllMatches();
+    }
+
+    function compareAmounts() {
+        const isShiftOpen = currentShift && 
+            (currentShift.morning === 'open' || currentShift.evening === 'open');
+        
+        const comparisonSection = document.getElementById('comparisonSection');
+        const mvrComparison = document.getElementById('mvrComparison');
+        const usdComparison = document.getElementById('usdComparison');
+        const mvrStatus = document.getElementById('mvrStatus');
+        const usdStatus = document.getElementById('usdStatus');
+        
+        if (!comparisonSection || !mvrComparison || !usdComparison || !mvrStatus || !usdStatus) return;
+        
+        if (!isShiftOpen) {
+            comparisonSection.style.display = 'none';
+            return;
+        }
+        
+        const mvrMatch = Math.abs(countedData.mvr - salesData.mvr) < 0.01;
+        const usdMatch = countedData.usd === salesData.usd;
+        
+        comparisonSection.style.display = 'block';
+        
+        mvrComparison.textContent = 
+            `${countedData.mvr.toFixed(2)} MVR / ${salesData.mvr.toFixed(2)} MVR`;
+        
+        mvrStatus.textContent = mvrMatch ? '✓ MATCHED' : '✗ MISMATCH';
+        mvrStatus.className = `match-status ${mvrMatch ? 'status-matched' : 'status-mismatched'}`;
+        
+        usdComparison.textContent = 
+            `${countedData.usd.toFixed(2)} USD / ${salesData.usd.toFixed(2)} USD`;
+        
+        usdStatus.textContent = usdMatch ? '✓ MATCHED' : '✗ MISMATCH';
+        usdStatus.className = `match-status ${usdMatch ? 'status-matched' : 'status-mismatched'}`;
+    }
+
+    function checkAllMatches() {
+        const isShiftOpen = currentShift && 
+            (currentShift.morning === 'open' || currentShift.evening === 'open');
+        
+        const openBtn = document.getElementById('openCashierBtn');
+        const closeBtn = document.getElementById('closeCashierBtn');
+        
+        if (!openBtn || !closeBtn) return;
+        
+        if (!isShiftOpen) {
+            openBtn.disabled = false;
+            closeBtn.disabled = true;
+            return;
+        }
+        
+        const salesMVRMatch = Math.abs(countedData.mvr - salesData.mvr) < 0.01;
+        const salesUSDMatch = countedData.usd === salesData.usd;
+        const salesMatch = salesMVRMatch && salesUSDMatch;
+        
+        const pettyMVRMatch = Math.abs(countedPettyData.mvr - pettyCashData.mvr) < 0.01;
+        const pettyUSDMatch = countedPettyData.usd === pettyCashData.usd;
+        const pettyCashMatch = pettyMVRMatch && pettyUSDMatch;
+        
+        const allMatch = salesMatch && pettyCashMatch;
+        
+        openBtn.disabled = true;
+        closeBtn.disabled = !allMatch;
+        
+        if (!salesMatch) {
+            showMessage(`Cash amounts do not match sales records. MVR: ${countedData.mvr.toFixed(2)} vs ${salesData.mvr.toFixed(2)}, USD: ${countedData.usd.toFixed(2)} vs ${salesData.usd.toFixed(2)}`, 'warning');
+        } else if (!pettyCashMatch) {
+            showMessage(`Petty cash tally does not match. MVR: ${countedPettyData.mvr.toFixed(2)} vs ${pettyCashData.mvr.toFixed(2)}, USD: ${countedPettyData.usd.toFixed(2)} vs ${pettyCashData.usd.toFixed(2)}`, 'warning');
+        } else {
+            hideMessage();
+        }
+    }
+
+    // ========== CASHIER ACTIONS ==========
+    function handleOpenCashier() {
+        openPasswordPopup('open');
+    }
+
+    function handleCloseCashier() {
+        openPasswordPopup('close');
+    }
+
+    async function executeOpenCashier() {
+        try {
+            showMessage('Opening cashier...', 'success');
+            
+            if (typeof passengerDb !== 'undefined') {
+                const shiftRef = passengerDb.collection('shifts').doc('currentshift');
                 
+                const now = new Date();
+                const dateStr = now.toISOString().split('T')[0];
+                const hours = now.getHours();
+                const shiftToOpen = hours < 12 ? 'morning' : 'evening';
+                
+                await shiftRef.set({
+                    [shiftToOpen]: 'open',
+                    date: dateStr,
+                    openTime: now.toISOString(),
+                    updated: now.toISOString()
+                }, { merge: true });
+                
+                await updateCashierTracking('open');
                 await fetchShiftData();
                 await fetchSalesData();
-                await loadPettyCashData();
-                await loadCurrentCashier();
-                await loadRecentActivity();
+            }
+            
+            showMessage('Cashier opened successfully!', 'success');
+            
+            const countedMVR = document.getElementById('countedMVR');
+            const countedUSD = document.getElementById('countedUSD');
+            const countedPettyMVR = document.getElementById('countedPettyMVR');
+            const countedPettyUSD = document.getElementById('countedPettyUSD');
+            const comparisonSection = document.getElementById('comparisonSection');
+            const pettyComparisonSection = document.getElementById('pettyComparisonSection');
+            
+            if (countedMVR) countedMVR.value = '0';
+            if (countedUSD) countedUSD.value = '0';
+            if (countedPettyMVR) countedPettyMVR.value = '0';
+            if (countedPettyUSD) countedPettyUSD.value = '0';
+            if (comparisonSection) comparisonSection.style.display = 'none';
+            if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
+            
+        } catch (error) {
+            console.error('Error opening cashier:', error);
+            showMessage('Failed to open cashier. Please try again.', 'danger');
+        }
+    }
+
+    async function executeCloseCashier() {
+        try {
+            showMessage('Closing cashier...', 'success');
+            
+            if (typeof passengerDb !== 'undefined' && currentShift) {
+                const shiftRef = passengerDb.collection('shifts').doc('currentshift');
                 
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('mainContent').style.display = 'block';
+                const shiftToClose = currentShift.morning === 'open' ? 'morning' : 'evening';
                 
-                document.getElementById('countedMVR').value = '0';
-                document.getElementById('countedUSD').value = '0';
-                document.getElementById('countedPettyMVR').value = '0';
-                document.getElementById('countedPettyUSD').value = '0';
-                document.getElementById('setPettyMVR').value = '0';
-                document.getElementById('setPettyUSD').value = '0';
+                await shiftRef.set({
+                    [shiftToClose]: 'closed',
+                    updated: new Date().toISOString()
+                }, { merge: true });
                 
-                document.getElementById('openCashierBtn').addEventListener('click', handleOpenCashier);
-                document.getElementById('closeCashierBtn').addEventListener('click', handleCloseCashier);
-                
-                if (currentUser && currentUser.level.toLowerCase() === 'admin') {
-                    document.getElementById('savePettyCashBtn').addEventListener('click', savePettyCash);
-                }
-                
-                refreshInterval = setInterval(async () => {
-                    await fetchShiftData();
-                    await fetchSalesData();
-                    await loadCurrentCashier();
-                }, 30000);
-                
-                activityInterval = setInterval(async () => {
-                    await loadRecentActivity();
-                }, 10000);
-                
-            } catch (error) {
-                console.error('Initialization error:', error);
+                await updateCashierTracking('close');
+                await fetchShiftData();
+            }
+            
+            showMessage('Cashier closed successfully!', 'success');
+            
+            const countedMVR = document.getElementById('countedMVR');
+            const countedUSD = document.getElementById('countedUSD');
+            const countedPettyMVR = document.getElementById('countedPettyMVR');
+            const countedPettyUSD = document.getElementById('countedPettyUSD');
+            const comparisonSection = document.getElementById('comparisonSection');
+            const pettyComparisonSection = document.getElementById('pettyComparisonSection');
+            
+            if (countedMVR) countedMVR.value = '0';
+            if (countedUSD) countedUSD.value = '0';
+            if (countedPettyMVR) countedPettyMVR.value = '0';
+            if (countedPettyUSD) countedPettyUSD.value = '0';
+            if (comparisonSection) comparisonSection.style.display = 'none';
+            if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
+            
+        } catch (error) {
+            console.error('Error closing cashier:', error);
+            showMessage('Failed to close cashier. Please try again.', 'danger');
+        }
+    }
+
+    // ========== UTILITY FUNCTIONS ==========
+    function showMessage(text, type) {
+        const msgArea = document.getElementById('messageArea');
+        if (!msgArea) return;
+        
+        msgArea.style.display = 'block';
+        msgArea.className = `alert alert-${type}`;
+        msgArea.textContent = text;
+        
+        if (type === 'success') {
+            setTimeout(hideMessage, 5000);
+        }
+    }
+
+    function hideMessage() {
+        const msgArea = document.getElementById('messageArea');
+        if (msgArea) msgArea.style.display = 'none';
+    }
+
+    function navigateTo(page) {
+        window.location.href = page;
+    }
+
+    async function logout() {
+        if (confirm('Are you sure you want to logout?')) {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = 'login.html';
+        }
+    }
+
+    function redirectToLogin(reason) {
+        window.location.href = 'login.html';
+    }
+
+    // ========== INITIALIZATION ==========
+    async function initializePage() {
+        try {
+            console.log('Initializing page...');
+            
+            // Load users first
+            loadUsers();
+            console.log('Users loaded:', usersList.length);
+            
+            if (typeof passengerDb !== 'undefined') {
+                database = passengerDb;
+            } else if (typeof db !== 'undefined') {
+                database = db;
+            } else {
                 document.getElementById('loading').innerHTML = `
+                    <div class="alert alert-danger">
+                        Database not initialized. Please check your configuration files.
+                    </div>
+                `;
+                return;
+            }
+            
+            if (!loadUserFromStorage()) return;
+            
+            await fetchShiftData();
+            await fetchSalesData();
+            await loadPettyCashData();
+            await loadCurrentCashier();
+            await loadRecentActivity();
+            
+            const loading = document.getElementById('loading');
+            const mainContent = document.getElementById('mainContent');
+            
+            if (loading) loading.style.display = 'none';
+            if (mainContent) mainContent.style.display = 'block';
+            
+            const countedMVR = document.getElementById('countedMVR');
+            const countedUSD = document.getElementById('countedUSD');
+            const countedPettyMVR = document.getElementById('countedPettyMVR');
+            const countedPettyUSD = document.getElementById('countedPettyUSD');
+            const setPettyMVR = document.getElementById('setPettyMVR');
+            const setPettyUSD = document.getElementById('setPettyUSD');
+            
+            if (countedMVR) countedMVR.value = '0';
+            if (countedUSD) countedUSD.value = '0';
+            if (countedPettyMVR) countedPettyMVR.value = '0';
+            if (countedPettyUSD) countedPettyUSD.value = '0';
+            if (setPettyMVR) setPettyMVR.value = '0';
+            if (setPettyUSD) setPettyUSD.value = '0';
+            
+            const openBtn = document.getElementById('openCashierBtn');
+            const closeBtn = document.getElementById('closeCashierBtn');
+            
+            if (openBtn) openBtn.addEventListener('click', handleOpenCashier);
+            if (closeBtn) closeBtn.addEventListener('click', handleCloseCashier);
+            
+            if (currentUser && currentUser.level.toLowerCase() === 'admin') {
+                const saveBtn = document.getElementById('savePettyCashBtn');
+                if (saveBtn) saveBtn.addEventListener('click', savePettyCash);
+            }
+            
+            refreshInterval = setInterval(async () => {
+                await fetchShiftData();
+                await fetchSalesData();
+                await loadCurrentCashier();
+            }, 30000);
+            
+            activityInterval = setInterval(async () => {
+                await loadRecentActivity();
+            }, 10000);
+            
+        } catch (error) {
+            console.error('Initialization error:', error);
+            const loading = document.getElementById('loading');
+            if (loading) {
+                loading.innerHTML = `
                     <div class="alert alert-danger">
                         Failed to load data. Please refresh the page.
                         <br><small>${error.message}</small>
@@ -2749,26 +2942,28 @@
                 `;
             }
         }
+    }
 
-        document.addEventListener('DOMContentLoaded', initializePage);
+    document.addEventListener('DOMContentLoaded', initializePage);
 
-        window.addEventListener('beforeunload', function() {
-            if (refreshInterval) clearInterval(refreshInterval);
-            if (activityInterval) clearInterval(activityInterval);
-        });
+    window.addEventListener('beforeunload', function() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        if (activityInterval) clearInterval(activityInterval);
+    });
 
-        window.navigateTo = navigateTo;
-        window.logout = logout;
-        window.openDenominationPopup = openDenominationPopup;
-        window.closeDenominationPopup = closeDenominationPopup;
-        window.calculateDenominationTotal = calculateDenominationTotal;
-        window.saveDenominationCount = saveDenominationCount;
-        window.handleCountedInput = handleCountedInput;
-        window.handlePettyCashTally = handlePettyCashTally;
-        window.handleAdminPettyCashInput = handleAdminPettyCashInput;
-        window.loadRecentActivity = loadRecentActivity;
-        window.closePasswordPopup = closePasswordPopup;
-        window.authorizeAction = authorizeAction;
-    </script>
+    // Make functions globally available
+    window.navigateTo = navigateTo;
+    window.logout = logout;
+    window.openDenominationPopup = openDenominationPopup;
+    window.closeDenominationPopup = closeDenominationPopup;
+    window.calculateDenominationTotal = calculateDenominationTotal;
+    window.saveDenominationCount = saveDenominationCount;
+    window.handleCountedInput = handleCountedInput;
+    window.handlePettyCashTally = handlePettyCashTally;
+    window.handleAdminPettyCashInput = handleAdminPettyCashInput;
+    window.loadRecentActivity = loadRecentActivity;
+    window.closePasswordPopup = closePasswordPopup;
+    window.authorizeAction = authorizeAction;
+</script>
 </body>
 </html>
