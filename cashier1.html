@@ -1637,22 +1637,26 @@
                 let activeShift = '';
                 let shiftTypeText = '';
                 let shiftStatus = '';
+                let isOpen = false;
                 
                 if (morning === 'open') {
                     activeShift = 'MORNING SHIFT';
                     shiftTypeText = 'Morning';
                     shiftStatus = 'OPEN';
                     headerShiftStatus.className = 'shift-status-badge status-open';
+                    isOpen = true;
                 } else if (evening === 'open') {
                     activeShift = 'EVENING SHIFT';
                     shiftTypeText = 'Evening';
                     shiftStatus = 'OPEN';
                     headerShiftStatus.className = 'shift-status-badge status-open';
+                    isOpen = true;
                 } else {
                     activeShift = 'NO OPEN SHIFT';
                     shiftTypeText = 'None';
                     shiftStatus = 'CLOSED';
                     headerShiftStatus.className = 'shift-status-badge status-closed';
+                    isOpen = false;
                 }
                 
                 shiftType.textContent = activeShift;
@@ -1662,14 +1666,21 @@
                 headerShiftType.textContent = shiftTypeText;
                 headerShiftStatus.textContent = shiftStatus;
                 
+                // Update sales section visibility based on shift status
+                updateSalesSectionVisibility(isOpen);
+                
                 // Update sales date info
                 const salesDateInfo = document.getElementById('salesDateInfo');
                 if (salesDateInfo) {
-                    salesDateInfo.textContent = `(Shift Date: ${date})`;
+                    if (isOpen) {
+                        salesDateInfo.textContent = `(Shift Date: ${date} - ${shiftTypeText} SHIFT)`;
+                    } else {
+                        salesDateInfo.textContent = `(No open shift)`;
+                    }
                 }
                 
                 return {
-                    isOpen: (morning === 'open' || evening === 'open'),
+                    isOpen: isOpen,
                     shiftType: shiftTypeText,
                     date: date
                 };
@@ -1682,6 +1693,9 @@
                 document.getElementById('headerShiftType').textContent = 'None';
                 document.getElementById('headerShiftStatus').textContent = 'NO DATA';
                 
+                // Hide sales section when no shift
+                updateSalesSectionVisibility(false);
+                
                 return { isOpen: false, shiftType: 'None', date: '--' };
             }
             
@@ -1689,7 +1703,48 @@
             console.error('Error fetching shift:', error);
             document.getElementById('shiftType').textContent = 'ERROR';
             document.getElementById('shiftDate').textContent = '--';
+            
+            // Hide sales section on error
+            updateSalesSectionVisibility(false);
+            
             return { isOpen: false, shiftType: 'Error', date: '--' };
+        }
+    }
+
+    function updateSalesSectionVisibility(isOpen) {
+        const salesSection = document.querySelector('.sales-section');
+        const countSection = document.querySelector('.count-section');
+        const pettyCashSection = document.getElementById('pettyCashTallySection');
+        const actionButtons = document.querySelector('.action-buttons');
+        
+        if (isOpen) {
+            // Show all sections when shift is open
+            if (salesSection) salesSection.style.display = 'block';
+            if (countSection) countSection.style.display = 'block';
+            if (pettyCashSection) pettyCashSection.style.display = 'block';
+            if (actionButtons) actionButtons.style.display = 'flex';
+            
+            // Enable/disable buttons based on matches (will be handled by checkAllMatches)
+        } else {
+            // Hide sales section and disable actions when shift is closed
+            if (salesSection) {
+                salesSection.style.display = 'none';
+                // Reset sales display
+                document.getElementById('mvrSales').textContent = '0.00';
+                document.getElementById('usdSales').textContent = '0';
+            }
+            if (countSection) countSection.style.display = 'block'; // Keep count section visible
+            if (pettyCashSection) pettyCashSection.style.display = 'block'; // Keep petty cash visible
+            if (actionButtons) {
+                actionButtons.style.display = 'flex';
+                document.getElementById('openCashierBtn').disabled = false; // Enable open button
+                document.getElementById('closeCashierBtn').disabled = true; // Disable close button
+            }
+            
+            // Clear any comparison displays
+            document.getElementById('comparisonSection').style.display = 'none';
+            
+            showMessage('No open shift. Please open a shift to view sales.', 'info');
         }
     }
 
@@ -2224,6 +2279,19 @@
     // ========== SALES FUNCTIONS - Fetch by date and shift ==========
     async function fetchSalesData() {
         try {
+            // Check if shift is open
+            const isShiftOpen = currentShift && 
+                (currentShift.morning === 'open' || currentShift.evening === 'open');
+            
+            if (!isShiftOpen) {
+                console.log('Shift is closed - not fetching sales data');
+                salesData = { mvr: 0, usd: 0 };
+                document.getElementById('mvrSales').textContent = '0.00';
+                document.getElementById('usdSales').textContent = '0';
+                document.getElementById('comparisonSection').style.display = 'none';
+                return;
+            }
+
             // Use passengerDb (same as report page) or fallback to database
             const db_ref = typeof passengerDb !== 'undefined' ? passengerDb : database;
             
@@ -2232,7 +2300,7 @@
                 return;
             }
 
-            // Get the date from the shift (if available)
+            // Get the date from the shift
             let targetDate;
             if (currentShift && currentShift.date) {
                 targetDate = currentShift.date;
@@ -2257,8 +2325,7 @@
             // Update the sales date info
             const salesDateInfo = document.getElementById('salesDateInfo');
             if (salesDateInfo) {
-                let shiftText = currentShiftType ? ` - ${currentShiftType} SHIFT` : '';
-                salesDateInfo.textContent = `(Shift Date: ${targetDate}${shiftText})`;
+                salesDateInfo.textContent = `(Shift Date: ${targetDate} - ${currentShiftType} SHIFT)`;
             }
             
             console.log('Fetching sales data for date:', targetDate);
@@ -2272,7 +2339,7 @@
                 console.log('Trying date field query...');
                 let query = db_ref.collection('Kovelipay').where('date', '==', targetDate);
                 
-                // Add shift filter if a shift is open
+                // Add shift filter for the current open shift
                 if (currentShiftType) {
                     query = query.where('shift', '==', currentShiftType);
                 }
@@ -2312,9 +2379,11 @@
                     document.getElementById('usdSales').textContent = totalUSD;
                     
                     if (transactions.length > 0) {
-                        showMessage(`Loaded ${transactions.length} transactions for ${targetDate}`, 'success');
-                        return;
+                        showMessage(`Loaded ${transactions.length} transactions for ${targetDate} (${currentShiftType} shift)`, 'success');
+                    } else {
+                        showMessage(`No transactions found for ${targetDate} (${currentShiftType} shift)`, 'info');
                     }
+                    return;
                 }
             } catch (e) {
                 console.log('Date field query failed, trying submissionDateTime:', e);
@@ -2338,14 +2407,14 @@
                 
                 console.log(`Found ${filteredByDate.length} records for date ${targetDate}`);
                 
-                // Further filter by shift if needed
+                // Filter by the current open shift
                 let filteredTransactions = filteredByDate;
                 if (currentShiftType) {
                     filteredTransactions = filteredByDate.filter(d => {
                         const shift = (d.shift || '').toUpperCase();
                         return shift === currentShiftType;
                     });
-                    console.log(`After shift filter: ${filteredTransactions.length} records`);
+                    console.log(`After ${currentShiftType} shift filter: ${filteredTransactions.length} records`);
                 }
                 
                 // Process each transaction
@@ -2381,18 +2450,9 @@
                 
                 // Show message with details
                 if (transactions.length === 0) {
-                    let message = `No sales transactions found for date: ${targetDate}`;
-                    if (currentShiftType) {
-                        message += ` (${currentShiftType} shift)`;
-                    }
-                    showMessage(message, 'info');
+                    showMessage(`No sales transactions found for ${targetDate} (${currentShiftType} shift)`, 'info');
                 } else {
-                    let message = `Loaded ${transactions.length} transactions for ${targetDate}`;
-                    if (currentShiftType) {
-                        message += ` (${currentShiftType} shift)`;
-                    }
-                    message += `: MVR ${totalMVR.toFixed(2)} / USD ${totalUSD}`;
-                    showMessage(message, 'success');
+                    showMessage(`Loaded ${transactions.length} transactions for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD}`, 'success');
                 }
                 
             } catch (e) {
@@ -2405,7 +2465,13 @@
             salesData = { mvr: 0, usd: 0 };
             document.getElementById('mvrSales').textContent = '0.00';
             document.getElementById('usdSales').textContent = '0';
-            showMessage('Error fetching sales data: ' + error.message, 'danger');
+            
+            // Only show error if shift is open
+            const isShiftOpen = currentShift && 
+                (currentShift.morning === 'open' || currentShift.evening === 'open');
+            if (isShiftOpen) {
+                showMessage('Error fetching sales data: ' + error.message, 'danger');
+            }
         }
     }
 
@@ -2418,6 +2484,15 @@
     }
 
     function compareAmounts() {
+        // Only show comparison if shift is open
+        const isShiftOpen = currentShift && 
+            (currentShift.morning === 'open' || currentShift.evening === 'open');
+        
+        if (!isShiftOpen) {
+            document.getElementById('comparisonSection').style.display = 'none';
+            return;
+        }
+        
         const mvrMatch = Math.abs(countedData.mvr - salesData.mvr) < 0.01;
         const usdMatch = countedData.usd === salesData.usd;
         
@@ -2442,6 +2517,16 @@
 
     // ========== CHECK ALL CONDITIONS FOR BUTTONS ==========
     function checkAllMatches() {
+        const isShiftOpen = currentShift && 
+            (currentShift.morning === 'open' || currentShift.evening === 'open');
+        
+        if (!isShiftOpen) {
+            // When shift is closed, only enable open button
+            document.getElementById('openCashierBtn').disabled = false;
+            document.getElementById('closeCashierBtn').disabled = true;
+            return;
+        }
+        
         // Check sales match
         const salesMVRMatch = Math.abs(countedData.mvr - salesData.mvr) < 0.01;
         const salesUSDMatch = countedData.usd === salesData.usd;
@@ -2456,16 +2541,8 @@
         const allMatch = salesMatch && pettyCashMatch;
         
         // Update button states
-        const isShiftOpen = currentShift && 
-            (currentShift.morning === 'open' || currentShift.evening === 'open');
-        
-        if (!isShiftOpen) {
-            document.getElementById('openCashierBtn').disabled = !allMatch;
-            document.getElementById('closeCashierBtn').disabled = true;
-        } else {
-            document.getElementById('openCashierBtn').disabled = true;
-            document.getElementById('closeCashierBtn').disabled = !allMatch;
-        }
+        document.getElementById('openCashierBtn').disabled = true; // Can't open when already open
+        document.getElementById('closeCashierBtn').disabled = !allMatch;
         
         // Show message if mismatch
         if (!salesMatch) {
@@ -2544,8 +2621,7 @@
                 // Refresh shift data
                 await fetchShiftData();
                 
-                // Refresh sales data (will now show no shift)
-                await fetchSalesData();
+                // Sales data will be hidden automatically by updateSalesSectionVisibility
             }
             
             showMessage('Cashier closed successfully!', 'success');
@@ -2625,7 +2701,7 @@
             // Fetch shift data FIRST
             await fetchShiftData();
             
-            // THEN fetch sales data using the shift date and current shift
+            // THEN fetch sales data using the shift date and current shift (only if shift is open)
             await fetchSalesData();
             
             // Load persistent petty cash data (this will always get the same amount)
@@ -2661,7 +2737,7 @@
             // Auto-refresh every 30 seconds
             refreshInterval = setInterval(async () => {
                 await fetchShiftData();
-                await fetchSalesData(); // This will now use the updated shift info
+                await fetchSalesData(); // This will only fetch if shift is open
                 // Note: We don't refresh petty cash data here because it's persistent
                 await loadCurrentCashier();
             }, 30000);
