@@ -1077,8 +1077,8 @@
                         <div class="form-group">
                             <label>RATE TYPE</label>
                             <select id="rateType">
-                                <option value="A" selected>RATE A</option>
-                                <option value="B" >RATE B</option>
+                                <option value="A">RATE A</option>
+                                <option value="B" selected>RATE B</option>
                             </select>
                         </div>
                         
@@ -1233,6 +1233,9 @@ let pendingTransactionsCount = 0;
 
 // Store last saved transaction data for reprint
 let lastSavedTransaction = null;
+
+// Counter for generating sequential receipt numbers
+let lastReceiptCounter = 3059; // Starting point
 
 // ========== PENDING APPROVALS FUNCTIONS ==========
 
@@ -1571,42 +1574,64 @@ function updateShiftDisplay() {
     shiftInfo.classList.remove('loading', 'error');
 }
 
-// ========== RECEIPT NUMBER GENERATION ==========
+// ========== FIXED RECEIPT NUMBER GENERATION ==========
 
 async function generateReceiptNumber() {
     try {
         if (typeof passengerDb === 'undefined') {
-            return 'ERR-' + Date.now().toString().slice(-6);
+            // Fallback: use timestamp-based number
+            const timestamp = Date.now();
+            const randomPart = Math.floor(Math.random() * 1000);
+            return 'R-' + timestamp.toString().slice(-5) + randomPart;
         }
         
+        // Get all receipts to find the maximum number
         const kovelipayRef = passengerDb.collection('Kovelipay');
-        const snapshot = await kovelipayRef.orderBy('receiptNo', 'desc').limit(1).get();
+        const snapshot = await kovelipayRef.get();
         
-        let nextReceiptNo = '3059';
+        let maxNumber = 3059; // Starting point
         
-        if (!snapshot.empty) {
-            const lastDoc = snapshot.docs[0];
-            const lastData = lastDoc.data();
-            const lastReceiptNo = lastData.receiptNo || '';
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const receiptNo = data.receiptNo || '';
             
-            if (lastReceiptNo && lastReceiptNo.startsWith('R-')) {
-                const numPart = parseInt(lastReceiptNo.substring(2));
-                if (!isNaN(numPart)) {
-                    const nextNum = numPart + 1;
-                    nextReceiptNo = 'R-' + nextNum.toString().padStart(5, '0');
-                }
+            // Try to extract number from various receipt formats
+            let numPart = 0;
+            
+            if (receiptNo.startsWith('R-')) {
+                // Format: R-00001
+                numPart = parseInt(receiptNo.substring(2).replace(/^0+/, ''));
+            } else if (receiptNo.startsWith('R')) {
+                // Format: R00001
+                numPart = parseInt(receiptNo.substring(1));
+            } else {
+                // Try to parse as number directly
+                numPart = parseInt(receiptNo);
             }
-        }
+            
+            if (!isNaN(numPart) && numPart > maxNumber) {
+                maxNumber = numPart;
+            }
+        });
         
+        // Increment for new receipt
+        const nextNumber = maxNumber + 1;
+        
+        // Format as R-XXXXX (with leading zeros)
+        const nextReceiptNo = 'R-' + nextNumber.toString().padStart(5, '0');
+        
+        console.log('Generated receipt number:', nextReceiptNo, 'from max:', maxNumber);
         return nextReceiptNo;
         
     } catch (error) {
         console.error('Error generating receipt number:', error);
-        return 'R-' + Date.now().toString().slice(-5);
+        // Fallback: use timestamp
+        const timestamp = Date.now();
+        return 'R-' + timestamp.toString().slice(-5);
     }
 }
 
-// ========== FIREBASE SAVE FUNCTION ==========
+// ========== FIREBASE SAVE FUNCTION - FIXED TO USE AUTO-ID ==========
 
 async function saveToFirebase(data) {
     try {
@@ -1614,15 +1639,53 @@ async function saveToFirebase(data) {
             throw new Error('passengerDb not initialized');
         }
         
+        // Use add() instead of doc(data.receiptNo).set() to auto-generate ID
+        // This ensures each save creates a new document
         const kovelipayRef = passengerDb.collection('Kovelipay');
+        const docRef = await kovelipayRef.add(data);
+        
+        console.log('Successfully saved to Firebase with auto-ID:', docRef.id);
+        
+        // Also save with receipt number as a field for easy lookup
+        // But the document ID will be auto-generated
+        return { id: docRef.id, ...data };
+        
+    } catch (error) {
+        console.error('Error saving to Firebase:', error);
+        throw error;
+    }
+}
+
+// Alternative save function that uses receipt number as ID but checks for duplicates
+async function saveToFirebaseWithReceiptId(data) {
+    try {
+        if (typeof passengerDb === 'undefined') {
+            throw new Error('passengerDb not initialized');
+        }
+        
+        const kovelipayRef = passengerDb.collection('Kovelipay');
+        const receiptNo = data.receiptNo;
+        
+        // Check if document with this receipt number already exists
+        const existingDoc = await kovelipayRef.doc(receiptNo).get();
+        
+        if (existingDoc.exists) {
+            // Receipt number already exists, generate a new one
+            console.warn('Receipt number already exists:', receiptNo);
+            // Generate a new receipt number with timestamp to ensure uniqueness
+            const timestamp = Date.now();
+            const newReceiptNo = 'R-' + timestamp.toString().slice(-8);
+            data.receiptNo = newReceiptNo;
+            data.originalReceiptNo = receiptNo; // Store original for reference
+            data.retryCount = (data.retryCount || 0) + 1;
+        }
+        
+        // Save with receipt number as ID
         await kovelipayRef.doc(data.receiptNo).set(data);
         
-        console.log('Successfully saved to Firebase with ID:', data.receiptNo);
+        console.log('Successfully saved to Firebase with receipt ID:', data.receiptNo);
         
-        // Refresh pending count after saving
-        fetchPendingTransactionsCount();
-        
-        return true;
+        return data;
         
     } catch (error) {
         console.error('Error saving to Firebase:', error);
@@ -1639,13 +1702,22 @@ async function fetchTransactionByReceipt(receiptNo) {
         }
         
         const kovelipayRef = passengerDb.collection('Kovelipay');
-        const doc = await kovelipayRef.doc(receiptNo).get();
         
-        if (doc.exists) {
+        // Try to find by receiptNo field (not document ID)
+        const snapshot = await kovelipayRef.where('receiptNo', '==', receiptNo).limit(1).get();
+        
+        if (!snapshot.empty) {
+            const doc = snapshot.docs[0];
             return { id: doc.id, ...doc.data() };
-        } else {
-            return null;
         }
+        
+        // If not found by field, try by document ID (for backward compatibility)
+        const docById = await kovelipayRef.doc(receiptNo).get();
+        if (docById.exists) {
+            return { id: docById.id, ...docById.data() };
+        }
+        
+        return null;
     } catch (error) {
         console.error('Error fetching transaction:', error);
         throw error;
@@ -1885,7 +1957,7 @@ function clearAllFields() {
     document.getElementById('code').focus();
 }
 
-// ========== SUBMIT FUNCTION - FIXED TO USE SHIFT DATE ==========
+// ========== FIXED SUBMIT FUNCTION ==========
 
 async function submitForm() {
     // Check if user is logged in
@@ -1916,6 +1988,7 @@ async function submitForm() {
     submitBtn.textContent = 'SAVING...';
     
     try {
+        // Generate unique receipt number
         const receiptNo = await generateReceiptNumber();
         currentReceiptNo = receiptNo;
         document.getElementById('receiptNo').value = receiptNo;
@@ -2031,7 +2104,10 @@ async function submitForm() {
                 openTime: currentShiftData.openTime,
                 status: currentShiftData.status,
                 usedForTransaction: true
-            }
+            },
+            
+            // Add unique identifier to prevent collisions
+            uniqueId: Date.now() + '-' + Math.random().toString(36).substr(2, 9)
         };
         
         // Log what we're saving to verify shift date is used
@@ -2051,10 +2127,11 @@ async function submitForm() {
             console.warn('⚠️ Warning: Transaction date matches current date - check shift data');
         }
         
-        await saveToFirebase(completeData);
+        // Use the save function that creates new documents
+        const savedData = await saveToFirebase(completeData);
         
         // Store last saved transaction for reprint
-        lastSavedTransaction = completeData;
+        lastSavedTransaction = savedData;
         
         const statusMsg = document.getElementById('statusMessage');
         if (statusMsg) {
@@ -2066,7 +2143,7 @@ async function submitForm() {
         
         alert(`Receipt #${receiptNo} saved!\nShift Date: ${shiftDate} ${currentShiftData.shift}\nExpires at: ${expiryResult.display}\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
         
-        return completeData;
+        return savedData;
         
     } catch (error) {
         console.error('Error in submitForm:', error);
