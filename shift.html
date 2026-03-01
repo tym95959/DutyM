@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -416,6 +415,15 @@
     let currentUser = { name: 'operator', level: 'operator', rcno: '', isSupervisor: false };
     let currentShiftData = { date: '', shift: '', status: '', openTime: '' };
 
+    // Helper function to get today's date in YYYY-MM-DD format using system date
+    function getSystemDateString() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     function loadUserFromLogin() {
         try {
             const username = localStorage.getItem('username');
@@ -454,7 +462,7 @@
         const resetBtn = document.getElementById('resetSuperBtn');
         if (resetBtn) {
             resetBtn.disabled = !currentUser.isSupervisor;
-            resetBtn.title = currentUser.isSupervisor ? 'reset new day' : 'supervisor only';
+            resetBtn.title = currentUser.isSupervisor ? 'reset new day (uses system date)' : 'supervisor only';
         }
     }
 
@@ -523,7 +531,7 @@
                 currentShiftData = { date: data.date, shift: data.morning==='open'?'MORNING':data.evening==='open'?'EVENING':'none', status: data.morning==='open'?'OPEN':data.evening==='open'?'OPEN':'CLOSED', openTime: data.updated };
             } else {
                 // fallback empty
-                updateShiftUI({ morning:'pending', evening:'pending', date:new Date().toISOString().split('T')[0] });
+                updateShiftUI({ morning:'pending', evening:'pending', date:getSystemDateString() });
             }
         } catch (error) { console.error(error); showMessage('error loading', true); }
     }
@@ -534,18 +542,18 @@
             const doc = await passengerDb.collection('shifts').doc('currentshift').get();
             const currentData = doc.exists ? doc.data() : {};
             const existingDate = currentData.date;
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getSystemDateString(); // Using system date consistently
 
             // ===== AUTO RESET WHEN CLOSING SHIFT WITH DATE MISMATCH =====
             if (action === 'close' && existingDate && existingDate !== todayStr) {
-                const confirmReset = confirm(`⚠️ Date Mismatch Detected!\n\nShift Date: ${formatDateForDisplay(existingDate)}\nToday's Date: ${formatDateForDisplay(todayStr)}\n\nDo you want to reset for the new day?`);
+                const confirmReset = confirm(`⚠️ Date Mismatch Detected!\n\nShift Date: ${formatDateForDisplay(existingDate)}\nToday's System Date: ${formatDateForDisplay(todayStr)}\n\nDo you want to reset for the new day?`);
                 
                 if (confirmReset) {
                     const now = new Date().toLocaleString();
                     await passengerDb.collection('shifts').doc('currentshift').set({
                         morning: 'pending',
                         evening: 'pending',
-                        date: todayStr,
+                        date: todayStr, // Using system date
                         updated: now,
                         updatedBy: currentUser.name,
                         updatedByLevel: currentUser.level,
@@ -554,7 +562,7 @@
                         resetAt: now,
                         resetReason: 'auto_reset_on_shift_close_date_mismatch'
                     });
-                    showMessage(`✅ Reset to new day: ${formatDateForDisplay(todayStr)}`);
+                    showMessage(`✅ Reset to new day: ${formatDateForDisplay(todayStr)} (system date)`);
                     await loadTodayData();
                     return;
                 } else {
@@ -565,7 +573,7 @@
 
             // Normal shift operations - only proceed if dates match or no existing date
             if (existingDate && existingDate !== todayStr && action !== 'close') {
-                showMessage(`⚠️ Date mismatch. Please refresh or contact supervisor.`, true);
+                showMessage(`⚠️ Date mismatch. System date: ${formatDateForDisplay(todayStr)}. Please refresh or contact supervisor.`, true);
                 return;
             }
 
@@ -608,19 +616,33 @@
         }
     }
 
+    // Supervisor reset function - now explicitly uses system date
     async function supervisorReset() {
         if (!currentUser.isSupervisor) { showMessage('supervisor only', true); return; }
-        if (!confirm('reset shifts for new day?')) return;
-        const today = new Date().toISOString().split('T')[0];
+        if (!confirm('Reset shifts for new day? This will use TODAY\'S SYSTEM DATE.')) return;
+        
+        const todayStr = getSystemDateString(); // Get system date explicitly
         const now = new Date().toLocaleString();
+        
         try {
             await passengerDb.collection('shifts').doc('currentshift').set({
-                morning:'pending', evening:'pending', date:today, updated:now,
-                updatedBy:currentUser.name, updatedByLevel:currentUser.level, updatedByRC:currentUser.rcno,
-                resetBy:currentUser.name, resetAt:now
+                morning: 'pending', 
+                evening: 'pending', 
+                date: todayStr, // Force using system date
+                updated: now,
+                updatedBy: currentUser.name, 
+                updatedByLevel: currentUser.level, 
+                updatedByRC: currentUser.rcno,
+                resetBy: currentUser.name, 
+                resetAt: now,
+                resetReason: 'supervisor_reset_with_system_date'
             });
-            showMessage('✅ new day started'); await loadTodayData();
-        } catch (error) { showMessage('reset error', true); }
+            showMessage(`✅ New day started with system date: ${formatDateForDisplay(todayStr)}`); 
+            await loadTodayData();
+        } catch (error) { 
+            console.error(error);
+            showMessage('reset error', true); 
+        }
     }
 
     function checkLogin() { if (!localStorage.getItem('username')) { window.location.href='login.html'; return false; } return true; }
