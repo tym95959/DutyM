@@ -1243,28 +1243,18 @@
             const databases = getAllDatabases();
             console.log(`🔍 Loading dates from ${databases.length} databases...`);
             
-            // Get today's date and last 30 days for optimization
-            const today = new Date();
-            const thirtyDaysAgo = new Date(today);
-            thirtyDaysAgo.setDate(today.getDate() - 30);
-            
-            // Format dates for Firestore query
-            const todayStr = formatDateForQuery(today);
-            const thirtyDaysAgoStr = formatDateForQuery(thirtyDaysAgo);
-            
             let totalRecords = 0;
             let databasesWithData = 0;
             
-            // Create a promise for each database query
-            const dbPromises = databases.map(async (dbInfo) => {
+            // Process databases sequentially to avoid overwhelming the browser
+            for (const dbInfo of databases) {
                 try {
                     console.log(`📂 Querying ${dbInfo.name}...`);
                     
-                    // OPTIMIZATION: Get only dates, not all passengers
-                    // Query only the last 30 days for better performance
-                    const snapshot = await dbInfo.ref.collection('KoveliPass')
-                        .select('date', 'flightNo', 'shift', 'airline', 'entryTime') // Only fetch needed fields
-                        .get();
+                    // Update progress
+                    dateSelect.innerHTML = `<option value="">🔍 Scanning ${dbInfo.name}...</option>`;
+                    
+                    const snapshot = await dbInfo.ref.collection('KoveliPass').get();
                     
                     databaseStats[dbInfo.name] = {
                         records: snapshot.size,
@@ -1276,59 +1266,65 @@
                         databasesWithData++;
                         totalRecords += snapshot.size;
                         
-                        // OPTIMIZATION: Process in batches
-                        const dateMap = new Map(); // Temporary map for this database
+                        // Process in batches to avoid UI freeze
+                        const batchSize = 100;
+                        const docs = snapshot.docs;
                         
-                        snapshot.forEach(doc => {
-                            const data = doc.data();
-                            const date = data.date;
+                        for (let i = 0; i < docs.length; i += batchSize) {
+                            const batch = docs.slice(i, i + batchSize);
                             
-                            if (date) {
-                                databaseStats[dbInfo.name].dates.add(date);
+                            // Allow UI to update between batches
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                            
+                            batch.forEach(doc => {
+                                const data = doc.data();
+                                const date = data.date;
                                 
-                                if (!dateMap.has(date)) {
-                                    dateMap.set(date, new Map());
-                                }
-                                
-                                const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
-                                databaseStats[dbInfo.name].flights.add(data.flightNo);
-                                
-                                if (!dateMap.get(date).has(flightKey)) {
-                                    dateMap.get(date).set(flightKey, {
-                                        flightNo: data.flightNo,
-                                        shift: data.shift || 'UNKNOWN',
-                                        airline: data.airline || '',
-                                        passengerCount: 1,
-                                        firstPax: data.entryTime,
-                                        lastPax: data.entryTime,
-                                        database: dbInfo.name,
-                                        dbRef: dbInfo.ref,
-                                        databaseProject: dbInfo.projectId,
-                                        flightPrefix: data.flightNo ? data.flightNo.substring(0, 2).toUpperCase() : 'UNK'
-                                    });
-                                } else {
-                                    // Update passenger count
-                                    const flightData = dateMap.get(date).get(flightKey);
-                                    flightData.passengerCount++;
+                                if (date) {
+                                    databaseStats[dbInfo.name].dates.add(date);
                                     
-                                    // Update first/last pax times
-                                    if (data.entryTime) {
-                                        if (!flightData.firstPax || data.entryTime < flightData.firstPax) {
-                                            flightData.firstPax = data.entryTime;
-                                        }
-                                        if (!flightData.lastPax || data.entryTime > flightData.lastPax) {
-                                            flightData.lastPax = data.entryTime;
+                                    if (!flightsByDate[date]) {
+                                        flightsByDate[date] = new Map();
+                                    }
+                                    
+                                    const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
+                                    databaseStats[dbInfo.name].flights.add(data.flightNo);
+                                    
+                                    if (!flightsByDate[date].has(flightKey)) {
+                                        flightsByDate[date].set(flightKey, {
+                                            flightNo: data.flightNo,
+                                            shift: data.shift || 'UNKNOWN',
+                                            airline: data.airline || '',
+                                            passengerCount: 1,
+                                            firstPax: data.entryTime,
+                                            lastPax: data.entryTime,
+                                            database: dbInfo.name,
+                                            dbRef: dbInfo.ref,
+                                            databaseProject: dbInfo.projectId,
+                                            flightPrefix: data.flightNo ? data.flightNo.substring(0, 2).toUpperCase() : 'UNK'
+                                        });
+                                    } else {
+                                        // Update passenger count
+                                        const flightData = flightsByDate[date].get(flightKey);
+                                        flightData.passengerCount++;
+                                        
+                                        // Update first/last pax times
+                                        if (data.entryTime) {
+                                            if (!flightData.firstPax || data.entryTime < flightData.firstPax) {
+                                                flightData.firstPax = data.entryTime;
+                                            }
+                                            if (!flightData.lastPax || data.entryTime > flightData.lastPax) {
+                                                flightData.lastPax = data.entryTime;
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        });
+                            });
+                        }
                         
-                        // OPTIMIZATION: Merge database results into main flightsByDate
-                        return { dbName: dbInfo.name, dateMap };
+                        console.log(`✅ ${dbInfo.name}: ${snapshot.size} records found`);
                     } else {
                         console.log(`ℹ️ ${dbInfo.name}: No records found`);
-                        return { dbName: dbInfo.name, dateMap: new Map() };
                     }
                     
                 } catch (dbError) {
@@ -1339,27 +1335,11 @@
                         flights: new Set(),
                         dates: new Set()
                     };
-                    return { dbName: dbInfo.name, dateMap: new Map() };
                 }
-            });
-            
-            // Wait for all database queries to complete
-            const results = await Promise.all(dbPromises);
-            
-            // OPTIMIZATION: Merge all results efficiently
-            results.forEach(result => {
-                const { dateMap } = result;
                 
-                for (const [date, flightsMap] of dateMap.entries()) {
-                    if (!flightsByDate[date]) {
-                        flightsByDate[date] = new Map();
-                    }
-                    
-                    for (const [flightKey, flightData] of flightsMap.entries()) {
-                        flightsByDate[date].set(flightKey, flightData);
-                    }
-                }
-            });
+                // Update progress
+                dateSelect.innerHTML = `<option value="">🔍 Scanned ${databasesWithData}/${databases.length} databases...</option>`;
+            }
             
             allDates = Object.keys(flightsByDate).sort().reverse();
             datesLoaded = true;
@@ -1392,8 +1372,8 @@
     async function onDateDropdownClick() {
         const dateSelect = document.getElementById('dateSelect');
         
-        // Only load if empty or force reload
-        if (dateSelect.options.length <= 1) {
+        // Only load if empty
+        if (dateSelect.options.length <= 1 && !datesLoaded && !isLoadingDates) {
             await loadDates();
         }
     }
@@ -1467,7 +1447,7 @@
             return;
         }
         
-        // OPTIMIZATION: Only fetch passengers for this specific flight
+        // Only fetch passengers for this specific flight
         try {
             const targetDb = flightData.dbRef || getFirestoreForFlight(flightNo);
             
@@ -1872,7 +1852,7 @@
         return '';
     }
 
-    // Modified displayPassengerTable function - delay charge entries go to the end, disabled when flight closed
+    // Modified displayPassengerTable function
     function displayPassengerTable(passengers) {
         const tbody = document.getElementById('passengerTableBody');
         const tableHeader = document.getElementById('tableHeader');
@@ -1963,7 +1943,7 @@
         // Sort regular passengers by entry time
         const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
         
-        // Sort delay charge passengers by entry time (when they were created)
+        // Sort delay charge passengers by entry time
         const sortedDelay = [...delayChargePassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
         
         // Combine: regular passengers first, then delay charges
@@ -1985,7 +1965,7 @@
             const pnr = isFZ ? extractPNRFromHiddenCode(p.hiddenCode) : '';
             
             if (editingRowId === p.docId && !isFlightClosed) {
-                // Edit mode - only if flight is not closed
+                // Edit mode
                 const namePlaceholder = isSQ ? 'Voucher No.' : 'Name';
                 
                 if (isFZ) {
@@ -2756,7 +2736,7 @@
         delaySelectedFlight = flightData;
         document.getElementById('delayFlightDate').value = selectedDate;
         
-        // We need to fetch passengers for this flight if not already loaded
+        // Load passengers for this flight
         loadDelayPassengers(flightData, selectedDate, flightNo, shift);
     }
     
@@ -2774,7 +2754,7 @@
             
             passengerSnapshot.forEach(doc => {
                 const data = doc.data();
-                if (!data.delayCharge) { // Only include non-delay charge passengers
+                if (!data.delayCharge) {
                     delayPassengers.push({
                         docId: doc.id,
                         pName: data.pName || data.name || data.Name || '',
@@ -2945,11 +2925,13 @@
         const selectedPassengers = filteredDelayPassengers.filter(p => p.selected);
         
         if (selectedPassengers.length === 0) {
+            alert('Please select at least one passenger');
             return;
         }
         
         const missingLastPax = selectedPassengers.filter(p => !p.editedLastPax);
         if (missingLastPax.length > 0) {
+            alert('Please enter Last Pax time for all selected passengers');
             return;
         }
         
@@ -3036,10 +3018,15 @@
     
     async function submitDelayCharges() {
         if (delayCalculatedCharges.length === 0) {
+            alert('No delay charges to submit. Please calculate charges first.');
             return;
         }
         
         if (!delaySelectedFlight) {
+            return;
+        }
+        
+        if (!confirm('Are you sure you want to submit these delay charges?')) {
             return;
         }
         
@@ -3086,7 +3073,7 @@
                     const delayData = {
                         pName: 'Delay Charge',
                         seatNo: 'Nill',
-                        pax: 0, // Set to 0 as requested
+                        pax: 0,
                         FQTV: '',
                         entryTime: currentTime,
                         remarks: remarks,
@@ -3107,12 +3094,15 @@
                 }
             }
             
+            alert('Delay charges submitted successfully!');
+            
             await refreshCurrentFlightData();
             
             closeDelayChargeModal();
             
         } catch (error) {
             console.error('Error submitting delay charges:', error);
+            alert('Error submitting delay charges: ' + error.message);
         }
     }
     
@@ -3195,9 +3185,10 @@
         fetchOpenShift();
         setInterval(fetchOpenShift, 30000);
         
-        setTimeout(() => {
-            loadDates();
-        }, 1000);
+        // Don't load dates immediately, wait for click
+        // setTimeout(() => {
+        //     loadDates();
+        // }, 1000);
         
         window.onclick = function(event) {
             const modal = document.getElementById('delayChargeModal');
