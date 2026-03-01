@@ -848,6 +848,33 @@
             font-weight: 700;
             color: #6b8e23;
         }
+
+        .index-warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 12px;
+            padding: 15px;
+            margin: 15px 0;
+            color: #856404;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .index-warning i {
+            font-size: 24px;
+            color: #ffc107;
+        }
+        
+        .index-warning a {
+            color: #856404;
+            font-weight: 600;
+            text-decoration: underline;
+        }
+        
+        .index-warning a:hover {
+            color: #533f03;
+        }
     </style>
 </head>
 <body>
@@ -899,7 +926,7 @@
                 <div class="date-shift-controls">
                     <div class="date-picker-group">
                         <label>SELECT DATE</label>
-                        <input type="date" id="selectedDate" value="<?php echo date('Y-m-d'); ?>">
+                        <input type="date" id="selectedDate">
                     </div>
                     
                     <div class="shift-select-group">
@@ -929,6 +956,15 @@
                 <div class="selected-info" id="selectedInfo">
                     <i>📌</i>
                     <span id="selectedInfoText">Select a date and shift to view receipts</span>
+                </div>
+                
+                <!-- Index Warning (will be shown if index error occurs) -->
+                <div id="indexWarning" class="index-warning" style="display: none;">
+                    <i>⚠️</i>
+                    <div>
+                        <strong>Database index required.</strong> 
+                        <span id="indexErrorMessage"></span>
+                    </div>
                 </div>
             </div>
 
@@ -1179,7 +1215,7 @@ let currentEditReceipt = null;
 // ========== INITIALIZATION ==========
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Set today's date in date picker
+    // Set today's date in date picker using JavaScript instead of PHP
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -1209,6 +1245,7 @@ function showEmptyState() {
     document.getElementById('tableContainer').style.display = 'none';
     document.getElementById('statsBar').style.display = 'none';
     document.getElementById('summarySection').style.display = 'none';
+    document.getElementById('indexWarning').style.display = 'none';
 }
 
 function showNoResults() {
@@ -1217,6 +1254,7 @@ function showNoResults() {
     document.getElementById('tableContainer').style.display = 'none';
     document.getElementById('statsBar').style.display = 'none';
     document.getElementById('summarySection').style.display = 'none';
+    document.getElementById('indexWarning').style.display = 'none';
 }
 
 function showResults() {
@@ -1225,6 +1263,20 @@ function showResults() {
     document.getElementById('tableContainer').style.display = 'block';
     document.getElementById('statsBar').style.display = 'grid';
     document.getElementById('summarySection').style.display = 'grid';
+    document.getElementById('indexWarning').style.display = 'none';
+}
+
+function showIndexWarning(errorMessage, indexUrl) {
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('noResults').style.display = 'none';
+    document.getElementById('tableContainer').style.display = 'none';
+    document.getElementById('statsBar').style.display = 'none';
+    document.getElementById('summarySection').style.display = 'none';
+    document.getElementById('indexWarning').style.display = 'flex';
+    
+    // Create clickable link
+    const indexMessage = document.getElementById('indexErrorMessage');
+    indexMessage.innerHTML = `Please <a href="${indexUrl}" target="_blank">click here</a> to create the required database index.`;
 }
 
 // ========== LOAD RECEIPTS ==========
@@ -1284,13 +1336,47 @@ async function loadSelectedDateShift() {
         // Query Firestore for receipts matching date and shift
         const kovelipayRef = passengerDb.collection('Kovelipay');
         
-        // We need to query by date string and shift
-        // Assuming date is stored in format YYYY-MM-DD in the 'date' field
-        const snapshot = await kovelipayRef
-            .where('date', '==', selectedDate)
-            .where('shift', '==', selectedShift)
-            .orderBy('submissionDateTime', 'desc')
-            .get();
+        // Try to query with composite filter
+        let snapshot;
+        try {
+            snapshot = await kovelipayRef
+                .where('date', '==', selectedDate)
+                .where('shift', '==', selectedShift)
+                .orderBy('submissionDateTime', 'desc')
+                .get();
+        } catch (queryError) {
+            // Check if it's an index error
+            if (queryError.code === 'failed-precondition' && queryError.message.includes('index')) {
+                // Extract index creation URL from error message
+                const urlMatch = queryError.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/);
+                if (urlMatch) {
+                    showIndexWarning(queryError.message, urlMatch[0]);
+                } else {
+                    // Fallback: do client-side filtering
+                    console.warn('Index missing, falling back to client-side filtering');
+                    const allDocs = await kovelipayRef.get();
+                    const filteredDocs = [];
+                    allDocs.forEach(doc => {
+                        const data = doc.data();
+                        if (data.date === selectedDate && data.shift === selectedShift) {
+                            filteredDocs.push({
+                                id: doc.id,
+                                ...data
+                            });
+                        }
+                    });
+                    // Sort by submissionDateTime desc
+                    filteredDocs.sort((a, b) => {
+                        return (b.submissionDateTime || '').localeCompare(a.submissionDateTime || '');
+                    });
+                    snapshot = { docs: filteredDocs.map(d => ({ data: () => d })) };
+                }
+            } else {
+                throw queryError;
+            }
+        }
+        
+        if (!snapshot) return;
         
         currentViewReceipts = [];
         snapshot.forEach(doc => {
@@ -1311,7 +1397,18 @@ async function loadSelectedDateShift() {
         
     } catch (error) {
         console.error('Error loading receipts:', error);
-        alert('Error loading receipts: ' + error.message);
+        
+        // Check if it's an index error
+        if (error.code === 'failed-precondition' && error.message.includes('index')) {
+            const urlMatch = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/);
+            if (urlMatch) {
+                showIndexWarning(error.message, urlMatch[0]);
+            } else {
+                alert('Database index required. Please check console for details.');
+            }
+        } else {
+            alert('Error loading receipts: ' + error.message);
+        }
     }
 }
 
@@ -1503,31 +1600,37 @@ function searchReceipt() {
     if (searchResults.length === 0) {
         alert('No receipt found matching the search criteria');
     } else {
-        // Show search results in a new table or highlight
-        renderSearchResults(searchResults);
+        // Show search results in the main table
+        showEmptyState(); // Hide empty state
+        document.getElementById('tableContainer').style.display = 'block';
+        document.getElementById('statsBar').style.display = 'none';
+        document.getElementById('summarySection').style.display = 'none';
+        
+        renderTable(searchResults);
+        
+        // Add a note that these are search results
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'selected-info';
+        infoDiv.style.marginBottom = '10px';
+        infoDiv.id = 'searchInfo';
+        infoDiv.innerHTML = '<i>🔍</i> <span>Search results - <a href="#" onclick="clearSearch(); return false;">Clear search</a></span>';
+        
+        // Remove any existing search info
+        const existingInfo = document.getElementById('searchInfo');
+        if (existingInfo) existingInfo.remove();
+        
+        // Insert before table
+        const tableContainer = document.querySelector('.table-container');
+        tableContainer.parentNode.insertBefore(infoDiv, tableContainer);
     }
 }
 
-function renderSearchResults(receipts) {
-    // Create a modal or temporary display for search results
-    // For simplicity, we'll show them in the main table and hide the date-shift view
-    document.getElementById('emptyState').style.display = 'none';
-    document.getElementById('noResults').style.display = 'none';
-    document.getElementById('tableContainer').style.display = 'block';
-    document.getElementById('statsBar').style.display = 'none';
-    document.getElementById('summarySection').style.display = 'none';
-    
-    renderTable(receipts);
-    
-    // Add a note that these are search results
-    const tableContainer = document.querySelector('.table-container');
-    const searchNote = document.createElement('div');
-    searchNote.className = 'selected-info';
-    searchNote.style.marginBottom = '10px';
-    searchNote.innerHTML = '<i>🔍</i> <span>Search results - <a href="#" onclick="location.reload()">Clear search</a></span>';
-    
-    // Insert before table
-    tableContainer.parentNode.insertBefore(searchNote, tableContainer);
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    const searchInfo = document.getElementById('searchInfo');
+    if (searchInfo) searchInfo.remove();
+    showEmptyState();
+    loadSelectedDateShift(); // Reload the current date/shift view
 }
 
 // ========== EDIT MODAL FUNCTIONS ==========
