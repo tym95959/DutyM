@@ -424,6 +424,20 @@
         return `${year}-${month}-${day}`;
     }
 
+    // Format date for display (DD/MM/YYYY)
+    function formatDateForDisplay(dateStr) {
+        if (!dateStr) return 'no date';
+        try { 
+            if (dateStr.includes('-')) { 
+                const [y, m, d] = dateStr.split('-'); 
+                return `${d}/${m}/${y}`; 
+            } 
+            return dateStr; 
+        } catch { 
+            return dateStr; 
+        }
+    }
+
     function loadUserFromLogin() {
         try {
             const username = localStorage.getItem('username');
@@ -479,11 +493,6 @@
         setTimeout(() => msg.style.display = 'none', 3000);
     }
 
-    function formatDateForDisplay(dateStr) {
-        if (!dateStr) return 'no date';
-        try { if (dateStr.includes('-')) { const [y,m,d]=dateStr.split('-'); return `${d}/${m}/${y}`; } return dateStr; } catch { return dateStr; }
-    }
-
     function updateShiftUI(data) {
         // morning
         const mornDiv = document.getElementById('morningStatusDisplay');
@@ -512,9 +521,9 @@
         document.getElementById('openEveningBtn').disabled = !(m === 'closed' && e === 'pending');
         document.getElementById('closeEveningBtn').disabled = !(e === 'open');
 
-        // header date
-        if (data.date) document.getElementById('currentDateHeader').innerText = formatDateForDisplay(data.date);
-        else document.getElementById('currentDateHeader').innerText = '--';
+        // IMPORTANT: Always show the current system date, not the date from Firebase
+        const todaySystemDate = getSystemDateString();
+        document.getElementById('currentDateHeader').innerText = formatDateForDisplay(todaySystemDate);
 
         // last updated
         if (data.updated) document.getElementById('lastUpdatedInfo').innerText = `synced: ${data.updated}`;
@@ -525,15 +534,34 @@
         try {
             if (typeof passengerDb === 'undefined') { showMessage('firebase not ready', true); return; }
             const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+            
+            // Get current system date
+            const todaySystemDate = getSystemDateString();
+            
             if (shiftDoc.exists) {
                 const data = shiftDoc.data();
+                
+                // Store the Firebase date but DON'T display it - we'll show system date instead
+                currentShiftData = { 
+                    date: data.date, // Keep for reference
+                    shift: data.morning==='open'?'MORNING':data.evening==='open'?'EVENING':'none', 
+                    status: data.morning==='open'?'OPEN':data.evening==='open'?'OPEN':'CLOSED', 
+                    openTime: data.updated 
+                };
+                
+                // Update UI with shift data but force system date display
                 updateShiftUI(data);
-                currentShiftData = { date: data.date, shift: data.morning==='open'?'MORNING':data.evening==='open'?'EVENING':'none', status: data.morning==='open'?'OPEN':data.evening==='open'?'OPEN':'CLOSED', openTime: data.updated };
             } else {
-                // fallback empty
-                updateShiftUI({ morning:'pending', evening:'pending', date:getSystemDateString() });
+                // fallback empty with system date
+                updateShiftUI({ 
+                    morning:'pending', 
+                    evening:'pending'
+                });
             }
-        } catch (error) { console.error(error); showMessage('error loading', true); }
+        } catch (error) { 
+            console.error(error); 
+            showMessage('error loading', true); 
+        }
     }
 
     // ===== ENHANCED HANDLE SHIFT WITH AUTO RESET ON DATE MISMATCH =====
