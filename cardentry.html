@@ -1603,7 +1603,7 @@ let selectedGuestPassengerId = null;
 let saveQueue = new Map(); // Track entries being saved
 let saveTimeouts = new Map(); // Track save timeouts
 
-// User data from local storage
+// User data from local storage (load immediately)
 let currentUser = {
     name: '',
     rcno: '',
@@ -1611,7 +1611,7 @@ let currentUser = {
     username: ''
 };
 
-// Firebase shift data
+// Firebase shift data (load from localStorage or default)
 let currentShiftData = {
     date: '',
     shift: '',
@@ -1646,6 +1646,34 @@ const ERROR_MESSAGES = {
 // Airlines that don't require seat numbers
 const NO_SEAT_REQUIRED_AIRLINES = ['SQ', 'UL'];
 
+// ========== NEW: LOAD SHIFT DATA FROM LOCALSTORAGE ==========
+function loadShiftDataFromStorage() {
+    try {
+        const savedShiftData = localStorage.getItem('currentShiftData');
+        if (savedShiftData) {
+            const parsed = JSON.parse(savedShiftData);
+            currentShiftData = { ...currentShiftData, ...parsed };
+            console.log('✅ Loaded shift data from localStorage:', currentShiftData);
+        } else {
+            console.log('ℹ️ No shift data in localStorage, will fetch from Firebase');
+        }
+    } catch (error) {
+        console.error('Error loading shift data from localStorage:', error);
+    }
+    
+    updateShiftDisplay();
+}
+
+// ========== NEW: SAVE SHIFT DATA TO LOCALSTORAGE ==========
+function saveShiftDataToStorage() {
+    try {
+        localStorage.setItem('currentShiftData', JSON.stringify(currentShiftData));
+        console.log('✅ Shift data saved to localStorage');
+    } catch (error) {
+        console.error('Error saving shift data to localStorage:', error);
+    }
+}
+
 // ========== CHECK LOGIN AND INITIALIZATION ==========
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM fully loaded');
@@ -1656,8 +1684,16 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
+    // Load user data from localStorage
     loadUserData();
     
+    // Load shift data from localStorage first (for immediate display)
+    loadShiftDataFromStorage();
+    
+    // Load pending and saved passes
+    loadFromLocalStorage();
+    
+    // Get DOM elements
     const codeField = document.getElementById('code');
     const toggleCurrentBtn = document.getElementById('toggleCurrentBtn');
     const currentEntrySection = document.getElementById('currentEntrySection');
@@ -1667,12 +1703,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const cancelGuestModeBtn = document.getElementById('cancelGuestModeBtn');
     const dummyEntryBtn = document.getElementById('dummyEntryBtn');
     
-    loadFromLocalStorage();
-    
+    // Fetch fresh shift data from Firebase after a short delay
     setTimeout(() => {
-        fetchShiftData();
+        fetchShiftData(false); // false = use cache if available
     }, 1000);
     
+    // Set up event listeners
     if (codeField) {
         codeField.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
@@ -1724,7 +1760,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (refreshShiftBtn) {
         refreshShiftBtn.addEventListener('click', function() {
-            fetchShiftData();
+            fetchShiftData(true); // true = force refresh from Firebase
         });
     }
     
@@ -1749,10 +1785,12 @@ function isShiftOpen() {
 // ========== LOGIN CHECK FUNCTION ==========
 function checkLoginStatus() {
     try {
+        // Check for individual items
         const username = localStorage.getItem('username');
         const level = localStorage.getItem('level');
         const rcno = localStorage.getItem('rcno');
         const loggedInUser = localStorage.getItem('loggedInUser');
+        const currentUserData = localStorage.getItem('currentUser');
         
         if (username && (level || rcno)) {
             return true;
@@ -1769,6 +1807,17 @@ function checkLoginStatus() {
             }
         }
         
+        if (currentUserData) {
+            try {
+                const userData = JSON.parse(currentUserData);
+                if (userData && userData.username) {
+                    return true;
+                }
+            } catch (e) {
+                console.error('Error parsing currentUser:', e);
+            }
+        }
+        
         return false;
     } catch (error) {
         console.error('Error checking login status:', error);
@@ -1776,33 +1825,54 @@ function checkLoginStatus() {
     }
 }
 
-// ========== USER DATA FUNCTIONS ==========
+// ========== MODIFIED: USER DATA FUNCTIONS ==========
 function loadUserData() {
     try {
         console.log('Loading user data from localStorage...');
         
+        // Try to load from individual items first (most reliable)
         const storedUsername = localStorage.getItem('username');
         const storedLevel = localStorage.getItem('level');
         const storedRcno = localStorage.getItem('rcno');
+        const storedName = localStorage.getItem('name');
         const loggedInUser = localStorage.getItem('loggedInUser');
         
+        // Also try to load from saved user object
+        const savedUserData = localStorage.getItem('currentUser');
+        if (savedUserData) {
+            try {
+                const parsedUser = JSON.parse(savedUserData);
+                currentUser = { ...currentUser, ...parsedUser };
+                console.log('✅ Loaded user from currentUser:', currentUser);
+            } catch (e) {
+                console.error('Error parsing currentUser:', e);
+            }
+        }
+        
+        // Override with individual items if they exist (more specific)
+        if (storedUsername) {
+            currentUser.username = storedUsername;
+            if (!currentUser.name) currentUser.name = storedUsername;
+        }
+        
+        if (storedName) currentUser.name = storedName;
+        if (storedRcno) currentUser.rcno = storedRcno;
+        if (storedLevel) currentUser.level = storedLevel;
+        
+        // Try to parse loggedInUser for additional details
         if (loggedInUser) {
             try {
                 const parsedUser = JSON.parse(loggedInUser);
-                currentUser.username = parsedUser.username || storedUsername || '';
-                currentUser.name = parsedUser.name || parsedUser.username || storedUsername || '';
-                currentUser.rcno = parsedUser.rcno || storedRcno || '';
-                currentUser.level = parsedUser.level || storedLevel || '';
+                currentUser.username = parsedUser.username || currentUser.username;
+                currentUser.name = parsedUser.name || parsedUser.username || currentUser.name;
+                currentUser.rcno = parsedUser.rcno || currentUser.rcno;
+                currentUser.level = parsedUser.level || currentUser.level;
             } catch (e) {
                 console.error('Error parsing loggedInUser:', e);
             }
         }
         
-        if (storedUsername) currentUser.username = storedUsername;
-        if (!currentUser.name && storedUsername) currentUser.name = storedUsername;
-        if (storedRcno) currentUser.rcno = storedRcno;
-        if (storedLevel) currentUser.level = storedLevel;
-        
+        // Fallback if still no user data
         if (!currentUser.username) {
             console.warn('No user data found in localStorage');
             currentUser.username = 'UNKNOWN';
@@ -1814,6 +1884,9 @@ function loadUserData() {
         if (!currentUser.name) {
             currentUser.name = currentUser.username;
         }
+        
+        // Save consolidated user data back to localStorage
+        saveUserDataToStorage();
         
         console.log('Final currentUser object:', currentUser);
         updateUserDisplay();
@@ -1827,6 +1900,21 @@ function loadUserData() {
             level: 'OPERATOR'
         };
         updateUserDisplay();
+    }
+}
+
+// ========== NEW: SAVE USER DATA TO LOCALSTORAGE ==========
+function saveUserDataToStorage() {
+    try {
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        // Also save individual items for backward compatibility
+        localStorage.setItem('username', currentUser.username);
+        localStorage.setItem('name', currentUser.name);
+        localStorage.setItem('rcno', currentUser.rcno);
+        localStorage.setItem('level', currentUser.level);
+        console.log('✅ User data saved to localStorage');
+    } catch (error) {
+        console.error('Error saving user data to localStorage:', error);
     }
 }
 
@@ -1845,17 +1933,175 @@ function logout() {
         cancelGuestMode();
     }
     
+    // Clear all localStorage items
     localStorage.removeItem('username');
     localStorage.removeItem('level');
     localStorage.removeItem('rcno');
+    localStorage.removeItem('name');
     localStorage.removeItem('loggedInUser');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('currentShiftData'); // Clear shift data on logout
     
     window.location.href = 'login.html';
 }
 
+// ========== MODIFIED: FETCH SHIFT DATA WITH CACHING ==========
+async function fetchShiftData(forceRefresh = false) {
+    try {
+        const shiftInfo = document.getElementById('shiftInfo');
+        const dateElement = document.getElementById('currentDate');
+        const shiftElement = document.getElementById('currentShift');
+        const statusBadge = document.getElementById('shiftStatus');
+        
+        if (!shiftInfo || !dateElement || !shiftElement || !statusBadge) {
+            console.error('Shift display elements not found');
+            return;
+        }
+        
+        // If not forcing refresh, check if we already have valid shift data
+        if (!forceRefresh && currentShiftData.date && 
+            (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING')) {
+            console.log('📋 Using cached shift data from localStorage');
+            updateShiftDisplay();
+            return;
+        }
+        
+        dateElement.textContent = 'Loading...';
+        shiftElement.textContent = 'Loading...';
+        shiftInfo.classList.add('loading');
+        
+        if (typeof passengerDb === 'undefined') {
+            console.error('passengerDb not initialized');
+            dateElement.textContent = 'DB ERROR';
+            shiftElement.textContent = 'NOT INITIALIZED';
+            shiftInfo.classList.remove('loading');
+            shiftInfo.classList.add('error');
+            return;
+        }
+        
+        let shiftDoc = null;
+        
+        // Try different document name variations
+        try {
+            shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+        } catch (e) {
+            console.log('Error with lowercase:', e);
+        }
+        
+        if (!shiftDoc || !shiftDoc.exists) {
+            try {
+                shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get();
+            } catch (e) {
+                console.log('Error with currentShift:', e);
+            }
+        }
+        
+        if (!shiftDoc || !shiftDoc.exists) {
+            try {
+                shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get();
+            } catch (e) {
+                console.log('Error with CurrentShift:', e);
+            }
+        }
+        
+        if (shiftDoc && shiftDoc.exists) {
+            const data = shiftDoc.data();
+            
+            // Update currentShiftData
+            currentShiftData.date = data.date || '';
+            
+            if (data.morning === 'open') {
+                currentShiftData.shift = 'MORNING';
+                currentShiftData.status = 'OPEN';
+                currentShiftData.openTime = data.updated || '';
+            } 
+            else if (data.evening === 'open') {
+                currentShiftData.shift = 'EVENING';
+                currentShiftData.status = 'OPEN';
+                currentShiftData.openTime = data.updated || '';
+            } 
+            else {
+                currentShiftData.shift = 'NO OPEN SHIFT';
+                currentShiftData.status = 'CLOSED';
+                currentShiftData.openTime = '';
+            }
+            
+            // Save to localStorage for future use
+            saveShiftDataToStorage();
+            
+            console.log('✅ Fetched fresh shift data from Firebase and cached');
+        } else {
+            console.warn('No shift document found in Firebase');
+            // Keep existing cached data if available
+            if (!currentShiftData.date) {
+                currentShiftData.date = '';
+                currentShiftData.shift = 'NO SHIFT DATA';
+                currentShiftData.status = 'NOT FOUND';
+                currentShiftData.openTime = '';
+            }
+        }
+        
+        updateShiftDisplay();
+        
+    } catch (error) {
+        console.error('Error fetching shift data:', error);
+        
+        // On error, keep using cached data if available
+        if (!currentShiftData.date) {
+            const dateElement = document.getElementById('currentDate');
+            const shiftElement = document.getElementById('currentShift');
+            const shiftInfo = document.getElementById('shiftInfo');
+            
+            if (dateElement) dateElement.textContent = 'ERROR';
+            if (shiftElement) shiftElement.textContent = 'ERROR LOADING';
+            if (shiftInfo) {
+                shiftInfo.classList.remove('loading');
+                shiftInfo.classList.add('error');
+            }
+        } else {
+            // Use cached data
+            updateShiftDisplay();
+        }
+    }
+}
+
+function updateShiftDisplay() {
+    const dateElement = document.getElementById('currentDate');
+    const shiftElement = document.getElementById('currentShift');
+    const statusBadge = document.getElementById('shiftStatus');
+    const shiftInfo = document.getElementById('shiftInfo');
+    
+    if (!dateElement || !shiftElement || !statusBadge || !shiftInfo) return;
+    
+    dateElement.textContent = currentShiftData.date || 'NO DATE';
+    
+    if (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') {
+        shiftElement.textContent = currentShiftData.shift;
+        statusBadge.textContent = currentShiftData.status;
+        statusBadge.style.backgroundColor = '#6b8e23';
+    } else {
+        shiftElement.textContent = currentShiftData.shift;
+        statusBadge.textContent = currentShiftData.status;
+        statusBadge.style.backgroundColor = '#c68b5e';
+    }
+    
+    shiftInfo.classList.remove('loading', 'error');
+    
+    // Update hidden form fields if they exist and are empty
+    const shiftField = document.getElementById('shift');
+    if (shiftField && !shiftField.value && (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING')) {
+        shiftField.value = currentShiftData.shift;
+    }
+    
+    const dateField = document.getElementById('date');
+    if (dateField && !dateField.value && currentShiftData.date) {
+        dateField.value = currentShiftData.date;
+    }
+}
+
 // ========== DUMMY ENTRY FUNCTION WITH DATE VALIDATION ==========
 function createDummyEntry() {
-    // Ensure we have date and shift data
+    // Ensure we have date and shift data (use cached if available)
     if (!currentShiftData.date) {
         showTemporaryNotification('⚠️ Please wait for shift data to load (date missing)', 'warning');
         return;
@@ -1906,6 +2152,7 @@ function createDummyEntry() {
     const dbName = getFirestoreNameForFlight(dummyEntry.flightNo);
     showTemporaryNotification(`✓ DUMMY ENTRY CREATED - Will save to ${dbName} when approved`, 'success');
     
+    // Update current entry display
     document.getElementById('hiddenCode').value = dummyEntry.hiddenCode;
     document.getElementById('pName').value = dummyEntry.pName;
     document.getElementById('flightNo').value = dummyEntry.flightNo;
@@ -3061,134 +3308,6 @@ function addGuestToPassenger(mainPassengerId, guestData) {
     }
 }
 
-// ========== FIREBASE SHIFT FUNCTIONS ==========
-async function fetchShiftData() {
-    try {
-        const shiftInfo = document.getElementById('shiftInfo');
-        const dateElement = document.getElementById('currentDate');
-        const shiftElement = document.getElementById('currentShift');
-        const statusBadge = document.getElementById('shiftStatus');
-        
-        if (!shiftInfo || !dateElement || !shiftElement || !statusBadge) {
-            console.error('Shift display elements not found');
-            return;
-        }
-        
-        dateElement.textContent = 'Loading...';
-        shiftElement.textContent = 'Loading...';
-        shiftInfo.classList.add('loading');
-        
-        if (typeof passengerDb === 'undefined') {
-            console.error('passengerDb not initialized');
-            dateElement.textContent = 'DB ERROR';
-            shiftElement.textContent = 'NOT INITIALIZED';
-            shiftInfo.classList.remove('loading');
-            shiftInfo.classList.add('error');
-            return;
-        }
-        
-        let shiftDoc = null;
-        
-        try {
-            shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
-        } catch (e) {
-            console.log('Error with lowercase:', e);
-        }
-        
-        if (!shiftDoc || !shiftDoc.exists) {
-            try {
-                shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get();
-            } catch (e) {
-                console.log('Error with currentShift:', e);
-            }
-        }
-        
-        if (!shiftDoc || !shiftDoc.exists) {
-            try {
-                shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get();
-            } catch (e) {
-                console.log('Error with CurrentShift:', e);
-            }
-        }
-        
-        if (shiftDoc && shiftDoc.exists) {
-            const data = shiftDoc.data();
-            
-            currentShiftData.date = data.date || '';
-            
-            if (data.morning === 'open') {
-                currentShiftData.shift = 'MORNING';
-                currentShiftData.status = 'OPEN';
-                currentShiftData.openTime = data.updated || '';
-            } 
-            else if (data.evening === 'open') {
-                currentShiftData.shift = 'EVENING';
-                currentShiftData.status = 'OPEN';
-                currentShiftData.openTime = data.updated || '';
-            } 
-            else {
-                currentShiftData.shift = 'NO OPEN SHIFT';
-                currentShiftData.status = 'CLOSED';
-                currentShiftData.openTime = '';
-            }
-        } else {
-            currentShiftData.date = '';
-            currentShiftData.shift = 'NO SHIFT DATA';
-            currentShiftData.status = 'NOT FOUND';
-            currentShiftData.openTime = '';
-        }
-        
-        updateShiftDisplay();
-        
-    } catch (error) {
-        console.error('Error fetching shift data:', error);
-        
-        const dateElement = document.getElementById('currentDate');
-        const shiftElement = document.getElementById('currentShift');
-        const shiftInfo = document.getElementById('shiftInfo');
-        
-        if (dateElement) dateElement.textContent = 'ERROR';
-        if (shiftElement) shiftElement.textContent = 'ERROR LOADING';
-        if (shiftInfo) {
-            shiftInfo.classList.remove('loading');
-            shiftInfo.classList.add('error');
-        }
-    }
-}
-
-function updateShiftDisplay() {
-    const dateElement = document.getElementById('currentDate');
-    const shiftElement = document.getElementById('currentShift');
-    const statusBadge = document.getElementById('shiftStatus');
-    const shiftInfo = document.getElementById('shiftInfo');
-    
-    if (!dateElement || !shiftElement || !statusBadge || !shiftInfo) return;
-    
-    dateElement.textContent = currentShiftData.date || 'NO DATE';
-    
-    if (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') {
-        shiftElement.textContent = currentShiftData.shift;
-        statusBadge.textContent = currentShiftData.status;
-        statusBadge.style.backgroundColor = '#6b8e23';
-    } else {
-        shiftElement.textContent = currentShiftData.shift;
-        statusBadge.textContent = currentShiftData.status;
-        statusBadge.style.backgroundColor = '#c68b5e';
-    }
-    
-    shiftInfo.classList.remove('loading', 'error');
-    
-    const shiftField = document.getElementById('shift');
-    if (shiftField && !shiftField.value && (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING')) {
-        shiftField.value = currentShiftData.shift;
-    }
-    
-    const dateField = document.getElementById('date');
-    if (dateField && !dateField.value && currentShiftData.date) {
-        dateField.value = currentShiftData.date;
-    }
-}
-
 // ========== ERROR SUMMARY FUNCTIONS ==========
 function updateErrorSummary() {
     const errorSummary = document.getElementById('errorSummary');
@@ -4104,6 +4223,7 @@ function addToTable(data) {
         }
     }
     
+    // Use cached shift data if not provided
     if (!upperData.date || upperData.date === '') {
         upperData.date = currentShiftData.date || '';
     }
@@ -4557,8 +4677,8 @@ function parseAndAddToList() {
         
         addToTable(parsedEntry);
         
+        // Update current entry display
         document.getElementById('hiddenCode').value = codeInput;
-        
         document.getElementById('pName').value = parsedEntry.pName;
         document.getElementById('flightNo').value = parsedEntry.flightNo;
         document.getElementById('seatNo').value = parsedEntry.seatNo;
@@ -4621,6 +4741,7 @@ window.validateEntryForSave = validateEntryForSave;
 window.isFlightOpen = isFlightOpen;
 window.checkPassengerExistsInDatabase = checkPassengerExistsInDatabase;
 window.testFlightDatabaseMapping = testFlightDatabaseMapping;
+window.refreshShift = function() { fetchShiftData(true); };
 </script>
 </body>   
 </html>
