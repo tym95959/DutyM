@@ -972,6 +972,7 @@
                 <span><strong>USER:</strong> <span id="userName">Loading...</span></span>
                 <span><strong>LEVEL:</strong> <span id="userLevel">Loading...</span></span>
                 <span><strong>RC NO:</strong> <span id="userRcNo">Loading...</span></span>
+                <span><strong>CASHIER:</strong> <span id="cashierName">Loading...</span></span>
                 <a class="logout-link" id="logoutBtn">← LOGOUT</a>
             </div>
             
@@ -1180,6 +1181,13 @@ let currentShiftData = {
     shift: '',
     status: '',
     openTime: ''
+};
+
+// Store cashier data
+let currentCashier = {
+    name: '',
+    level: '',
+    rcno: ''
 };
 
 // Store submission time and expiry time
@@ -1405,6 +1413,7 @@ function updateUserDisplay() {
     const userNameEl = document.getElementById('userName');
     const userLevelEl = document.getElementById('userLevel');
     const userRcNoEl = document.getElementById('userRcNo');
+    const cashierNameEl = document.getElementById('cashierName');
     
     if (userNameEl) {
         userNameEl.textContent = currentUser.username || 'Not logged in';
@@ -1417,6 +1426,18 @@ function updateUserDisplay() {
     if (userRcNoEl) {
         userRcNoEl.textContent = currentUser.rcno || 'N/A';
     }
+    
+    // Set cashier name from currentUser
+    if (cashierNameEl) {
+        cashierNameEl.textContent = currentUser.username || 'Not logged in';
+    }
+    
+    // Also update currentCashier object
+    currentCashier = {
+        name: currentUser.username,
+        level: currentUser.level,
+        rcno: currentUser.rcno
+    };
 }
 
 function logout() {
@@ -1430,6 +1451,9 @@ function logout() {
     
     // Also clear shift data on logout
     localStorage.removeItem('shiftData');
+    
+    // Clear cashier data
+    localStorage.removeItem('cashierData');
     
     // Redirect to login page
     window.location.href = 'login.html';
@@ -1461,6 +1485,9 @@ async function loadShiftDataOnce() {
                     console.log('Using shift data from localStorage:', currentShiftData);
                     updateShiftDisplay();
                     shiftDataLoaded = true;
+                    
+                    // Also load cashier data if available
+                    loadCashierData();
                     return;
                 }
             } catch (e) {
@@ -1551,6 +1578,9 @@ async function fetchAndStoreShiftData() {
             localStorage.setItem('shiftData', JSON.stringify(currentShiftData));
             shiftDataLoaded = true;
             
+            // Also fetch and store cashier data
+            await fetchAndStoreCashierData();
+            
         } else {
             currentShiftData = {
                 date: '',
@@ -1569,10 +1599,110 @@ async function fetchAndStoreShiftData() {
     }
 }
 
+// ========== CASHIER DATA FUNCTIONS ==========
+
+async function fetchAndStoreCashierData() {
+    try {
+        // First check if we already have cashier data in localStorage
+        const storedCashierData = localStorage.getItem('cashierData');
+        
+        if (storedCashierData) {
+            try {
+                const parsedData = JSON.parse(storedCashierData);
+                const timestamp = parsedData._timestamp;
+                const now = Date.now();
+                
+                // If data is less than 1 hour old, use it
+                if (timestamp && (now - timestamp) < 60 * 60 * 1000) {
+                    currentCashier = parsedData;
+                    console.log('Using cashier data from localStorage:', currentCashier);
+                    updateCashierDisplay();
+                    return;
+                }
+            } catch (e) {
+                console.error('Error parsing stored cashier data:', e);
+            }
+        }
+        
+        // If no valid stored data, get from current user
+        if (currentUser.username) {
+            currentCashier = {
+                name: currentUser.username,
+                level: currentUser.level,
+                rcno: currentUser.rcno,
+                _timestamp: Date.now()
+            };
+            
+            // Store in localStorage
+            localStorage.setItem('cashierData', JSON.stringify(currentCashier));
+            console.log('Cashier data stored in localStorage:', currentCashier);
+            updateCashierDisplay();
+        }
+        
+    } catch (error) {
+        console.error('Error fetching cashier data:', error);
+    }
+}
+
+function loadCashierData() {
+    const storedCashierData = localStorage.getItem('cashierData');
+    
+    if (storedCashierData) {
+        try {
+            const parsedData = JSON.parse(storedCashierData);
+            const timestamp = parsedData._timestamp;
+            const now = Date.now();
+            
+            // If data is less than 1 hour old, use it
+            if (timestamp && (now - timestamp) < 60 * 60 * 1000) {
+                currentCashier = parsedData;
+                console.log('Loaded cashier data from localStorage:', currentCashier);
+            } else {
+                // Data too old, refresh from current user
+                currentCashier = {
+                    name: currentUser.username,
+                    level: currentUser.level,
+                    rcno: currentUser.rcno,
+                    _timestamp: Date.now()
+                };
+                localStorage.setItem('cashierData', JSON.stringify(currentCashier));
+            }
+        } catch (e) {
+            console.error('Error parsing stored cashier data:', e);
+            currentCashier = {
+                name: currentUser.username,
+                level: currentUser.level,
+                rcno: currentUser.rcno,
+                _timestamp: Date.now()
+            };
+            localStorage.setItem('cashierData', JSON.stringify(currentCashier));
+        }
+    } else {
+        // No stored data, set from current user
+        currentCashier = {
+            name: currentUser.username,
+            level: currentUser.level,
+            rcno: currentUser.rcno,
+            _timestamp: Date.now()
+        };
+        localStorage.setItem('cashierData', JSON.stringify(currentCashier));
+    }
+    
+    updateCashierDisplay();
+}
+
+function updateCashierDisplay() {
+    const cashierNameEl = document.getElementById('cashierName');
+    if (cashierNameEl && currentCashier.name) {
+        cashierNameEl.textContent = currentCashier.name;
+    }
+}
+
 function refreshShiftData() {
     // Force refresh from Firebase and update localStorage
     shiftDataLoaded = false;
     localStorage.removeItem('shiftData');
+    localStorage.removeItem('cashierData');
     fetchAndStoreShiftData();
 }
 
@@ -2045,11 +2175,12 @@ async function submitForm() {
             exchangeRateData.exchangeRateUsed = currentExchangeRate;
         }
         
-        // User data from localStorage
+        // User data from localStorage with cashier info
         const userData = {
             username: currentUser.username || 'Unknown',
             level: currentUser.level || 'N/A',
             rcno: currentUser.rcno || 'N/A',
+            cashierName: currentCashier.name || currentUser.username || 'Unknown',
             loginTime: new Date().toISOString()
         };
         
@@ -2078,6 +2209,13 @@ async function submitForm() {
             shiftStatus: currentShiftData.status,
             shiftOpenTimestamp: currentShiftData.openTime,
             
+            // CASHIER INFORMATION
+            cashier: {
+                name: currentCashier.name || currentUser.username,
+                level: currentCashier.level || currentUser.level,
+                rcno: currentCashier.rcno || currentUser.rcno
+            },
+            
             // COMPANY INFO
             companyInfo: companyInfoData,
             
@@ -2104,6 +2242,7 @@ async function submitForm() {
         console.log('Transaction date being saved:', completeData.transactionDate);
         console.log('Expiry time (display):', completeData.expiryTime);
         console.log('Expiry time (full):', completeData.expiryDateTime);
+        console.log('Cashier name:', completeData.cashier.name);
         console.log('Submission time (for reference only):', completeData.submissionDateTime);
         console.log('Complete data being saved:', completeData);
         
@@ -2129,7 +2268,7 @@ async function submitForm() {
             }, 5000);
         }
         
-        alert(`Receipt #${receiptNo} saved!\nShift Date: ${shiftDate} ${currentShiftData.shift}\nExpires at: ${expiryResult.display}\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
+        alert(`Receipt #${receiptNo} saved!\nShift Date: ${shiftDate} ${currentShiftData.shift}\nCashier: ${currentCashier.name}\nExpires at: ${expiryResult.display}\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
         
         return savedData;
         
@@ -2177,7 +2316,7 @@ function generateReceiptContent(transactionData = null) {
             expiryTime: document.getElementById('expiryTime').value || '--:--:--',
             shiftDate: currentShiftData.date || 'N/A',
             shift: currentShiftData.shift || 'N/A',
-            username: currentUser.username || 'N/A',
+            cashierName: currentCashier.name || currentUser.username || 'N/A',
             userRcno: currentUser.rcno || 'N/A'
         };
     }
@@ -2200,7 +2339,7 @@ function generateReceiptContent(transactionData = null) {
             <div class="info-row"><span class="info-label">Receipt:</span> <span class="info-value">${data.receiptNo}</span></div>
             <div class="info-row"><span class="info-label">Date:</span> <span class="info-value">${data.shiftDate} ${timeOnly}</span></div>
             <div class="info-row"><span class="info-label">Shift:</span> <span class="info-value">${data.shift}</span></div>
-            <div class="info-row"><span class="info-label">Cashier:</span> <span class="info-value">${data.username}</span></div>
+            <div class="info-row"><span class="info-label">Cashier:</span> <span class="info-value">${data.cashierName}</span></div>
             
             <div class="passenger-name">${data.passengerName}</div>
             
@@ -2452,15 +2591,21 @@ function debugShiftData() {
     console.log('Open Time:', currentShiftData.openTime);
     console.log('From localStorage:', localStorage.getItem('shiftData'));
     
+    console.log('=== CASHIER DATA DEBUG ===');
+    console.log('currentCashier:', currentCashier);
+    console.log('From localStorage:', localStorage.getItem('cashierData'));
+    
     const dateElement = document.getElementById('currentDate');
     const shiftElement = document.getElementById('currentShift');
     const statusBadge = document.getElementById('shiftStatus');
+    const cashierElement = document.getElementById('cashierName');
     
     console.log('Displayed Date:', dateElement ? dateElement.textContent : 'N/A');
     console.log('Displayed Shift:', shiftElement ? shiftElement.textContent : 'N/A');
     console.log('Displayed Status:', statusBadge ? statusBadge.textContent : 'N/A');
+    console.log('Displayed Cashier:', cashierElement ? cashierElement.textContent : 'N/A');
     
-    alert(`Shift Data (from localStorage):\nDate: ${currentShiftData.date}\nShift: ${currentShiftData.shift}\nStatus: ${currentShiftData.status}`);
+    alert(`Shift Data:\nDate: ${currentShiftData.date}\nShift: ${currentShiftData.shift}\nStatus: ${currentShiftData.status}\nCashier: ${currentCashier.name}`);
 }
 
 // ========== INITIALIZATION ==========
