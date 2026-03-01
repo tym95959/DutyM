@@ -3953,6 +3953,7 @@ function renderPendingTable() {
 }
 
 // ========== FIXED: ENHANCED RENDER SAVED TABLE WITH CLEAR ERROR MESSAGES ==========
+// ========== FIXED: ENHANCED RENDER SAVED TABLE WITH SYNC BUTTON FOR SAVING STATE ==========
 function renderSavedTable() {
     const tbody = document.getElementById('savedTableBody');
     if (!tbody) return;
@@ -4108,7 +4109,7 @@ function renderSavedTable() {
                     ${errorMessageDisplay}
                     <div style="display: flex; gap: 6px; justify-content: space-between; margin-top: 2px;">
                         <button class="retry-btn" onclick="retrySave('${entry.id}')" style="padding: 4px 12px; font-size: 11px; flex: 1;">
-                            <i class="fas fa-sync-alt"></i> RETRY
+                            <i class="fas fa-sync-alt"></i> SYNC
                         </button>
                         <button class="edit-btn" onclick="editErrorEntry('${entry.id}')" style="padding: 4px 8px; font-size: 11px;">
                             <i class="fas fa-edit"></i>
@@ -4122,7 +4123,8 @@ function renderSavedTable() {
                     </div>
                 </div>
             `;
-        } else if (entry.firebaseStatus === 'saving' || entry.firebaseStatus === 'pending') {
+        } else if (entry.firebaseStatus === 'saving') {
+            // SHOW SYNC BUTTON FOR SAVING STATE
             actionsCell.innerHTML = `
                 <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
                     <div style="display: flex; align-items: center; gap: 8px; background: #fff9e6; padding: 6px; border-radius: 4px;">
@@ -4132,6 +4134,32 @@ function renderSavedTable() {
                         ${targetDbDisplay}
                     </div>
                     <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                        <button class="retry-btn" onclick="retrySave('${entry.id}')" style="padding: 4px 12px; font-size: 11px;">
+                            <i class="fas fa-sync-alt"></i> SYNC NOW
+                        </button>
+                        <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 11px;">
+                            <i class="fas fa-trash"></i> DEL
+                        </button>
+                    </div>
+                    <div style="font-size: 8px; color: #999; text-align: center;">
+                        Still saving... click SYNC NOW to force retry
+                    </div>
+                </div>
+            `;
+        } else if (entry.firebaseStatus === 'pending') {
+            // SHOW SYNC BUTTON FOR PENDING STATE
+            actionsCell.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 8px; background: #fff9e6; padding: 6px; border-radius: 4px;">
+                        <span class="status-indicator status-pending" style="color: ${statusColor}; font-size: 11px;">
+                            ${statusIcon} ${statusText}
+                        </span>
+                        ${targetDbDisplay}
+                    </div>
+                    <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                        <button class="retry-btn" onclick="retrySave('${entry.id}')" style="padding: 4px 12px; font-size: 11px;">
+                            <i class="fas fa-sync-alt"></i> SYNC NOW
+                        </button>
                         <button class="delete-btn" onclick="deleteEntry('${entry.id}', true)" style="padding: 4px 8px; font-size: 11px;">
                             <i class="fas fa-trash"></i> DEL
                         </button>
@@ -4139,6 +4167,7 @@ function renderSavedTable() {
                 </div>
             `;
         } else {
+            // SYNCED STATE - SHOW DELETE ONLY
             actionsCell.innerHTML = `
                 <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
                     <div style="display: flex; align-items: center; gap: 8px; background: #e8f5e8; padding: 6px; border-radius: 4px;">
@@ -4175,40 +4204,44 @@ function renderSavedTable() {
 }
 
 // ========== RETRY SAVE FUNCTION ==========
+// ========== UPDATED RETRY SAVE FUNCTION ==========
 async function retrySave(id) {
     const entryIndex = savedPasses.findIndex(e => e.id === id);
     if (entryIndex === -1) return;
     
     const entry = savedPasses[entryIndex];
     
-    // Clear error state
-    savedPasses[entryIndex].firebaseError = null;
-    savedPasses[entryIndex].firebaseReason = null;
-    savedPasses[entryIndex].firebaseStatus = 'saving';
-    savedPasses[entryIndex].firebaseRetry = false;
-    savedPasses[entryIndex].firebaseSaved = false;
-    savedPasses[entryIndex].errorCode = null;
-    savedPasses[entryIndex].errorMessage = null;
-    savedPasses[entryIndex].errorTimestamp = null;
-    savedPasses[entryIndex].errorDetails = null;
+    // Clear any existing save timeouts
+    if (saveTimeouts.has(id)) {
+        clearTimeout(saveTimeouts.get(id));
+        saveTimeouts.delete(id);
+    }
     
-    saveSavedToLocalStorage();
-    renderTables();
-    updateErrorSummary();
-    
-    const dbName = getFirestoreNameForFlight(entry.flightNo);
-    showTemporaryNotification(`🔄 Manually retrying save to ${dbName}...`, 'info');
-    
-    // Cancel any pending retry
+    // Clear any pending retry
     if (retryQueue.has(id)) {
         clearTimeout(retryQueue.get(id));
         retryQueue.delete(id);
     }
     
+    // Clear error state if it exists
+    entry.firebaseError = null;
+    entry.firebaseReason = null;
+    entry.firebaseStatus = 'saving';
+    entry.firebaseRetry = false;
+    entry.firebaseSaved = false;
+    entry.errorCode = null;
+    entry.errorMessage = null;
+    entry.errorTimestamp = null;
+    entry.errorDetails = null;
+    
+    saveSavedToLocalStorage();
+    renderTables();
+    
+    const dbName = getFirestoreNameForFlight(entry.flightNo);
+    showTemporaryNotification(`🔄 Manually saving to ${dbName}...`, 'info');
+    
     // Attempt save immediately
-    setTimeout(() => {
-        backgroundSaveToFirebase(entry);
-    }, 100);
+    backgroundSaveToFirebase(entry);
 }
 
 // ========== FIXED APPROVE ENTRY FUNCTION - PRESERVES HIDDEN CODE ==========
