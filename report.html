@@ -76,6 +76,22 @@
             transition: all 0.2s;
         }
         
+        .clear-cache-btn {
+            background: rgba(220, 53, 69, 0.8);
+            border: none;
+            color: white;
+            padding: 4px 14px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 10px;
+            transition: all 0.2s;
+        }
+        
+        .clear-cache-btn:hover {
+            background: rgba(220, 53, 69, 1);
+        }
+        
         /* ===== main card – more compact ===== */
         .card {
             background: white;
@@ -831,6 +847,12 @@
             text-align: center;
             margin-bottom: 10px;
         }
+        
+        .cache-status {
+            font-size: 10px;
+            color: #6c757d;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
@@ -841,7 +863,10 @@
                 <span class="shift-badge" id="shiftBadge">LOADING...</span>
                 <span class="date-value" id="ribbonDate">--</span>
             </div>
-            <button class="refresh-shift" onclick="fetchOpenShift()">↻ REFRESH</button>
+            <div>
+                <button class="refresh-shift" onclick="fetchOpenShift()">↻ REFRESH</button>
+                <button class="clear-cache-btn" onclick="clearDateCache()">🗑️ CLEAR CACHE</button>
+            </div>
         </div>
 
         <!-- main card – compact & rearranged -->
@@ -850,8 +875,8 @@
             <div class="selection-flight-row">
                 <div class="left-selectors">
                     <div class="form-group">
-                        <label>📅 DATE</label>
-                        <select id="dateSelect" class="form-control" onclick="loadDates()" onchange="onDateSelected()">
+                        <label>📅 DATE <span id="cacheStatus" class="cache-status"></span></label>
+                        <select id="dateSelect" class="form-control" onclick="if(!datesLoaded) scanDatesAndFlights()" onchange="onDateSelected()">
                             <option value="">-- Click to load dates --</option>
                         </select>
                     </div>
@@ -1012,7 +1037,7 @@
             
             <div class="modal-actions">
                 <button class="btn-primary" onclick="calculateDelayCharges()">CALCULATE CHARGES</button>
-                <button class="btn-danger" onclick="submitDelayCharges()">SUBMIT CHARGES (Pax: 0)</button>
+                <button class="btn-danger" onclick="submitDelayCharges()">SUBMIT CHARGES</button>
                 <button class="btn-secondary" onclick="closeDelayChargeModal()">CANCEL</button>
             </div>
         </div>
@@ -1027,6 +1052,11 @@
     let editingRowId = null;
     let isLoadingDates = false;
     let datesLoaded = false;
+    
+    // Cache variables
+    const CACHE_KEY = 'flightDateCache';
+    const CACHE_TIMESTAMP_KEY = 'flightDateCacheTimestamp';
+    const CACHE_DURATION = 3600000; // 1 hour in milliseconds
     
     // Delay charge variables
     let delaySelectedFlight = null;
@@ -1152,6 +1182,97 @@
         }
     }
 
+    // ========== CACHE MANAGEMENT ==========
+    function saveToCache() {
+        try {
+            // Create a cacheable version (remove dbRef which can't be stringified)
+            const cacheable = {};
+            Object.keys(flightsByDate).forEach(date => {
+                cacheable[date] = {};
+                flightsByDate[date].forEach((flight, key) => {
+                    // Store everything except dbRef
+                    const { dbRef, ...cacheableFlight } = flight;
+                    cacheable[date][key] = cacheableFlight;
+                });
+            });
+            
+            const cacheData = {
+                flightsByDate: cacheable,
+                allDates: allDates,
+                timestamp: Date.now()
+            };
+            
+            localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+            localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+            
+            document.getElementById('cacheStatus').textContent = '📦 Cached';
+            setTimeout(() => {
+                document.getElementById('cacheStatus').textContent = '';
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error saving to cache:', error);
+        }
+    }
+
+    function loadFromCache() {
+        try {
+            const cached = localStorage.getItem(CACHE_KEY);
+            const timestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+            
+            if (!cached || !timestamp) return false;
+            
+            // Check if cache is expired
+            if (Date.now() - parseInt(timestamp) > CACHE_DURATION) {
+                console.log('Cache expired');
+                return false;
+            }
+            
+            const cacheData = JSON.parse(cached);
+            
+            // Restore flightsByDate with Maps
+            flightsByDate = {};
+            Object.keys(cacheData.flightsByDate).forEach(date => {
+                flightsByDate[date] = new Map();
+                Object.keys(cacheData.flightsByDate[date]).forEach(key => {
+                    const flight = cacheData.flightsByDate[date][key];
+                    // We need to restore dbRef - will be added when needed
+                    flightsByDate[date].set(key, flight);
+                });
+            });
+            
+            allDates = cacheData.allDates || [];
+            
+            console.log('✅ Loaded from cache');
+            document.getElementById('cacheStatus').textContent = '📦 From cache';
+            
+            return true;
+            
+        } catch (error) {
+            console.error('Error loading from cache:', error);
+            return false;
+        }
+    }
+
+    function clearDateCache() {
+        localStorage.removeItem(CACHE_KEY);
+        localStorage.removeItem(CACHE_TIMESTAMP_KEY);
+        flightsByDate = {};
+        allDates = [];
+        datesLoaded = false;
+        document.getElementById('cacheStatus').textContent = '🗑️ Cache cleared';
+        document.getElementById('dateSelect').innerHTML = '<option value="">-- Click to load dates --</option>';
+        document.getElementById('flightSelect').innerHTML = '<option value="">-- Select date first --</option>';
+        document.getElementById('flightSelect').disabled = true;
+        document.getElementById('flightPanel').style.display = 'none';
+        document.getElementById('tableContainer').style.display = 'none';
+        
+        // Reload fresh data
+        setTimeout(() => {
+            scanDatesAndFlights(true);
+        }, 500);
+    }
+
     // ========== FAST SCAN FOR DATES AND FLIGHTS ONLY ==========
     async function scanDatesAndFlights(forceReload = false) {
         if (datesLoaded && !forceReload) {
@@ -1165,7 +1286,18 @@
         const dateSelect = document.getElementById('dateSelect');
         isLoadingDates = true;
         
-        dateSelect.innerHTML = '<option value="">🔍 Quick scanning for dates...</option>';
+        // Try to load from cache first (unless force reload)
+        if (!forceReload) {
+            const loaded = loadFromCache();
+            if (loaded) {
+                datesLoaded = true;
+                isLoadingDates = false;
+                populateDateDropdown();
+                return;
+            }
+        }
+        
+        dateSelect.innerHTML = '<option value="">🔍 Quick scanning databases...</option>';
         dateSelect.disabled = true;
         
         // Clear existing data
@@ -1179,11 +1311,19 @@
             // Process all databases in parallel for speed
             const scanPromises = databases.map(async (dbInfo) => {
                 try {
-                    // ONLY fetch document IDs and a few fields - MUCH FASTER
-                    // We'll use a lightweight query that just gets what we need
-                    const snapshot = await dbInfo.ref.collection('KoveliPass')
-                        .select('date', 'flightNo', 'shift', 'airline') // Only fetch these fields
-                        .get();
+                    // Use select() to only fetch needed fields (fastest)
+                    let snapshot;
+                    try {
+                        snapshot = await dbInfo.ref.collection('KoveliPass')
+                            .select('date', 'flightNo', 'shift', 'airline')
+                            .get();
+                    } catch (selectError) {
+                        // Fallback if select() is not supported
+                        console.log(`Select not supported for ${dbInfo.name}, using regular query`);
+                        snapshot = await dbInfo.ref.collection('KoveliPass')
+                            .limit(5000) // Limit for performance
+                            .get();
+                    }
                     
                     const flightsForDb = new Map(); // key: date_flightNo_shift
                     
@@ -1201,12 +1341,11 @@
                                     flightNo: flightNo,
                                     shift: data.shift || 'UNKNOWN',
                                     airline: data.airline || '',
-                                    passengerCount: 1, // Will update if we see more
+                                    passengerCount: 1,
                                     database: dbInfo.name,
                                     dbRef: dbInfo.ref
                                 });
                             } else {
-                                // Just count passengers, don't store them
                                 const existing = flightsForDb.get(key);
                                 existing.passengerCount++;
                             }
@@ -1214,43 +1353,10 @@
                     });
                     
                     return Array.from(flightsForDb.values());
+                    
                 } catch (error) {
                     console.error(`Error scanning ${dbInfo.name}:`, error);
-                    
-                    // Fallback: try without select() if not supported
-                    try {
-                        const snapshot = await dbInfo.ref.collection('KoveliPass')
-                            .limit(1000) // Limit for performance
-                            .get();
-                        
-                        const flightsForDb = new Map();
-                        
-                        snapshot.forEach(doc => {
-                            const data = doc.data();
-                            const date = data.date;
-                            const flightNo = data.flightNo;
-                            
-                            if (date && flightNo) {
-                                const key = `${date}_${flightNo}_${data.shift || 'UNKNOWN'}`;
-                                if (!flightsForDb.has(key)) {
-                                    flightsForDb.set(key, {
-                                        date: date,
-                                        flightNo: flightNo,
-                                        shift: data.shift || 'UNKNOWN',
-                                        airline: data.airline || '',
-                                        passengerCount: 1,
-                                        database: dbInfo.name,
-                                        dbRef: dbInfo.ref
-                                    });
-                                }
-                            }
-                        });
-                        
-                        return Array.from(flightsForDb.values());
-                    } catch (fallbackError) {
-                        console.error(`Fallback also failed for ${dbInfo.name}:`, fallbackError);
-                        return [];
-                    }
+                    return [];
                 }
             });
             
@@ -1275,8 +1381,7 @@
                         airline: flight.airline,
                         passengerCount: flight.passengerCount,
                         database: flight.database,
-                        dbRef: flight.dbRef,
-                        // Don't store passengers here - will fetch when selected
+                        dbRef: flight.dbRef
                     });
                 }
             });
@@ -1284,7 +1389,10 @@
             allDates = Object.keys(flightsByDate).sort().reverse();
             datesLoaded = true;
             
-            console.log(`Found ${allDates.length} dates with flights`);
+            console.log(`Found ${allDates.length} dates with ${allFlights.length} flights`);
+            
+            // Save to cache
+            saveToCache();
             
             // Populate the dropdown
             populateDateDropdown();
@@ -1378,10 +1486,13 @@
             return;
         }
         
+        // Get the actual database reference (need to restore from cache)
+        const databases = getAllDatabases();
+        const dbInfo = databases.find(db => db.name === flightInfo.database);
+        const targetDb = dbInfo ? dbInfo.ref : getFirestoreForFlight(flightNo);
+        
         // NOW fetch complete passenger data for this specific flight only
         try {
-            const targetDb = flightInfo.dbRef || getFirestoreForFlight(flightNo);
-            
             // Fetch ALL passengers for this specific flight
             const passengerSnapshot = await targetDb.collection('KoveliPass')
                 .where('date', '==', selectedDate)
@@ -1450,9 +1561,9 @@
                 const parts = selectedDate.split('/');
                 if (parts.length === 3) {
                     if (parts[0].length === 4) {
-                        formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                        formattedDate = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
                     } else {
-                        formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                        formattedDate = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
                     }
                 }
             }
@@ -1853,158 +1964,351 @@
         displayPassengerTable(currentFlightData.passengers);
     }
 
-    // ========== PRINT REPORT FUNCTION ==========
-    window.printReport = function() {
-        if (!currentFlightData) {
-            alert('No flight selected to print');
-            return;
+    // ========== ENHANCED PRINT REPORT FUNCTION ==========
+    function printReport() {
+        if (!currentFlightData || !currentFlightData.isClosed) { 
+            return; 
         }
-        
-        // Create a print-friendly version of the current view
-        const printWindow = window.open('', '_blank');
-        const date = document.getElementById('dateDisplay').textContent;
-        const flightNo = document.getElementById('flightNoDisplay').textContent;
-        const airline = document.getElementById('airlineDisplay').textContent;
-        const shift = document.getElementById('shiftDisplay').textContent;
-        const std = document.getElementById('stdInput').value || '--:--';
-        const firstPax = currentFlightData.firstPax || '--:--';
-        const lastPax = currentFlightData.lastPax || '--:--';
-        const totalPax = currentFlightData.passengers.filter(p => !p.isDelayCharge).length;
-        const totalDelayCharges = currentFlightData.passengers.filter(p => p.isDelayCharge).length;
-        
-        // Get passenger data for table
-        const isFZ = isFZFlight();
+
         const isSQ = isSQFlight();
+        const isFZ = isFZFlight();
+        const company = window.companyInfo || { 
+            name: 'MACL', 
+            address: '123 Aviation Road', 
+            phone: '+123 456 7890',
+            logo: 'macl.png'
+        };
         
-        // Sort passengers for display
-        const regular = currentFlightData.passengers.filter(p => !p.isDelayCharge);
-        const delay = currentFlightData.passengers.filter(p => p.isDelayCharge);
-        const sortedRegular = [...regular].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        const sortedDelay = [...delay].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        const allPassengers = [...sortedRegular, ...sortedDelay];
+        const dateStr = document.getElementById('dateDisplay').textContent; 
+        const dateParts = dateStr.split('-');
+        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+
+        const airline = currentFlightData.airline || '—';
+        const flightNo = currentFlightData.flightNo || '—';
+        const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
+        const firstPax = currentFlightData.firstPax || '—';
+        const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
+        const shift = currentFlightData.shift || '—';
         
-        // Build HTML for print
-        let printHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Flight Report - ${flightNo} - ${date}</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 0.5in; color: #333; }
-                h1 { color: #8b6913; border-bottom: 2px solid #e6b800; padding-bottom: 10px; }
-                .flight-info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; background: #f9f9f9; padding: 15px; border-radius: 8px; }
-                .info-item { font-size: 14px; }
-                .info-label { font-weight: bold; color: #8b6913; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-                th { background: #e6b800; color: white; padding: 8px; text-align: left; }
-                td { padding: 6px 8px; border-bottom: 1px solid #eee; }
-                .delay-row { background-color: #fff0f0; }
-                .footer { margin-top: 30px; font-size: 11px; color: #777; text-align: right; }
-                .print-date { margin-top: 10px; font-size: 11px; }
-                .badge { display: inline-block; padding: 2px 6px; background: #dc3545; color: white; font-size: 9px; border-radius: 10px; margin-left: 5px; }
-                @media print {
-                    body { margin: 0; }
-                    .no-print { display: none; }
-                }
-            </style>
-        </head>
-        <body>
-            <h1>✈ FLIGHT REPORT</h1>
-            
-            <div class="flight-info">
-                <div class="info-item"><span class="info-label">Airline:</span> ${airline}</div>
-                <div class="info-item"><span class="info-label">Flight No:</span> ${flightNo}</div>
-                <div class="info-item"><span class="info-label">Date:</span> ${date}</div>
-                <div class="info-item"><span class="info-label">Shift:</span> ${shift}</div>
-                <div class="info-item"><span class="info-label">STD:</span> ${std}</div>
-                <div class="info-item"><span class="info-label">First Pax:</span> ${firstPax}</div>
-                <div class="info-item"><span class="info-label">Last Pax:</span> ${lastPax}</div>
-                <div class="info-item"><span class="info-label">Total Pax:</span> ${totalPax}</div>
-                <div class="info-item"><span class="info-label">Delay Charges:</span> ${totalDelayCharges}</div>
-                <div class="info-item"><span class="info-label">Database:</span> ${currentFlightData.database}</div>
-            </div>
-            
-            <h3>PASSENGER LIST</h3>
-            <table>
-                <thead>
-                    <tr>`;
+        const regularPassengers = currentFlightData.passengers.filter(p => !p.isDelayCharge);
+        const delayPassengers = currentFlightData.passengers.filter(p => p.isDelayCharge);
         
+        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const sortedDelay = [...delayPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        
+        const sortedPassengers = [...sortedRegular, ...sortedDelay];
+        
+        const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 0), 0);
+
+        const printWindow = window.open('', '_blank');
+        
+        let tableHeaders = '';
         if (isFZ) {
-            printHTML += `<th>No.</th><th>Name</th><th>PNR</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th>`;
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>Name</th>
+                    <th>PNR</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
         } else {
-            printHTML += `<th>No.</th><th>${isSQ ? 'Voucher No.' : 'Name'}</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th>`;
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
         }
         
-        printHTML += `</tr></thead><tbody>`;
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Flight Report - ${flightNo} - ${formattedDate}</title>
+                <style>
+                    body {
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                        margin: 0.5in;
+                        color: #333;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-bottom: 30px;
+                        padding-bottom: 20px;
+                        border-bottom: 2px solid #e6b800;
+                    }
+                    .left-section {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 15px;
+                    }
+                    .logo-section {
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    .logo {
+                        width: 100px;
+                        height: auto;
+                        margin-bottom: 10px;
+                    }
+                    .logo img {
+                        max-width: 100%;
+                        max-height: 80px;
+                    }
+                    .company-address {
+                        font-size: 11px;
+                        color: #666;
+                        line-height: 1.4;
+                    }
+                    .flight-details {
+                        margin-top: 5px;
+                    }
+                    .flight-detail-item {
+                        font-size: 13px;
+                        margin-bottom: 3px;
+                    }
+                    .flight-detail-label {
+                        font-weight: 600;
+                        color: #8b6913;
+                        display: inline-block;
+                        width: 60px;
+                    }
+                    .right-section {
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: flex-start;
+                        padding-top: 95px;
+                    }
+                    .info-item {
+                        display: flex;
+                        gap: 15px;
+                        margin-bottom: 8px;
+                        justify-content: flex-end;
+                    }
+                    .label {
+                        font-weight: 600;
+                        color: #8b6913;
+                        min-width: 80px;
+                        text-align: right;
+                    }
+                    .value {
+                        color: #333;
+                        min-width: 60px;
+                        text-align: left;
+                    }
+                    .total-pax {
+                        margin: 15px 0;
+                        text-align: right;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+                    .total-pax span {
+                        background: #e6b800;
+                        color: white;
+                        padding: 5px 15px;
+                        border-radius: 20px;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 20px;
+                        font-size: 12px;
+                    }
+                    th {
+                        background: #e6b800;
+                        color: white;
+                        padding: 10px;
+                        text-align: left;
+                        font-size: 12px;
+                    }
+                    td {
+                        padding: 8px 10px;
+                        border-bottom: 1px solid #ddd;
+                    }
+                    tr:nth-child(even) {
+                        background: #f9f9f9;
+                    }
+                    .delay-charge-row {
+                        background-color: rgba(220, 53, 69, 0.05);
+                        font-style: italic;
+                    }
+                    .signature-section {
+                        margin-top: 50px;
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 0 20px;
+                    }
+                    .signature-box {
+                        text-align: center;
+                        width: 200px;
+                    }
+                    .signature-line {
+                        margin-top: 40px;
+                        border-bottom: 1px solid #333;
+                        width: 100%;
+                    }
+                    .signature-label {
+                        font-size: 12px;
+                        color: #8b6913;
+                        font-weight: 600;
+                        margin-top: 5px;
+                    }
+                    .date-info {
+                        margin-top: 20px;
+                        text-align: right;
+                        font-size: 11px;
+                        color: #666;
+                    }
+                    .footer {
+                        margin-top: 30px;
+                        text-align: center;
+                        font-size: 11px;
+                        color: #666;
+                        border-top: 1px solid #ddd;
+                        padding-top: 20px;
+                    }
+                    @media print {
+                        body { margin: 0.25in; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="left-section">
+                        <div class="logo-section">
+                            <div class="logo">
+                                <img src="macl.png" alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
+                            </div>
+                            <div class="company-address">
+                                <strong>${company.name}</strong><br>
+                                ${company.address}<br>
+                                ${company.phone}
+                            </div>
+                        </div>
+                        <div class="flight-details">
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Airline:</span> ${airline}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Flight No:</span> ${flightNo}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Date:</span> ${formattedDate}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="right-section">
+                        <div class="info-item">
+                            <span class="label">STD:</span>
+                            <span class="value">${std}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">First Pax:</span>
+                            <span class="value">${firstPax}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Last Pax:</span>
+                            <span class="value">${lastPax}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Shift:</span>
+                            <span class="value">${shift}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="total-pax">
+                    <span>TOTAL PAX: ${totalPaxSum}</span>
+                </div>
+                
+                <table>
+                    <thead>
+                        ${tableHeaders}
+                    </thead>
+                    <tbody>
+        `);
         
-        // Add passenger rows
-        allPassengers.forEach((p, idx) => {
+        sortedPassengers.forEach((p, idx) => {
             const serial = String(idx+1).padStart(3,'0');
-            const pnr = isFZ ? extractPNRFromHiddenCode(p.hiddenCode) : '';
-            const rowClass = p.isDelayCharge ? 'delay-row' : '';
-            const paxDisplay = p.isDelayCharge ? '0' : (p.pax || '1');
-            const nameDisplay = p.pName || '-';
-            const delayBadge = p.isDelayCharge ? ' <span class="badge">DELAY</span>' : '';
-            
-            printHTML += `<tr class="${rowClass}">`;
+            const rowClass = p.isDelayCharge ? 'delay-charge-row' : '';
             
             if (isFZ) {
-                printHTML += `
-                    <td>${serial}</td>
-                    <td>${escapeHtml(nameDisplay)}${delayBadge}</td>
-                    <td>${pnr || '-'}</td>
-                    <td>${escapeHtml(p.seatNo) || '-'}</td>
-                    <td style="text-align:center;">${paxDisplay}</td>
-                    <td>${escapeHtml(p.FQTV) || '-'}</td>
-                    <td>${escapeHtml(p.serialNo) || '—'}</td>
-                    <td>${p.entryTime || '-'}</td>
-                    <td>${escapeHtml(p.remarks) || '-'}</td>
-                `;
+                const pnr = extractPNRFromHiddenCode(p.hiddenCode);
+                printWindow.document.write(`
+                    <tr class="${rowClass}">
+                        <td>${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'}</td>
+                        <td>${pnr || '-'}</td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '1')}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td>${escapeHtml(p.serialNo) || '-'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                    </tr>
+                `);
             } else {
-                printHTML += `
-                    <td>${serial}</td>
-                    <td>${escapeHtml(nameDisplay)}${delayBadge}</td>
-                    <td>${escapeHtml(p.seatNo) || '-'}</td>
-                    <td style="text-align:center;">${paxDisplay}</td>
-                    <td>${escapeHtml(p.FQTV) || '-'}</td>
-                    <td>${escapeHtml(p.serialNo) || '—'}</td>
-                    <td>${p.entryTime || '-'}</td>
-                    <td>${escapeHtml(p.remarks) || '-'}</td>
-                `;
+                printWindow.document.write(`
+                    <tr class="${rowClass}">
+                        <td>${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'}</td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '1')}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td>${escapeHtml(p.serialNo) || '-'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                    </tr>
+                `);
             }
-            
-            printHTML += `</tr>`;
         });
         
-        printHTML += `
-                </tbody>
-            </table>
-            
-            <div class="footer">
-                <div class="print-date">Printed on: ${new Date().toLocaleString()}</div>
-                <div>Flight Report - ${flightNo} - ${date}</div>
-            </div>
-            
-            <div class="no-print" style="text-align: center; margin-top: 20px;">
-                <button onclick="window.print();window.close();" style="padding: 10px 20px; background: #e6b800; border: none; border-radius: 30px; cursor: pointer;">Print Report</button>
-                <button onclick="window.close();" style="padding: 10px 20px; background: #7f8c8d; border: none; border-radius: 30px; cursor: pointer; margin-left: 10px;">Close</button>
-            </div>
-            
-            <script>
-                // Auto-trigger print dialog when page loads
-                window.onload = function() {
-                    setTimeout(function() {
-                        window.print();
-                    }, 500);
-                };
-            <\/script>
-        </body>
-        </html>
-        `;
+        printWindow.document.write(`
+                    </tbody>
+                </table>
+                
+                <div class="signature-section">
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Prepared by:</div>
+                    </div>
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Checked by:</div>
+                    </div>
+                </div>
+                
+                <div class="date-info">
+                    Date: ____________________
+                </div>
+                
+                <div class="footer">
+                    <p>This is a computer generated report. Valid without signature.</p>
+                    <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
+                </div>
+                
+                <script>
+                    window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
+                <\/script>
+            </body>
+            </html>
+        `);
         
-        printWindow.document.write(printHTML);
         printWindow.document.close();
-    };
+    }
 
     // ========== DELAY CHARGE FUNCTIONS ==========
     
@@ -2359,6 +2663,7 @@
     window.selectAllPassengers = selectAllPassengers;
     window.calculateDelayCharges = calculateDelayCharges;
     window.submitDelayCharges = submitDelayCharges;
+    window.clearDateCache = clearDateCache;
 </script>
 </body>
 </html>
