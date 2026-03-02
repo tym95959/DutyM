@@ -297,7 +297,7 @@
             box-shadow: 0 8px 0 #cb9f62, 0 10px 20px -8px #a5713a;
             display: flex; align-items: center; justify-content: center; gap: 10px;
         }
-        .reset-super {
+        .reset-btn {
             flex: 1;
             padding: 18px;
             background: #fbe7c4;
@@ -310,8 +310,9 @@
             border: 1px solid #f5c58c;
             box-shadow: 0 8px 0 #b88744, 0 10px 20px -8px #8b621f;
             display: flex; align-items: center; justify-content: center;
+            transition: 0.15s;
         }
-        .reset-super:disabled { opacity: 0.4; box-shadow: 0 4px 0 #886b40; transform: translateY(4px); cursor: not-allowed; }
+        .reset-btn:active { transform: translateY(5px); box-shadow: 0 3px 0 #b88744; }
 
         /* message — sleek */
         #message {
@@ -404,7 +405,7 @@
     <div class="bottom-dock">
         <button class="refresh-large" onclick="loadTodayData()"><span>⟳</span> refresh status</button>
         <button class="dashboard-btn" onclick="goToDashboard()"><span>📋</span> back to dashboard</button>
-        <button class="reset-super" id="resetSuperBtn" onclick="supervisorReset()"><span>✨</span> reset</button>
+        <button class="reset-btn" onclick="resetShifts()"><span>✨</span> reset day</button>
     </div>
 
     <div class="footer-note" id="lastUpdatedInfo">synced: —</div>
@@ -473,11 +474,6 @@
         if (currentUser.isSupervisor) levelSpan.classList.add('supervisor');
         else levelSpan.classList.remove('supervisor');
         document.getElementById('userRcnoDisplay').textContent = `RC: ${currentUser.rcno}`;
-        const resetBtn = document.getElementById('resetSuperBtn');
-        if (resetBtn) {
-            resetBtn.disabled = !currentUser.isSupervisor;
-            resetBtn.title = currentUser.isSupervisor ? 'reset new day (uses system date)' : 'supervisor only';
-        }
     }
 
     window.logout = function() {
@@ -601,7 +597,7 @@
 
             // Normal shift operations - only proceed if dates match or no existing date
             if (existingDate && existingDate !== todayStr && action !== 'close') {
-                showMessage(`⚠️ Date mismatch. System date: ${formatDateForDisplay(todayStr)}. Please refresh or contact supervisor.`, true);
+                showMessage(`⚠️ Date mismatch. System date: ${formatDateForDisplay(todayStr)}. Please refresh or reset the day.`, true);
                 return;
             }
 
@@ -644,10 +640,9 @@
         }
     }
 
-    // Supervisor reset function - now explicitly uses system date
-    async function supervisorReset() {
-        if (!currentUser.isSupervisor) { showMessage('supervisor only', true); return; }
-        if (!confirm('Reset shifts for new day? This will use TODAY\'S SYSTEM DATE.')) return;
+    // Reset function - now available for ALL users
+    async function resetShifts() {
+        if (!confirm('⚠️ Reset shifts for new day?\n\nThis will:\n• Set both shifts to pending\n• Update date to today\'s system date\n\nAll users will see this change.')) return;
         
         const todayStr = getSystemDateString(); // Get system date explicitly
         const now = new Date().toLocaleString();
@@ -663,7 +658,7 @@
                 updatedByRC: currentUser.rcno,
                 resetBy: currentUser.name, 
                 resetAt: now,
-                resetReason: 'supervisor_reset_with_system_date'
+                resetReason: 'user_reset_with_system_date'
             });
             showMessage(`✅ New day started with system date: ${formatDateForDisplay(todayStr)}`); 
             await loadTodayData();
