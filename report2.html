@@ -1159,7 +1159,7 @@
     </div>
 
    <script>
-  // ========== GLOBAL VARIABLES ==========
+// ========== GLOBAL VARIABLES ==========
 let flightsByDate = {};
 let allDates = [];
 let currentFlightData = null;
@@ -1391,10 +1391,8 @@ async function loadDates(forceReload = false) {
             try {
                 console.log(`📂 Querying ${dbInfo.name}...`);
                 
-                // OPTIMIZATION: Only fetch necessary fields: date, flightNo, shift, airline
-                const snapshot = await dbInfo.ref.collection('KoveliPass')
-                    .select('date', 'flightNo', 'shift', 'airline')
-                    .get();
+                // Get all documents but we'll only extract minimal info
+                const snapshot = await dbInfo.ref.collection('KoveliPass').get();
                 
                 databaseStats[dbInfo.name] = {
                     records: snapshot.size,
@@ -1406,41 +1404,52 @@ async function loadDates(forceReload = false) {
                     databasesWithData++;
                     totalRecords += snapshot.size;
                     
-                    snapshot.forEach(doc => {
-                        const data = doc.data();
-                        const date = data.date;
+                    // Process in batches to avoid UI freeze
+                    const batchSize = 500;
+                    const docs = snapshot.docs;
+                    
+                    for (let i = 0; i < docs.length; i += batchSize) {
+                        const batch = docs.slice(i, i + batchSize);
                         
-                        if (date) {
-                            databaseStats[dbInfo.name].dates.add(date);
+                        // Use setTimeout to allow UI to breathe
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                        
+                        batch.forEach(doc => {
+                            const data = doc.data();
+                            const date = data.date;
                             
-                            if (!flightsByDate[date]) flightsByDate[date] = new Map();
-                            
-                            const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
-                            databaseStats[dbInfo.name].flights.add(data.flightNo);
-                            
-                            // OPTIMIZATION: Only store minimal flight info - NO passengers yet
-                            if (!flightsByDate[date].has(flightKey)) {
-                                flightsByDate[date].set(flightKey, {
-                                    flightNo: data.flightNo,
-                                    shift: data.shift || 'UNKNOWN',
-                                    airline: data.airline || '',
-                                    passengerCount: 0, // Will increment
-                                    firstPax: null,
-                                    lastPax: null,
-                                    std: '',
-                                    isClosed: false,
-                                    database: dbInfo.name,
-                                    dbRef: dbInfo.ref,
-                                    databaseProject: dbInfo.projectId,
-                                    flightPrefix: data.flightNo ? data.flightNo.substring(0, 2).toUpperCase() : 'UNK'
-                                });
+                            if (date) {
+                                databaseStats[dbInfo.name].dates.add(date);
+                                
+                                if (!flightsByDate[date]) flightsByDate[date] = new Map();
+                                
+                                const flightKey = `${data.flightNo}_${data.shift || 'UNKNOWN'}`;
+                                databaseStats[dbInfo.name].flights.add(data.flightNo);
+                                
+                                // Only store minimal flight info - NO passengers yet
+                                if (!flightsByDate[date].has(flightKey)) {
+                                    flightsByDate[date].set(flightKey, {
+                                        flightNo: data.flightNo,
+                                        shift: data.shift || 'UNKNOWN',
+                                        airline: data.airline || '',
+                                        passengerCount: 0, // Will increment
+                                        firstPax: null,
+                                        lastPax: null,
+                                        std: '',
+                                        isClosed: false,
+                                        database: dbInfo.name,
+                                        dbRef: dbInfo.ref,
+                                        databaseProject: dbInfo.projectId,
+                                        flightPrefix: data.flightNo ? data.flightNo.substring(0, 2).toUpperCase() : 'UNK'
+                                    });
+                                }
+                                
+                                // Increment passenger count
+                                const flightData = flightsByDate[date].get(flightKey);
+                                flightData.passengerCount++;
                             }
-                            
-                            // Increment passenger count
-                            const flightData = flightsByDate[date].get(flightKey);
-                            flightData.passengerCount++;
-                        }
-                    });
+                        });
+                    }
                     
                     console.log(`✅ ${dbInfo.name}: ${snapshot.size} records found`);
                 } else {
