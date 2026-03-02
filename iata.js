@@ -47,7 +47,8 @@ const airlineData = {
     { "airline": "Turkish Airlines", "iata": "TK" },
     { "airline": "US-Bangla Airlines", "iata": "BS" },
     { "airline": "Virgin Atlantic", "iata": "VS" },
-    { "airline": "XiamenAir", "iata": "MF" }
+    { "airline": "XiamenAir", "iata": "MF" },
+    { "airline": "Batik Air", "iata": "OD" }
   ]
 };
 
