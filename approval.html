@@ -1165,6 +1165,8 @@ async function fetchPendingTransactions() {
                     approvalCode: data.approvalCode || '',
                     batchNo: data.batchNo || '',
                     missingFields: missingFields,
+                    approvedBy: data.approvedBy || '',
+                    approvedAt: data.approvedAt || null,
                     // Store additional data for printing
                     email: data.email || '',
                     phone: data.phone || '',
@@ -1292,7 +1294,11 @@ function selectTransaction(index) {
         document.getElementById('unifiedPaymentMethod').value = selectedTransaction.paymentMethod;
         
         document.getElementById('updateBtn').disabled = false;
-        document.getElementById('printReceiptBtn').disabled = true; // Disable print until after update
+        
+        // Check if transaction is complete (has approval code and batch no) to enable print
+        const hasApprovalCode = selectedTransaction.approvalCode && selectedTransaction.approvalCode.trim() !== '';
+        const hasBatchNo = selectedTransaction.batchNo && selectedTransaction.batchNo.trim() !== '';
+        document.getElementById('printReceiptBtn').disabled = !(hasApprovalCode && hasBatchNo);
         
         // Clear status message
         document.getElementById('statusMessage').textContent = '';
@@ -1336,11 +1342,11 @@ async function updateTransaction() {
         
         const docRef = passengerDb.collection('Kovelipay').doc(selectedTransaction.id);
         
-        // Prepare update data
+        // Prepare update data - INCLUDE paymentMethod in the update
         const updateData = {
             approvalCode: approvalCode,
             batchNo: batchNo,
-            paymentMethod: paymentMethod, // Update payment method from unified dropdown
+            paymentMethod: paymentMethod, // CRITICAL: Update payment method in database
             approvedBy: currentUser.username || 'Unknown',
             approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
             approvalDateTime: new Date().toISOString(),
@@ -1353,23 +1359,38 @@ async function updateTransaction() {
         // Update selected transaction with new data for printing
         selectedTransaction.approvalCode = approvalCode;
         selectedTransaction.batchNo = batchNo;
-        selectedTransaction.paymentMethod = paymentMethod;
+        selectedTransaction.paymentMethod = paymentMethod; // Make sure this is updated
         selectedTransaction.approvedBy = currentUser.username;
+        
+        // Update the missing fields array (remove the fields that are now present)
+        selectedTransaction.missingFields = selectedTransaction.missingFields.filter(
+            field => field !== 'Approval Code' && field !== 'Batch No'
+        );
         
         // Update the payment method display field
         document.getElementById('paymentMethod').value = paymentMethod;
         
         showStatus(`Transaction ${selectedTransaction.receiptNo} updated successfully!`, 'success');
         
-        // Enable print button
+        // Enable print button immediately after successful update
         document.getElementById('printReceiptBtn').disabled = false;
         
-        // Refresh the list
+        // Refresh the list to show updated status
         await fetchPendingTransactions();
+        
+        // Re-select the transaction to refresh the missing fields display
+        // Find the updated transaction in the pending list
+        const updatedTransactionIndex = pendingTransactions.findIndex(
+            t => t.id === selectedTransaction.id
+        );
+        if (updatedTransactionIndex !== -1) {
+            selectTransaction(updatedTransactionIndex);
+        }
         
     } catch (error) {
         console.error('Error updating transaction:', error);
         showStatus(`Error updating: ${error.message}`, 'error');
+        document.getElementById('printReceiptBtn').disabled = true;
     } finally {
         updateBtn.disabled = false;
         updateBtn.textContent = 'UPDATE APPROVAL';
@@ -1381,6 +1402,15 @@ async function updateTransaction() {
 function printReceipt() {
     if (!selectedTransaction) {
         showStatus('No transaction selected', 'error');
+        return;
+    }
+    
+    // Check if transaction has approval code and batch no before printing
+    const hasApprovalCode = selectedTransaction.approvalCode && selectedTransaction.approvalCode.trim() !== '';
+    const hasBatchNo = selectedTransaction.batchNo && selectedTransaction.batchNo.trim() !== '';
+    
+    if (!hasApprovalCode || !hasBatchNo) {
+        showStatus('Cannot print: Transaction is incomplete. Please add approval code and batch number first.', 'error');
         return;
     }
     
