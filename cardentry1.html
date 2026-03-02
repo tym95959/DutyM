@@ -1593,7 +1593,6 @@
         </div>
     </div>
 
-<script>
 // ========== GLOBAL VARIABLES ==========
 let pendingPasses = [];
 let savedPasses = [];
@@ -1647,45 +1646,18 @@ const ERROR_MESSAGES = {
 // Airlines that don't require seat numbers
 const NO_SEAT_REQUIRED_AIRLINES = ['SQ', 'UL'];
 
-// ========== NEW: LOAD SHIFT DATA FROM LOCALSTORAGE ==========
-function loadShiftDataFromStorage() {
-    try {
-        const savedShiftData = localStorage.getItem('currentShiftData');
-        if (savedShiftData) {
-            const parsed = JSON.parse(savedShiftData);
-            currentShiftData = { ...currentShiftData, ...parsed };
-            console.log('✅ Loaded shift data from localStorage:', currentShiftData);
-        } else {
-            console.log('ℹ️ No shift data in localStorage, will fetch from Firebase');
-        }
-    } catch (error) {
-        console.error('Error loading shift data from localStorage:', error);
-    }
+// ========== INITIAL PAGE LOAD WITH SHIFT REFRESH ==========
+async function initializePage() {
+    console.log('🔄 Initializing page and loading shift data...');
     
-    updateShiftDisplay();
-}
-
-// ========== NEW: SAVE SHIFT DATA TO LOCALSTORAGE ==========
-function saveShiftDataToStorage() {
-    try {
-        localStorage.setItem('currentShiftData', JSON.stringify(currentShiftData));
-        console.log('✅ Shift data saved to localStorage');
-    } catch (error) {
-        console.error('Error saving shift data to localStorage:', error);
-    }
-}
-
-// ========== CHECK LOGIN AND INITIALIZATION ==========
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM fully loaded');
-    
+    // First check login
     const isLoggedIn = checkLoginStatus();
     if (!isLoggedIn) {
         window.location.href = 'login.html';
         return;
     }
     
-    // Load user data from localStorage
+    // Load user data
     loadUserData();
     
     // Load shift data from localStorage first (for immediate display)
@@ -1703,11 +1675,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const refreshShiftBtn = document.getElementById('refreshShiftBtn');
     const cancelGuestModeBtn = document.getElementById('cancelGuestModeBtn');
     const dummyEntryBtn = document.getElementById('dummyEntryBtn');
-    
-    // Fetch fresh shift data from Firebase after a short delay
-    setTimeout(() => {
-        fetchShiftData(false); // false = use cache if available
-    }, 1000);
     
     // Set up event listeners
     if (codeField) {
@@ -1771,14 +1738,61 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // CRITICAL: Fetch fresh shift data from Firebase immediately
+    console.log('📡 Fetching fresh shift data from Firebase...');
+    try {
+        await fetchShiftData(true); // Force refresh from Firebase
+        console.log('✅ Shift data loaded successfully');
+    } catch (error) {
+        console.error('❌ Error loading shift data:', error);
+    }
+    
+    // Update error summary
     updateErrorSummary();
+    
+    // Show status message
+    showTemporaryNotification('✓ Page loaded - Shift data refreshed', 'success');
+}
+
+// ========== DOM CONTENT LOADED ==========
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded - starting initialization');
+    initializePage();
 });
+
+// ========== LOAD SHIFT DATA FROM LOCALSTORAGE ==========
+function loadShiftDataFromStorage() {
+    try {
+        const savedShiftData = localStorage.getItem('currentShiftData');
+        if (savedShiftData) {
+            const parsed = JSON.parse(savedShiftData);
+            currentShiftData = { ...currentShiftData, ...parsed };
+            console.log('✅ Loaded shift data from localStorage:', currentShiftData);
+        } else {
+            console.log('ℹ️ No shift data in localStorage, will fetch from Firebase');
+        }
+    } catch (error) {
+        console.error('Error loading shift data from localStorage:', error);
+    }
+    
+    updateShiftDisplay();
+}
+
+// ========== SAVE SHIFT DATA TO LOCALSTORAGE ==========
+function saveShiftDataToStorage() {
+    try {
+        localStorage.setItem('currentShiftData', JSON.stringify(currentShiftData));
+        console.log('✅ Shift data saved to localStorage');
+    } catch (error) {
+        console.error('Error saving shift data to localStorage:', error);
+    }
+}
 
 // ========== CHECK IF SHIFT IS OPEN ==========
 function isShiftOpen() {
     const isOpen = currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING';
     if (!isOpen) {
-        alert('⚠️ NO SHIFT OPEN\n\nPlease open a shift before entering passenger data.\nopen a shift from the dashboard.');
+        alert('⚠️ NO SHIFT OPEN\n\nPlease open a shift before entering passenger data.\nOpen a shift from the dashboard.');
     }
     return isOpen;
 }
@@ -1826,7 +1840,7 @@ function checkLoginStatus() {
     }
 }
 
-// ========== MODIFIED: USER DATA FUNCTIONS ==========
+// ========== USER DATA FUNCTIONS ==========
 function loadUserData() {
     try {
         console.log('Loading user data from localStorage...');
@@ -1904,7 +1918,7 @@ function loadUserData() {
     }
 }
 
-// ========== NEW: SAVE USER DATA TO LOCALSTORAGE ==========
+// ========== SAVE USER DATA TO LOCALSTORAGE ==========
 function saveUserDataToStorage() {
     try {
         localStorage.setItem('currentUser', JSON.stringify(currentUser));
@@ -1946,7 +1960,7 @@ function logout() {
     window.location.href = 'login.html';
 }
 
-// ========== MODIFIED: FETCH SHIFT DATA WITH CACHING ==========
+// ========== FETCH SHIFT DATA WITH CACHING ==========
 async function fetchShiftData(forceRefresh = false) {
     try {
         const shiftInfo = document.getElementById('shiftInfo');
@@ -1959,14 +1973,7 @@ async function fetchShiftData(forceRefresh = false) {
             return;
         }
         
-        // If not forcing refresh, check if we already have valid shift data
-        if (!forceRefresh && currentShiftData.date && 
-            (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING')) {
-            console.log('📋 Using cached shift data from localStorage');
-            updateShiftDisplay();
-            return;
-        }
-        
+        // Show loading state
         dateElement.textContent = 'Loading...';
         shiftElement.textContent = 'Loading...';
         shiftInfo.classList.add('loading');
@@ -1977,6 +1984,11 @@ async function fetchShiftData(forceRefresh = false) {
             shiftElement.textContent = 'NOT INITIALIZED';
             shiftInfo.classList.remove('loading');
             shiftInfo.classList.add('error');
+            
+            // If no Firebase, try to use cached data
+            if (currentShiftData.date) {
+                updateShiftDisplay();
+            }
             return;
         }
         
@@ -2007,6 +2019,7 @@ async function fetchShiftData(forceRefresh = false) {
         
         if (shiftDoc && shiftDoc.exists) {
             const data = shiftDoc.data();
+            console.log('📄 Shift document data from Firebase:', data);
             
             // Update currentShiftData
             currentShiftData.date = data.date || '';
@@ -2030,7 +2043,7 @@ async function fetchShiftData(forceRefresh = false) {
             // Save to localStorage for future use
             saveShiftDataToStorage();
             
-            console.log('✅ Fetched fresh shift data from Firebase and cached');
+            console.log('✅ Fetched fresh shift data from Firebase:', currentShiftData);
         } else {
             console.warn('No shift document found in Firebase');
             // Keep existing cached data if available
@@ -2039,6 +2052,8 @@ async function fetchShiftData(forceRefresh = false) {
                 currentShiftData.shift = 'NO SHIFT DATA';
                 currentShiftData.status = 'NOT FOUND';
                 currentShiftData.openTime = '';
+            } else {
+                console.log('📋 Using cached shift data');
             }
         }
         
@@ -2062,6 +2077,7 @@ async function fetchShiftData(forceRefresh = false) {
         } else {
             // Use cached data
             updateShiftDisplay();
+            showTemporaryNotification('⚠️ Using cached shift data - Firebase unavailable', 'warning');
         }
     }
 }
@@ -2502,7 +2518,7 @@ async function isFlightOpen(flightNo, date) {
     }
 }
 
-// ========== FIXED SAVE ENTRY TO FIREBASE FUNCTION WITH MULTI-DATABASE SUPPORT AND DUPLICATE CHECKING ==========
+// ========== SAVE ENTRY TO FIREBASE FUNCTION WITH MULTI-DATABASE SUPPORT AND DUPLICATE CHECKING ==========
 async function saveEntryToFirebase(entry) {
     try {
         console.log('📤 Saving entry to Firebase:', entry);
@@ -2659,7 +2675,7 @@ async function saveEntryToFirebase(entry) {
     }
 }
 
-// ========== FIXED HIDDEN CODE SAVING - CREATES UNIQUE DOCUMENTS ==========
+// ========== HIDDEN CODE SAVING - CREATES UNIQUE DOCUMENTS ==========
 async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date, passengerName = '', seatNo = '') {
     if (!hiddenCodeValue || !hiddenCodeValue.trim()) {
         console.log('No hidden code to save');
@@ -2725,7 +2741,7 @@ async function saveHiddenCodeToCardDB(hiddenCodeValue, flightNo, date, passenger
     }
 }
 
-// ========== FIXED: ENHANCED BACKGROUND SAVE WITH CLEAR ERROR MESSAGES ==========
+// ========== ENHANCED BACKGROUND SAVE WITH CLEAR ERROR MESSAGES ==========
 async function backgroundSaveToFirebase(entry) {
     const entryId = entry.id;
     
@@ -2970,7 +2986,7 @@ async function backgroundSaveToFirebase(entry) {
     saveTimeouts.set(entryId, timeoutId);
 }
 
-// ========== FIXED: SAVE INLINE EDIT FUNCTION WITH IMMEDIATE RETRY ==========
+// ========== SAVE INLINE EDIT FUNCTION WITH IMMEDIATE RETRY ==========
 function saveInlineEdit(input) {
     if (!editingCell || editingCell.input !== input) {
         return;
@@ -3087,7 +3103,7 @@ function saveInlineEdit(input) {
         entry[field] = newValue;
     }
     
-    // ===== FIXED: IMPROVED RETRY LOGIC AFTER EDIT =====
+    // ===== IMPROVED RETRY LOGIC AFTER EDIT =====
     if (isSaved) {
         // Clear any existing errors
         const hadError = entry.firebaseError ? true : false;
@@ -3952,8 +3968,7 @@ function renderPendingTable() {
     });
 }
 
-// ========== FIXED: ENHANCED RENDER SAVED TABLE WITH CLEAR ERROR MESSAGES ==========
-// ========== FIXED: ENHANCED RENDER SAVED TABLE WITH SYNC BUTTON FOR SAVING STATE ==========
+// ========== RENDER SAVED TABLE WITH SYNC BUTTON FOR SAVING STATE ==========
 function renderSavedTable() {
     const tbody = document.getElementById('savedTableBody');
     if (!tbody) return;
@@ -4204,7 +4219,6 @@ function renderSavedTable() {
 }
 
 // ========== RETRY SAVE FUNCTION ==========
-// ========== UPDATED RETRY SAVE FUNCTION ==========
 async function retrySave(id) {
     const entryIndex = savedPasses.findIndex(e => e.id === id);
     if (entryIndex === -1) return;
@@ -4244,7 +4258,7 @@ async function retrySave(id) {
     backgroundSaveToFirebase(entry);
 }
 
-// ========== FIXED APPROVE ENTRY FUNCTION - PRESERVES HIDDEN CODE ==========
+// ========== APPROVE ENTRY FUNCTION - PRESERVES HIDDEN CODE ==========
 async function approveEntry(id) {
     if (!isShiftOpen()) {
         return; // isShiftOpen already shows alert
@@ -4790,7 +4804,7 @@ function parseAndAddToList() {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        else if (flightNoPrefix === 'SQ' && thirdLastWord && thirdLastWord.length === 2) {
+                        else if (flightNoPrefix === 'VS' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
@@ -4834,7 +4848,6 @@ function parseAndAddToList() {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                        
                         else if (flightNoPrefix === '4Y' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
@@ -4991,6 +5004,8 @@ window.isFlightOpen = isFlightOpen;
 window.checkPassengerExistsInDatabase = checkPassengerExistsInDatabase;
 window.testFlightDatabaseMapping = testFlightDatabaseMapping;
 window.refreshShift = function() { fetchShiftData(true); };
+window.fetchShiftData = fetchShiftData;
+window.initializePage = initializePage;
 </script>
 </body>   
 </html>
