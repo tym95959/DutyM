@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koveli · Pending Approvals</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- Your external files -->
+    <script src="fireshift.js"></script>
+    <script src="iata.js"></script>
+    <script src="rate.js"></script>
+    <script src="Co.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(120deg, #faf3e0, #fff5e6);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 5px 20px rgba(230, 184, 0, 0.15);
+            border: 1px solid rgba(230, 184, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #fff9e6, #ffffff);
+            padding: 20px;
+            border-bottom: 2px solid rgba(230, 184, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #8b6913;
+            font-size: 24px;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .back-btn {
+            background: #6b8e23;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .refresh-btn {
+            background: #e6b800;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .stats-bar {
+            background: linear-gradient(115deg, #f3d48f20, #eec97a20);
+            padding: 15px 20px;
+            display: flex;
+            gap: 30px;
+            border-bottom: 1px solid #e6b80030;
+        }
+        
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .stat-label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .stat-value {
+            background: white;
+            padding: 5px 15px;
+            border-radius: 30px;
+            border: 2px solid #e6b800;
+            font-weight: 700;
+            color: #6b8e23;
+        }
+        
+        .filters {
+            padding: 15px 20px;
+            background: #fff9e6;
+            border-bottom: 1px solid #e6b80030;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-select {
+            padding: 8px 15px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 30px;
+            font-size: 14px;
+            min-width: 150px;
+        }
+        
+        .search-input {
+            padding: 8px 15px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 30px;
+            font-size: 14px;
+            flex: 1;
+            min-width: 250px;
+        }
+        
+        .transactions-table {
+            padding: 20px;
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        th {
+            background: #8b6913;
+            color: white;
+            padding: 12px 8px;
+            font-weight: 600;
+            text-align: left;
+        }
+        
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #e6b80030;
+        }
+        
+        tr:hover {
+            background: #fff9e6;
+        }
+        
+        .payment-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .badge-cash { background: #6b8e23; color: white; }
+        .badge-card { background: #4a6fa5; color: white; }
+        .badge-transfer { background: #c68b5e; color: white; }
+        .badge-pending { background: #b63e3e; color: white; }
+        
+        .missing-field {
+            color: #b63e3e;
+            font-size: 11px;
+            display: block;
+        }
+        
+        .action-btn {
+            background: #6b8e23;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 2px;
+        }
+        
+        .action-btn.approve {
+            background: #4a6fa5;
+        }
+        
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: linear-gradient(145deg, #fff9e6, #fff2d7);
+            border: 3px solid #e6b800;
+            border-radius: 16px;
+            padding: 25px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-content h2 {
+            color: #8b6913;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        .save-btn {
+            background: #6b8e23;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .cancel-btn {
+            background: #c68b5e;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 50px;
+            color: #8b6913;
+            font-size: 16px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #8b6913;
+        }
+        
+        .summary-box {
+            background: white;
+            border: 2px solid #e6b800;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        
+        .status-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #6b8e23;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 3000;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PENDING APPROVALS</h1>
+            <div class="header-actions">
+                <button class="refresh-btn" id="refreshBtn">↻ REFRESH</button>
+                <a href="index.html" class="back-btn">← BACK TO PAYMENT</a>
+            </div>
+        </div>
+        
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-label">TOTAL PENDING:</span>
+                <span class="stat-value" id="totalPending">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">CARD PAYMENTS:</span>
+                <span class="stat-value" id="cardPending">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">OTHER PAYMENTS:</span>
+                <span class="stat-value" id="otherPending">0</span>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <select class="filter-select" id="paymentFilter">
+                <option value="ALL">ALL PAYMENT METHODS</option>
+                <option value="CARD">CARD ONLY</option>
+                <option value="BANK TRANSFER">BANK TRANSFER</option>
+                <option value="MOBILE PAYMENT">MOBILE PAYMENT</option>
+                <option value="VOUCHER">VOUCHER</option>
+            </select>
+            
+            <select class="filter-select" id="missingFilter">
+                <option value="ALL">ALL MISSING FIELDS</option>
+                <option value="approval">MISSING APPROVAL CODE</option>
+                <option value="batch">MISSING BATCH NO</option>
+                <option value="card">MISSING CARD TYPE</option>
+            </select>
+            
+            <input type="text" class="search-input" id="searchInput" placeholder="🔍 SEARCH BY RECEIPT # OR PASSENGER NAME...">
+        </div>
+        
+        <div class="transactions-table">
+            <table id="transactionsTable">
+                <thead>
+                    <tr>
+                        <th>DATE/TIME</th>
+                        <th>RECEIPT #</th>
+                        <th>PASSENGER</th>
+                        <th>PAYMENT METHOD</th>
+                        <th>AMOUNT</th>
+                        <th>REQUIRED FIELDS</th>
+                        <th>STATUS</th>
+                        <th>ACTIONS</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr>
+                        <td colspan="8" class="loading">Loading pending transactions...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Approval Modal -->
+    <div id="approvalModal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">UPDATE APPROVAL DETAILS</h2>
+            <div class="summary-box" id="transactionSummary"></div>
+            
+            <form id="approvalForm">
+                <input type="hidden" id="transactionId">
+                <input type="hidden" id="docId">
+                
+                <div class="form-group">
+                    <label>PAYMENT METHOD</label>
+                    <input type="text" id="modalPaymentMethod" readonly>
+                </div>
+                
+                <div class="form-group" id="approvalCodeGroup">
+                    <label>APPROVAL CODE *</label>
+                    <input type="text" id="approvalCode" placeholder="ENTER APPROVAL CODE">
+                </div>
+                
+                <div class="form-group" id="batchNoGroup">
+                    <label>BATCH NUMBER *</label>
+                    <input type="text" id="batchNo" placeholder="ENTER BATCH NUMBER">
+                </div>
+                
+                <div class="form-group" id="cardTypeGroup">
+                    <label>CARD TYPE *</label>
+                    <select id="cardType">
+                        <option value="">SELECT CARD TYPE</option>
+                        <option value="VISA">VISA</option>
+                        <option value="MASTER">MASTER</option>
+                        <option value="AMEX">AMEX</option>
+                        <option value="UNIONPAY">UNIONPAY</option>
+                        <option value="WECHATPAY">WECHATPAY</option>
+                        <option value="ALIPAY">ALIPAY</option>
+                        <option value="QRPAY">QRPAY</option>
+                    </select>
+                </div>
+                
+                <div class="modal-buttons">
+                    <button type="button" class="cancel-btn" onclick="closeModal()">CANCEL</button>
+                    <button type="submit" class="save-btn">SAVE & APPROVE</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        let allTransactions = [];
+        let currentUser = null;
+        
+        // Load user data
+        function loadUser() {
+            const loggedInUser = localStorage.getItem('loggedInUser');
+            if (loggedInUser) {
+                try {
+                    currentUser = JSON.parse(loggedInUser);
+                } catch (e) {
+                    currentUser = { username: localStorage.getItem('username') };
+                }
+            } else {
+                currentUser = {
+                    username: localStorage.getItem('username'),
+                    level: localStorage.getItem('level'),
+                    rcno: localStorage.getItem('rcno')
+                };
+            }
+        }
+        
+        // Show status message
+        function showStatus(message, isError = false) {
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'status-message';
+            statusDiv.style.background = isError ? '#c68b5e' : '#6b8e23';
+            statusDiv.textContent = message;
+            document.body.appendChild(statusDiv);
+            
+            setTimeout(() => {
+                statusDiv.remove();
+            }, 3000);
+        }
+        
+        // Fetch all pending transactions
+        async function fetchPendingTransactions() {
+            try {
+                const tableBody = document.getElementById('tableBody');
+                tableBody.innerHTML = '<tr><td colspan="8" class="loading">Loading pending transactions...</td></tr>';
+                
+                if (typeof passengerDb === 'undefined') {
+                    throw new Error('Database not initialized');
+                }
+                
+                const kovelipayRef = passengerDb.collection('Kovelipay');
+                const snapshot = await kovelipayRef.get();
+                
+                allTransactions = [];
+                let cardPending = 0;
+                let otherPending = 0;
+                
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const paymentMethod = data.paymentMethod || '';
+                    
+                    // Skip CASH payments
+                    if (paymentMethod === 'CASH') return;
+                    
+                    // Check required fields
+                    const hasApprovalCode = (data.approvalCode && data.approvalCode.trim() !== '') || 
+                                           (data.approval && data.approval.trim() !== '');
+                    const hasBatchNo = (data.batchNo && data.batchNo.trim() !== '') || 
+                                      (data.batch && data.batch.trim() !== '');
+                    const hasCardType = (data.cardType && data.cardType.trim() !== '') || 
+                                       (data.card && data.card.trim() !== '');
+                    
+                    // Determine if this is a card payment
+                    const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
+                    const isCardPayment = cardPayments.includes(paymentMethod);
+                    
+                    // Check if complete
+                    let isComplete = false;
+                    if (isCardPayment) {
+                        isComplete = hasApprovalCode && hasBatchNo && hasCardType;
+                    } else {
+                        isComplete = hasApprovalCode && hasBatchNo;
+                    }
+                    
+                    // Only include pending transactions
+                    if (!isComplete) {
+                        const transaction = {
+                            id: doc.id,
+                            receiptNo: data.receiptNo || 'N/A',
+                            passengerName: data.passengerName || 'N/A',
+                            paymentMethod: paymentMethod,
+                            amount: data.totalAmount || 0,
+                            currency: data.currency || 'USD',
+                            dateTime: data.submissionDateTime || data.createdAt || 'N/A',
+                            flightNo: data.flightNo || 'N/A',
+                            seatNo: data.seatNo || 'N/A',
+                            adult: data.adult || 0,
+                            children: data.children || 0,
+                            hasApprovalCode: hasApprovalCode,
+                            hasBatchNo: hasBatchNo,
+                            hasCardType: hasCardType,
+                            isCardPayment: isCardPayment,
+                            approvalCode: data.approvalCode || data.approval || '',
+                            batchNo: data.batchNo || data.batch || '',
+                            cardType: data.cardType || data.card || ''
+                        };
+                        
+                        allTransactions.push(transaction);
+                        
+                        if (isCardPayment) {
+                            cardPending++;
+                        } else {
+                            otherPending++;
+                        }
+                    }
+                });
+                
+                // Update stats
+                document.getElementById('totalPending').textContent = allTransactions.length;
+                document.getElementById('cardPending').textContent = cardPending;
+                document.getElementById('otherPending').textContent = otherPending;
+                
+                // Display transactions
+                displayTransactions(allTransactions);
+                
+                console.log('Pending transactions loaded:', allTransactions);
+                
+            } catch (error) {
+                console.error('Error fetching pending transactions:', error);
+                document.getElementById('tableBody').innerHTML = 
+                    `<tr><td colspan="8" class="loading" style="color: #c68b5e;">Error loading transactions: ${error.message}</td></tr>`;
+            }
+        }
+        
+        // Display transactions in table
+        function displayTransactions(transactions) {
+            const tableBody = document.getElementById('tableBody');
+            
+            if (transactions.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="8" class="no-data">✅ NO PENDING APPROVALS FOUND</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            
+            transactions.forEach(t => {
+                // Determine missing fields
+                const missingFields = [];
+                if (!t.hasApprovalCode) missingFields.push('Approval Code');
+                if (!t.hasBatchNo) missingFields.push('Batch No');
+                if (t.isCardPayment && !t.hasCardType) missingFields.push('Card Type');
+                
+                // Format date/time
+                let dateTime = t.dateTime;
+                if (dateTime && dateTime.includes(',')) {
+                    const parts = dateTime.split(',');
+                    dateTime = parts[0].trim() + ' ' + (parts[1] || '').trim();
+                }
+                
+                html += `
+                    <tr>
+                        <td>${dateTime}</td>
+                        <td><strong>${t.receiptNo}</strong></td>
+                        <td>
+                            ${t.passengerName}<br>
+                            <small style="color: #8b6913;">${t.flightNo} / Seat ${t.seatNo}</small>
+                        </td>
+                        <td>
+                            <span class="payment-badge ${getBadgeClass(t.paymentMethod)}">${t.paymentMethod}</span>
+                        </td>
+                        <td><strong>${t.currency} ${Number(t.amount).toFixed(2)}</strong></td>
+                        <td>
+                            ${missingFields.map(f => `<span class="missing-field">⚠️ MISSING: ${f}</span>`).join('')}
+                            ${missingFields.length === 0 ? '✅ ALL FIELDS OK' : ''}
+                        </td>
+                        <td>
+                            <span class="payment-badge badge-pending">PENDING</span>
+                        </td>
+                        <td>
+                            <button class="action-btn" onclick="editTransaction('${t.id}')">✏️ EDIT</button>
+                            <button class="action-btn approve" onclick="viewDetails('${t.id}')">👁️ VIEW</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tableBody.innerHTML = html;
+        }
+        
+        function getBadgeClass(method) {
+            if (method === 'CARD' || method.includes('VISA') || method.includes('MASTER')) {
+                return 'badge-card';
+            } else if (method === 'BANK TRANSFER') {
+                return 'badge-transfer';
+            } else {
+                return 'badge-cash';
+            }
+        }
+        
+        // Edit transaction
+        function editTransaction(transactionId) {
+            const transaction = allTransactions.find(t => t.id === transactionId);
+            if (!transaction) return;
+            
+            document.getElementById('transactionId').value = transaction.receiptNo;
+            document.getElementById('docId').value = transaction.id;
+            document.getElementById('modalPaymentMethod').value = transaction.paymentMethod;
+            document.getElementById('approvalCode').value = transaction.approvalCode || '';
+            document.getElementById('batchNo').value = transaction.batchNo || '';
+            document.getElementById('cardType').value = transaction.cardType || '';
+            
+            // Show/hide card type field based on payment method
+            const cardTypeGroup = document.getElementById('cardTypeGroup');
+            if (transaction.isCardPayment) {
+                cardTypeGroup.style.display = 'block';
+            } else {
+                cardTypeGroup.style.display = 'none';
+            }
+            
+            // Update summary
+            document.getElementById('transactionSummary').innerHTML = `
+                <strong>Receipt:</strong> ${transaction.receiptNo}<br>
+                <strong>Passenger:</strong> ${transaction.passengerName}<br>
+                <strong>Amount:</strong> ${transaction.currency} ${Number(transaction.amount).toFixed(2)}
+            `;
+            
+            document.getElementById('approvalModal').style.display = 'flex';
+        }
+        
+        function viewDetails(transactionId) {
+            // You can implement a view-only modal here
+            editTransaction(transactionId);
+        }
+        
+        function closeModal() {
+            document.getElementById('approvalModal').style.display = 'none';
+        }
+        
+        // Save approval details
+        document.getElementById('approvalForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const docId = document.getElementById('docId').value;
+            const approvalCode = document.getElementById('approvalCode').value.trim();
+            const batchNo = document.getElementById('batchNo').value.trim();
+            const cardType = document.getElementById('cardType').value;
+            const paymentMethod = document.getElementById('modalPaymentMethod').value;
+            
+            // Validate based on payment method
+            const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
+            const isCardPayment = cardPayments.includes(paymentMethod);
+            
+            if (!approvalCode) {
+                alert('Approval Code is required');
+                return;
+            }
+            
+            if (!batchNo) {
+                alert('Batch Number is required');
+                return;
+            }
+            
+            if (isCardPayment && !cardType) {
+                alert('Card Type is required for card payments');
+                return;
+            }
+            
+            try {
+                const updateData = {
+                    approvalCode: approvalCode,
+                    batchNo: batchNo,
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: currentUser?.username || 'Unknown'
+                };
+                
+                if (isCardPayment) {
+                    updateData.cardType = cardType;
+                }
+                
+                await passengerDb.collection('Kovelipay').doc(docId).update(updateData);
+                
+                showStatus('✅ Transaction approved successfully!');
+                closeModal();
+                fetchPendingTransactions(); // Refresh the list
+                
+            } catch (error) {
+                console.error('Error updating transaction:', error);
+                showStatus('❌ Error updating transaction: ' + error.message, true);
+            }
+        });
+        
+        // Filter functionality
+        document.getElementById('paymentFilter').addEventListener('change', filterTransactions);
+        document.getElementById('missingFilter').addEventListener('change', filterTransactions);
+        document.getElementById('searchInput').addEventListener('input', filterTransactions);
+        
+        function filterTransactions() {
+            const paymentFilter = document.getElementById('paymentFilter').value;
+            const missingFilter = document.getElementById('missingFilter').value;
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            
+            let filtered = [...allTransactions];
+            
+            // Filter by payment method
+            if (paymentFilter !== 'ALL') {
+                if (paymentFilter === 'CARD') {
+                    filtered = filtered.filter(t => t.isCardPayment);
+                } else {
+                    filtered = filtered.filter(t => t.paymentMethod === paymentFilter);
+                }
+            }
+            
+            // Filter by missing fields
+            if (missingFilter !== 'ALL') {
+                filtered = filtered.filter(t => {
+                    if (missingFilter === 'approval') return !t.hasApprovalCode;
+                    if (missingFilter === 'batch') return !t.hasBatchNo;
+                    if (missingFilter === 'card') return t.isCardPayment && !t.hasCardType;
+                    return true;
+                });
+            }
+            
+            // Filter by search term
+            if (searchTerm) {
+                filtered = filtered.filter(t => 
+                    t.receiptNo.toLowerCase().includes(searchTerm) ||
+                    t.passengerName.toLowerCase().includes(searchTerm) ||
+                    t.flightNo.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            displayTransactions(filtered);
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadUser();
+            fetchPendingTransactions();
+            
+            document.getElementById('refreshBtn').addEventListener('click', fetchPendingTransactions);
+            
+            // Close modal when clicking outside
+            window.addEventListener('click', function(event) {
+                const modal = document.getElementById('approvalModal');
+                if (event.target === modal) {
+                    closeModal();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
