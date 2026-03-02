@@ -1964,158 +1964,586 @@
         displayPassengerTable(currentFlightData.passengers);
     }
 
-    // ========== PRINT REPORT FUNCTION ==========
-    window.printReport = function() {
+    // ========== ENHANCED PRINT REPORT FUNCTION ==========
+    function printReport() {
         if (!currentFlightData) {
             alert('No flight selected to print');
             return;
         }
         
-        // Create a print-friendly version of the current view
-        const printWindow = window.open('', '_blank');
-        const date = document.getElementById('dateDisplay').textContent;
-        const flightNo = document.getElementById('flightNoDisplay').textContent;
-        const airline = document.getElementById('airlineDisplay').textContent;
-        const shift = document.getElementById('shiftDisplay').textContent;
-        const std = document.getElementById('stdInput').value || '--:--';
-        const firstPax = currentFlightData.firstPax || '--:--';
-        const lastPax = currentFlightData.lastPax || '--:--';
-        const totalPax = currentFlightData.passengers.filter(p => !p.isDelayCharge).length;
-        const totalDelayCharges = currentFlightData.passengers.filter(p => p.isDelayCharge).length;
-        
-        // Get passenger data for table
-        const isFZ = isFZFlight();
+        if (!currentFlightData.isClosed) {
+            alert('Flight must be closed before printing');
+            return;
+        }
+
         const isSQ = isSQFlight();
+        const isFZ = isFZFlight();
         
-        // Sort passengers for display
-        const regular = currentFlightData.passengers.filter(p => !p.isDelayCharge);
-        const delay = currentFlightData.passengers.filter(p => p.isDelayCharge);
-        const sortedRegular = [...regular].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        const sortedDelay = [...delay].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        const allPassengers = [...sortedRegular, ...sortedDelay];
+        // Company information
+        const company = {
+            name: 'MACL',
+            address1: 'Malé International Airport',
+            address2: 'Republic of Maldives',
+            phone: '+960 333 8800',
+            email: 'info@macl.aero'
+        };
         
-        // Build HTML for print
-        let printHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Flight Report - ${flightNo} - ${date}</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 0.5in; color: #333; }
-                h1 { color: #8b6913; border-bottom: 2px solid #e6b800; padding-bottom: 10px; }
-                .flight-info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; background: #f9f9f9; padding: 15px; border-radius: 8px; }
-                .info-item { font-size: 14px; }
-                .info-label { font-weight: bold; color: #8b6913; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-                th { background: #e6b800; color: white; padding: 8px; text-align: left; }
-                td { padding: 6px 8px; border-bottom: 1px solid #eee; }
-                .delay-row { background-color: #fff0f0; }
-                .footer { margin-top: 30px; font-size: 11px; color: #777; text-align: right; }
-                .print-date { margin-top: 10px; font-size: 11px; }
-                .badge { display: inline-block; padding: 2px 6px; background: #dc3545; color: white; font-size: 9px; border-radius: 10px; margin-left: 5px; }
-                @media print {
-                    body { margin: 0; }
-                    .no-print { display: none; }
-                }
-            </style>
-        </head>
-        <body>
-            <h1>✈ FLIGHT REPORT</h1>
-            
-            <div class="flight-info">
-                <div class="info-item"><span class="info-label">Airline:</span> ${airline}</div>
-                <div class="info-item"><span class="info-label">Flight No:</span> ${flightNo}</div>
-                <div class="info-item"><span class="info-label">Date:</span> ${date}</div>
-                <div class="info-item"><span class="info-label">Shift:</span> ${shift}</div>
-                <div class="info-item"><span class="info-label">STD:</span> ${std}</div>
-                <div class="info-item"><span class="info-label">First Pax:</span> ${firstPax}</div>
-                <div class="info-item"><span class="info-label">Last Pax:</span> ${lastPax}</div>
-                <div class="info-item"><span class="info-label">Total Pax:</span> ${totalPax}</div>
-                <div class="info-item"><span class="info-label">Delay Charges:</span> ${totalDelayCharges}</div>
-                <div class="info-item"><span class="info-label">Database:</span> ${currentFlightData.database}</div>
-            </div>
-            
-            <h3>PASSENGER LIST</h3>
-            <table>
-                <thead>
-                    <tr>`;
-        
-        if (isFZ) {
-            printHTML += `<th>No.</th><th>Name</th><th>PNR</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th>`;
-        } else {
-            printHTML += `<th>No.</th><th>${isSQ ? 'Voucher No.' : 'Name'}</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th>`;
+        // Format date nicely
+        const dateStr = document.getElementById('dateDisplay').textContent; 
+        let formattedDate = dateStr;
+        if (dateStr.includes('-')) {
+            const [year, month, day] = dateStr.split('-');
+            formattedDate = `${day}/${month}/${year}`;
+        } else if (dateStr.includes('/')) {
+            formattedDate = dateStr; // Keep as is
         }
         
-        printHTML += `</tr></thead><tbody>`;
+        // Get current date and time for print timestamp
+        const now = new Date();
+        const printDate = now.toLocaleDateString('en-GB');
+        const printTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        
+        // Flight information
+        const airline = currentFlightData.airline || '—';
+        const flightNo = currentFlightData.flightNo || '—';
+        const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
+        const firstPax = currentFlightData.firstPax || '—';
+        const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
+        const shift = currentFlightData.shift || '—';
+        const database = currentFlightData.database || '—';
+        
+        // Process passengers
+        const regularPassengers = currentFlightData.passengers.filter(p => !p.isDelayCharge);
+        const delayPassengers = currentFlightData.passengers.filter(p => p.isDelayCharge);
+        
+        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const sortedDelay = [...delayPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        
+        const sortedPassengers = [...sortedRegular, ...sortedDelay];
+        
+        // Calculate totals
+        const totalRegularPax = sortedRegular.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        const totalDelayEntries = sortedDelay.length;
+        const totalPaxSum = totalRegularPax; // Delay charges don't count as pax
+        
+        // Open print window
+        const printWindow = window.open('', '_blank');
+        
+        // Determine table headers based on flight type
+        let tableHeaders = '';
+        if (isFZ) {
+            tableHeaders = `
+                <tr>
+                    <th width="5%">No.</th>
+                    <th width="20%">Name</th>
+                    <th width="8%">PNR</th>
+                    <th width="8%">Seat</th>
+                    <th width="5%">Pax</th>
+                    <th width="12%">FQTV</th>
+                    <th width="10%">Serial No</th>
+                    <th width="8%">Time</th>
+                    <th width="24%">Remarks</th>
+                </tr>
+            `;
+        } else {
+            tableHeaders = `
+                <tr>
+                    <th width="5%">No.</th>
+                    <th width="22%">${isSQ ? 'Voucher No.' : 'Name'}</th>
+                    <th width="8%">Seat</th>
+                    <th width="5%">Pax</th>
+                    <th width="12%">FQTV</th>
+                    <th width="10%">Serial No</th>
+                    <th width="8%">Time</th>
+                    <th width="30%">Remarks</th>
+                </tr>
+            `;
+        }
+        
+        // Build the complete HTML document
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Flight Report - ${flightNo} - ${formattedDate}</title>
+                <style>
+                    * {
+                        box-sizing: border-box;
+                        margin: 0;
+                        padding: 0;
+                    }
+                    
+                    body {
+                        font-family: 'Segoe UI', 'Arial', sans-serif;
+                        margin: 0.75in 0.5in;
+                        color: #2c3e50;
+                        line-height: 1.4;
+                        background: white;
+                    }
+                    
+                    /* Report Header */
+                    .report-header {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        padding-bottom: 15px;
+                        border-bottom: 3px solid #e6b800;
+                    }
+                    
+                    .report-title {
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: #8b6913;
+                        letter-spacing: 1px;
+                        text-transform: uppercase;
+                        margin-bottom: 5px;
+                    }
+                    
+                    .report-subtitle {
+                        font-size: 16px;
+                        color: #6c757d;
+                        font-weight: 400;
+                    }
+                    
+                    /* Company Header */
+                    .company-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: flex-start;
+                        margin-bottom: 30px;
+                        padding: 20px;
+                        background: linear-gradient(135deg, #faf3e0, #fff5e6);
+                        border-radius: 12px;
+                        border-left: 6px solid #e6b800;
+                    }
+                    
+                    .company-info {
+                        flex: 2;
+                    }
+                    
+                    .company-name {
+                        font-size: 24px;
+                        font-weight: 700;
+                        color: #8b6913;
+                        margin-bottom: 5px;
+                    }
+                    
+                    .company-details {
+                        font-size: 12px;
+                        color: #666;
+                        line-height: 1.6;
+                    }
+                    
+                    .company-details div {
+                        margin-bottom: 3px;
+                    }
+                    
+                    .flight-info-box {
+                        flex: 1;
+                        background: white;
+                        padding: 15px;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                    }
+                    
+                    .flight-info-item {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-bottom: 8px;
+                        font-size: 13px;
+                    }
+                    
+                    .flight-info-label {
+                        font-weight: 600;
+                        color: #8b6913;
+                    }
+                    
+                    .flight-info-value {
+                        color: #2c3e50;
+                        font-weight: 500;
+                    }
+                    
+                    /* Flight Summary */
+                    .flight-summary {
+                        display: grid;
+                        grid-template-columns: repeat(4, 1fr);
+                        gap: 15px;
+                        margin-bottom: 30px;
+                    }
+                    
+                    .summary-card {
+                        background: #f8f9fa;
+                        padding: 15px;
+                        border-radius: 10px;
+                        text-align: center;
+                        border: 1px solid #e9ecef;
+                    }
+                    
+                    .summary-label {
+                        font-size: 12px;
+                        color: #6c757d;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        margin-bottom: 5px;
+                    }
+                    
+                    .summary-value {
+                        font-size: 24px;
+                        font-weight: 700;
+                        color: #8b6913;
+                    }
+                    
+                    .summary-sub {
+                        font-size: 11px;
+                        color: #6c757d;
+                        margin-top: 5px;
+                    }
+                    
+                    /* Table Styles */
+                    .passenger-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 20px;
+                        font-size: 11px;
+                    }
+                    
+                    .passenger-table th {
+                        background: #e6b800;
+                        color: white;
+                        padding: 12px 8px;
+                        text-align: left;
+                        font-weight: 600;
+                        font-size: 11px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                    }
+                    
+                    .passenger-table td {
+                        padding: 10px 8px;
+                        border-bottom: 1px solid #e9ecef;
+                        color: #2c3e50;
+                    }
+                    
+                    .passenger-table tr:nth-child(even) {
+                        background-color: #f8f9fa;
+                    }
+                    
+                    .passenger-table tr.delay-row {
+                        background-color: #fff5f5;
+                    }
+                    
+                    .passenger-table tr.delay-row td {
+                        color: #721c24;
+                    }
+                    
+                    .serial-no {
+                        font-weight: 600;
+                        color: #8b6913;
+                        font-family: monospace;
+                    }
+                    
+                    .badge {
+                        display: inline-block;
+                        padding: 2px 6px;
+                        background: #dc3545;
+                        color: white;
+                        font-size: 8px;
+                        font-weight: 600;
+                        border-radius: 10px;
+                        margin-left: 5px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                    }
+                    
+                    .pnr-badge {
+                        display: inline-block;
+                        padding: 2px 6px;
+                        background: #4a6fa5;
+                        color: white;
+                        font-size: 8px;
+                        font-weight: 600;
+                        border-radius: 10px;
+                        letter-spacing: 0.5px;
+                    }
+                    
+                    /* Totals Section */
+                    .totals-section {
+                        margin-top: 30px;
+                        padding: 20px;
+                        background: linear-gradient(135deg, #faf3e0, #fff5e6);
+                        border-radius: 12px;
+                        border-right: 6px solid #e6b800;
+                    }
+                    
+                    .totals-grid {
+                        display: grid;
+                        grid-template-columns: repeat(3, 1fr);
+                        gap: 20px;
+                    }
+                    
+                    .total-item {
+                        text-align: center;
+                    }
+                    
+                    .total-label {
+                        font-size: 12px;
+                        color: #6c757d;
+                        text-transform: uppercase;
+                        margin-bottom: 5px;
+                    }
+                    
+                    .total-value {
+                        font-size: 20px;
+                        font-weight: 700;
+                        color: #8b6913;
+                    }
+                    
+                    .total-value small {
+                        font-size: 12px;
+                        font-weight: 400;
+                        color: #6c757d;
+                    }
+                    
+                    /* Signature Section */
+                    .signature-section {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-top: 50px;
+                        padding: 0 20px;
+                    }
+                    
+                    .signature-box {
+                        text-align: center;
+                        width: 200px;
+                    }
+                    
+                    .signature-line {
+                        margin-top: 40px;
+                        border-bottom: 2px solid #8b6913;
+                        width: 100%;
+                    }
+                    
+                    .signature-label {
+                        font-size: 11px;
+                        color: #8b6913;
+                        font-weight: 600;
+                        margin-top: 5px;
+                    }
+                    
+                    /* Footer */
+                    .report-footer {
+                        margin-top: 30px;
+                        padding-top: 15px;
+                        border-top: 1px solid #e9ecef;
+                        display: flex;
+                        justify-content: space-between;
+                        font-size: 10px;
+                        color: #6c757d;
+                    }
+                    
+                    .print-date {
+                        font-style: italic;
+                    }
+                    
+                    .page-break {
+                        page-break-before: always;
+                    }
+                    
+                    @media print {
+                        body {
+                            margin: 0.25in;
+                        }
+                        
+                        .no-print {
+                            display: none;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                <!-- Report Header -->
+                <div class="report-header">
+                    <div class="report-title">Flight Report</div>
+                    <div class="report-subtitle">Passenger Manifest & Delay Charges</div>
+                </div>
+                
+                <!-- Company Header -->
+                <div class="company-header">
+                    <div class="company-info">
+                        <div class="company-name">${company.name}</div>
+                        <div class="company-details">
+                            <div>${company.address1}</div>
+                            <div>${company.address2}</div>
+                            <div>Tel: ${company.phone}</div>
+                            <div>Email: ${company.email}</div>
+                        </div>
+                    </div>
+                    <div class="flight-info-box">
+                        <div class="flight-info-item">
+                            <span class="flight-info-label">Flight No:</span>
+                            <span class="flight-info-value">${flightNo}</span>
+                        </div>
+                        <div class="flight-info-item">
+                            <span class="flight-info-label">Airline:</span>
+                            <span class="flight-info-value">${airline}</span>
+                        </div>
+                        <div class="flight-info-item">
+                            <span class="flight-info-label">Date:</span>
+                            <span class="flight-info-value">${formattedDate}</span>
+                        </div>
+                        <div class="flight-info-item">
+                            <span class="flight-info-label">Shift:</span>
+                            <span class="flight-info-value">${shift}</span>
+                        </div>
+                        <div class="flight-info-item">
+                            <span class="flight-info-label">STD:</span>
+                            <span class="flight-info-value">${std}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Flight Summary -->
+                <div class="flight-summary">
+                    <div class="summary-card">
+                        <div class="summary-label">Total Passengers</div>
+                        <div class="summary-value">${totalRegularPax}</div>
+                        <div class="summary-sub">regular pax</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">First Pax</div>
+                        <div class="summary-value">${firstPax}</div>
+                        <div class="summary-sub">entry time</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Last Pax</div>
+                        <div class="summary-value">${lastPax}</div>
+                        <div class="summary-sub">entry time</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Delay Charges</div>
+                        <div class="summary-value">${totalDelayEntries}</div>
+                        <div class="summary-sub">entries</div>
+                    </div>
+                </div>
+                
+                <!-- Passenger Table -->
+                <table class="passenger-table">
+                    <thead>
+                        ${tableHeaders}
+                    </thead>
+                    <tbody>
+        `);
         
         // Add passenger rows
-        allPassengers.forEach((p, idx) => {
+        sortedPassengers.forEach((p, idx) => {
             const serial = String(idx+1).padStart(3,'0');
             const pnr = isFZ ? extractPNRFromHiddenCode(p.hiddenCode) : '';
             const rowClass = p.isDelayCharge ? 'delay-row' : '';
             const paxDisplay = p.isDelayCharge ? '0' : (p.pax || '1');
             const nameDisplay = p.pName || '-';
-            const delayBadge = p.isDelayCharge ? ' <span class="badge">DELAY</span>' : '';
+            const delayBadge = p.isDelayCharge ? '<span class="badge">DELAY</span>' : '';
             
-            printHTML += `<tr class="${rowClass}">`;
+            printWindow.document.write(`<tr class="${rowClass}">`);
             
             if (isFZ) {
-                printHTML += `
-                    <td>${serial}</td>
-                    <td>${escapeHtml(nameDisplay)}${delayBadge}</td>
-                    <td>${pnr || '-'}</td>
+                printWindow.document.write(`
+                    <td class="serial-no">${serial}</td>
+                    <td>${escapeHtml(nameDisplay)} ${delayBadge}</td>
+                    <td>${pnr ? `<span class="pnr-badge">${pnr}</span>` : '-'}</td>
                     <td>${escapeHtml(p.seatNo) || '-'}</td>
                     <td style="text-align:center;">${paxDisplay}</td>
                     <td>${escapeHtml(p.FQTV) || '-'}</td>
                     <td>${escapeHtml(p.serialNo) || '—'}</td>
                     <td>${p.entryTime || '-'}</td>
                     <td>${escapeHtml(p.remarks) || '-'}</td>
-                `;
+                `);
             } else {
-                printHTML += `
-                    <td>${serial}</td>
-                    <td>${escapeHtml(nameDisplay)}${delayBadge}</td>
+                printWindow.document.write(`
+                    <td class="serial-no">${serial}</td>
+                    <td>${escapeHtml(nameDisplay)} ${delayBadge}</td>
                     <td>${escapeHtml(p.seatNo) || '-'}</td>
                     <td style="text-align:center;">${paxDisplay}</td>
                     <td>${escapeHtml(p.FQTV) || '-'}</td>
                     <td>${escapeHtml(p.serialNo) || '—'}</td>
                     <td>${p.entryTime || '-'}</td>
                     <td>${escapeHtml(p.remarks) || '-'}</td>
-                `;
+                `);
             }
             
-            printHTML += `</tr>`;
+            printWindow.document.write(`</tr>`);
         });
         
-        printHTML += `
-                </tbody>
-            </table>
-            
-            <div class="footer">
-                <div class="print-date">Printed on: ${new Date().toLocaleString()}</div>
-                <div>Flight Report - ${flightNo} - ${date}</div>
-            </div>
-            
-            <div class="no-print" style="text-align: center; margin-top: 20px;">
-                <button onclick="window.print();window.close();" style="padding: 10px 20px; background: #e6b800; border: none; border-radius: 30px; cursor: pointer;">Print Report</button>
-                <button onclick="window.close();" style="padding: 10px 20px; background: #7f8c8d; border: none; border-radius: 30px; cursor: pointer; margin-left: 10px;">Close</button>
-            </div>
-            
-            <script>
-                // Auto-trigger print dialog when page loads
-                window.onload = function() {
-                    setTimeout(function() {
-                        window.print();
-                    }, 500);
-                };
-            <\/script>
-        </body>
-        </html>
-        `;
+        printWindow.document.write(`
+                    </tbody>
+                </table>
+                
+                <!-- Totals Section -->
+                <div class="totals-section">
+                    <div class="totals-grid">
+                        <div class="total-item">
+                            <div class="total-label">Total Pax</div>
+                            <div class="total-value">${totalRegularPax}</div>
+                        </div>
+                        <div class="total-item">
+                            <div class="total-label">Delay Entries</div>
+                            <div class="total-value">${totalDelayEntries}</div>
+                        </div>
+                        <div class="total-item">
+                            <div class="total-label">Database</div>
+                            <div class="total-value"><small>${database}</small></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Signature Section -->
+                <div class="signature-section">
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Prepared By</div>
+                    </div>
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Checked By</div>
+                    </div>
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Approved By</div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="report-footer">
+                    <div class="print-date">Printed on: ${printDate} at ${printTime}</div>
+                    <div>Flight Report - ${flightNo} - ${formattedDate}</div>
+                    <div>Page 1 of 1</div>
+                </div>
+                
+                <!-- Print Controls (hidden when printing) -->
+                <div class="no-print" style="text-align: center; margin-top: 30px; padding: 20px;">
+                    <button onclick="window.print();" style="padding: 12px 30px; background: #e6b800; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer; margin-right: 10px;">🖨️ Print Report</button>
+                    <button onclick="window.close();" style="padding: 12px 30px; background: #6c757d; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;">✖ Close</button>
+                </div>
+                
+                <script>
+                    // Auto-trigger print dialog when page loads
+                    window.onload = function() {
+                        setTimeout(function() {
+                            window.print();
+                        }, 500);
+                    };
+                    
+                    // Close window after printing
+                    window.onafterprint = function() {
+                        setTimeout(function() {
+                            window.close();
+                        }, 500);
+                    };
+                <\/script>
+            </body>
+            </html>
+        `);
         
-        printWindow.document.write(printHTML);
         printWindow.document.close();
-    };
+    }
 
     // ========== DELAY CHARGE FUNCTIONS ==========
     
