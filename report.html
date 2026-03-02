@@ -1144,6 +1144,18 @@
         }
     }
 
+    // Helper function to calculate total pax (excluding pax=0)
+    function calculateTotalPax(passengers) {
+        return passengers
+            .filter(p => !p.isDelayCharge && parseInt(p.pax) > 0) // Exclude delay charges and pax=0
+            .reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0); // Default to 1 if pax is missing
+    }
+
+    // Helper function to count regular passengers (excluding delay charges)
+    function countRegularPassengers(passengers) {
+        return passengers.filter(p => !p.isDelayCharge && parseInt(p.pax) > 0).length;
+    }
+
     // ========== SHIFT ==========
     async function fetchOpenShift() {
         try {
@@ -1315,7 +1327,7 @@
                     let snapshot;
                     try {
                         snapshot = await dbInfo.ref.collection('KoveliPass')
-                            .select('date', 'flightNo', 'shift', 'airline')
+                            .select('date', 'flightNo', 'shift', 'airline', 'pax', 'delayCharge')
                             .get();
                     } catch (selectError) {
                         // Fallback if select() is not supported
@@ -1341,13 +1353,16 @@
                                     flightNo: flightNo,
                                     shift: data.shift || 'UNKNOWN',
                                     airline: data.airline || '',
-                                    passengerCount: 1,
+                                    paxCount: (!data.delayCharge && parseInt(data.pax) > 0) ? (parseInt(data.pax) || 0) : 0,
                                     database: dbInfo.name,
                                     dbRef: dbInfo.ref
                                 });
                             } else {
                                 const existing = flightsForDb.get(key);
-                                existing.passengerCount++;
+                                // Only count pax if > 0 and not delay charge
+                                if (!data.delayCharge && parseInt(data.pax) > 0) {
+                                    existing.paxCount += parseInt(data.pax) || 0;
+                                }
                             }
                         }
                     });
@@ -1379,7 +1394,7 @@
                         flightNo: flight.flightNo,
                         shift: flight.shift,
                         airline: flight.airline,
-                        passengerCount: flight.passengerCount,
+                        paxCount: flight.paxCount,
                         database: flight.database,
                         dbRef: flight.dbRef
                     });
@@ -1452,7 +1467,7 @@
         
         let options = '<option value="">✈️ Select a flight</option>';
         flightsArray.forEach(f => { 
-            options += `<option value="${f.flightNo}|${f.shift}|${f.database}">${f.flightNo} [${f.database}] - ${f.passengerCount} pax</option>`; 
+            options += `<option value="${f.flightNo}|${f.shift}|${f.database}">${f.flightNo} [${f.database}] - ${f.paxCount} pax</option>`; 
         });
         
         flightSelect.innerHTML = options;
@@ -1503,30 +1518,38 @@
             const passengers = [];
             let firstPax = null;
             let lastPax = null;
+            let totalPaxSum = 0;
             
             passengerSnapshot.forEach(doc => {
                 const data = doc.data();
                 
                 // Extract hiddenCode from various possible field names
                 let hiddenCode = data.hiddenCode || data.hiddencode || data.HiddenCode || data.code || '';
+                const paxValue = parseInt(data.pax) || 1;
+                const isDelayCharge = data.delayCharge || false;
                 
                 const passenger = {
                     docId: doc.id,
                     pName: data.pName || data.name || data.Name || '',
                     seatNo: data.seatNo || data.seat || data.Seat || '',
-                    pax: data.pax || data.Pax || '1',
+                    pax: isDelayCharge ? 0 : paxValue, // Delay charges have 0 pax
                     FQTV: data.FQTV || data.ffn || data.FFN || '',
                     entryTime: data.entryTime || data.time || data.Time || '',
                     remarks: data.remarks || data.Remark || data.remark || '',
                     serialNo: data.serialNo || data.serial || data.Serial || '',
                     hiddenCode: hiddenCode,
-                    isDelayCharge: data.delayCharge || false
+                    isDelayCharge: isDelayCharge
                 };
                 
                 passengers.push(passenger);
                 
+                // Add to total pax sum (excluding delay charges)
+                if (!isDelayCharge && paxValue > 0) {
+                    totalPaxSum += paxValue;
+                }
+                
                 // Track first and last pax times (excluding delay charges)
-                if (data.entryTime && !data.delayCharge) {
+                if (data.entryTime && !isDelayCharge) {
                     if (!firstPax || data.entryTime < firstPax) {
                         firstPax = data.entryTime;
                     }
@@ -1542,6 +1565,7 @@
                 passengers: passengers,
                 firstPax: firstPax,
                 lastPax: lastPax,
+                totalPax: totalPaxSum, // Store the actual total pax sum
                 isClosed: false,
                 std: ''
             };
@@ -1598,10 +1622,14 @@
         document.getElementById('stdInput').value = currentFlightData.std || '';
         document.getElementById('lastPaxInput').value = currentFlightData.lastPax || '';
         
-        document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
+        // Update total pax stat (excluding pax=0)
+        document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax || 0;
         document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
         document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
-        document.getElementById('passengerCount').textContent = currentFlightData.passengers.length + ' PAX';
+        
+        // Update passenger count display
+        const regularCount = countRegularPassengers(currentFlightData.passengers);
+        document.getElementById('passengerCount').textContent = regularCount + ' PAX';
         
         document.getElementById('quickShiftText').innerHTML = `${flightNo} | ${shift} <span style="font-size:10px; opacity:0.8;">(${flightInfo.database})</span>`;
         
@@ -1818,7 +1846,7 @@
             }
             
             // Update first/last pax times
-            const regular = currentFlightData.passengers.filter(p => !p.isDelayCharge);
+            const regular = currentFlightData.passengers.filter(p => !p.isDelayCharge && parseInt(p.pax) > 0);
             const times = regular.map(p => p.entryTime).filter(t => t);
             if (times.length > 0) {
                 currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
@@ -1827,6 +1855,14 @@
                 document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
                 document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
             }
+            
+            // Update total pax sum
+            currentFlightData.totalPax = calculateTotalPax(currentFlightData.passengers);
+            document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax;
+            
+            // Update passenger count
+            const regularCount = countRegularPassengers(currentFlightData.passengers);
+            document.getElementById('passengerCount').textContent = regularCount + ' PAX';
             
             editingRowId = null;
             displayPassengerTable(currentFlightData.passengers);
@@ -1850,8 +1886,13 @@
             const idx = currentFlightData.passengers.findIndex(p => p.docId === docId);
             if (idx !== -1) currentFlightData.passengers.splice(idx, 1);
             
-            document.getElementById('totalPaxStat').textContent = currentFlightData.passengers.length;
-            document.getElementById('passengerCount').textContent = currentFlightData.passengers.length + ' PAX';
+            // Update total pax sum
+            currentFlightData.totalPax = calculateTotalPax(currentFlightData.passengers);
+            document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax;
+            
+            // Update passenger count
+            const regularCount = countRegularPassengers(currentFlightData.passengers);
+            document.getElementById('passengerCount').textContent = regularCount + ' PAX';
             
             displayPassengerTable(currentFlightData.passengers);
             
@@ -1907,7 +1948,8 @@
                 std: currentFlightData.std || '',
                 firstPax: currentFlightData.firstPax || '',
                 lastPax: currentFlightData.lastPax || '',
-                totalPax: currentFlightData.passengers.filter(p => !p.isDelayCharge).length,
+                totalPax: currentFlightData.totalPax || 0, // Save the actual total pax sum
+                regularPassengerCount: countRegularPassengers(currentFlightData.passengers),
                 isClosed: currentFlightData.isClosed || false,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
@@ -1998,7 +2040,8 @@
         
         const sortedPassengers = [...sortedRegular, ...sortedDelay];
         
-        const totalPaxSum = sortedPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 0), 0);
+        // Calculate total pax (excluding pax=0)
+        const totalPaxSum = calculateTotalPax(currentFlightData.passengers);
 
         const printWindow = window.open('', '_blank');
         
@@ -2381,13 +2424,16 @@
             
             snapshot.forEach(doc => {
                 const data = doc.data();
+                const paxValue = parseInt(data.pax) || 1;
+                const isDelayCharge = data.delayCharge || false;
+                
                 delayPassengers.push({
                     docId: doc.id,
                     pName: data.pName || data.name || '',
                     entryTime: data.entryTime || data.time || '',
                     lastPax: data.lastPax || '',
-                    pax: data.pax || 1,
-                    isDelayCharge: data.delayCharge || false,
+                    pax: isDelayCharge ? 0 : paxValue,
+                    isDelayCharge: isDelayCharge,
                     selected: false,
                     hoursUsed: 0
                 });
@@ -2590,7 +2636,7 @@
                     shift: shift,
                     entryTime: passenger.entryTime,
                     lastPax: passenger.lastPax,
-                    pax: 0,
+                    pax: 0, // Set pax to 0 for delay charges
                     delayCharge: true,
                     delayHours: hours,
                     remarks: `Delay charge - ${hours} hour(s)`,
