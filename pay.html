@@ -494,6 +494,9 @@ async function fetchPendingTransactionsCount() {
             // Skip CASH transactions - they don't need approval
             if (paymentMethod === 'CASH') return;
             
+            // Skip VOIDED transactions
+            if (data.status === 'VOID' || data.voided === true) return;
+            
             // FIXED: Use correct field names with robust checking
             const approvalCode = data.approvalCode || data.approvalcode || data.approval || '';
             const hasApprovalCode = approvalCode.trim() !== '';
@@ -510,28 +513,8 @@ async function fetchPendingTransactionsCount() {
                 const cardType = data.cardType || data.cardtype || data.card || '';
                 const hasCardType = cardType.trim() !== '';
                 isComplete = hasApprovalCode && hasBatchNo && hasCardType;
-                
-                // Debug log for card payments
-                if (!isComplete) {
-                    console.log('Pending CARD transaction:', {
-                        receiptNo: data.receiptNo,
-                        hasApprovalCode: hasApprovalCode,
-                        hasBatchNo: hasBatchNo,
-                        hasCardType: hasCardType
-                    });
-                }
             } else { 
                 isComplete = hasApprovalCode && hasBatchNo;
-                
-                // Debug log for other non-cash payments
-                if (!isComplete) {
-                    console.log('Pending NON-CASH transaction:', {
-                        receiptNo: data.receiptNo,
-                        paymentMethod: paymentMethod,
-                        hasApprovalCode: hasApprovalCode,
-                        hasBatchNo: hasBatchNo
-                    });
-                }
             }
             
             if (!isComplete) pendingCount++;
@@ -1095,17 +1078,32 @@ function clearAllFields() {
     document.getElementById('code').focus();
 }
 
-// ========== REDIRECT TO RECEIPT PAGE FUNCTION ==========
-function redirectToReceiptPage(transactionData, autoPrint = true) {
+// ========== ENHANCED REDIRECT TO RECEIPT PAGE WITH VOID SUPPORT ==========
+function redirectToReceiptPage(transactionData, autoPrint = true, isVoid = false) {
     try {
-        // Store in localStorage as backup
-        localStorage.setItem('lastReceiptData', JSON.stringify(transactionData));
+        // Ensure transactionData has all required fields
+        const enhancedData = {
+            ...transactionData,
+            // Add void flag if needed
+            isVoid: isVoid,
+            status: isVoid ? 'VOID' : (transactionData.status || 'APPROVED'),
+            // Ensure receipt number is present
+            receiptNo: transactionData.receiptNo || currentReceiptNo || 'N/A'
+        };
         
-        // Encode data for URL (limited size, but should be fine)
-        const encodedData = encodeURIComponent(JSON.stringify(transactionData));
+        // Store in localStorage as backup
+        localStorage.setItem('lastReceiptData', JSON.stringify(enhancedData));
+        
+        // Encode data for URL
+        const encodedData = encodeURIComponent(JSON.stringify(enhancedData));
         
         // Build URL with parameters
         let receiptUrl = `receipt.html?data=${encodedData}&returnTo=${encodeURIComponent(window.location.pathname)}`;
+        
+        // Add void parameter to URL if needed (explicitly add it!)
+        if (isVoid) {
+            receiptUrl += '&void=true';
+        }
         
         // Add autoPrint parameter
         if (autoPrint) {
@@ -1117,13 +1115,20 @@ function redirectToReceiptPage(transactionData, autoPrint = true) {
             receiptUrl += '&reprint=true';
         }
         
+        console.log('Redirecting to receipt URL:', receiptUrl);
+        console.log('Void status:', isVoid);
+        
         // Redirect to receipt page
         window.location.href = receiptUrl;
     } catch (error) {
         console.error('Error redirecting to receipt page:', error);
         // Fallback: try with just receipt number
         if (transactionData && transactionData.receiptNo) {
-            window.location.href = `receipt.html?receiptNo=${transactionData.receiptNo}&autoPrint=true&returnTo=${encodeURIComponent(window.location.pathname)}`;
+            let fallbackUrl = `receipt.html?receiptNo=${transactionData.receiptNo}&autoPrint=true&returnTo=${encodeURIComponent(window.location.pathname)}`;
+            if (isVoid) {
+                fallbackUrl += '&void=true';
+            }
+            window.location.href = fallbackUrl;
         } else {
             alert('Error printing receipt. Please use REPRINT function.');
         }
@@ -1274,9 +1279,9 @@ async function submitForm() {
             fetchPendingTransactionsCount();
         }, 1000);
         
-        // Redirect to receipt page for printing
+        // Redirect to receipt page for printing (NOT void)
         setTimeout(() => {
-            redirectToReceiptPage(savedData, true);
+            redirectToReceiptPage(savedData, true, false);
         }, 500); // Small delay to show success message
         
     } catch (error) { 
@@ -1332,7 +1337,7 @@ function printCurrentReceipt() {
         isReprint: false
     };
     
-    redirectToReceiptPage(transactionData, true);
+    redirectToReceiptPage(transactionData, true, false);
 }
 
 // ========== UPDATED REPRINT FUNCTION ==========
@@ -1360,10 +1365,13 @@ async function searchAndReprintReceipt() {
             // Add reprint flag
             transaction.isReprint = true;
             
+            // Check if this is a voided transaction
+            const isVoid = transaction.status === 'VOID' || transaction.voided === true;
+            
             // Close modal and redirect
             setTimeout(() => {
                 closeReprintModal();
-                redirectToReceiptPage(transaction, true);
+                redirectToReceiptPage(transaction, true, isVoid);
             }, 500);
             
         } else { 
@@ -1531,6 +1539,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     console.log('Dual scanning initialized - Redirect to receipt.html for printing');
+    console.log('Void receipt support enabled - Use reprint for voided transactions');
 });
 </script>
 </body>
