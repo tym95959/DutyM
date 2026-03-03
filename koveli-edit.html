@@ -88,10 +88,6 @@
             background: linear-gradient(135deg, #6b8e23, #556b2f);
         }
         
-        .nav-btn.danger {
-            background: linear-gradient(135deg, #c68b5e, #a67244);
-        }
-        
         .main-content {
             padding: 30px;
         }
@@ -795,7 +791,7 @@
             <div class="modal-actions">
                 <button class="save-btn" onclick="saveEdit()">💾 SAVE CHANGES</button>
                 <button class="print-btn" onclick="printEditedReceipt()">🖨️ PRINT RECEIPT</button>
-                <button class="void-btn" onclick="openVoidModal()">🚫 VOID RECEIPT</button>
+                <button class="void-btn" onclick="openVoidModalFromEdit()">🚫 VOID RECEIPT</button>
                 <button class="cancel-btn" onclick="closeEditModal()">✖️ CANCEL</button>
             </div>
         </div>
@@ -837,6 +833,7 @@
 let allReceipts = [];
 let filteredReceipts = [];
 let currentEditReceipt = null;
+let receiptToVoid = null; // Separate variable for void
 
 // ========== LOAD RECEIPTS ==========
 
@@ -938,6 +935,7 @@ function renderTable() {
                 <td>
                     <button class="action-btn edit-btn" onclick="openEditModal('${receipt.receiptNo}')" ${editDisabled}>✏️ EDIT</button>
                     <button class="action-btn view-btn" onclick="printReceipt('${receipt.receiptNo}')">🖨️ PRINT</button>
+                    ${receipt.paymentStatus !== 'VOID' ? `<button class="action-btn void-btn" onclick="openVoidModal('${receipt.receiptNo}')">🚫 VOID</button>` : ''}
                 </td>
             </tr>
         `;
@@ -1227,25 +1225,44 @@ async function saveEdit() {
 
 // ========== VOID FUNCTIONS ==========
 
-function openVoidModal() {
-    if (!currentEditReceipt) {
-        alert('No receipt selected. Please open a receipt first.');
+function openVoidModal(receiptNo) {
+    const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
+    if (!receipt) {
+        alert('Receipt not found');
         return;
     }
     
-    // Close edit modal first
+    if (receipt.paymentStatus === 'VOID') {
+        alert('This receipt is already voided');
+        return;
+    }
+    
+    receiptToVoid = receipt;
+    
+    document.getElementById('voidReason').value = '';
+    document.getElementById('voidConfirmCheckbox').checked = false;
+    document.getElementById('voidModal').style.display = 'block';
+}
+
+function openVoidModalFromEdit() {
+    if (!currentEditReceipt) {
+        alert('No receipt selected');
+        return;
+    }
+    
+    receiptToVoid = currentEditReceipt;
     closeEditModal();
     
-    // Small delay to ensure first modal is closed
     setTimeout(() => {
         document.getElementById('voidReason').value = '';
         document.getElementById('voidConfirmCheckbox').checked = false;
         document.getElementById('voidModal').style.display = 'block';
-    }, 100);
+    }, 200);
 }
 
 function closeVoidModal() {
     document.getElementById('voidModal').style.display = 'none';
+    receiptToVoid = null;
 }
 
 async function confirmVoid() {
@@ -1262,7 +1279,7 @@ async function confirmVoid() {
         return;
     }
     
-    if (!currentEditReceipt) {
+    if (!receiptToVoid) {
         alert('No receipt selected. Please try again.');
         closeVoidModal();
         return;
@@ -1273,16 +1290,15 @@ async function confirmVoid() {
         voidBtn.disabled = true;
         voidBtn.textContent = 'VOIDING...';
         
-        const receiptNo = currentEditReceipt.receiptNo;
+        const receiptNo = receiptToVoid.receiptNo;
         
         const voidData = {
             paymentStatus: 'VOID',
             voidReason: reason,
             voidedAt: new Date().toISOString(),
             voidedBy: 'user',
-            originalAmount: currentEditReceipt.totalAmount,
-            originalCurrency: currentEditReceipt.currency,
-            voidedReceiptNo: receiptNo
+            originalAmount: receiptToVoid.totalAmount,
+            originalCurrency: receiptToVoid.currency
         };
         
         console.log('Voiding receipt:', receiptNo, voidData);
@@ -1294,7 +1310,7 @@ async function confirmVoid() {
         
         // Create voided receipt object for printing
         const voidedReceipt = {
-            ...currentEditReceipt,
+            ...receiptToVoid,
             ...voidData
         };
         
@@ -1304,8 +1320,8 @@ async function confirmVoid() {
         // Reload data
         await loadReceipts();
         
-        // Clear current receipt and close modal
-        currentEditReceipt = null;
+        // Clear and close
+        receiptToVoid = null;
         closeVoidModal();
         
     } catch (error) {
