@@ -201,6 +201,10 @@
             background: #c68b5e;
         }
         
+        .action-btn.receipt {
+            background: #8b6913;
+        }
+        
         .action-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 10px rgba(0,0,0,0.1);
@@ -333,101 +337,54 @@
             to { transform: translateX(0); opacity: 1; }
         }
         
-        /* Receipt styles */
-        .receipt-container {
-            display: none;
+        /* Confirmation Dialog */
+        .confirm-dialog {
             position: fixed;
-            z-index: 4000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .receipt-content {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             background: white;
+            border: 3px solid #e6b800;
             border-radius: 16px;
-            padding: 30px;
-            width: 90%;
+            padding: 25px;
             max-width: 400px;
-            max-height: 90vh;
-            overflow-y: auto;
+            width: 90%;
+            z-index: 3500;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: none;
         }
         
-        .receipt-header {
-            text-align: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px dashed #e6b800;
-        }
-        
-        .receipt-header h3 {
+        .confirm-dialog h3 {
             color: #8b6913;
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-        
-        .receipt-header p {
-            color: #6b8e23;
-            font-weight: 600;
-        }
-        
-        .receipt-details {
-            margin-bottom: 20px;
-        }
-        
-        .receipt-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px dotted #e6b80030;
-        }
-        
-        .receipt-label {
-            color: #8b6913;
-            font-weight: 600;
-        }
-        
-        .receipt-value {
-            color: #333;
-            font-weight: 500;
-        }
-        
-        .receipt-footer {
+            margin-bottom: 15px;
             text-align: center;
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 2px dashed #e6b800;
-            color: #6b8e23;
-            font-size: 12px;
         }
         
-        .receipt-actions {
+        .confirm-dialog p {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .confirm-buttons {
             display: flex;
             gap: 10px;
             justify-content: center;
-            margin-top: 20px;
         }
         
-        .receipt-actions button {
-            padding: 10px 20px;
+        .confirm-btn {
+            padding: 10px 25px;
             border: none;
             border-radius: 30px;
-            cursor: pointer;
             font-weight: 600;
-            font-size: 14px;
+            cursor: pointer;
         }
         
-        .print-receipt-btn {
+        .confirm-yes {
             background: #6b8e23;
             color: white;
         }
         
-        .close-receipt-btn {
+        .confirm-no {
             background: #c68b5e;
             color: white;
         }
@@ -462,7 +419,6 @@
             <select class="filter-select" id="paymentFilter">
                 <option value="ALL">ALL PAYMENT METHODS</option>
                 <option value="CARD">CARD ONLY</option>
-                
             </select>
             
             <select class="filter-select" id="missingFilter">
@@ -540,27 +496,13 @@
         </div>
     </div>
     
-    <!-- Receipt Modal -->
-    <div id="receiptModal" class="receipt-container">
-        <div class="receipt-content" id="receiptContent">
-            <div class="receipt-header">
-                <h3>KOVELI PAYMENT</h3>
-                <p>APPROVED TRANSACTION</p>
-            </div>
-            
-            <div class="receipt-details" id="receiptDetails">
-                <!-- Receipt details will be populated dynamically -->
-            </div>
-            
-            <div class="receipt-footer">
-                <p>Thank you for your payment!</p>
-                <p id="receiptTimestamp"></p>
-            </div>
-            
-            <div class="receipt-actions">
-                <button class="print-receipt-btn" onclick="printReceipt()">🖨️ PRINT RECEIPT</button>
-                <button class="close-receipt-btn" onclick="closeReceipt()">CLOSE</button>
-            </div>
+    <!-- Confirmation Dialog for Printing -->
+    <div id="printConfirmDialog" class="confirm-dialog">
+        <h3>🖨️ PRINT RECEIPT</h3>
+        <p id="confirmMessage">Transaction approved successfully!<br>Would you like to print the receipt?</p>
+        <div class="confirm-buttons">
+            <button class="confirm-btn confirm-yes" id="confirmPrintYes">YES, PRINT</button>
+            <button class="confirm-btn confirm-no" id="confirmPrintNo">NO, THANKS</button>
         </div>
     </div>
     
@@ -600,6 +542,79 @@
             }, 3000);
         }
         
+        // ========== REDIRECT TO RECEIPT PAGE ==========
+        function redirectToReceiptPage(transaction, autoPrint = true) {
+            try {
+                // Prepare receipt data
+                const receiptData = {
+                    receiptNo: transaction.receiptNo,
+                    passengerName: transaction.passengerName,
+                    flightNo: transaction.flightNo || 'N/A',
+                    seatNo: transaction.seatNo || 'N/A',
+                    adult: transaction.adult || 1,
+                    children: transaction.children || 0,
+                    currency: transaction.currency || 'USD',
+                    rateType: transaction.rateType || 'A',
+                    paymentMethod: transaction.paymentMethod,
+                    adultPrice: transaction.adultPrice || '55.00',
+                    childrenPrice: transaction.childrenPrice || '55.00',
+                    adultSubtotal: transaction.adultSubtotal || (transaction.amount / 1.08).toFixed(2),
+                    childrenSubtotal: transaction.childrenSubtotal || '0.00',
+                    subtotal: transaction.subtotal || (transaction.amount / 1.08).toFixed(2),
+                    gstAmount: transaction.gstAmount || (transaction.amount - (transaction.amount / 1.08)).toFixed(2),
+                    gstRate: transaction.gstRate || 8,
+                    totalAmount: transaction.amount,
+                    submissionDateTime: transaction.submissionDateTime || new Date().toLocaleString(),
+                    expiryTime: transaction.expiryTime || '--:--:--',
+                    shiftDate: transaction.shiftDate || transaction.date || new Date().toLocaleDateString(),
+                    shift: transaction.shift || transaction.shiftName || 'N/A',
+                    cashierName: transaction.cashierName || currentUser?.username || 'N/A',
+                    userRcno: transaction.userRcno || currentUser?.rcno || 'N/A',
+                    exchangeRate: transaction.exchangeRate || 15.42,
+                    isReprint: false
+                };
+                
+                // Store in localStorage as backup
+                localStorage.setItem('lastReceiptData', JSON.stringify(receiptData));
+                
+                // Encode data for URL
+                const encodedData = encodeURIComponent(JSON.stringify(receiptData));
+                
+                // Build URL with parameters
+                let receiptUrl = `receipt.html?data=${encodedData}&returnTo=${encodeURIComponent(window.location.pathname)}`;
+                
+                // Add autoPrint parameter
+                if (autoPrint) {
+                    receiptUrl += '&autoPrint=true';
+                }
+                
+                // Redirect to receipt page
+                window.location.href = receiptUrl;
+                
+            } catch (error) {
+                console.error('Error redirecting to receipt page:', error);
+                // Fallback: try with just receipt number
+                if (transaction && transaction.receiptNo) {
+                    window.location.href = `receipt.html?receiptNo=${transaction.receiptNo}&autoPrint=true&returnTo=${encodeURIComponent(window.location.pathname)}`;
+                } else {
+                    alert('Error printing receipt. Please try again.');
+                }
+            }
+        }
+        
+        // Show print confirmation dialog
+        function showPrintConfirmation(transaction) {
+            lastApprovedTransaction = transaction;
+            const dialog = document.getElementById('printConfirmDialog');
+            dialog.style.display = 'block';
+        }
+        
+        // Hide print confirmation dialog
+        function hidePrintConfirmation() {
+            const dialog = document.getElementById('printConfirmDialog');
+            dialog.style.display = 'none';
+        }
+        
         // Fetch all pending transactions
         async function fetchPendingTransactions() {
             try {
@@ -636,7 +651,6 @@
                     const isCardPayment = cardPayments.includes(paymentMethod);
                     
                     // Check if complete - all non-cash payments need approval code and batch no
-                    // Card payments are already identified by their payment method
                     const isComplete = hasApprovalCode && hasBatchNo && hasPaymentMethod;
                     
                     // Only include pending transactions
@@ -653,6 +667,19 @@
                             seatNo: data.seatNo || 'N/A',
                             adult: data.adult || 0,
                             children: data.children || 0,
+                            adultPrice: data.adultPrice,
+                            childrenPrice: data.childrenPrice,
+                            adultSubtotal: data.adultSubtotal,
+                            childrenSubtotal: data.childrenSubtotal,
+                            subtotal: data.subtotal,
+                            gstAmount: data.gstAmount,
+                            gstRate: data.gstRate,
+                            expiryTime: data.expiryTime,
+                            shiftDate: data.shiftDate,
+                            shift: data.shift,
+                            cashierName: data.cashierName,
+                            userRcno: data.userRcno,
+                            exchangeRate: data.exchangeRate,
                             hasApprovalCode: hasApprovalCode,
                             hasBatchNo: hasBatchNo,
                             hasPaymentMethod: hasPaymentMethod,
@@ -783,94 +810,6 @@
             document.getElementById('approvalModal').style.display = 'none';
         }
         
-        // Show receipt
-        function showReceipt(transaction) {
-            lastApprovedTransaction = transaction;
-            
-            const receiptDetails = document.getElementById('receiptDetails');
-            const now = new Date();
-            const timestamp = now.toLocaleString();
-            
-            receiptDetails.innerHTML = `
-                <div class="receipt-row">
-                    <span class="receipt-label">Receipt #:</span>
-                    <span class="receipt-value">${transaction.receiptNo}</span>
-                </div>
-                <div class="receipt-row">
-                    <span class="receipt-label">Date/Time:</span>
-                    <span class="receipt-value">${timestamp}</span>
-                </div>
-                <div class="receipt-row">
-                    <span class="receipt-label">Passenger:</span>
-                    <span class="receipt-value">${transaction.passengerName}</span>
-                </div>
-                <div class="receipt-row">
-                    <span class="receipt-label">Flight:</span>
-                    <span class="receipt-value">${transaction.flightNo} / Seat ${transaction.seatNo}</span>
-                </div>
-                <div class="receipt-row">
-                    <span class="receipt-label">Payment Method:</span>
-                    <span class="receipt-value">${transaction.paymentMethod}</span>
-                </div>
-                <div class="receipt-row">
-                    <span class="receipt-label">Amount:</span>
-                    <span class="receipt-value"><strong>${transaction.currency} ${Number(transaction.amount).toFixed(2)}</strong></span>
-                </div>
-                <div class="receipt-row">
-                    <span class="receipt-label">Approval Code:</span>
-                    <span class="receipt-value">${transaction.approvalCode || document.getElementById('approvalCode').value}</span>
-                </div>
-                <div class="receipt-row">
-                    <span class="receipt-label">Batch No:</span>
-                    <span class="receipt-value">${transaction.batchNo || document.getElementById('batchNo').value}</span>
-                </div>
-                <div class="receipt-row">
-                    <span class="receipt-label">Approved By:</span>
-                    <span class="receipt-value">${currentUser?.username || 'Unknown'}</span>
-                </div>
-            `;
-            
-            document.getElementById('receiptTimestamp').textContent = timestamp;
-            document.getElementById('receiptModal').style.display = 'flex';
-        }
-        
-        function closeReceipt() {
-            document.getElementById('receiptModal').style.display = 'none';
-        }
-        
-        function printReceipt() {
-            const receiptContent = document.getElementById('receiptContent').cloneNode(true);
-            const printWindow = window.open('', '_blank');
-            
-            printWindow.document.write(`
-                <html>
-                <head>
-                    <title>Payment Receipt - ${lastApprovedTransaction?.receiptNo}</title>
-                    <style>
-                        body { font-family: 'Courier New', monospace; padding: 20px; }
-                        .receipt-content { max-width: 350px; margin: 0 auto; }
-                        .receipt-header { text-align: center; margin-bottom: 20px; border-bottom: 2px dashed #000; }
-                        .receipt-details { margin-bottom: 20px; }
-                        .receipt-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dotted #ccc; }
-                        .receipt-label { font-weight: bold; }
-                        .receipt-footer { text-align: center; margin-top: 20px; border-top: 2px dashed #000; padding-top: 10px; }
-                        .receipt-actions { display: none; }
-                    </style>
-                </head>
-                <body>
-                    <div class="receipt-content">
-                        ${receiptContent.innerHTML}
-                    </div>
-                    <script>
-                        window.onload = function() { window.print(); window.close(); }
-                    <\/script>
-                </body>
-                </html>
-            `);
-            
-            printWindow.document.close();
-        }
-        
         // Save approval details
         document.getElementById('approvalForm').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -912,18 +851,36 @@
                 const updatedDoc = await passengerDb.collection('Kovelipay').doc(docId).get();
                 const updatedData = updatedDoc.data();
                 
+                // Find the original transaction to get additional fields
+                const originalTransaction = allTransactions.find(t => t.id === docId);
+                
                 const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
                 const isCardPayment = cardPayments.includes(paymentMethod);
                 
                 const approvedTransaction = {
-                    id: docId,
-                    receiptNo: updatedData.receiptNo || 'N/A',
-                    passengerName: updatedData.passengerName || 'N/A',
+                    ...originalTransaction,
+                    receiptNo: updatedData.receiptNo || originalTransaction?.receiptNo || 'N/A',
+                    passengerName: updatedData.passengerName || originalTransaction?.passengerName || 'N/A',
                     paymentMethod: paymentMethod,
-                    amount: updatedData.totalAmount || 0,
-                    currency: updatedData.currency || 'USD',
-                    flightNo: updatedData.flightNo || 'N/A',
-                    seatNo: updatedData.seatNo || 'N/A',
+                    amount: updatedData.totalAmount || originalTransaction?.amount || 0,
+                    currency: updatedData.currency || originalTransaction?.currency || 'USD',
+                    flightNo: updatedData.flightNo || originalTransaction?.flightNo || 'N/A',
+                    seatNo: updatedData.seatNo || originalTransaction?.seatNo || 'N/A',
+                    adult: updatedData.adult || originalTransaction?.adult || 1,
+                    children: updatedData.children || originalTransaction?.children || 0,
+                    adultPrice: updatedData.adultPrice || originalTransaction?.adultPrice,
+                    childrenPrice: updatedData.childrenPrice || originalTransaction?.childrenPrice,
+                    adultSubtotal: updatedData.adultSubtotal || originalTransaction?.adultSubtotal,
+                    childrenSubtotal: updatedData.childrenSubtotal || originalTransaction?.childrenSubtotal,
+                    subtotal: updatedData.subtotal || originalTransaction?.subtotal,
+                    gstAmount: updatedData.gstAmount || originalTransaction?.gstAmount,
+                    gstRate: updatedData.gstRate || originalTransaction?.gstRate || 8,
+                    expiryTime: updatedData.expiryTime || originalTransaction?.expiryTime,
+                    shiftDate: updatedData.shiftDate || originalTransaction?.shiftDate,
+                    shift: updatedData.shift || originalTransaction?.shift,
+                    cashierName: updatedData.cashierName || originalTransaction?.cashierName,
+                    userRcno: updatedData.userRcno || originalTransaction?.userRcno,
+                    exchangeRate: updatedData.exchangeRate || originalTransaction?.exchangeRate || 15.42,
                     approvalCode: approvalCode,
                     batchNo: batchNo,
                     isCardPayment: isCardPayment
@@ -932,10 +889,11 @@
                 showStatus('✅ Transaction approved successfully!');
                 closeModal();
                 
-                // Show receipt option
-                if (confirm('Transaction approved! Would you like to print the receipt?')) {
-                    showReceipt(approvedTransaction);
-                }
+                // Show print confirmation dialog
+                lastApprovedTransaction = approvedTransaction;
+                document.getElementById('confirmMessage').innerHTML = 
+                    `Transaction <strong>${approvedTransaction.receiptNo}</strong> approved successfully!<br>Would you like to print the receipt?`;
+                document.getElementById('printConfirmDialog').style.display = 'block';
                 
                 fetchPendingTransactions(); // Refresh the list
                 
@@ -943,6 +901,19 @@
                 console.error('Error updating transaction:', error);
                 showStatus('❌ Error updating transaction: ' + error.message, true);
             }
+        });
+        
+        // Confirm dialog buttons
+        document.getElementById('confirmPrintYes').addEventListener('click', function() {
+            if (lastApprovedTransaction) {
+                redirectToReceiptPage(lastApprovedTransaction, true);
+            }
+            hidePrintConfirmation();
+        });
+        
+        document.getElementById('confirmPrintNo').addEventListener('click', function() {
+            hidePrintConfirmation();
+            showStatus('✅ Transaction approved (receipt not printed)');
         });
         
         // Filter functionality
@@ -999,14 +970,14 @@
             // Close modals when clicking outside
             window.addEventListener('click', function(event) {
                 const approvalModal = document.getElementById('approvalModal');
-                const receiptModal = document.getElementById('receiptModal');
+                const confirmDialog = document.getElementById('printConfirmDialog');
                 
                 if (event.target === approvalModal) {
                     closeModal();
                 }
                 
-                if (event.target === receiptModal) {
-                    closeReceipt();
+                if (event.target === confirmDialog) {
+                    hidePrintConfirmation();
                 }
             });
         });
