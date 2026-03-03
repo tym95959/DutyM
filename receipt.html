@@ -35,12 +35,33 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             padding: 3mm 3mm;
             border-radius: 3px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* VOID Watermark */
+        .void-watermark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 48pt;
+            font-weight: bold;
+            color: rgba(255, 0, 0, 0.3);
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 1000;
+            font-family: 'Arial Black', 'Helvetica Bold', sans-serif;
+            text-transform: uppercase;
+            border: 5px solid rgba(255, 0, 0, 0.3);
+            padding: 10px 30px;
+            letter-spacing: 10px;
         }
 
         /* Print styles for EPSON TM-T88vii */
         @media print {
             @page {
-                size: 80mm auto; /* Auto height based on content */
+                size: 80mm auto;
                 margin: 0;
             }
             
@@ -62,20 +83,28 @@
                 box-shadow: none;
                 border-radius: 0;
                 background: white;
+                position: relative;
             }
             
             .receipt, .receipt * {
                 visibility: visible;
             }
+            
+            .void-watermark {
+                color: rgba(255, 0, 0, 0.25) !important;
+                border-color: rgba(255, 0, 0, 0.25) !important;
+            }
         }
 
-        /* Receipt Content Styles - Medium length for EPSON TM-T88vii */
+        /* Receipt Content Styles */
         .receipt {
             font-family: 'Courier New', 'Lucida Console', monospace;
             font-size: 10pt;
             line-height: 1.25;
             color: #000000;
             width: 100%;
+            position: relative;
+            z-index: 1;
         }
 
         /* Company Header */
@@ -113,6 +142,19 @@
             padding: 1mm 0;
             border: 2px solid #000;
             text-transform: uppercase;
+        }
+
+        /* VOID Status Mark */
+        .void-status {
+            text-align: center;
+            font-size: 14pt;
+            font-weight: bold;
+            margin: 2mm 0;
+            padding: 1.5mm 0;
+            border: 3px solid #ff0000;
+            color: #ff0000;
+            text-transform: uppercase;
+            background: rgba(255, 0, 0, 0.05);
         }
 
         /* Dividers */
@@ -352,13 +394,25 @@
             box-shadow: 0 4px 15px rgba(230, 184, 0, 0.3);
         }
 
+        /* Void receipt specific */
+        .void-badge {
+            background-color: #ff0000;
+            color: white;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 8pt;
+            margin-left: 5px;
+        }
+
         /* Utility */
         .text-center { text-align: center; }
         .text-bold { font-weight: bold; }
+        .text-red { color: #ff0000; }
     </style>
 </head>
 <body>
-    <div class="receipt-wrapper">
+    <div class="receipt-wrapper" id="receiptWrapper">
         <div class="receipt" id="receipt">
             <!-- Receipt content will be populated by JavaScript -->
             <div class="loading" id="loadingMessage">
@@ -369,6 +423,7 @@
             </div>
             <div class="receipt-data" id="receiptData" style="display: none;"></div>
         </div>
+        <!-- VOID Watermark will be inserted here dynamically -->
     </div>
 
     <div class="print-controls no-print">
@@ -377,13 +432,14 @@
     </div>
 
     <script>
-        // ========== RECEIPT PAGE FOR EPSON TM-T88vii (MEDIUM LENGTH) ==========
+        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH VOID SUPPORT ==========
         
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const receiptDataParam = urlParams.get('data');
         const receiptNoParam = urlParams.get('receiptNo');
         const reprintParam = urlParams.get('reprint') === 'true';
+        const voidParam = urlParams.get('void') === 'true'; // New void parameter
 
         // Firebase config
         const firebaseConfig = {
@@ -411,11 +467,31 @@
             return parseFloat(value || 0).toFixed(2);
         }
 
-        // Generate receipt HTML - Medium length
+        // Add VOID watermark to receipt
+        function addVoidWatermark() {
+            const wrapper = document.getElementById('receiptWrapper');
+            if (wrapper) {
+                // Check if watermark already exists
+                if (!document.querySelector('.void-watermark')) {
+                    const watermark = document.createElement('div');
+                    watermark.className = 'void-watermark';
+                    watermark.textContent = 'VOID';
+                    wrapper.appendChild(watermark);
+                }
+            }
+        }
+
+        // Generate receipt HTML
         function generateReceiptHTML(data) {
             const isReprint = data.isReprint || reprintParam;
+            const isVoid = data.isVoid || voidParam || data.status === 'VOID' || data.voided === true;
+            
             const reprintMark = isReprint ? 
                 '<div class="reprint-mark">*** REPRINT COPY ***</div>' : '';
+            
+            // Add void status mark if voided
+            const voidMark = isVoid ? 
+                '<div class="void-status">⛔ VOIDED ⛔</div>' : '';
 
             // Format date and time
             let dateTimeStr = data.submissionDateTime || data.dateTime || '';
@@ -455,6 +531,14 @@
             const passengerCount = parseInt(data.adult || 0) + parseInt(data.children || 0);
             const passengerDisplay = passengerCount > 1 ? ` (${passengerCount} PAX)` : '';
 
+            // Void reason if available
+            const voidReasonHTML = data.voidReason ? 
+                `<div class="row text-red"><span class="label">Void Reason:</span><span class="value">${data.voidReason}</span></div>` : '';
+
+            // Void timestamp if available
+            const voidTimeHTML = data.voidedAt ? 
+                `<div class="row text-red"><span class="label">Voided On:</span><span class="value">${data.voidedAt}</span></div>` : '';
+
             return `
                 <div class="receipt-header">
                     <div class="company-name">KOVELI LOUNGE</div>
@@ -467,13 +551,17 @@
                 </div>
 
                 ${reprintMark}
+                ${voidMark}
 
                 <div class="divider-light"></div>
 
                 <div class="row">
                     <span class="label">Receipt No:</span>
-                    <span class="value"><span class="text-bold">${data.receiptNo || 'N/A'}</span></span>
+                    <span class="value"><span class="text-bold">${data.receiptNo || 'N/A'}</span>${isVoid ? '<span class="void-badge">VOID</span>' : ''}</span>
                 </div>
+
+                ${voidReasonHTML}
+                ${voidTimeHTML}
 
                 <div class="row">
                     <span class="label">Date:</span>
@@ -642,13 +730,27 @@
                     throw new Error('No receipt data found');
                 }
 
+                // Check if receipt is voided (from various possible fields)
+                const isVoid = voidParam || 
+                              data.status === 'VOID' || 
+                              data.voided === true || 
+                              data.isVoid === true ||
+                              data.voidReason !== undefined;
+                
                 data.isReprint = reprintParam;
+                data.isVoid = isVoid;
+
                 receiptData = data;
 
                 const html = generateReceiptHTML(data);
                 if (receiptDataEl) {
                     receiptDataEl.innerHTML = html;
                     receiptDataEl.style.display = 'block';
+                }
+
+                // Add VOID watermark if receipt is voided
+                if (isVoid) {
+                    addVoidWatermark();
                 }
 
                 if (loadingEl) loadingEl.style.display = 'none';
