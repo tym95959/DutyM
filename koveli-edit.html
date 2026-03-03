@@ -88,6 +88,10 @@
             background: linear-gradient(135deg, #6b8e23, #556b2f);
         }
         
+        .nav-btn.danger {
+            background: linear-gradient(135deg, #c68b5e, #a67244);
+        }
+        
         .main-content {
             padding: 30px;
         }
@@ -235,6 +239,12 @@
             background: rgba(230, 184, 0, 0.05);
         }
         
+        tr.void-row td {
+            background: rgba(198, 139, 94, 0.1);
+            text-decoration: line-through;
+            opacity: 0.7;
+        }
+        
         .action-btn {
             padding: 6px 12px;
             border: none;
@@ -265,6 +275,16 @@
             background: #6b4f0f;
         }
         
+        .void-btn {
+            background: #c68b5e;
+            color: white;
+        }
+        
+        .void-btn:hover {
+            background: #a67244;
+            transform: translateY(-2px);
+        }
+        
         .status-badge {
             padding: 4px 8px;
             border-radius: 30px;
@@ -280,6 +300,11 @@
         
         .status-completed {
             background: #6b8e23;
+            color: white;
+        }
+        
+        .status-void {
+            background: #8b6913;
             color: white;
         }
         
@@ -307,6 +332,11 @@
             box-shadow: 0 20px 40px rgba(0,0,0,0.3);
             position: relative;
             animation: slideDown 0.3s ease;
+        }
+        
+        .modal-content.small {
+            max-width: 500px;
+            text-align: center;
         }
         
         @keyframes slideDown {
@@ -373,7 +403,8 @@
         }
         
         .form-group input,
-        .form-group select {
+        .form-group select,
+        .form-group textarea {
             padding: 12px 15px;
             border: 2px solid rgba(230, 184, 0, 0.3);
             border-radius: 12px;
@@ -382,8 +413,14 @@
             transition: all 0.3s;
         }
         
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
         .form-group input:focus,
-        .form-group select:focus {
+        .form-group select:focus,
+        .form-group textarea:focus {
             outline: none;
             border-color: #e6b800;
             box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.1);
@@ -489,6 +526,23 @@
             background: #a67244;
         }
         
+        .void-confirm-btn {
+            background: #c68b5e;
+            color: white;
+            border: none;
+            padding: 12px 35px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .void-confirm-btn:hover {
+            background: #a67244;
+            transform: translateY(-2px);
+        }
+        
         .warning-note {
             background: rgba(198, 139, 94, 0.1);
             border: 1px dashed #c68b5e;
@@ -571,6 +625,7 @@
                     <option value="ALL">All Status</option>
                     <option value="COMPLETED">Completed</option>
                     <option value="PENDING_APPROVAL">Pending Approval</option>
+                    <option value="VOID">Void</option>
                 </select>
                 <button class="refresh-btn" id="refreshBtn">↻</button>
             </div>
@@ -739,7 +794,35 @@
             <div class="modal-actions">
                 <button class="save-btn" onclick="saveEdit()">💾 SAVE CHANGES</button>
                 <button class="print-btn" onclick="printEditedReceipt()">🖨️ PRINT RECEIPT</button>
+                <button class="void-btn" onclick="openVoidModal()">🚫 VOID RECEIPT</button>
                 <button class="cancel-btn" onclick="closeEditModal()">✖️ CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Void Confirmation Modal -->
+    <div id="voidModal" class="modal">
+        <div class="modal-content small">
+            <span class="close-modal" onclick="closeVoidModal()">&times;</span>
+            <h3>🚫 VOID RECEIPT</h3>
+            
+            <div class="warning-note" style="margin: 20px 0;">
+                ⚠️ This action cannot be undone!
+            </div>
+            
+            <div class="form-group">
+                <label>REASON FOR VOID *</label>
+                <textarea id="voidReason" placeholder="Enter reason for voiding this receipt..." required></textarea>
+            </div>
+            
+            <div style="margin: 20px 0; color: #c68b5e; font-size: 14px;">
+                <input type="checkbox" id="voidConfirmCheckbox"> 
+                <label for="voidConfirmCheckbox">I confirm that this receipt should be voided</label>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="void-confirm-btn" onclick="confirmVoid()">🚫 CONFIRM VOID</button>
+                <button class="cancel-btn" onclick="closeVoidModal()">✖️ CANCEL</button>
             </div>
         </div>
     </div>
@@ -790,9 +873,9 @@ async function loadReceipts() {
 
 function updateStats() {
     document.getElementById('totalReceipts').textContent = allReceipts.length;
-    document.getElementById('totalCash').textContent = allReceipts.filter(r => r.paymentMethod === 'CASH').length;
-    document.getElementById('totalCard').textContent = allReceipts.filter(r => r.paymentMethod === 'CARD').length;
-    document.getElementById('totalBank').textContent = allReceipts.filter(r => r.paymentMethod === 'BANK TRANSFER').length;
+    document.getElementById('totalCash').textContent = allReceipts.filter(r => r.paymentMethod === 'CASH' && r.paymentStatus !== 'VOID').length;
+    document.getElementById('totalCard').textContent = allReceipts.filter(r => r.paymentMethod === 'CARD' && r.paymentStatus !== 'VOID').length;
+    document.getElementById('totalBank').textContent = allReceipts.filter(r => r.paymentMethod === 'BANK TRANSFER' && r.paymentStatus !== 'VOID').length;
 }
 
 // ========== FILTER FUNCTIONS ==========
@@ -827,11 +910,21 @@ function renderTable() {
     
     let html = '';
     filteredReceipts.forEach(receipt => {
-        const statusClass = receipt.paymentStatus === 'PENDING_APPROVAL' ? 'status-pending' : 'status-completed';
-        const statusText = receipt.paymentStatus === 'PENDING_APPROVAL' ? 'PENDING' : 'COMPLETED';
+        let statusClass = 'status-completed';
+        let statusText = 'COMPLETED';
+        
+        if (receipt.paymentStatus === 'PENDING_APPROVAL') {
+            statusClass = 'status-pending';
+            statusText = 'PENDING';
+        } else if (receipt.paymentStatus === 'VOID') {
+            statusClass = 'status-void';
+            statusText = 'VOID';
+        }
+        
+        const rowClass = receipt.paymentStatus === 'VOID' ? 'void-row' : '';
         
         html += `
-            <tr>
+            <tr class="${rowClass}">
                 <td><strong>${receipt.receiptNo || 'N/A'}</strong></td>
                 <td>${receipt.submissionDateTime || 'N/A'}</td>
                 <td>${receipt.passengerName || 'N/A'}</td>
@@ -841,7 +934,7 @@ function renderTable() {
                 <td>${receipt.currency || ''} ${receipt.totalAmount?.toFixed(2) || '0.00'}</td>
                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                 <td>
-                    <button class="action-btn edit-btn" onclick="openEditModal('${receipt.receiptNo}')">✏️ EDIT</button>
+                    <button class="action-btn edit-btn" onclick="openEditModal('${receipt.receiptNo}')" ${receipt.paymentStatus === 'VOID' ? 'disabled' : ''}>✏️ EDIT</button>
                     <button class="action-btn view-btn" onclick="printReceipt('${receipt.receiptNo}')">🖨️ PRINT</button>
                 </td>
             </tr>
@@ -856,6 +949,12 @@ function renderTable() {
 function openEditModal(receiptNo) {
     const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
     if (!receipt) return;
+    
+    // Check if receipt is void
+    if (receipt.paymentStatus === 'VOID') {
+        alert('Cannot edit a voided receipt');
+        return;
+    }
     
     currentEditReceipt = receipt;
     
@@ -1124,13 +1223,97 @@ async function saveEdit() {
     }
 }
 
+// ========== VOID FUNCTIONS ==========
+
+function openVoidModal() {
+    if (!currentEditReceipt) return;
+    
+    closeEditModal();
+    
+    document.getElementById('voidReason').value = '';
+    document.getElementById('voidConfirmCheckbox').checked = false;
+    document.getElementById('voidModal').style.display = 'block';
+}
+
+function closeVoidModal() {
+    document.getElementById('voidModal').style.display = 'none';
+}
+
+async function confirmVoid() {
+    const reason = document.getElementById('voidReason').value.trim();
+    const confirmed = document.getElementById('voidConfirmCheckbox').checked;
+    
+    if (!reason) {
+        alert('Please enter a reason for voiding');
+        return;
+    }
+    
+    if (!confirmed) {
+        alert('Please confirm that you want to void this receipt');
+        return;
+    }
+    
+    if (!currentEditReceipt) {
+        alert('No receipt selected');
+        closeVoidModal();
+        return;
+    }
+    
+    try {
+        const voidBtn = document.querySelector('.void-confirm-btn');
+        voidBtn.disabled = true;
+        voidBtn.textContent = 'VOIDING...';
+        
+        const receiptNo = currentEditReceipt.receiptNo;
+        
+        const voidData = {
+            paymentStatus: 'VOID',
+            voidReason: reason,
+            voidedAt: new Date().toISOString(),
+            voidedBy: 'user',
+            originalAmount: currentEditReceipt.totalAmount,
+            originalCurrency: currentEditReceipt.currency
+        };
+        
+        console.log('Voiding receipt:', receiptNo, voidData);
+        
+        const kovelipayRef = passengerDb.collection('Kovelipay').doc(receiptNo);
+        await kovelipayRef.update(voidData);
+        
+        alert(`Receipt ${receiptNo} has been voided`);
+        
+        // Print void receipt
+        const voidedReceipt = {
+            ...currentEditReceipt,
+            ...voidData
+        };
+        printVoidReceipt(voidedReceipt);
+        
+        // Reload data and close modals
+        await loadReceipts();
+        closeVoidModal();
+        
+    } catch (error) {
+        console.error('Error voiding receipt:', error);
+        alert('Error voiding receipt: ' + error.message);
+    } finally {
+        const voidBtn = document.querySelector('.void-confirm-btn');
+        voidBtn.disabled = false;
+        voidBtn.textContent = '🚫 CONFIRM VOID';
+    }
+}
+
 // ========== PRINT FUNCTIONS ==========
 
 function printReceipt(receiptNo) {
     const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
     if (!receipt) return;
     
-    printReceiptContent(receipt);
+    if (receipt.paymentStatus === 'VOID') {
+        printVoidReceipt(receipt);
+    } else {
+        printReceiptContent(receipt);
+    }
 }
 
 function printEditedReceipt() {
@@ -1195,6 +1378,106 @@ function printEditedReceipt() {
     };
     
     printReceiptContent(updatedReceipt);
+}
+
+function printVoidReceipt(receipt) {
+    // Get company header
+    let companyHeader = '';
+    if (typeof companyInfo !== 'undefined') {
+        companyHeader = `
+            <div style="text-align: center; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 10px;">
+                <h1 style="margin: 0; font-size: 18px; font-weight: bold;">${companyInfo.name || 'Koveli Lounge'}</h1>
+                <p style="margin: 3px 0; font-size: 11px;">${companyInfo.address || 'Velana International Airport'}</p>
+                <p style="margin: 3px 0; font-size: 11px;">Tel: ${companyInfo.phone || '+960 304 6677'}</p>
+                <p style="margin: 5px 0 0 0; font-size: 10px;">GST Registered</p>
+            </div>
+        `;
+    }
+    
+    const receiptHTML = `
+        <div style="width: 80mm; font-family: 'Courier New', monospace; font-size: 11px; padding: 10px;">
+            ${companyHeader}
+            
+            <div style="text-align: center; margin: 20px 0; padding: 10px; border: 3px solid #c68b5e; transform: rotate(-5deg);">
+                <h1 style="color: #c68b5e; font-size: 36px; margin: 0;">VOID</h1>
+                <p style="color: #c68b5e; font-size: 14px; margin: 5px 0;">${receipt.voidReason || 'No reason provided'}</p>
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <p><strong>Receipt #:</strong> ${receipt.receiptNo}</p>
+                <p><strong>Original Date:</strong> ${receipt.submissionDateTime}</p>
+                <p><strong>Voided Date:</strong> ${new Date(receipt.voidedAt).toLocaleString()}</p>
+                <p><strong>Voided By:</strong> ${receipt.voidedBy || 'User'}</p>
+            </div>
+            
+            <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 8px 0;">
+                <p><strong>Passenger:</strong> ${receipt.passengerName}</p>
+                <p><strong>Flight:</strong> ${receipt.flightNo} | Seat: ${receipt.seatNo}</p>
+            </div>
+            
+            <div style="margin: 10px 0;">
+                <table style="width: 100%; font-size: 10px;">
+                    <tr>
+                        <td>Adult x${receipt.adult}</td>
+                        <td style="text-align: right;">${receipt.currency} ${receipt.adultPrice?.toFixed(2)}</td>
+                        <td style="text-align: right;">${receipt.currency} ${receipt.adultSubtotal?.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                        <td>Children x${receipt.children}</td>
+                        <td style="text-align: right;">${receipt.currency} ${receipt.childrenPrice?.toFixed(2)}</td>
+                        <td style="text-align: right;">${receipt.currency} ${receipt.childrenSubtotal?.toFixed(2)}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 8px 0;">
+                <table style="width: 100%;">
+                    <tr>
+                        <td><strong>Subtotal:</strong></td>
+                        <td style="text-align: right;">${receipt.currency} ${receipt.subtotal?.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                        <td>GST (${receipt.gstRate}%):</td>
+                        <td style="text-align: right;">${receipt.currency} ${receipt.gstAmount?.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>TOTAL:</strong></td>
+                        <td style="text-align: right;"><strong>${receipt.currency} ${receipt.totalAmount?.toFixed(2)}</strong></td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div style="margin: 10px 0;">
+                <p><strong>Original Payment:</strong> ${receipt.paymentMethod}</p>
+                ${receipt.approvalCode ? `<p><strong>Approval:</strong> ${receipt.approvalCode}</p>` : ''}
+                ${receipt.batchNo ? `<p><strong>Batch:</strong> ${receipt.batchNo}</p>` : ''}
+            </div>
+            
+            <div style="border-top: 2px solid #000; padding-top: 10px; text-align: center;">
+                <p style="color: #c68b5e; font-weight: bold;">THIS RECEIPT HAS BEEN VOIDED</p>
+                <p style="font-size: 9px;">Original amount: ${receipt.currency} ${receipt.originalAmount?.toFixed(2) || receipt.totalAmount?.toFixed(2)}</p>
+            </div>
+        </div>
+    `;
+    
+    // Open print window
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <html>
+            <head>
+                <title>VOID Receipt ${receipt.receiptNo}</title>
+                <style>
+                    @media print {
+                        body { margin: 0; padding: 10px; }
+                    }
+                </style>
+            </head>
+            <body>${receiptHTML}</body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
 }
 
 function printReceiptContent(receipt) {
@@ -1319,9 +1602,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Close modal when clicking outside
     window.onclick = function(event) {
-        const modal = document.getElementById('editModal');
-        if (event.target === modal) {
+        const editModal = document.getElementById('editModal');
+        const voidModal = document.getElementById('voidModal');
+        if (event.target === editModal) {
             closeEditModal();
+        }
+        if (event.target === voidModal) {
+            closeVoidModal();
         }
     };
     
