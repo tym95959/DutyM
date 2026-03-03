@@ -477,35 +477,89 @@ function parseAndAddToList() {
 // ========== FIREBASE & DATA FUNCTIONS ==========
 async function fetchPendingTransactionsCount() {
     try {
-        if (typeof passengerDb === 'undefined') { console.warn('passengerDb not initialized'); updatePendingCount(0); return; }
+        if (typeof passengerDb === 'undefined') { 
+            console.warn('passengerDb not initialized'); 
+            updatePendingCount(0); 
+            return; 
+        }
+        
         const kovelipayRef = passengerDb.collection('Kovelipay');
         const snapshot = await kovelipayRef.get();
         let pendingCount = 0;
+        
         snapshot.forEach(doc => {
             const data = doc.data();
             const paymentMethod = data.paymentMethod || '';
+            
+            // Skip CASH transactions - they don't need approval
             if (paymentMethod === 'CASH') return;
-            const hasApprovalCode = data.approvalCode && data.appvalCode?.trim() !== '';
-            const hasBatchNo = data.batchNo && data.batchNo.trim() !== '';
+            
+            // FIXED: Use correct field names with robust checking
+            const approvalCode = data.approvalCode || data.approvalcode || data.approval || '';
+            const hasApprovalCode = approvalCode.trim() !== '';
+            
+            const batchNo = data.batchNo || data.batchno || data.batch || '';
+            const hasBatchNo = batchNo.trim() !== '';
+            
             let isComplete = false;
+            
+            // Card payments need additional cardType field
             const cardPayments = ['AMEX','VISA','MASTER','UNIONPAY','WECHATPAY','QRPAY','ALIPAY','CARD'];
+            
             if (cardPayments.includes(paymentMethod)) {
-                const hasCardType = data.cardType && data.cardType.trim() !== '';
+                const cardType = data.cardType || data.cardtype || data.card || '';
+                const hasCardType = cardType.trim() !== '';
                 isComplete = hasApprovalCode && hasBatchNo && hasCardType;
-            } else { isComplete = hasApprovalCode && hasBatchNo; }
+                
+                // Debug log for card payments
+                if (!isComplete) {
+                    console.log('Pending CARD transaction:', {
+                        receiptNo: data.receiptNo,
+                        hasApprovalCode: hasApprovalCode,
+                        hasBatchNo: hasBatchNo,
+                        hasCardType: hasCardType
+                    });
+                }
+            } else { 
+                isComplete = hasApprovalCode && hasBatchNo;
+                
+                // Debug log for other non-cash payments
+                if (!isComplete) {
+                    console.log('Pending NON-CASH transaction:', {
+                        receiptNo: data.receiptNo,
+                        paymentMethod: paymentMethod,
+                        hasApprovalCode: hasApprovalCode,
+                        hasBatchNo: hasBatchNo
+                    });
+                }
+            }
+            
             if (!isComplete) pendingCount++;
         });
+        
         pendingTransactionsCount = pendingCount;
         updatePendingCount(pendingCount);
-    } catch (error) { console.error('Error fetching pending transactions count:', error); updatePendingCount(0); }
+        
+        console.log(`Pending transactions count updated: ${pendingCount}`);
+        
+    } catch (error) { 
+        console.error('Error fetching pending transactions count:', error); 
+        updatePendingCount(0); 
+    }
 }
 
 function updatePendingCount(count) {
     const pendingBadge = document.getElementById('pendingCount');
     if (pendingBadge) {
         pendingBadge.textContent = count;
-        if (count > 0) { pendingBadge.style.backgroundColor = '#c68b5e'; pendingBadge.style.animation = 'pulse 2s infinite'; }
-        else { pendingBadge.style.backgroundColor = '#6b8e23'; pendingBadge.style.animation = 'none'; }
+        if (count > 0) { 
+            pendingBadge.style.backgroundColor = '#c68b5e'; 
+            pendingBadge.style.animation = 'pulse 2s infinite'; 
+        }
+        else { 
+            pendingBadge.style.backgroundColor = '#6b8e23'; 
+            pendingBadge.style.animation = 'none'; 
+        }
     }
     const approvalBtn = document.getElementById('approvalBtn');
     if (approvalBtn) approvalBtn.title = `${count} pending approval${count !== 1 ? 's' : ''}`;
@@ -518,16 +572,54 @@ function loadUserFromLocalStorage() {
         const level = localStorage.getItem('level');
         const rcno = localStorage.getItem('rcno');
         const loggedInUserStr = localStorage.getItem('loggedInUser');
-        if (username) { currentUser.username = username; currentUser.isLoggedIn = true; }
-        else if (loggedInUserStr) { try { const loggedInUser = JSON.parse(loggedInUserStr); if (loggedInUser.username) { currentUser.username = loggedInUser.username; currentUser.isLoggedIn = true; } } catch (e) {} }
+        
+        if (username) { 
+            currentUser.username = username; 
+            currentUser.isLoggedIn = true; 
+        }
+        else if (loggedInUserStr) { 
+            try { 
+                const loggedInUser = JSON.parse(loggedInUserStr); 
+                if (loggedInUser.username) { 
+                    currentUser.username = loggedInUser.username; 
+                    currentUser.isLoggedIn = true; 
+                } 
+            } catch (e) {} 
+        }
+        
         if (level) currentUser.level = level;
-        else if (loggedInUserStr) { try { const loggedInUser = JSON.parse(loggedInUserStr); if (loggedInUser.level) currentUser.level = loggedInUser.level; } catch (e) {} }
+        else if (loggedInUserStr) { 
+            try { 
+                const loggedInUser = JSON.parse(loggedInUserStr); 
+                if (loggedInUser.level) currentUser.level = loggedInUser.level; 
+            } catch (e) {} 
+        }
+        
         if (rcno) currentUser.rcno = rcno;
-        else { const rcNo = localStorage.getItem('rcNo'); if (rcNo) currentUser.rcno = rcNo; else { const RCno = localStorage.getItem('RCno'); if (RCno) currentUser.rcno = RCno; } }
-        if (!currentUser.rcno && loggedInUserStr) { try { const loggedInUser = JSON.parse(loggedInUserStr); if (loggedInUser.rcno) currentUser.rcno = loggedInUser.rcno; else if (loggedInUser.rcNo) currentUser.rcno = loggedInUser.rcNo; else if (loggedInUser.RCno) currentUser.rcno = loggedInUser.RCno; } catch (e) {} }
+        else { 
+            const rcNo = localStorage.getItem('rcNo'); 
+            if (rcNo) currentUser.rcno = rcNo; 
+            else { 
+                const RCno = localStorage.getItem('RCno'); 
+                if (RCno) currentUser.rcno = RCno; 
+            } 
+        }
+        
+        if (!currentUser.rcno && loggedInUserStr) { 
+            try { 
+                const loggedInUser = JSON.parse(loggedInUserStr); 
+                if (loggedInUser.rcno) currentUser.rcno = loggedInUser.rcno; 
+                else if (loggedInUser.rcNo) currentUser.rcno = loggedInUser.rcNo; 
+                else if (loggedInUser.RCno) currentUser.rcno = loggedInUser.RCno; 
+            } catch (e) {} 
+        }
+        
         if (!currentUser.username) {
             const statusMsg = document.getElementById('statusMessage');
-            if (statusMsg) { statusMsg.textContent = '⚠️ NOT LOGGED IN - Please log in first'; statusMsg.style.color = '#c68b5e'; }
+            if (statusMsg) { 
+                statusMsg.textContent = '⚠️ NOT LOGGED IN - Please log in first'; 
+                statusMsg.style.color = '#c68b5e'; 
+            }
         }
         updateUserDisplay();
     } catch (error) { console.error('Error loading user from localStorage:', error); }
@@ -546,7 +638,14 @@ function updateUserDisplay() {
 }
 
 function logout() {
-    localStorage.removeItem('username'); localStorage.removeItem('level'); localStorage.removeItem('rcno'); localStorage.removeItem('rcNo'); localStorage.removeItem('RCno'); localStorage.removeItem('loggedInUser'); localStorage.removeItem('shiftData'); localStorage.removeItem('cashierData');
+    localStorage.removeItem('username'); 
+    localStorage.removeItem('level'); 
+    localStorage.removeItem('rcno'); 
+    localStorage.removeItem('rcNo'); 
+    localStorage.removeItem('RCno'); 
+    localStorage.removeItem('loggedInUser'); 
+    localStorage.removeItem('shiftData'); 
+    localStorage.removeItem('cashierData');
     window.location.href = 'login.html';
 }
 
@@ -556,7 +655,18 @@ async function loadShiftDataOnce() {
     try {
         const storedShiftData = localStorage.getItem('shiftData');
         if (storedShiftData) {
-            try { const parsedData = JSON.parse(storedShiftData); const timestamp = parsedData._timestamp; const now = Date.now(); if (timestamp && (now - timestamp) < 60 * 60 * 1000) { currentShiftData = parsedData; updateShiftDisplay(); shiftDataLoaded = true; loadCashierData(); return; } } catch (e) { console.error('Error parsing stored shift data:', e); }
+            try { 
+                const parsedData = JSON.parse(storedShiftData); 
+                const timestamp = parsedData._timestamp; 
+                const now = Date.now(); 
+                if (timestamp && (now - timestamp) < 60 * 60 * 1000) { 
+                    currentShiftData = parsedData; 
+                    updateShiftDisplay(); 
+                    shiftDataLoaded = true; 
+                    loadCashierData(); 
+                    return; 
+                } 
+            } catch (e) { console.error('Error parsing stored shift data:', e); }
         }
         await fetchAndStoreShiftData();
     } catch (error) { console.error('Error in loadShiftDataOnce:', error); }
@@ -569,23 +679,62 @@ async function fetchAndStoreShiftData() {
         const shiftElement = document.getElementById('currentShift');
         const statusBadge = document.getElementById('shiftStatus');
         if (!shiftInfo || !dateElement || !shiftElement || !statusBadge) return;
-        dateElement.textContent = 'Loading...'; shiftElement.textContent = 'Loading...'; shiftInfo.classList.add('loading');
-        if (typeof passengerDb === 'undefined') { dateElement.textContent = 'DB ERROR'; shiftElement.textContent = 'NOT INITIALIZED'; shiftInfo.classList.remove('loading'); shiftInfo.classList.add('error'); return; }
+        
+        dateElement.textContent = 'Loading...'; 
+        shiftElement.textContent = 'Loading...'; 
+        shiftInfo.classList.add('loading');
+        
+        if (typeof passengerDb === 'undefined') { 
+            dateElement.textContent = 'DB ERROR'; 
+            shiftElement.textContent = 'NOT INITIALIZED'; 
+            shiftInfo.classList.remove('loading'); 
+            shiftInfo.classList.add('error'); 
+            return; 
+        }
+        
         let shiftDoc = null;
         try { shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get(); } catch (e) {}
-        if (!shiftDoc || !shiftDoc.exists) { try { shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get(); } catch (e) {} }
-        if (!shiftDoc || !shiftDoc.exists) { try { shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get(); } catch (e) {} }
+        if (!shiftDoc || !shiftDoc.exists) { 
+            try { shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get(); } catch (e) {} 
+        }
+        if (!shiftDoc || !shiftDoc.exists) { 
+            try { shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get(); } catch (e) {} 
+        }
+        
         if (shiftDoc && shiftDoc.exists) {
             const data = shiftDoc.data();
-            currentShiftData = { date: data.date || '', shift: '', status: '', openTime: data.updated || data.openTime || '', _timestamp: Date.now() };
-            if (data.morning === 'open') { currentShiftData.shift = 'MORNING'; currentShiftData.status = 'OPEN'; }
-            else if (data.evening === 'open') { currentShiftData.shift = 'EVENING'; currentShiftData.status = 'OPEN'; }
-            else { currentShiftData.shift = 'NO OPEN SHIFT'; currentShiftData.status = 'CLOSED'; }
+            currentShiftData = { 
+                date: data.date || '', 
+                shift: '', 
+                status: '', 
+                openTime: data.updated || data.openTime || '', 
+                _timestamp: Date.now() 
+            };
+            
+            if (data.morning === 'open') { 
+                currentShiftData.shift = 'MORNING'; 
+                currentShiftData.status = 'OPEN'; 
+            }
+            else if (data.evening === 'open') { 
+                currentShiftData.shift = 'EVENING'; 
+                currentShiftData.status = 'OPEN'; 
+            }
+            else { 
+                currentShiftData.shift = 'NO OPEN SHIFT'; 
+                currentShiftData.status = 'CLOSED'; 
+            }
+            
             localStorage.setItem('shiftData', JSON.stringify(currentShiftData));
             shiftDataLoaded = true;
             await fetchAndStoreCashierData();
         } else {
-            currentShiftData = { date: '', shift: 'NO SHIFT DATA', status: 'NOT FOUND', openTime: '', _timestamp: Date.now() };
+            currentShiftData = { 
+                date: '', 
+                shift: 'NO SHIFT DATA', 
+                status: 'NOT FOUND', 
+                openTime: '', 
+                _timestamp: Date.now() 
+            };
         }
         updateShiftDisplay();
     } catch (error) { console.error('Error fetching shift data:', error); }
@@ -595,10 +744,25 @@ async function fetchAndStoreCashierData() {
     try {
         const storedCashierData = localStorage.getItem('cashierData');
         if (storedCashierData) {
-            try { const parsedData = JSON.parse(storedCashierData); const timestamp = parsedData._timestamp; const now = Date.now(); if (timestamp && (now - timestamp) < 60 * 60 * 1000) { currentCashier = parsedData; updateCashierDisplay(); return; } } catch (e) { console.error('Error parsing stored cashier data:', e); }
+            try { 
+                const parsedData = JSON.parse(storedCashierData); 
+                const timestamp = parsedData._timestamp; 
+                const now = Date.now(); 
+                if (timestamp && (now - timestamp) < 60 * 60 * 1000) { 
+                    currentCashier = parsedData; 
+                    updateCashierDisplay(); 
+                    return; 
+                } 
+            } catch (e) { console.error('Error parsing stored cashier data:', e); }
         }
+        
         if (currentUser.username) {
-            currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() };
+            currentCashier = { 
+                name: currentUser.username, 
+                level: currentUser.level, 
+                rcno: currentUser.rcno, 
+                _timestamp: Date.now() 
+            };
             localStorage.setItem('cashierData', JSON.stringify(currentCashier));
             updateCashierDisplay();
         }
@@ -608,8 +772,40 @@ async function fetchAndStoreCashierData() {
 function loadCashierData() {
     const storedCashierData = localStorage.getItem('cashierData');
     if (storedCashierData) {
-        try { const parsedData = JSON.parse(storedCashierData); const timestamp = parsedData._timestamp; const now = Date.now(); if (timestamp && (now - timestamp) < 60 * 60 * 1000) { currentCashier = parsedData; } else { currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() }; localStorage.setItem('cashierData', JSON.stringify(currentCashier)); } } catch (e) { console.error('Error parsing stored cashier data:', e); currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() }; localStorage.setItem('cashierData', JSON.stringify(currentCashier)); }
-    } else { currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() }; localStorage.setItem('cashierData', JSON.stringify(currentCashier)); }
+        try { 
+            const parsedData = JSON.parse(storedCashierData); 
+            const timestamp = parsedData._timestamp; 
+            const now = Date.now(); 
+            if (timestamp && (now - timestamp) < 60 * 60 * 1000) { 
+                currentCashier = parsedData; 
+            } else { 
+                currentCashier = { 
+                    name: currentUser.username, 
+                    level: currentUser.level, 
+                    rcno: currentUser.rcno, 
+                    _timestamp: Date.now() 
+                }; 
+                localStorage.setItem('cashierData', JSON.stringify(currentCashier)); 
+            } 
+        } catch (e) { 
+            console.error('Error parsing stored cashier data:', e); 
+            currentCashier = { 
+                name: currentUser.username, 
+                level: currentUser.level, 
+                rcno: currentUser.rcno, 
+                _timestamp: Date.now() 
+            }; 
+            localStorage.setItem('cashierData', JSON.stringify(currentCashier)); 
+        }
+    } else { 
+        currentCashier = { 
+            name: currentUser.username, 
+            level: currentUser.level, 
+            rcno: currentUser.rcno, 
+            _timestamp: Date.now() 
+        }; 
+        localStorage.setItem('cashierData', JSON.stringify(currentCashier)); 
+    }
     updateCashierDisplay();
 }
 
@@ -618,7 +814,12 @@ function updateCashierDisplay() {
     if (cashierNameEl && currentCashier.name) cashierNameEl.textContent = currentCashier.name;
 }
 
-function refreshShiftData() { shiftDataLoaded = false; localStorage.removeItem('shiftData'); localStorage.removeItem('cashierData'); fetchAndStoreShiftData(); }
+function refreshShiftData() { 
+    shiftDataLoaded = false; 
+    localStorage.removeItem('shiftData'); 
+    localStorage.removeItem('cashierData'); 
+    fetchAndStoreShiftData(); 
+}
 
 function updateShiftDisplay() {
     const dateElement = document.getElementById('currentDate');
@@ -626,7 +827,9 @@ function updateShiftDisplay() {
     const statusBadge = document.getElementById('shiftStatus');
     const shiftInfo = document.getElementById('shiftInfo');
     if (!dateElement || !shiftElement || !statusBadge) return;
+    
     dateElement.textContent = currentShiftData.date || 'NO DATE';
+    
     if (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') {
         shiftElement.textContent = currentShiftData.shift;
         statusBadge.textContent = currentShiftData.status;
@@ -641,23 +844,36 @@ function updateShiftDisplay() {
 
 async function generateReceiptNumber() {
     try {
-        if (typeof passengerDb === 'undefined') { const timestamp = Date.now(); const randomPart = Math.floor(Math.random() * 1000); return 'R-' + timestamp.toString().slice(-5) + randomPart; }
+        if (typeof passengerDb === 'undefined') { 
+            const timestamp = Date.now(); 
+            const randomPart = Math.floor(Math.random() * 1000); 
+            return 'R-' + timestamp.toString().slice(-5) + randomPart; 
+        }
+        
         const kovelipayRef = passengerDb.collection('Kovelipay');
         const snapshot = await kovelipayRef.get();
         let maxNumber = 3059;
+        
         snapshot.forEach(doc => {
             const data = doc.data();
             const receiptNo = data.receiptNo || '';
             let numPart = 0;
+            
             if (receiptNo.startsWith('R-')) numPart = parseInt(receiptNo.substring(2).replace(/^0+/, ''));
             else if (receiptNo.startsWith('R')) numPart = parseInt(receiptNo.substring(1));
             else numPart = parseInt(receiptNo);
+            
             if (!isNaN(numPart) && numPart > maxNumber) maxNumber = numPart;
         });
+        
         const nextNumber = maxNumber + 1;
         const nextReceiptNo = 'R-' + nextNumber.toString().padStart(5, '0');
         return nextReceiptNo;
-    } catch (error) { console.error('Error generating receipt number:', error); const timestamp = Date.now(); return 'R-' + timestamp.toString().slice(-5); }
+    } catch (error) { 
+        console.error('Error generating receipt number:', error); 
+        const timestamp = Date.now(); 
+        return 'R-' + timestamp.toString().slice(-5); 
+    }
 }
 
 async function saveToFirebase(data) {
@@ -666,37 +882,69 @@ async function saveToFirebase(data) {
         const kovelipayRef = passengerDb.collection('Kovelipay');
         const docRef = await kovelipayRef.add(data);
         return { id: docRef.id, ...data };
-    } catch (error) { console.error('Error saving to Firebase:', error); throw error; }
+    } catch (error) { 
+        console.error('Error saving to Firebase:', error); 
+        throw error; 
+    }
 }
 
 async function fetchTransactionByReceipt(receiptNo) {
     try {
         if (typeof passengerDb === 'undefined') throw new Error('passengerDb not initialized');
+        
         const kovelipayRef = passengerDb.collection('Kovelipay');
         const snapshot = await kovelipayRef.where('receiptNo', '==', receiptNo).limit(1).get();
-        if (!snapshot.empty) { const doc = snapshot.docs[0]; return { id: doc.id, ...doc.data() }; }
+        
+        if (!snapshot.empty) { 
+            const doc = snapshot.docs[0]; 
+            return { id: doc.id, ...doc.data() }; 
+        }
+        
         const docById = await kovelipayRef.doc(receiptNo).get();
         if (docById.exists) return { id: docById.id, ...docById.data() };
+        
         return null;
-    } catch (error) { console.error('Error fetching transaction:', error); throw error; }
+    } catch (error) { 
+        console.error('Error fetching transaction:', error); 
+        throw error; 
+    }
 }
 
 function updateDateTime() {
     const now = new Date();
-    const dateTimeString = now.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    const dateTimeString = now.toLocaleString('en-US', { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit', 
+        hour12: false 
+    });
     document.getElementById('currentDateTime').value = dateTimeString;
 }
 
 function calculateExpiryTime() {
     if (!submissionTime) submissionTime = new Date();
     expiryTime = new Date(submissionTime.getTime() + (3 * 60 * 60 * 1000));
+    
     const hours = expiryTime.getHours().toString().padStart(2,'0');
     const minutes = expiryTime.getMinutes().toString().padStart(2,'0');
     const seconds = expiryTime.getSeconds().toString().padStart(2,'0');
     const timeOnlyString = `${hours}:${minutes}:${seconds}`;
-    const fullExpiryString = expiryTime.toLocaleString('en-US', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+    const fullExpiryString = expiryTime.toLocaleString('en-US', { 
+        year:'numeric', 
+        month:'2-digit', 
+        day:'2-digit', 
+        hour:'2-digit', 
+        minute:'2-digit', 
+        second:'2-digit', 
+        hour12:false 
+    });
+    
     document.getElementById('expiryTime').value = timeOnlyString;
     document.getElementById('expiryTimeDisplay').textContent = timeOnlyString;
+    
     return { display: timeOnlyString, full: fullExpiryString, timestamp: expiryTime };
 }
 
@@ -711,58 +959,101 @@ function getAirlineName(iataCode) {
 function setupNumberInputs() {
     const adultInput = document.getElementById('adult');
     const childrenInput = document.getElementById('children');
-    document.getElementById('adultIncrease').addEventListener('click', function() { let currentValue = parseInt(adultInput.value) || 0; adultInput.value = currentValue + 1; updateTotalPassengers(); });
-    document.getElementById('adultDecrease').addEventListener('click', function() { let currentValue = parseInt(adultInput.value) || 0; if (currentValue > 0) { adultInput.value = currentValue - 1; updateTotalPassengers(); } });
-    document.getElementById('childrenIncrease').addEventListener('click', function() { let currentValue = parseInt(childrenInput.value) || 0; childrenInput.value = currentValue + 1; updateTotalPassengers(); });
-    document.getElementById('childrenDecrease').addEventListener('click', function() { let currentValue = parseInt(childrenInput.value) || 0; if (currentValue > 0) { childrenInput.value = currentValue - 1; updateTotalPassengers(); } });
+    
+    document.getElementById('adultIncrease').addEventListener('click', function() { 
+        let currentValue = parseInt(adultInput.value) || 0; 
+        adultInput.value = currentValue + 1; 
+        updateTotalPassengers(); 
+    });
+    
+    document.getElementById('adultDecrease').addEventListener('click', function() { 
+        let currentValue = parseInt(adultInput.value) || 0; 
+        if (currentValue > 0) { 
+            adultInput.value = currentValue - 1; 
+            updateTotalPassengers(); 
+        } 
+    });
+    
+    document.getElementById('childrenIncrease').addEventListener('click', function() { 
+        let currentValue = parseInt(childrenInput.value) || 0; 
+        childrenInput.value = currentValue + 1; 
+        updateTotalPassengers(); 
+    });
+    
+    document.getElementById('childrenDecrease').addEventListener('click', function() { 
+        let currentValue = parseInt(childrenInput.value) || 0; 
+        if (currentValue > 0) { 
+            childrenInput.value = currentValue - 1; 
+            updateTotalPassengers(); 
+        } 
+    });
 }
 
 function calculatePrices() {
-    if (typeof rates === 'undefined') { console.error('rates object not found'); return; }
+    if (typeof rates === 'undefined') { 
+        console.error('rates object not found'); 
+        return; 
+    }
+    
     const adult = parseInt(document.getElementById('adult').value) || 0;
     const children = parseInt(document.getElementById('children').value) || 0;
     const currency = document.getElementById('currency').value;
     const rateType = document.getElementById('rateType').value;
+    
     if (rates.exchangeRate && rates.exchangeRate.MVRtoUSD) currentExchangeRate = rates.exchangeRate.MVRtoUSD;
+    
     const adultRateKey = `Adult${rateType}${currency}`;
     const childrenRateKey = `Kids${rateType}${currency}`;
+    
     let adultRate = rates[adultRateKey] || { price: 0, GST: 8 };
     let childrenRate = rates[childrenRateKey] || { price: 0, GST: 8 };
+    
     if (currency === 'MVR' && (adultRate.price === 0 || childrenRate.price === 0)) {
         const adultUSDRateKey = `Adult${rateType}USD`;
         const childrenUSDRateKey = `Kids${rateType}USD`;
         const adultUSDRate = rates[adultUSDRateKey] || { price: 0, GST: 8 };
         const childrenUSDRate = rates[childrenUSDRateKey] || { price: 0, GST: 8 };
+        
         if (adultUSDRate.price > 0) adultRate = { price: adultUSDRate.price * currentExchangeRate, GST: adultUSDRate.GST || 8 };
         if (childrenUSDRate.price > 0) childrenRate = { price: childrenUSDRate.price * currentExchangeRate, GST: childrenUSDRate.GST || 8 };
     }
+    
     const gstRate = adultRate.GST || 8;
     document.getElementById('gstRate').value = gstRate;
+    
     const adultSubtotal = adult * adultRate.price;
     const childrenSubtotal = children * childrenRate.price;
     const subtotal = adultSubtotal + childrenSubtotal;
     const gstAmount = subtotal * (gstRate / 100);
     const totalAmount = subtotal + gstAmount;
+    
     document.getElementById('adultPrice').textContent = adultRate.price.toFixed(2);
     document.getElementById('childrenPrice').textContent = childrenRate.price.toFixed(2);
-    document.getElementById('adultCurrency').textContent = currency; document.getElementById('childrenCurrency').textContent = currency;
+    document.getElementById('adultCurrency').textContent = currency; 
+    document.getElementById('childrenCurrency').textContent = currency;
     document.getElementById('adultSubtotal').textContent = adultSubtotal.toFixed(2);
     document.getElementById('childrenSubtotal').textContent = childrenSubtotal.toFixed(2);
-    document.getElementById('adultSubtotalCurrency').textContent = currency; document.getElementById('childrenSubtotalCurrency').textContent = currency;
+    document.getElementById('adultSubtotalCurrency').textContent = currency; 
+    document.getElementById('childrenSubtotalCurrency').textContent = currency;
     document.getElementById('subtotalAmount').textContent = subtotal.toFixed(2);
     document.getElementById('gstAmount').textContent = gstAmount.toFixed(2);
     document.getElementById('totalAmount').textContent = totalAmount.toFixed(2);
     document.getElementById('subtotalCurrency').textContent = currency;
     document.getElementById('gstCurrency').textContent = currency;
     document.getElementById('totalCurrency').textContent = currency;
+    
     let rateInfo = document.getElementById('rateInfo');
     let rateInfoText = `Rate: Adult ${rateType} ${currency} - ${adultRate.price.toFixed(2)} | Kids ${rateType} ${currency} - ${childrenRate.price.toFixed(2)} (GST: ${gstRate}%)`;
+    
     if (currency === 'MVR' && rates.exchangeRate) {
         const adultUSDPrice = adultRate.price / currentExchangeRate;
         const childrenUSDPrice = childrenRate.price / currentExchangeRate;
         rateInfoText += ` (USD: $${adultUSDPrice.toFixed(2)} / $${childrenUSDPrice.toFixed(2)})`;
         document.getElementById('exchangeRateInfo').textContent = `1 USD = ${currentExchangeRate.toFixed(2)} MVR`;
-    } else { document.getElementById('exchangeRateInfo').textContent = ''; }
+    } else { 
+        document.getElementById('exchangeRateInfo').textContent = ''; 
+    }
+    
     rateInfo.textContent = rateInfoText;
 }
 
@@ -775,11 +1066,32 @@ function updateTotalPassengers() {
 }
 
 function clearAllFields() {
-    document.getElementById('hiddenCode').value = ''; document.getElementById('pName').value = ''; document.getElementById('flightNo').value = ''; document.getElementById('seatNo').value = '';
-    document.getElementById('adult').value = '1'; document.getElementById('children').value = '0'; document.getElementById('currency').value = 'USD'; document.getElementById('rateType').value = 'A'; document.getElementById('paymentMethod').value = 'CASH'; document.getElementById('receiptNo').value = '';
-    submissionTime = null; expiryTime = null; currentReceiptNo = ''; document.getElementById('expiryTime').value = ''; document.getElementById('expiryTimeDisplay').textContent = '--:--:--'; document.getElementById('receiptNoDisplay').textContent = '______';
+    document.getElementById('hiddenCode').value = ''; 
+    document.getElementById('pName').value = ''; 
+    document.getElementById('flightNo').value = ''; 
+    document.getElementById('seatNo').value = '';
+    document.getElementById('adult').value = '1'; 
+    document.getElementById('children').value = '0'; 
+    document.getElementById('currency').value = 'USD'; 
+    document.getElementById('rateType').value = 'A'; 
+    document.getElementById('paymentMethod').value = 'CASH'; 
+    document.getElementById('receiptNo').value = '';
+    
+    submissionTime = null; 
+    expiryTime = null; 
+    currentReceiptNo = ''; 
+    document.getElementById('expiryTime').value = ''; 
+    document.getElementById('expiryTimeDisplay').textContent = '--:--:--'; 
+    document.getElementById('receiptNoDisplay').textContent = '______';
+    
     updateTotalPassengers();
-    const statusMsg = document.getElementById('statusMessage'); if (statusMsg) { statusMsg.textContent = '✓ ALL FIELDS CLEARED'; setTimeout(() => { statusMsg.textContent = ''; }, 2000); }
+    
+    const statusMsg = document.getElementById('statusMessage'); 
+    if (statusMsg) { 
+        statusMsg.textContent = '✓ ALL FIELDS CLEARED'; 
+        setTimeout(() => { statusMsg.textContent = ''; }, 2000); 
+    }
+    
     document.getElementById('code').focus();
 }
 
@@ -820,10 +1132,26 @@ function redirectToReceiptPage(transactionData, autoPrint = true) {
 
 // ========== UPDATED SUBMIT FORM WITH REDIRECT ==========
 async function submitForm() {
-    if (!currentUser.username) { alert('Please log in first'); window.location.href = 'index.html'; return; }
-    if (!document.getElementById('pName').value) { alert('Please scan a boarding pass first'); return; }
-    if (currentShiftData.status !== 'OPEN') { alert('No open shift found. Please open a shift first.'); return; }
-    if (!currentShiftData.date) { alert('Shift date is missing. Please refresh shift data.'); return; }
+    if (!currentUser.username) { 
+        alert('Please log in first'); 
+        window.location.href = 'index.html'; 
+        return; 
+    }
+    
+    if (!document.getElementById('pName').value) { 
+        alert('Please scan a boarding pass first'); 
+        return; 
+    }
+    
+    if (currentShiftData.status !== 'OPEN') { 
+        alert('No open shift found. Please open a shift first.'); 
+        return; 
+    }
+    
+    if (!currentShiftData.date) { 
+        alert('Shift date is missing. Please refresh shift data.'); 
+        return; 
+    }
     
     const submitBtn = document.getElementById('submitBtn'); 
     const originalText = submitBtn.textContent;
@@ -841,7 +1169,10 @@ async function submitForm() {
         
         const shiftDate = currentShiftData.date;
         let standardizedDate = shiftDate;
-        if (shiftDate.includes('/')) { const parts = shiftDate.split('/'); if (parts.length === 3) standardizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`; }
+        if (shiftDate.includes('/')) { 
+            const parts = shiftDate.split('/'); 
+            if (parts.length === 3) standardizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`; 
+        }
         
         const boardingPassData = { 
             passengerName: document.getElementById('pName').value, 
@@ -937,6 +1268,11 @@ async function submitForm() {
             statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED - Redirecting to print...`; 
             statusMsg.style.color = '#6b8e23';
         }
+        
+        // Refresh pending count after new transaction
+        setTimeout(() => {
+            fetchPendingTransactionsCount();
+        }, 1000);
         
         // Redirect to receipt page for printing
         setTimeout(() => {
@@ -1091,8 +1427,19 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load data
     loadShiftDataOnce();
-    setTimeout(() => { fetchPendingTransactionsCount(); }, 2000);
+    
+    // Fetch pending count with a delay to ensure Firebase is ready
+    setTimeout(() => { 
+        fetchPendingTransactionsCount(); 
+    }, 2000);
+    
+    // Refresh pending count every 30 seconds
+    setInterval(() => {
+        fetchPendingTransactionsCount();
+    }, 30000);
+    
     updateDateTime();
+    
     setTimeout(() => { 
         if (typeof rates !== 'undefined') { 
             if (rates.exchangeRate) currentExchangeRate = rates.exchangeRate.MVRtoUSD || 15.42; 
