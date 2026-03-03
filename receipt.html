@@ -39,7 +39,7 @@
             overflow: hidden;
         }
 
-        /* VOID Watermark */
+        /* VOID Watermark - ONLY this */
         .void-watermark {
             position: absolute;
             top: 50%;
@@ -93,10 +93,12 @@
             .void-watermark {
                 color: rgba(255, 0, 0, 0.25) !important;
                 border-color: rgba(255, 0, 0, 0.25) !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
         }
 
-        /* Receipt Content Styles */
+        /* Receipt Content Styles - Medium length */
         .receipt {
             font-family: 'Courier New', 'Lucida Console', monospace;
             font-size: 10pt;
@@ -142,19 +144,6 @@
             padding: 1mm 0;
             border: 2px solid #000;
             text-transform: uppercase;
-        }
-
-        /* VOID Status Mark */
-        .void-status {
-            text-align: center;
-            font-size: 14pt;
-            font-weight: bold;
-            margin: 2mm 0;
-            padding: 1.5mm 0;
-            border: 3px solid #ff0000;
-            color: #ff0000;
-            text-transform: uppercase;
-            background: rgba(255, 0, 0, 0.05);
         }
 
         /* Dividers */
@@ -394,21 +383,9 @@
             box-shadow: 0 4px 15px rgba(230, 184, 0, 0.3);
         }
 
-        /* Void receipt specific */
-        .void-badge {
-            background-color: #ff0000;
-            color: white;
-            font-weight: bold;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-size: 8pt;
-            margin-left: 5px;
-        }
-
         /* Utility */
         .text-center { text-align: center; }
         .text-bold { font-weight: bold; }
-        .text-red { color: #ff0000; }
     </style>
 </head>
 <body>
@@ -423,7 +400,7 @@
             </div>
             <div class="receipt-data" id="receiptData" style="display: none;"></div>
         </div>
-        <!-- VOID Watermark will be inserted here dynamically -->
+        <!-- VOID Watermark will be inserted here dynamically if needed -->
     </div>
 
     <div class="print-controls no-print">
@@ -432,14 +409,14 @@
     </div>
 
     <script>
-        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH VOID SUPPORT ==========
+        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH VOID WATERMARK ==========
         
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const receiptDataParam = urlParams.get('data');
         const receiptNoParam = urlParams.get('receiptNo');
         const reprintParam = urlParams.get('reprint') === 'true';
-        const voidParam = urlParams.get('void') === 'true'; // New void parameter
+        const voidParam = urlParams.get('void') === 'true'; // Simple void flag
 
         // Firebase config
         const firebaseConfig = {
@@ -484,14 +461,9 @@
         // Generate receipt HTML
         function generateReceiptHTML(data) {
             const isReprint = data.isReprint || reprintParam;
-            const isVoid = data.isVoid || voidParam || data.status === 'VOID' || data.voided === true;
             
             const reprintMark = isReprint ? 
                 '<div class="reprint-mark">*** REPRINT COPY ***</div>' : '';
-            
-            // Add void status mark if voided
-            const voidMark = isVoid ? 
-                '<div class="void-status">⛔ VOIDED ⛔</div>' : '';
 
             // Format date and time
             let dateTimeStr = data.submissionDateTime || data.dateTime || '';
@@ -531,14 +503,6 @@
             const passengerCount = parseInt(data.adult || 0) + parseInt(data.children || 0);
             const passengerDisplay = passengerCount > 1 ? ` (${passengerCount} PAX)` : '';
 
-            // Void reason if available
-            const voidReasonHTML = data.voidReason ? 
-                `<div class="row text-red"><span class="label">Void Reason:</span><span class="value">${data.voidReason}</span></div>` : '';
-
-            // Void timestamp if available
-            const voidTimeHTML = data.voidedAt ? 
-                `<div class="row text-red"><span class="label">Voided On:</span><span class="value">${data.voidedAt}</span></div>` : '';
-
             return `
                 <div class="receipt-header">
                     <div class="company-name">KOVELI LOUNGE</div>
@@ -551,17 +515,13 @@
                 </div>
 
                 ${reprintMark}
-                ${voidMark}
 
                 <div class="divider-light"></div>
 
                 <div class="row">
                     <span class="label">Receipt No:</span>
-                    <span class="value"><span class="text-bold">${data.receiptNo || 'N/A'}</span>${isVoid ? '<span class="void-badge">VOID</span>' : ''}</span>
+                    <span class="value"><span class="text-bold">${data.receiptNo || 'N/A'}</span></span>
                 </div>
-
-                ${voidReasonHTML}
-                ${voidTimeHTML}
 
                 <div class="row">
                     <span class="label">Date:</span>
@@ -730,15 +690,7 @@
                     throw new Error('No receipt data found');
                 }
 
-                // Check if receipt is voided (from various possible fields)
-                const isVoid = voidParam || 
-                              data.status === 'VOID' || 
-                              data.voided === true || 
-                              data.isVoid === true ||
-                              data.voidReason !== undefined;
-                
                 data.isReprint = reprintParam;
-                data.isVoid = isVoid;
 
                 receiptData = data;
 
@@ -748,8 +700,10 @@
                     receiptDataEl.style.display = 'block';
                 }
 
-                // Add VOID watermark if receipt is voided
-                if (isVoid) {
+                // Add VOID watermark if void parameter is true
+                // OR if data contains void flag
+                const showVoid = voidParam || data.isVoid === true || data.status === 'VOID';
+                if (showVoid) {
                     addVoidWatermark();
                 }
 
