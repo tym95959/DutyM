@@ -127,7 +127,7 @@
             cursor: pointer;
         }
 
-        /* summary area – cash total, non-cash by currency, and totals row (no exchange rate) */
+        /* summary area – cash total, non-cash by currency, and totals row */
         .summary-section {
             padding: 16px 32px 8px 32px;
         }
@@ -182,27 +182,74 @@
             border-top: 1px dashed #e7dbc6;
         }
 
-        /* totals row (receipts, adults, children) – no exchange rate */
-        .totals-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 42px;
-            padding: 16px 0 10px 0;
-            color: #4a4136;
-            border-bottom: 1px solid #eedfcb;
-            font-size: 1.1rem;
-        }
-        .totals-row span {
-            font-weight: 400;
-        }
-        .totals-row strong {
+        /* payment method and status badges */
+        .payment-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 0.75rem;
             font-weight: 600;
-            color: #3f4d2f;
-            margin-left: 8px;
-            font-size: 1.3rem;
+            text-align: center;
+            min-width: 70px;
+        }
+        
+        .payment-cash {
+            background: #2d5a4b;
+            color: white;
+        }
+        
+        .payment-card {
+            background: #4a6fa5;
+            color: white;
+        }
+        
+        .payment-bank {
+            background: #8b5a2b;
+            color: white;
+        }
+        
+        .payment-mobile {
+            background: #9b59b6;
+            color: white;
+        }
+        
+        .payment-voucher {
+            background: #16a085;
+            color: white;
+        }
+        
+        .payment-other {
+            background: #7f8c8d;
+            color: white;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-align: center;
+            min-width: 80px;
+        }
+        
+        .status-completed {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .status-pending {
+            background: #e67e22;
+            color: white;
+        }
+        
+        .status-void {
+            background: #c68b5e;
+            color: white;
+            text-decoration: line-through;
         }
 
-        /* non-cash breakdown table – shows every payment method present (Amex, Visa, Master, Unionpay, etc) */
+        /* non-cash breakdown table */
         .noncash-breakdown {
             padding: 8px 32px 0 32px;
         }
@@ -258,23 +305,18 @@
             padding: 14px 8px;
             border-bottom: 1px solid #f1e6d6;
             text-align: center;
+            vertical-align: middle;
         }
         
         /* void row styling */
         .void-row {
             background-color: rgba(198, 139, 94, 0.1);
-            text-decoration: line-through;
-            color: #a67244;
+            opacity: 0.8;
         }
         
-        .void-badge {
-            background: #c68b5e;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: bold;
-            margin-left: 5px;
+        .void-row td {
+            text-decoration: line-through;
+            color: #a67244;
         }
         
         /* signature section */
@@ -327,6 +369,14 @@
             color: #856f4c;
         }
 
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #8b7a62;
+            font-style: italic;
+            font-size: 1.1rem;
+        }
+
         @media print {
             body { background: white; padding: 0; }
             .report-container { box-shadow: none; border: none; }
@@ -351,7 +401,7 @@
     <!-- filter row -->
     <div class="filter-bar">
         <div class="filter-panel">
-            <div class="filter-item"><label>📅 DATE</label><input type="date" id="filterDate"></div>
+            <div class="filter-item"><label>📅 DATE</label><input type="date" id="filterDate" required></div>
             <div class="filter-item"><label>⏳ SHIFT</label>
                 <select id="filterShift">
                     <option value="ALL">ALL SHIFTS</option>
@@ -403,13 +453,13 @@
         </div>
     </div>
 
-    <!-- Non‑cash breakdown by card type (shows every method present: Amex, Visa, Master, Unionpay, etc) - EXCLUDING VOID -->
+    <!-- Non‑cash breakdown by card type -->
     <div class="noncash-breakdown">
         <h3>💳 PAYMENT METHOD DETAILS (active transactions only)</h3>
         <table class="method-table" id="noncashTable">
             <thead><tr><th>Payment method</th><th>USD total</th><th>MVR total</th><th>Transactions</th></tr></thead>
             <tbody id="noncashBody">
-                <tr><td colspan="4" style="text-align:center;">loading ...</td></tr>
+                <tr><td colspan="4" style="text-align:center;">Select a date and click LOAD</td></tr>
             </tbody>
         </table>
     </div>
@@ -423,7 +473,7 @@
         </table>
     </div>
 
-    <!-- detailed transaction list (with staff who processed) -->
+    <!-- detailed transaction list -->
     <div class="table-wrapper">
         <table class="list-table" id="reportTable">
             <thead><tr>
@@ -437,7 +487,9 @@
                 <th>Method</th>
                 <th>Staff</th>
             </tr></thead>
-            <tbody id="tableBody"></tbody>
+            <tbody id="tableBody">
+                <tr><td colspan="9" class="no-data">Select a date and click LOAD to view transactions</td></tr>
+            </tbody>
         </table>
     </div>
     
@@ -471,7 +523,7 @@
         </div>
     </div>
     
-    <div class="footer-note" id="generatedFoot">generated upon load</div>
+    <div class="footer-note" id="generatedFoot"></div>
 </div>
 
 <script>
@@ -516,7 +568,7 @@
         const signatureName = document.getElementById('signatureName');
         const signatureDate = document.getElementById('signatureDate');
 
-        // optionally set company info from Co.js if available
+        // set company info from Co.js if available
         if (typeof companyInfo !== 'undefined') {
             const nameEl = document.getElementById('companyName');
             const addrEl = document.getElementById('companyAddress');
@@ -528,30 +580,111 @@
         const today = new Date().toISOString().split('T')[0];
         dateInput.value = today;
 
-        // helper: extract YYYY-MM-DD from "MM/DD/YYYY, ..."
+        // helper: extract YYYY-MM-DD from various date formats
         function extractDateFromDateTimeField(dt) {
             if (!dt) return '';
-            let datePart = dt.split(',')[0];
-            if (!datePart.includes('/')) return '';
-            let [m, d, y] = datePart.split('/');
-            if (y && m && d) return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+            
+            // Try to parse the date
+            try {
+                // Handle "MM/DD/YYYY, HH:MM" format
+                if (dt.includes('/')) {
+                    let datePart = dt.split(',')[0].trim();
+                    let [m, d, y] = datePart.split('/');
+                    if (y && m && d) {
+                        // Ensure 4-digit year
+                        if (y.length === 2) y = '20' + y;
+                        return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+                    }
+                }
+                
+                // Handle ISO format
+                if (dt.includes('T')) {
+                    return dt.split('T')[0];
+                }
+                
+                // Handle YYYY-MM-DD format
+                if (dt.includes('-')) {
+                    let parts = dt.split(' ')[0].split('-');
+                    if (parts.length === 3) {
+                        return dt.split(' ')[0];
+                    }
+                }
+            } catch (e) {
+                console.warn('Date parsing error:', e);
+            }
+            
             return '';
         }
 
-        // get username directly from transaction data (same way we get other fields)
+        // safely get string value from any field (handles objects)
+        function getStringValue(value) {
+            if (!value) return '';
+            if (typeof value === 'string') return value;
+            if (typeof value === 'number') return value.toString();
+            if (typeof value === 'object') {
+                // If it's an object, try to get a readable value
+                if (value.name) return value.name;
+                if (value.displayName) return value.displayName;
+                if (value.username) return value.username;
+                if (value.email) return value.email;
+                if (value.id) return value.id;
+                // If it's a Firestore reference, return the ID
+                if (value.id && typeof value.id === 'string') return value.id;
+                // Last resort: try to stringify but limit length
+                try {
+                    const str = JSON.stringify(value);
+                    return str.length > 30 ? 'Reference' : str;
+                } catch {
+                    return 'Object';
+                }
+            }
+            return String(value);
+        }
+
+        // get username from transaction (handles objects)
         function getStaffUsername(tx) {
-            // Direct field access - same as tx.passengerName, tx.flightNo, etc.
-            // Check the most common field names used in your Firebase collection
-            return tx.username || 
-                   tx.userName || 
-                   tx.user || 
-                   tx.staff || 
-                   tx.cashier || 
-                   tx.operator || 
-                   tx.processedBy || 
-                   tx.staffName || 
-                   tx.enteredBy || 
-                   'System';
+            // Check common field names
+            const possibleFields = [
+                'username', 'userName', 'user', 'staff', 'staffName',
+                'cashier', 'operator', 'processedBy', 'processed_by',
+                'createdBy', 'enteredBy', 'userId', 'user_id'
+            ];
+            
+            for (let field of possibleFields) {
+                if (tx[field] !== undefined && tx[field] !== null) {
+                    return getStringValue(tx[field]);
+                }
+            }
+            
+            return 'System';
+        }
+
+        // get payment method with styling
+        function getPaymentMethodBadge(method) {
+            method = (method || 'CASH').toUpperCase().trim();
+            
+            let badgeClass = 'payment-other';
+            if (method === 'CASH' || method.includes('CASH')) badgeClass = 'payment-cash';
+            else if (method.includes('CARD') || method.includes('VISA') || method.includes('MASTER') || method.includes('AMEX')) badgeClass = 'payment-card';
+            else if (method.includes('BANK') || method.includes('TRANSFER')) badgeClass = 'payment-bank';
+            else if (method.includes('MOBILE') || method.includes('PAY')) badgeClass = 'payment-mobile';
+            else if (method.includes('VOUCHER')) badgeClass = 'payment-voucher';
+            
+            return `<span class="payment-badge ${badgeClass}">${method}</span>`;
+        }
+
+        // get status with styling
+        function getStatusBadge(status) {
+            status = (status || 'COMPLETED').toUpperCase();
+            
+            let badgeClass = 'status-completed';
+            if (status === 'PENDING_APPROVAL' || status === 'PENDING') badgeClass = 'status-pending';
+            else if (status === 'VOID') badgeClass = 'status-void';
+            
+            let displayText = status;
+            if (status === 'PENDING_APPROVAL') displayText = 'PENDING';
+            
+            return `<span class="status-badge ${badgeClass}">${displayText}</span>`;
         }
 
         // ----- fetch data from Firestore -----
@@ -560,20 +693,37 @@
             const shiftFilter = shiftSelect.value;
             const voidOption = voidFilter.value;
             
-            if (!selectedDate) { alert('Select date'); return; }
-            if (typeof passengerDb === 'undefined') { alert('passengerDb missing'); return; }
+            if (!selectedDate) { 
+                alert('Please select a date'); 
+                return; 
+            }
+            
+            if (typeof passengerDb === 'undefined') { 
+                alert('passengerDb not initialized. Check fireshift.js'); 
+                return; 
+            }
 
-            tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center;">⏳ loading ...</td></tr>';
-            noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">loading...</td></tr>';
+            // Show loading state
+            tableBody.innerHTML = '<tr><td colspan="9" class="no-data">⏳ Loading transactions...</td></tr>';
+            noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">⏳ Loading...</td></tr>';
 
             try {
-                // Fetch from Kovelipay collection - same as before
+                console.log('Fetching data for date:', selectedDate);
+                
+                // Get all documents from Kovelipay collection
                 const kovelipayRef = passengerDb.collection('Kovelipay');
                 const snapshot = await kovelipayRef.get();
                 
+                if (snapshot.empty) {
+                    console.log('No documents found in Kovelipay collection');
+                    tableBody.innerHTML = '<tr><td colspan="9" class="no-data">No receipts found in database</td></tr>';
+                    noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No data available</td></tr>';
+                    footGen.innerText = 'No receipts found';
+                    return;
+                }
+                
                 const docs = [];
                 snapshot.forEach(doc => {
-                    // Get all data including any username field
                     const data = doc.data();
                     docs.push({ 
                         id: doc.id, 
@@ -581,52 +731,70 @@
                     });
                 });
 
-                console.log('Sample transaction:', docs[0]); // Debug: see what fields are available
+                console.log(`Total documents: ${docs.length}`);
+                
+                // Log first document to see structure
+                if (docs.length > 0) {
+                    console.log('Sample document:', docs[0]);
+                }
 
-                // filter by date
+                // Filter by date
                 const filteredByDate = docs.filter(d => {
                     if (!d.submissionDateTime) return false;
                     const docDate = extractDateFromDateTimeField(d.submissionDateTime);
-                    return docDate === selectedDate;
+                    const match = docDate === selectedDate;
+                    if (match) {
+                        console.log('Matching receipt:', d.receiptNo, d.submissionDateTime, '->', docDate);
+                    }
+                    return match;
                 });
 
-                // filter by shift
+                console.log(`Documents matching date ${selectedDate}: ${filteredByDate.length}`);
+
+                // Filter by shift
                 let filtered = filteredByDate;
                 if (shiftFilter !== 'ALL') {
-                    filtered = filteredByDate.filter(d => d.shift === shiftFilter);
+                    filtered = filteredByDate.filter(d => {
+                        const shift = (d.shift || '').toUpperCase();
+                        return shift === shiftFilter;
+                    });
                 }
 
-                // split into active and void
+                // Split into active and void
                 activeTransactions = filtered.filter(tx => tx.paymentStatus !== 'VOID');
                 voidTransactions = filtered.filter(tx => tx.paymentStatus === 'VOID');
                 
-                // apply void filter for display
+                // Apply void filter for display
                 if (voidOption === 'EXCLUDE') {
                     allTransactions = activeTransactions;
                 } else if (voidOption === 'ONLY') {
                     allTransactions = voidTransactions;
                 } else {
-                    allTransactions = filtered; // INCLUDE all transactions
+                    allTransactions = filtered;
                 }
 
-                allTransactions.sort((a,b) => (b.submissionDateTime || '').localeCompare(a.submissionDateTime || ''));
+                allTransactions.sort((a,b) => {
+                    const dateA = a.submissionDateTime || '';
+                    const dateB = b.submissionDateTime || '';
+                    return dateB.localeCompare(dateA);
+                });
                 
                 renderAll();
                 
-                // Format current date for signature section
+                // Set signature dates
                 const now = new Date();
                 const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
                 
-                // Set signature dates
                 preparedDate.innerText = dateStr;
                 checkedDate.innerText = dateStr;
                 signatureDate.innerText = dateStr;
                 
-                footGen.innerText = `updated: ${now.toLocaleString()}  |  ${filtered.length} total receipts (${activeTransactions.length} active, ${voidTransactions.length} void)`;
+                footGen.innerText = `Loaded: ${now.toLocaleString()}  |  ${filtered.length} receipts for ${selectedDate} (${activeTransactions.length} active, ${voidTransactions.length} void)`;
+                
             } catch (err) {
                 console.error('Error fetching data:', err);
-                tableBody.innerHTML = '<tr><td colspan="9">error loading</td></tr>';
-                noncashBody.innerHTML = '<tr><td colspan="4">error</td></tr>';
+                tableBody.innerHTML = `<tr><td colspan="9" class="no-data">Error loading data: ${err.message}</td></tr>`;
+                noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Error loading data</td></tr>';
             }
         }
 
@@ -642,18 +810,18 @@
             let voidNoncashUSD = 0, voidNoncashMVR = 0;
             let voidCount = voidTransactions.length;
 
-            // detailed non-cash breakdown (active only)
+            // Detailed non-cash breakdown (active only)
             const noncashMap = new Map();
 
             // Process active transactions
             activeTransactions.forEach(tx => {
                 const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
                 const curr = (tx.currency || 'USD').toUpperCase();
-                const amt = tx.totalAmount || 0;
-                totalAdults += tx.adult || 0;
-                totalChildren += tx.children || 0;
+                const amt = parseFloat(tx.totalAmount) || 0;
+                totalAdults += parseInt(tx.adult) || 0;
+                totalChildren += parseInt(tx.children) || 0;
 
-                if (method === 'CASH' || method.includes('CASH')) {
+                if (method === 'CASH') {
                     if (curr === 'USD') cashUSD += amt;
                     else cashMVR += amt;
                 } else {
@@ -672,9 +840,9 @@
             voidTransactions.forEach(tx => {
                 const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
                 const curr = (tx.currency || 'USD').toUpperCase();
-                const amt = tx.totalAmount || 0;
+                const amt = parseFloat(tx.totalAmount) || 0;
 
-                if (method === 'CASH' || method.includes('CASH')) {
+                if (method === 'CASH') {
                     if (curr === 'USD') voidCashUSD += amt;
                     else voidCashMVR += amt;
                 } else {
@@ -683,7 +851,7 @@
                 }
             });
 
-            // Update summary blocks (active totals only)
+            // Update summary blocks
             cashUSDspan.innerText = cashUSD.toFixed(2);
             cashMVRspan.innerText = cashMVR.toFixed(2);
             noncashUSDspan.innerText = noncashUSD.toFixed(2);
@@ -697,17 +865,15 @@
                 voidCashInfo.innerHTML = `🚫 Void cash: USD ${voidCashUSD.toFixed(2)} / MVR ${voidCashMVR.toFixed(2)}`;
                 voidNoncashInfo.innerHTML = `🚫 Void non-cash: USD ${voidNoncashUSD.toFixed(2)} / MVR ${voidNoncashMVR.toFixed(2)}`;
                 voidCountInfo.innerHTML = `🚫 Void receipts: ${voidCount}`;
-                
-                // Show void summary section
                 voidSummarySection.style.display = 'block';
                 
-                // Build void transactions table with staff username
+                // Build void transactions table
                 let voidHtml = '';
                 voidTransactions.forEach(tx => {
                     const staff = getStaffUsername(tx);
                     voidHtml += `<tr>
                         <td>${tx.receiptNo || tx.id || ''}</td>
-                        <td>${(tx.totalAmount || 0).toFixed(2)}</td>
+                        <td>${(parseFloat(tx.totalAmount) || 0).toFixed(2)}</td>
                         <td>${tx.currency || 'USD'}</td>
                         <td>${tx.paymentMethod || 'CASH'}</td>
                         <td>${tx.voidReason || 'No reason provided'}</td>
@@ -722,52 +888,63 @@
                 voidSummarySection.style.display = 'none';
             }
 
-            // Build non-cash breakdown table (active only)
+            // Build non-cash breakdown table
             let noncashHtml = '';
             if (noncashMap.size === 0) {
                 noncashHtml = '<tr><td colspan="4" style="text-align:center;">— no active non‑cash transactions —</td></tr>';
             } else {
                 const sortedMethods = Array.from(noncashMap.entries()).sort((a,b) => a[0].localeCompare(b[0]));
                 for (let [method, val] of sortedMethods) {
-                    noncashHtml += `<tr><td>${method}</td><td>USD ${val.usd.toFixed(2)}</td><td>MVR ${val.mvr.toFixed(2)}</td><td>${val.count}</td></tr>`;
+                    noncashHtml += `<tr>
+                        <td>${method}</td>
+                        <td>USD ${val.usd.toFixed(2)}</td>
+                        <td>MVR ${val.mvr.toFixed(2)}</td>
+                        <td>${val.count}</td>
+                    </tr>`;
                 }
             }
             noncashBody.innerHTML = noncashHtml;
 
-            // Transaction list (with staff username - fetched same way as other fields)
+            // Build transaction list
+            if (allTransactions.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="9" class="no-data">No transactions found for the selected criteria</td></tr>';
+                return;
+            }
+
             let listHtml = '';
             allTransactions.forEach(tx => {
                 const isVoid = tx.paymentStatus === 'VOID';
                 const rowClass = isVoid ? 'void-row' : '';
-                const staff = getStaffUsername(tx); // Same way we get passengerName or flightNo
+                const staff = getStaffUsername(tx);
+                const paymentBadge = getPaymentMethodBadge(tx.paymentMethod);
                 
                 listHtml += `<tr class="${rowClass}">
-                    <td>${tx.receiptNo || tx.id || ''}</td>
+                    <td><strong>${tx.receiptNo || tx.id || ''}</strong></td>
                     <td>${tx.submissionDateTime ? tx.submissionDateTime.substring(0,16) : ''}</td>
                     <td>${tx.shift || '-'}</td>
                     <td>${tx.flightNo || '-'}</td>
                     <td>${tx.adult || 0}/${tx.children || 0}</td>
                     <td>${tx.currency || 'USD'}</td>
-                    <td>${(tx.totalAmount || 0).toFixed(2)}</td>
-                    <td>${(tx.paymentMethod || 'CASH').substring(0,12)}</td>
+                    <td>${(parseFloat(tx.totalAmount) || 0).toFixed(2)}</td>
+                    <td>${paymentBadge}</td>
                     <td>${staff}</td>
                 </tr>`;
             });
             
-            if (listHtml === '') {
-                listHtml = '<tr><td colspan="9">no transactions</td></tr>';
-            }
             tableBody.innerHTML = listHtml;
         }
 
-        // print
-        function printReport() { window.print(); }
+        // Print function
+        function printReport() { 
+            window.print(); 
+        }
 
+        // Event listeners
         loadBtn.addEventListener('click', fetchReportData);
         printBtn.addEventListener('click', printReport);
         
-        // Initial load
-        setTimeout(() => fetchReportData(), 300);
+        // Auto-load on page load
+        setTimeout(() => fetchReportData(), 500);
     })();
 </script>
 </body>
