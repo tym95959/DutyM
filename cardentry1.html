@@ -1602,6 +1602,9 @@ let selectedGuestPassengerId = null;
 let saveQueue = new Map(); // Track entries being saved
 let saveTimeouts = new Map(); // Track save timeouts
 let retryQueue = new Map(); // Track entries queued for retry
+let barcodeTimeout = null; // Timeout for barcode detection
+let lastBarcodeInput = ''; // Track last barcode input
+let barcodeInputTimer = null; // Timer for barcode input completion
 
 // User data from local storage (load immediately)
 let currentUser = {
@@ -1646,6 +1649,17 @@ const ERROR_MESSAGES = {
 // Airlines that don't require seat numbers
 const NO_SEAT_REQUIRED_AIRLINES = ['SQ', 'UL'];
 
+// ========== FOCUS MANAGEMENT ==========
+function setFocusToBarcodeField() {
+    const codeField = document.getElementById('code');
+    if (codeField && document.activeElement !== codeField) {
+        // Only set focus if not already focused and not in an editable cell
+        if (!editingCell) {
+            codeField.focus();
+        }
+    }
+}
+
 // ========== INITIAL PAGE LOAD WITH SHIFT REFRESH ==========
 async function initializePage() {
     console.log('🔄 Initializing page and loading shift data...');
@@ -1678,32 +1692,97 @@ async function initializePage() {
     
     // Set up event listeners
     if (codeField) {
-        codeField.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                parseAndAddToList();
-            }
-        });
-        
-        codeField.addEventListener('blur', function() {
-            if (codeField.value.trim() !== '') {
-                parseAndAddToList();
-            }
-        });
-        
-        codeField.addEventListener('input', function() {
+        // Automatic barcode detection on input
+        codeField.addEventListener('input', function(e) {
             this.value = this.value.toUpperCase();
+            
+            // Clear previous timer
+            if (barcodeInputTimer) {
+                clearTimeout(barcodeInputTimer);
+            }
+            
+            // If this is a complete barcode (usually ends with a special character or has minimum length)
+            const currentValue = this.value;
+            
+            // Check if it might be a complete barcode (ends with certain patterns or has good length)
+            const mightBeComplete = 
+                currentValue.length >= 15 || // Most barcodes are at least 15 chars
+                currentValue.endsWith('\n') || 
+                currentValue.endsWith('\r') || 
+                currentValue.endsWith('\t') ||
+                currentValue.includes('MLE'); // Most barcodes contain MLE
+            
+            if (mightBeComplete) {
+                // Small delay to ensure we get the full barcode
+                barcodeInputTimer = setTimeout(() => {
+                    if (this.value.trim() !== '') {
+                        parseAndAddToList();
+                        // Keep focus on barcode field after processing
+                        setTimeout(setFocusToBarcodeField, 100);
+                    }
+                }, 50);
+            }
+        });
+        
+        // Handle paste events (for barcode scanners that paste)
+        codeField.addEventListener('paste', function(e) {
+            // Let the paste happen naturally, then process
+            setTimeout(() => {
+                if (this.value.trim() !== '') {
+                    parseAndAddToList();
+                    // Keep focus on barcode field after processing
+                    setTimeout(setFocusToBarcodeField, 100);
+                }
+            }, 10);
+        });
+        
+        // Keep focus on barcode field when clicking elsewhere (if not in edit mode)
+        codeField.addEventListener('blur', function(e) {
+            // Don't refocus if we're in an editable cell or clicking on a button
+            if (!editingCell && !e.relatedTarget?.classList.contains('fab-button') && 
+                !e.relatedTarget?.classList.contains('tab') &&
+                !e.relatedTarget?.classList.contains('delete-btn') &&
+                !e.relatedTarget?.classList.contains('approve-btn') &&
+                !e.relatedTarget?.classList.contains('retry-btn') &&
+                !e.relatedTarget?.classList.contains('edit-btn') &&
+                !e.relatedTarget?.classList.contains('guest-checkbox') &&
+                !e.relatedTarget?.classList.contains('toggle-current-btn') &&
+                !e.relatedTarget?.classList.contains('dummy-entry-btn')) {
+                
+                setTimeout(() => {
+                    if (!editingCell) {
+                        this.focus();
+                    }
+                }, 10);
+            }
+        });
+        
+        // Handle keydown for special cases (like preventing form submission)
+        codeField.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (this.value.trim() !== '') {
+                    parseAndAddToList();
+                    // Keep focus after processing
+                    setTimeout(setFocusToBarcodeField, 100);
+                }
+            }
         });
     }
     
     if (dummyEntryBtn) {
         dummyEntryBtn.addEventListener('click', function() {
             createDummyEntry();
+            // Return focus to barcode field after dummy entry
+            setTimeout(setFocusToBarcodeField, 100);
         });
     }
     
     if (cancelGuestModeBtn) {
         cancelGuestModeBtn.addEventListener('click', function() {
             cancelGuestMode();
+            // Return focus to barcode field after cancel
+            setTimeout(setFocusToBarcodeField, 100);
         });
     }
     
@@ -1711,31 +1790,62 @@ async function initializePage() {
         toggleCurrentBtn.addEventListener('click', function() {
             currentEntrySection.classList.toggle('visible');
             toggleCurrentBtn.textContent = currentEntrySection.classList.contains('visible') ? 'HIDE CURRENT ENTRY' : 'SHOW CURRENT ENTRY';
+            // Return focus to barcode field
+            setTimeout(setFocusToBarcodeField, 100);
         });
     }
     
     if (updateCurrentBtn) {
         updateCurrentBtn.addEventListener('click', function() {
             updateCurrentEntryFromCode();
+            // Return focus to barcode field
+            setTimeout(setFocusToBarcodeField, 100);
         });
     }
     
     if (clearCurrentBtn) {
         clearCurrentBtn.addEventListener('click', function() {
             clearCurrentEntry();
+            // Return focus to barcode field
+            setTimeout(setFocusToBarcodeField, 100);
         });
     }
     
     if (refreshShiftBtn) {
         refreshShiftBtn.addEventListener('click', function() {
             fetchShiftData(true); // true = force refresh from Firebase
+            // Return focus to barcode field
+            setTimeout(setFocusToBarcodeField, 100);
         });
     }
     
+    // Global click handler to maintain focus on barcode field
     document.addEventListener('click', function(e) {
-        if (editingCell && !e.target.classList.contains('editable-input') && !e.target.classList.contains('editable-cell')) {
-            cancelEditing();
+        // If we're not editing a cell and not clicking on an element that should keep focus away
+        if (!editingCell && 
+            !e.target.classList.contains('editable-input') &&
+            !e.target.classList.contains('fab-button') &&
+            !e.target.classList.contains('tab') &&
+            !e.target.classList.contains('delete-btn') &&
+            !e.target.classList.contains('approve-btn') &&
+            !e.target.classList.contains('retry-btn') &&
+            !e.target.classList.contains('edit-btn') &&
+            !e.target.classList.contains('guest-checkbox')) {
+            
+            // Small delay to allow other click handlers to process
+            setTimeout(setFocusToBarcodeField, 10);
         }
+    });
+    
+    // Handle editable cell events to manage focus
+    document.addEventListener('editing-started', function() {
+        // When editing starts, we don't want to steal focus
+        console.log('Editing started - keeping focus on editable cell');
+    });
+    
+    document.addEventListener('editing-ended', function() {
+        // When editing ends, return focus to barcode field
+        setTimeout(setFocusToBarcodeField, 50);
     });
     
     // CRITICAL: Fetch fresh shift data from Firebase immediately
@@ -1749,6 +1859,9 @@ async function initializePage() {
     
     // Update error summary
     updateErrorSummary();
+    
+    // Set initial focus to barcode field
+    setTimeout(setFocusToBarcodeField, 500);
     
     // Show status message
     showTemporaryNotification('✓ Page loaded - Shift data refreshed', 'success');
@@ -3171,6 +3284,9 @@ function saveInlineEdit(input) {
     
     editingCell = null;
     
+    // Dispatch event to indicate editing ended
+    document.dispatchEvent(new CustomEvent('editing-ended'));
+    
     // Re-render to show updated status
     renderTables();
     
@@ -3219,18 +3335,14 @@ function makeEditable(cell, entryId, field, isSaved = false) {
         originalValue: currentValue
     };
     
+    // Dispatch event to indicate editing started
+    document.dispatchEvent(new CustomEvent('editing-started'));
+    
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
             e.stopPropagation();
             saveInlineEdit(this);
-            
-            setTimeout(() => {
-                const nextCell = findNextEditableCell(cell);
-                if (nextCell) {
-                    nextCell.click();
-                }
-            }, 50);
         } else if (e.key === 'Tab') {
             e.preventDefault();
             saveInlineEdit(this);
@@ -3340,6 +3452,9 @@ function cancelEditing() {
         const { cell, originalValue } = editingCell;
         cell.textContent = originalValue || '—';
         editingCell = null;
+        
+        // Dispatch event to indicate editing ended
+        document.dispatchEvent(new CustomEvent('editing-ended'));
     }
 }
 
@@ -3385,6 +3500,7 @@ function toggleGuestMode(passengerId, checked) {
             guestIndicator.classList.remove('visible');
             if (codeField) {
                 codeField.placeholder = 'ENTER CODE OR READ BARCODE (AUTO-ADDS TO LIST)';
+                setTimeout(setFocusToBarcodeField, 100);
             }
         }
     }
@@ -3404,6 +3520,7 @@ function cancelGuestMode() {
     const codeField = document.getElementById('code');
     if (codeField) {
         codeField.placeholder = 'ENTER CODE OR READ BARCODE (AUTO-ADDS TO LIST)';
+        setTimeout(setFocusToBarcodeField, 100);
     }
     
     showTemporaryNotification('Guest mode cancelled', 'info');
@@ -5079,6 +5196,7 @@ window.testFlightDatabaseMapping = testFlightDatabaseMapping;
 window.refreshShift = function() { fetchShiftData(true); };
 window.fetchShiftData = fetchShiftData;
 window.initializePage = initializePage;
+window.setFocusToBarcodeField = setFocusToBarcodeField;
 </script>
 </body>   
 </html>
