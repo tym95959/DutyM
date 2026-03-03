@@ -409,7 +409,7 @@
     </div>
 
     <script>
-        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH VOID WATERMARK ==========
+        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH WORKING VOID WATERMARK ==========
         
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -435,9 +435,13 @@
                 firebase.initializeApp(firebaseConfig);
             }
             passengerDb = firebase.firestore();
+            console.log('Firebase initialized for receipt page');
         } catch (error) {
             console.error('Firebase initialization error:', error);
         }
+
+        // Receipt data object
+        let receiptData = null;
 
         // Format number to 2 decimals
         function formatAmount(value) {
@@ -446,16 +450,49 @@
 
         // Add VOID watermark to receipt
         function addVoidWatermark() {
+            console.log('Adding VOID watermark to receipt');
             const wrapper = document.getElementById('receiptWrapper');
             if (wrapper) {
-                // Check if watermark already exists
-                if (!document.querySelector('.void-watermark')) {
-                    const watermark = document.createElement('div');
-                    watermark.className = 'void-watermark';
-                    watermark.textContent = 'VOID';
-                    wrapper.appendChild(watermark);
+                // Remove any existing watermark first
+                const existingWatermark = document.querySelector('.void-watermark');
+                if (existingWatermark) {
+                    existingWatermark.remove();
                 }
+                
+                // Create new watermark
+                const watermark = document.createElement('div');
+                watermark.className = 'void-watermark';
+                watermark.textContent = 'VOID';
+                wrapper.appendChild(watermark);
+                console.log('VOID watermark added successfully');
+            } else {
+                console.error('Receipt wrapper not found');
             }
+        }
+
+        // Check if receipt should be voided
+        function shouldShowVoid(data) {
+            // Check multiple possible sources for void status
+            const isVoid = 
+                voidParam || // URL parameter
+                data?.isVoid === true || 
+                data?.status === 'VOID' || 
+                data?.voided === true ||
+                data?.void === true ||
+                data?.receiptStatus === 'VOID' ||
+                (data?.paymentMethod === 'VOID') ||
+                (data?.approvalCode === 'VOID') ||
+                (data?.batchNo === 'VOID');
+            
+            console.log('Void check:', { 
+                voidParam, 
+                dataIsVoid: data?.isVoid,
+                dataStatus: data?.status,
+                dataVoided: data?.voided,
+                result: isVoid 
+            });
+            
+            return isVoid;
         }
 
         // Generate receipt HTML
@@ -612,12 +649,12 @@
                 <div class="footer">
                     <div class="thank-you">✈️ THANK YOU ✈️</div>
                     <div class="footer-note">Thank you for choosing Koveli Lounge</div>
-                    
+                    <div class="footer-note">www.koveli.com</div>
                 </div>
 
                 ${data.receiptNo ? `
                 <div class="barcode-area">
-                    
+                    *${data.receiptNo}*
                 </div>
                 ` : ''}
             `;
@@ -628,18 +665,26 @@
             try {
                 if (!passengerDb) throw new Error('Firebase not initialized');
                 
+                console.log('Fetching receipt from Firebase:', receiptNo);
+                
                 const kovelipayRef = passengerDb.collection('Kovelipay');
                 const snapshot = await kovelipayRef.where('receiptNo', '==', receiptNo).limit(1).get();
                 
                 if (!snapshot.empty) {
-                    return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+                    const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+                    console.log('Receipt found in Firebase:', data);
+                    return data;
                 }
                 
+                // Try direct document access
                 const docById = await kovelipayRef.doc(receiptNo).get();
                 if (docById.exists) {
-                    return { id: docById.id, ...docById.data() };
+                    const data = { id: docById.id, ...docById.data() };
+                    console.log('Receipt found by direct ID:', data);
+                    return data;
                 }
                 
+                console.log('Receipt not found in Firebase:', receiptNo);
                 return null;
             } catch (error) {
                 console.error('Error fetching receipt:', error);
@@ -654,32 +699,36 @@
             const receiptDataEl = document.getElementById('receiptData');
 
             try {
+                // Hide error, show loading
                 if (loadingEl) loadingEl.style.display = 'block';
                 if (errorEl) errorEl.style.display = 'none';
                 if (receiptDataEl) receiptDataEl.style.display = 'none';
 
                 let data = null;
 
-                // Try URL parameter first
+                // Case 1: Data passed via URL parameter
                 if (receiptDataParam) {
                     try {
                         data = JSON.parse(decodeURIComponent(receiptDataParam));
+                        console.log('Receipt data from URL parameter:', data);
                     } catch (e) {
                         console.error('Error parsing receipt data from URL:', e);
                     }
                 }
                 
-                // Try Firebase by receipt number
+                // Case 2: Fetch by receipt number from Firebase
                 if (!data && receiptNoParam) {
                     data = await fetchReceiptFromFirebase(receiptNoParam);
+                    console.log('Receipt data from Firebase:', data ? 'found' : 'not found');
                 }
                 
-                // Try localStorage as last resort
+                // Case 3: Try to get from localStorage (last transaction)
                 if (!data) {
                     try {
                         const lastReceipt = localStorage.getItem('lastReceiptData');
                         if (lastReceipt) {
                             data = JSON.parse(lastReceipt);
+                            console.log('Receipt data from localStorage:', data);
                         }
                     } catch (e) {
                         console.error('Error parsing localStorage receipt data:', e);
@@ -690,36 +739,45 @@
                     throw new Error('No receipt data found');
                 }
 
+                // Add reprint flag
                 data.isReprint = reprintParam;
 
+                // Store receipt data
                 receiptData = data;
 
+                // Generate and display receipt HTML
                 const html = generateReceiptHTML(data);
                 if (receiptDataEl) {
                     receiptDataEl.innerHTML = html;
                     receiptDataEl.style.display = 'block';
                 }
 
-                // Add VOID watermark if void parameter is true
-                // OR if data contains void flag
-                const showVoid = voidParam || data.isVoid === true || data.status === 'VOID';
-                if (showVoid) {
-                    addVoidWatermark();
-                }
-
+                // Hide loading
                 if (loadingEl) loadingEl.style.display = 'none';
 
-                // Auto-print if requested
+                // Check if receipt should be voided and add watermark
+                const showVoid = shouldShowVoid(data);
+                console.log('Should show void watermark:', showVoid);
+                
+                if (showVoid) {
+                    // Small delay to ensure DOM is ready
+                    setTimeout(() => {
+                        addVoidWatermark();
+                    }, 100);
+                }
+
+                // Auto-print for EPSON TM-T88vii if requested
                 const autoPrint = urlParams.get('autoPrint') === 'true';
                 if (autoPrint) {
                     setTimeout(() => {
                         window.print();
-                    }, 400);
+                    }, 500);
                 }
 
             } catch (error) {
                 console.error('Error loading receipt:', error);
                 
+                // Show error message
                 if (loadingEl) loadingEl.style.display = 'none';
                 if (errorEl) {
                     errorEl.style.display = 'block';
@@ -739,13 +797,29 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('Receipt page loaded, URL params:', {
+                receiptDataParam: receiptDataParam ? 'present' : 'missing',
+                receiptNoParam,
+                reprintParam,
+                voidParam
+            });
+            
             loadReceipt();
             setBackLink();
         });
 
-        // Print events
+        // Listen for print events
         window.addEventListener('beforeprint', () => {
             console.log('Printing to EPSON TM-T88vii...');
+        });
+
+        window.addEventListener('afterprint', () => {
+            console.log('Print completed');
+        });
+
+        // Also check after full load
+        window.addEventListener('load', () => {
+            console.log('Page fully loaded');
         });
     </script>
 </body>
