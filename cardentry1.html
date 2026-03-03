@@ -2153,7 +2153,9 @@ function createDummyEntry() {
         enteredByUsername: currentUser.username || 'UNKNOWN',
         enteredByRCNo: currentUser.rcno || 'N/A',
         enteredByLevel: currentUser.level || 'OPERATOR',
-        enteredAt: new Date().toISOString()
+        enteredAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        createdAtTimestamp: Date.now()
     };
     
     const newEntry = {
@@ -3454,7 +3456,9 @@ function addGuestToPassenger(mainPassengerId, guestData) {
             enteredByUsername: currentUser.username || 'UNKNOWN',
             enteredByRCNo: currentUser.rcno || 'N/A',
             enteredByLevel: currentUser.level || 'OPERATOR',
-            enteredAt: new Date().toISOString()
+            enteredAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            createdAtTimestamp: Date.now()
         };
         
         const mainIndex = pendingPasses.findIndex(p => p.id === mainPassengerId);
@@ -3859,10 +3863,35 @@ function renderPendingTable() {
     if (!tbody) return;
     tbody.innerHTML = '';
     
+    // Sort pending passes by creation time (newest first)
+    const sortedPendingPasses = [...pendingPasses].sort((a, b) => {
+        // First try to sort by entryTime
+        const timeA = a.entryTime || '00:00:00';
+        const timeB = b.entryTime || '00:00:00';
+        
+        if (timeA && timeB) {
+            return timeB.localeCompare(timeA);
+        }
+        
+        // Then try to sort by createdAt timestamp
+        const timestampA = a.createdAtTimestamp || 0;
+        const timestampB = b.createdAtTimestamp || 0;
+        
+        if (timestampA && timestampB) {
+            return timestampB - timestampA;
+        }
+        
+        // Fallback to sorting by ID (which contains timestamp)
+        const idA = a.id || '';
+        const idB = b.id || '';
+        return idB.localeCompare(idA);
+    });
+    
+    // Now process with guest relationships
     const sortedPasses = [];
     const processedIds = new Set();
     
-    pendingPasses.forEach(entry => {
+    sortedPendingPasses.forEach(entry => {
         if (processedIds.has(entry.id)) return;
         
         sortedPasses.push(entry);
@@ -3870,14 +3899,22 @@ function renderPendingTable() {
         
         if (!entry.isGuest) {
             const guests = pendingPasses.filter(g => g.isGuest && g.mainPassengerId === entry.id);
-            guests.forEach(guest => {
+            // Sort guests by creation time as well
+            const sortedGuests = guests.sort((a, b) => {
+                const timeA = a.entryTime || '00:00:00';
+                const timeB = b.entryTime || '00:00:00';
+                return timeB.localeCompare(timeA);
+            });
+            
+            sortedGuests.forEach(guest => {
                 sortedPasses.push(guest);
                 processedIds.add(guest.id);
             });
         }
     });
     
-    pendingPasses.forEach(entry => {
+    // Add any remaining passes that weren't processed
+    sortedPendingPasses.forEach(entry => {
         if (!processedIds.has(entry.id)) {
             sortedPasses.push(entry);
         }
@@ -3974,7 +4011,39 @@ function renderSavedTable() {
     if (!tbody) return;
     tbody.innerHTML = '';
     
-    savedPasses.forEach(entry => {
+    // Sort saved passes by creation time (newest first)
+    const sortedSavedPasses = [...savedPasses].sort((a, b) => {
+        // First try to sort by entryTime
+        const timeA = a.entryTime || '00:00:00';
+        const timeB = b.entryTime || '00:00:00';
+        
+        if (timeA && timeB) {
+            return timeB.localeCompare(timeA);
+        }
+        
+        // Then try to sort by enteredAt timestamp
+        const dateA = a.enteredAt ? new Date(a.enteredAt) : new Date(0);
+        const dateB = b.enteredAt ? new Date(b.enteredAt) : new Date(0);
+        
+        if (dateA && dateB) {
+            return dateB - dateA;
+        }
+        
+        // Then try to sort by createdAt timestamp
+        const timestampA = a.createdAtTimestamp || 0;
+        const timestampB = b.createdAtTimestamp || 0;
+        
+        if (timestampA && timestampB) {
+            return timestampB - timestampA;
+        }
+        
+        // Finally fallback to ID sorting
+        const idA = a.id || '';
+        const idB = b.id || '';
+        return idB.localeCompare(idA);
+    });
+    
+    sortedSavedPasses.forEach(entry => {
         const row = document.createElement('tr');
         row.setAttribute('data-id', entry.id);
         row.classList.add('saved-row');
@@ -4377,7 +4446,9 @@ async function approveEntry(id) {
             enteredByUsername: entry.enteredByUsername || currentUser.username || 'UNKNOWN',
             enteredByRCNo: entry.enteredByRCNo || currentUser.rcno || 'N/A',
             enteredByLevel: entry.enteredByLevel || currentUser.level || 'OPERATOR',
-            enteredAt: entry.enteredAt || new Date().toISOString()
+            enteredAt: entry.enteredAt || new Date().toISOString(),
+            createdAt: entry.createdAt || new Date().toISOString(),
+            createdAtTimestamp: entry.createdAtTimestamp || Date.now()
         };
         
         console.log('✅ Approving entry with hidden code:', hiddenCode ? hiddenCode.substring(0, 30) + '...' : 'none');
@@ -4520,7 +4591,9 @@ function addToTable(data) {
         ...upperData,
         approved: false,
         flightCheckFailed: false,
-        flightCheckMessage: null
+        flightCheckMessage: null,
+        createdAt: new Date().toISOString(),
+        createdAtTimestamp: Date.now()
     };
     
     pendingPasses.push(newEntry);
