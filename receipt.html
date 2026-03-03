@@ -39,23 +39,24 @@
             overflow: hidden;
         }
 
-        /* VOID Watermark - ONLY this */
+        /* VOID Watermark - ALWAYS VISIBLE when class is applied */
         .void-watermark {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-45deg);
-            font-size: 48pt;
-            font-weight: bold;
-            color: rgba(255, 0, 0, 0.3);
-            white-space: nowrap;
-            pointer-events: none;
-            z-index: 1000;
-            font-family: 'Arial Black', 'Helvetica Bold', sans-serif;
-            text-transform: uppercase;
-            border: 5px solid rgba(255, 0, 0, 0.3);
-            padding: 10px 30px;
-            letter-spacing: 10px;
+            position: absolute !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) rotate(-45deg) !important;
+            font-size: 48pt !important;
+            font-weight: bold !important;
+            color: rgba(255, 0, 0, 0.3) !important;
+            white-space: nowrap !important;
+            pointer-events: none !important;
+            z-index: 9999 !important;
+            font-family: 'Arial Black', 'Helvetica Bold', sans-serif !important;
+            text-transform: uppercase !important;
+            border: 5px solid rgba(255, 0, 0, 0.3) !important;
+            padding: 10px 30px !important;
+            letter-spacing: 10px !important;
+            display: block !important;
         }
 
         /* Print styles for EPSON TM-T88vii */
@@ -95,10 +96,11 @@
                 border-color: rgba(255, 0, 0, 0.25) !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+                display: block !important;
             }
         }
 
-        /* Receipt Content Styles - Medium length */
+        /* Receipt Content Styles */
         .receipt {
             font-family: 'Courier New', 'Lucida Console', monospace;
             font-size: 10pt;
@@ -383,9 +385,19 @@
             box-shadow: 0 4px 15px rgba(230, 184, 0, 0.3);
         }
 
-        /* Utility */
-        .text-center { text-align: center; }
-        .text-bold { font-weight: bold; }
+        /* Debug panel - REMOVE IN PRODUCTION */
+        .debug-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            border: 2px solid #e6b800;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            max-width: 300px;
+            z-index: 10000;
+        }
     </style>
 </head>
 <body>
@@ -408,15 +420,23 @@
         <a href="#" class="back-btn" id="backBtn">← BACK</a>
     </div>
 
+    <!-- Debug panel - REMOVE IN PRODUCTION -->
+    <div class="debug-panel no-print" id="debugPanel">
+        <strong>🔍 DEBUG INFO</strong>
+        <div id="debugInfo">Loading...</div>
+        <button onclick="testAddVoid()" style="margin-top:5px; padding:3px 10px;">TEST ADD VOID</button>
+        <button onclick="testRemoveVoid()" style="margin-top:5px; padding:3px 10px;">TEST REMOVE VOID</button>
+    </div>
+
     <script>
-        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH WORKING VOID WATERMARK ==========
+        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH FORCED VOID WATERMARK ==========
         
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const receiptDataParam = urlParams.get('data');
         const receiptNoParam = urlParams.get('receiptNo');
         const reprintParam = urlParams.get('reprint') === 'true';
-        const voidParam = urlParams.get('void') === 'true'; // Simple void flag
+        const voidParam = urlParams.get('void') === 'true';
 
         // Firebase config
         const firebaseConfig = {
@@ -443,56 +463,149 @@
         // Receipt data object
         let receiptData = null;
 
+        // Update debug panel
+        function updateDebugInfo(message) {
+            const debugEl = document.getElementById('debugInfo');
+            if (debugEl) {
+                debugEl.innerHTML = message + '<br>' + (debugEl.innerHTML || '');
+            }
+            console.log(message);
+        }
+
+        // TEST FUNCTION: Manually add void watermark
+        function testAddVoid() {
+            updateDebugInfo('🧪 TEST: Manually adding void watermark');
+            addVoidWatermark();
+        }
+
+        // TEST FUNCTION: Manually remove void watermark
+        function testRemoveVoid() {
+            updateDebugInfo('🧪 TEST: Manually removing void watermark');
+            removeVoidWatermark();
+        }
+
+        // Remove void watermark
+        function removeVoidWatermark() {
+            const existingWatermark = document.querySelector('.void-watermark');
+            if (existingWatermark) {
+                existingWatermark.remove();
+                updateDebugInfo('✅ Void watermark removed');
+            }
+        }
+
+        // Add VOID watermark to receipt - MULTIPLE METHODS to ensure it works
+        function addVoidWatermark() {
+            updateDebugInfo('🔧 Attempting to add VOID watermark...');
+            
+            // Method 1: Get wrapper by ID
+            const wrapper = document.getElementById('receiptWrapper');
+            if (!wrapper) {
+                updateDebugInfo('❌ ERROR: receiptWrapper not found by ID');
+                return;
+            }
+            
+            // Remove any existing watermark first
+            removeVoidWatermark();
+            
+            // Create watermark with inline styles as backup
+            const watermark = document.createElement('div');
+            watermark.className = 'void-watermark';
+            watermark.textContent = 'VOID';
+            
+            // Apply inline styles as additional backup
+            watermark.style.position = 'absolute';
+            watermark.style.top = '50%';
+            watermark.style.left = '50%';
+            watermark.style.transform = 'translate(-50%, -50%) rotate(-45deg)';
+            watermark.style.fontSize = '48pt';
+            watermark.style.fontWeight = 'bold';
+            watermark.style.color = 'rgba(255, 0, 0, 0.3)';
+            watermark.style.whiteSpace = 'nowrap';
+            watermark.style.pointerEvents = 'none';
+            watermark.style.zIndex = '9999';
+            watermark.style.fontFamily = 'Arial Black, Helvetica Bold, sans-serif';
+            watermark.style.textTransform = 'uppercase';
+            watermark.style.border = '5px solid rgba(255, 0, 0, 0.3)';
+            watermark.style.padding = '10px 30px';
+            watermark.style.letterSpacing = '10px';
+            
+            // Append to wrapper
+            wrapper.appendChild(watermark);
+            
+            // Verify it was added
+            const checkWatermark = document.querySelector('.void-watermark');
+            if (checkWatermark) {
+                updateDebugInfo('✅ SUCCESS: Void watermark added and verified!');
+                updateDebugInfo('   Element classes: ' + checkWatermark.className);
+                updateDebugInfo('   Element content: ' + checkWatermark.textContent);
+            } else {
+                updateDebugInfo('❌ FAILED: Watermark not found after adding');
+                
+                // Method 2: Try adding to body as fallback
+                try {
+                    const bodyWatermark = document.createElement('div');
+                    bodyWatermark.className = 'void-watermark';
+                    bodyWatermark.textContent = 'VOID';
+                    bodyWatermark.style.cssText = `
+                        position: fixed !important;
+                        top: 50% !important;
+                        left: 50% !important;
+                        transform: translate(-50%, -50%) rotate(-45deg) !important;
+                        font-size: 48pt !important;
+                        font-weight: bold !important;
+                        color: rgba(255, 0, 0, 0.3) !important;
+                        white-space: nowrap !important;
+                        pointer-events: none !important;
+                        z-index: 99999 !important;
+                        font-family: Arial Black, Helvetica Bold, sans-serif !important;
+                        text-transform: uppercase !important;
+                        border: 5px solid rgba(255, 0, 0, 0.3) !important;
+                        padding: 10px 30px !important;
+                        letter-spacing: 10px !important;
+                        background: transparent !important;
+                    `;
+                    document.body.appendChild(bodyWatermark);
+                    updateDebugInfo('⚠️ Added watermark to body as fallback');
+                } catch (e) {
+                    updateDebugInfo('❌ Fallback also failed: ' + e.message);
+                }
+            }
+        }
+
         // Format number to 2 decimals
         function formatAmount(value) {
             return parseFloat(value || 0).toFixed(2);
         }
 
-        // Add VOID watermark to receipt
-        function addVoidWatermark() {
-            console.log('Adding VOID watermark to receipt');
-            const wrapper = document.getElementById('receiptWrapper');
-            if (wrapper) {
-                // Remove any existing watermark first
-                const existingWatermark = document.querySelector('.void-watermark');
-                if (existingWatermark) {
-                    existingWatermark.remove();
-                }
-                
-                // Create new watermark
-                const watermark = document.createElement('div');
-                watermark.className = 'void-watermark';
-                watermark.textContent = 'VOID';
-                wrapper.appendChild(watermark);
-                console.log('VOID watermark added successfully');
-            } else {
-                console.error('Receipt wrapper not found');
-            }
-        }
-
-        // Check if receipt should be voided
+        // Check if receipt should be voided - SIMPLIFIED
         function shouldShowVoid(data) {
-            // Check multiple possible sources for void status
-            const isVoid = 
-                voidParam || // URL parameter
-                data?.isVoid === true || 
-                data?.status === 'VOID' || 
-                data?.voided === true ||
-                data?.void === true ||
-                data?.receiptStatus === 'VOID' ||
-                (data?.paymentMethod === 'VOID') ||
-                (data?.approvalCode === 'VOID') ||
-                (data?.batchNo === 'VOID');
+            // Check URL parameter first (most reliable)
+            if (voidParam) {
+                updateDebugInfo('✅ VOID: URL parameter void=true detected');
+                return true;
+            }
             
-            console.log('Void check:', { 
-                voidParam, 
-                dataIsVoid: data?.isVoid,
-                dataStatus: data?.status,
-                dataVoided: data?.voided,
-                result: isVoid 
-            });
+            if (!data) return false;
             
-            return isVoid;
+            // Check various fields
+            const checks = [
+                { field: 'isVoid', value: data.isVoid },
+                { field: 'status', value: data.status },
+                { field: 'voided', value: data.voided },
+                { field: 'void', value: data.void },
+                { field: 'receiptStatus', value: data.receiptStatus },
+                { field: 'paymentMethod', value: data.paymentMethod }
+            ];
+            
+            for (let check of checks) {
+                if (check.value === true || check.value === 'VOID' || check.value === 'void') {
+                    updateDebugInfo(`✅ VOID: Field "${check.field}" = ${check.value}`);
+                    return true;
+                }
+            }
+            
+            updateDebugInfo('❌ No void condition detected');
+            return false;
         }
 
         // Generate receipt HTML
@@ -649,12 +762,12 @@
                 <div class="footer">
                     <div class="thank-you">✈️ THANK YOU ✈️</div>
                     <div class="footer-note">Thank you for choosing Koveli Lounge</div>
-                    <div class="footer-note">www.koveli.com</div>
+                    
                 </div>
 
                 ${data.receiptNo ? `
                 <div class="barcode-area">
-                    *${data.receiptNo}*
+                    
                 </div>
                 ` : ''}
             `;
@@ -665,14 +778,14 @@
             try {
                 if (!passengerDb) throw new Error('Firebase not initialized');
                 
-                console.log('Fetching receipt from Firebase:', receiptNo);
+                updateDebugInfo(`🔍 Fetching receipt from Firebase: ${receiptNo}`);
                 
                 const kovelipayRef = passengerDb.collection('Kovelipay');
                 const snapshot = await kovelipayRef.where('receiptNo', '==', receiptNo).limit(1).get();
                 
                 if (!snapshot.empty) {
                     const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-                    console.log('Receipt found in Firebase:', data);
+                    updateDebugInfo(`✅ Receipt found in Firebase`);
                     return data;
                 }
                 
@@ -680,11 +793,11 @@
                 const docById = await kovelipayRef.doc(receiptNo).get();
                 if (docById.exists) {
                     const data = { id: docById.id, ...docById.data() };
-                    console.log('Receipt found by direct ID:', data);
+                    updateDebugInfo(`✅ Receipt found by direct ID`);
                     return data;
                 }
                 
-                console.log('Receipt not found in Firebase:', receiptNo);
+                updateDebugInfo(`❌ Receipt not found in Firebase: ${receiptNo}`);
                 return null;
             } catch (error) {
                 console.error('Error fetching receipt:', error);
@@ -698,6 +811,13 @@
             const errorEl = document.getElementById('errorMessage');
             const receiptDataEl = document.getElementById('receiptData');
 
+            // Initial debug info
+            updateDebugInfo(`📋 Page loaded at ${new Date().toLocaleTimeString()}`);
+            updateDebugInfo(`URL void param: ${voidParam}`);
+            updateDebugInfo(`URL reprint param: ${reprintParam}`);
+            updateDebugInfo(`URL receiptNo: ${receiptNoParam || 'none'}`);
+            updateDebugInfo(`URL data param: ${receiptDataParam ? 'present' : 'none'}`);
+
             try {
                 // Hide error, show loading
                 if (loadingEl) loadingEl.style.display = 'block';
@@ -710,16 +830,16 @@
                 if (receiptDataParam) {
                     try {
                         data = JSON.parse(decodeURIComponent(receiptDataParam));
-                        console.log('Receipt data from URL parameter:', data);
+                        updateDebugInfo(`✅ Data parsed from URL`);
+                        updateDebugInfo(`   Receipt: ${data.receiptNo}`);
                     } catch (e) {
-                        console.error('Error parsing receipt data from URL:', e);
+                        updateDebugInfo(`❌ Error parsing URL data: ${e.message}`);
                     }
                 }
                 
                 // Case 2: Fetch by receipt number from Firebase
                 if (!data && receiptNoParam) {
                     data = await fetchReceiptFromFirebase(receiptNoParam);
-                    console.log('Receipt data from Firebase:', data ? 'found' : 'not found');
                 }
                 
                 // Case 3: Try to get from localStorage (last transaction)
@@ -728,10 +848,10 @@
                         const lastReceipt = localStorage.getItem('lastReceiptData');
                         if (lastReceipt) {
                             data = JSON.parse(lastReceipt);
-                            console.log('Receipt data from localStorage:', data);
+                            updateDebugInfo(`✅ Data loaded from localStorage`);
                         }
                     } catch (e) {
-                        console.error('Error parsing localStorage receipt data:', e);
+                        updateDebugInfo(`❌ Error parsing localStorage: ${e.message}`);
                     }
                 }
 
@@ -755,20 +875,37 @@
                 // Hide loading
                 if (loadingEl) loadingEl.style.display = 'none';
 
-                // Check if receipt should be voided and add watermark
+                // Check if receipt should be voided
                 const showVoid = shouldShowVoid(data);
-                console.log('Should show void watermark:', showVoid);
+                updateDebugInfo(`🎯 Should show void: ${showVoid}`);
                 
                 if (showVoid) {
-                    // Small delay to ensure DOM is ready
+                    // Multiple attempts to ensure watermark appears
                     setTimeout(() => {
                         addVoidWatermark();
                     }, 100);
+                    
+                    // Second attempt after longer delay
+                    setTimeout(() => {
+                        if (!document.querySelector('.void-watermark')) {
+                            updateDebugInfo('⚠️ First attempt failed, trying again...');
+                            addVoidWatermark();
+                        }
+                    }, 500);
+                    
+                    // Third attempt after content is fully loaded
+                    setTimeout(() => {
+                        if (!document.querySelector('.void-watermark')) {
+                            updateDebugInfo('⚠️ Second attempt failed, final try...');
+                            addVoidWatermark();
+                        }
+                    }, 1000);
                 }
 
-                // Auto-print for EPSON TM-T88vii if requested
+                // Auto-print if requested
                 const autoPrint = urlParams.get('autoPrint') === 'true';
                 if (autoPrint) {
+                    updateDebugInfo(`🖨️ Auto-print enabled`);
                     setTimeout(() => {
                         window.print();
                     }, 500);
@@ -776,6 +913,7 @@
 
             } catch (error) {
                 console.error('Error loading receipt:', error);
+                updateDebugInfo(`❌ Error: ${error.message}`);
                 
                 // Show error message
                 if (loadingEl) loadingEl.style.display = 'none';
@@ -792,20 +930,26 @@
             if (backBtn) {
                 const returnTo = urlParams.get('returnTo') || 'pay.html';
                 backBtn.href = returnTo;
+                updateDebugInfo(`🔙 Back button: ${returnTo}`);
             }
         }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('Receipt page loaded, URL params:', {
-                receiptDataParam: receiptDataParam ? 'present' : 'missing',
-                receiptNoParam,
-                reprintParam,
-                voidParam
-            });
-            
+            console.log('DOM Content Loaded');
             loadReceipt();
             setBackLink();
+        });
+
+        // Also try after window load
+        window.addEventListener('load', () => {
+            updateDebugInfo('✅ Window fully loaded');
+            
+            // Final check for void watermark
+            if (voidParam && !document.querySelector('.void-watermark')) {
+                updateDebugInfo('⚠️ Void watermark missing after load - adding now');
+                addVoidWatermark();
+            }
         });
 
         // Listen for print events
@@ -815,11 +959,6 @@
 
         window.addEventListener('afterprint', () => {
             console.log('Print completed');
-        });
-
-        // Also check after full load
-        window.addEventListener('load', () => {
-            console.log('Page fully loaded');
         });
     </script>
 </body>
