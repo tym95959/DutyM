@@ -418,15 +418,25 @@
     <div class="noncash-breakdown" id="voidSummarySection" style="display: none;">
         <h3>🚫 VOIDED TRANSACTIONS</h3>
         <table class="method-table" id="voidTable">
-            <thead><tr><th>Receipt</th><th>Amount</th><th>Currency</th><th>Method</th><th>Reason</th></tr></thead>
+            <thead><tr><th>Receipt</th><th>Amount</th><th>Currency</th><th>Method</th><th>Reason</th><th>Processed By</th></tr></thead>
             <tbody id="voidBody"></tbody>
         </table>
     </div>
 
-    <!-- detailed transaction list (shows void status) -->
+    <!-- detailed transaction list (with user who processed) -->
     <div class="table-wrapper">
         <table class="list-table" id="reportTable">
-            <thead><tr><th>Receipt</th><th>Date/time</th><th>Shift</th><th>Passenger</th><th>Flight</th><th>A/C</th><th>Curr</th><th>Total</th><th>Method</th><th>Status</th></tr></thead>
+            <thead><tr>
+                <th>Receipt</th>
+                <th>Date/time</th>
+                <th>Shift</th>
+                <th>Flight</th>
+                <th>A/C</th>
+                <th>Curr</th>
+                <th>Total</th>
+                <th>Method</th>
+                <th>Processed By</th>
+            </tr></thead>
             <tbody id="tableBody"></tbody>
         </table>
     </div>
@@ -528,6 +538,21 @@
             return '';
         }
 
+        // get user name from various possible fields
+        function getProcessedBy(tx) {
+            // Try different possible field names
+            return tx.processedBy || 
+                   tx.user || 
+                   tx.operator || 
+                   tx.staff || 
+                   tx.cashier || 
+                   tx.processed_by || 
+                   tx.userName || 
+                   tx.username || 
+                   tx.createdBy || 
+                   'System';
+        }
+
         // ----- fetch data from Firestore -----
         async function fetchReportData() {
             const selectedDate = dateInput.value;
@@ -537,7 +562,7 @@
             if (!selectedDate) { alert('Select date'); return; }
             if (typeof passengerDb === 'undefined') { alert('passengerDb missing'); return; }
 
-            tableBody.innerHTML = '<tr><td colspan="10" style="text-align:center;">⏳ loading ...</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center;">⏳ loading ...</td></tr>';
             noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">loading...</td></tr>';
 
             try {
@@ -587,7 +612,7 @@
                 footGen.innerText = `updated: ${now.toLocaleString()}  |  ${filtered.length} total receipts (${activeTransactions.length} active, ${voidTransactions.length} void)`;
             } catch (err) {
                 console.error(err);
-                tableBody.innerHTML = '<tr><td colspan="10">error loading</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="9">error loading</td></tr>';
                 noncashBody.innerHTML = '<tr><td colspan="4">error</td></tr>';
             }
         }
@@ -663,15 +688,17 @@
                 // Show void summary section
                 voidSummarySection.style.display = 'block';
                 
-                // Build void transactions table
+                // Build void transactions table with processed by
                 let voidHtml = '';
                 voidTransactions.forEach(tx => {
+                    const processedBy = getProcessedBy(tx);
                     voidHtml += `<tr>
                         <td>${tx.receiptNo || tx.id || ''}</td>
                         <td>${(tx.totalAmount || 0).toFixed(2)}</td>
                         <td>${tx.currency || 'USD'}</td>
                         <td>${tx.paymentMethod || 'CASH'}</td>
                         <td>${tx.voidReason || 'No reason provided'}</td>
+                        <td>${processedBy}</td>
                     </tr>`;
                 });
                 voidBody.innerHTML = voidHtml;
@@ -694,29 +721,28 @@
             }
             noncashBody.innerHTML = noncashHtml;
 
-            // Transaction list (shows void status)
+            // Transaction list (with user who processed - passenger name and status removed)
             let listHtml = '';
             allTransactions.forEach(tx => {
                 const isVoid = tx.paymentStatus === 'VOID';
                 const rowClass = isVoid ? 'void-row' : '';
-                const statusBadge = isVoid ? '<span class="void-badge">VOID</span>' : 'ACTIVE';
+                const processedBy = getProcessedBy(tx);
                 
                 listHtml += `<tr class="${rowClass}">
                     <td>${tx.receiptNo || tx.id || ''}</td>
                     <td>${tx.submissionDateTime ? tx.submissionDateTime.substring(0,16) : ''}</td>
                     <td>${tx.shift || '-'}</td>
-                    <td>${(tx.passengerName || '').substring(0,18)}</td>
                     <td>${tx.flightNo || '-'}</td>
                     <td>${tx.adult || 0}/${tx.children || 0}</td>
                     <td>${tx.currency || 'USD'}</td>
                     <td>${(tx.totalAmount || 0).toFixed(2)}</td>
                     <td>${(tx.paymentMethod || 'CASH').substring(0,12)}</td>
-                    <td>${statusBadge}</td>
+                    <td>${processedBy}</td>
                 </tr>`;
             });
             
             if (listHtml === '') {
-                listHtml = '<tr><td colspan="10">no transactions</td></tr>';
+                listHtml = '<tr><td colspan="9">no transactions</td></tr>';
             }
             tableBody.innerHTML = listHtml;
         }
