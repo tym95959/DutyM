@@ -473,6 +473,7 @@
             gap: 15px;
             justify-content: center;
             margin-top: 25px;
+            flex-wrap: wrap;
         }
         
         .save-btn {
@@ -922,6 +923,7 @@ function renderTable() {
         }
         
         const rowClass = receipt.paymentStatus === 'VOID' ? 'void-row' : '';
+        const editDisabled = receipt.paymentStatus === 'VOID' ? 'disabled' : '';
         
         html += `
             <tr class="${rowClass}">
@@ -934,7 +936,7 @@ function renderTable() {
                 <td>${receipt.currency || ''} ${receipt.totalAmount?.toFixed(2) || '0.00'}</td>
                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                 <td>
-                    <button class="action-btn edit-btn" onclick="openEditModal('${receipt.receiptNo}')" ${receipt.paymentStatus === 'VOID' ? 'disabled' : ''}>✏️ EDIT</button>
+                    <button class="action-btn edit-btn" onclick="openEditModal('${receipt.receiptNo}')" ${editDisabled}>✏️ EDIT</button>
                     <button class="action-btn view-btn" onclick="printReceipt('${receipt.receiptNo}')">🖨️ PRINT</button>
                 </td>
             </tr>
@@ -961,7 +963,7 @@ function openEditModal(receiptNo) {
     // Populate modal fields
     document.getElementById('modalReceiptNo').textContent = receiptNo;
     document.getElementById('editReceiptNo').value = receiptNo;
-    document.getElementById('editOriginalPaymentMethod').value = receipt.paymentMethod;
+    document.getElementById('editOriginalPaymentMethod').value = receipt.paymentMethod || '';
     
     // Editable fields
     document.getElementById('editPName').value = receipt.passengerName || '';
@@ -1226,13 +1228,20 @@ async function saveEdit() {
 // ========== VOID FUNCTIONS ==========
 
 function openVoidModal() {
-    if (!currentEditReceipt) return;
+    if (!currentEditReceipt) {
+        alert('No receipt selected. Please open a receipt first.');
+        return;
+    }
     
+    // Close edit modal first
     closeEditModal();
     
-    document.getElementById('voidReason').value = '';
-    document.getElementById('voidConfirmCheckbox').checked = false;
-    document.getElementById('voidModal').style.display = 'block';
+    // Small delay to ensure first modal is closed
+    setTimeout(() => {
+        document.getElementById('voidReason').value = '';
+        document.getElementById('voidConfirmCheckbox').checked = false;
+        document.getElementById('voidModal').style.display = 'block';
+    }, 100);
 }
 
 function closeVoidModal() {
@@ -1254,7 +1263,7 @@ async function confirmVoid() {
     }
     
     if (!currentEditReceipt) {
-        alert('No receipt selected');
+        alert('No receipt selected. Please try again.');
         closeVoidModal();
         return;
     }
@@ -1272,7 +1281,8 @@ async function confirmVoid() {
             voidedAt: new Date().toISOString(),
             voidedBy: 'user',
             originalAmount: currentEditReceipt.totalAmount,
-            originalCurrency: currentEditReceipt.currency
+            originalCurrency: currentEditReceipt.currency,
+            voidedReceiptNo: receiptNo
         };
         
         console.log('Voiding receipt:', receiptNo, voidData);
@@ -1282,15 +1292,20 @@ async function confirmVoid() {
         
         alert(`Receipt ${receiptNo} has been voided`);
         
-        // Print void receipt
+        // Create voided receipt object for printing
         const voidedReceipt = {
             ...currentEditReceipt,
             ...voidData
         };
+        
+        // Print void receipt
         printVoidReceipt(voidedReceipt);
         
-        // Reload data and close modals
+        // Reload data
         await loadReceipts();
+        
+        // Clear current receipt and close modal
+        currentEditReceipt = null;
         closeVoidModal();
         
     } catch (error) {
@@ -1317,7 +1332,10 @@ function printReceipt(receiptNo) {
 }
 
 function printEditedReceipt() {
-    if (!currentEditReceipt) return;
+    if (!currentEditReceipt) {
+        alert('No receipt selected');
+        return;
+    }
     
     // Get current form values
     const adult = parseInt(document.getElementById('editAdult').value) || 0;
