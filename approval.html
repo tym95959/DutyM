@@ -471,7 +471,7 @@
                 <option value="ALL">ALL MISSING FIELDS</option>
                 <option value="approval">MISSING APPROVAL CODE</option>
                 <option value="batch">MISSING BATCH NO</option>
-                <option value="card">MISSING CARD TYPE</option>
+                <option value="card">MISSING PAYMENT METHOD</option>
             </select>
             
             <input type="text" class="search-input" id="searchInput" placeholder="🔍 SEARCH BY RECEIPT # OR PASSENGER NAME...">
@@ -512,7 +512,19 @@
                 
                 <div class="form-group">
                     <label>PAYMENT METHOD</label>
-                    <input type="text" id="modalPaymentMethod" readonly>
+                    <select id="paymentMethod" required>
+                        <option value="">SELECT PAYMENT METHOD</option>
+                        <option value="VISA">VISA</option>
+                        <option value="MASTERCARD">MASTERCARD</option>
+                        <option value="AMEX">AMEX</option>
+                        <option value="UNIONPAY">UNIONPAY</option>
+                        <option value="WECHATPAY">WECHATPAY</option>
+                        <option value="ALIPAY">ALIPAY</option>
+                        <option value="QRPAY">QRPAY</option>
+                        <option value="BANK TRANSFER">BANK TRANSFER</option>
+                        <option value="MOBILE PAYMENT">MOBILE PAYMENT</option>
+                        <option value="VOUCHER">VOUCHER</option>
+                    </select>
                 </div>
                 
                 <div class="form-group" id="approvalCodeGroup">
@@ -523,20 +535,6 @@
                 <div class="form-group" id="batchNoGroup">
                     <label>BATCH NUMBER *</label>
                     <input type="text" id="batchNo" placeholder="ENTER BATCH NUMBER">
-                </div>
-                
-                <div class="form-group" id="cardTypeGroup">
-                    <label>CARD TYPE *</label>
-                    <select id="cardType">
-                        <option value="">SELECT CARD TYPE</option>
-                        <option value="VISA">VISA</option>
-                        <option value="MASTER">MASTER</option>
-                        <option value="AMEX">AMEX</option>
-                        <option value="UNIONPAY">UNIONPAY</option>
-                        <option value="WECHATPAY">WECHATPAY</option>
-                        <option value="ALIPAY">ALIPAY</option>
-                        <option value="QRPAY">QRPAY</option>
-                    </select>
                 </div>
                 
                 <div class="modal-buttons">
@@ -636,20 +634,15 @@
                                            (data.approval && data.approval.trim() !== '');
                     const hasBatchNo = (data.batchNo && data.batchNo.trim() !== '') || 
                                       (data.batch && data.batch.trim() !== '');
-                    const hasCardType = (data.cardType && data.cardType.trim() !== '') || 
-                                       (data.card && data.card.trim() !== '');
+                    const hasPaymentMethod = paymentMethod && paymentMethod.trim() !== '';
                     
-                    // Determine if this is a card payment
-                    const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
+                    // Define card payment methods
+                    const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
                     const isCardPayment = cardPayments.includes(paymentMethod);
                     
-                    // Check if complete
-                    let isComplete = false;
-                    if (isCardPayment) {
-                        isComplete = hasApprovalCode && hasBatchNo && hasCardType;
-                    } else {
-                        isComplete = hasApprovalCode && hasBatchNo;
-                    }
+                    // Check if complete - all non-cash payments need approval code and batch no
+                    // Card payments are already identified by their payment method
+                    const isComplete = hasApprovalCode && hasBatchNo && hasPaymentMethod;
                     
                     // Only include pending transactions
                     if (!isComplete) {
@@ -667,11 +660,10 @@
                             children: data.children || 0,
                             hasApprovalCode: hasApprovalCode,
                             hasBatchNo: hasBatchNo,
-                            hasCardType: hasCardType,
+                            hasPaymentMethod: hasPaymentMethod,
                             isCardPayment: isCardPayment,
                             approvalCode: data.approvalCode || data.approval || '',
-                            batchNo: data.batchNo || data.batch || '',
-                            cardType: data.cardType || data.card || ''
+                            batchNo: data.batchNo || data.batch || ''
                         };
                         
                         allTransactions.push(transaction);
@@ -715,9 +707,9 @@
             transactions.forEach(t => {
                 // Determine missing fields
                 const missingFields = [];
+                if (!t.hasPaymentMethod) missingFields.push('Payment Method');
                 if (!t.hasApprovalCode) missingFields.push('Approval Code');
                 if (!t.hasBatchNo) missingFields.push('Batch No');
-                if (t.isCardPayment && !t.hasCardType) missingFields.push('Card Type');
                 
                 // Format date/time
                 let dateTime = t.dateTime;
@@ -735,7 +727,7 @@
                             <small style="color: #8b6913;">${t.flightNo} / Seat ${t.seatNo}</small>
                         </td>
                         <td>
-                            <span class="payment-badge ${getBadgeClass(t.paymentMethod)}">${t.paymentMethod}</span>
+                            <span class="payment-badge ${getBadgeClass(t.paymentMethod)}">${t.paymentMethod || 'NOT SET'}</span>
                         </td>
                         <td><strong>${t.currency} ${Number(t.amount).toFixed(2)}</strong></td>
                         <td>
@@ -757,7 +749,8 @@
         }
         
         function getBadgeClass(method) {
-            if (method === 'CARD' || method.includes('VISA') || method.includes('MASTER')) {
+            const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
+            if (cardPayments.includes(method)) {
                 return 'badge-card';
             } else if (method === 'BANK TRANSFER') {
                 return 'badge-transfer';
@@ -773,18 +766,9 @@
             
             document.getElementById('transactionId').value = transaction.receiptNo;
             document.getElementById('docId').value = transaction.id;
-            document.getElementById('modalPaymentMethod').value = transaction.paymentMethod;
+            document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
             document.getElementById('approvalCode').value = transaction.approvalCode || '';
             document.getElementById('batchNo').value = transaction.batchNo || '';
-            document.getElementById('cardType').value = transaction.cardType || '';
-            
-            // Show/hide card type field based on payment method
-            const cardTypeGroup = document.getElementById('cardTypeGroup');
-            if (transaction.isCardPayment) {
-                cardTypeGroup.style.display = 'block';
-            } else {
-                cardTypeGroup.style.display = 'none';
-            }
             
             // Update summary
             document.getElementById('transactionSummary').innerHTML = `
@@ -845,12 +829,6 @@
                     <span class="receipt-label">Batch No:</span>
                     <span class="receipt-value">${transaction.batchNo || document.getElementById('batchNo').value}</span>
                 </div>
-                ${transaction.isCardPayment ? `
-                <div class="receipt-row">
-                    <span class="receipt-label">Card Type:</span>
-                    <span class="receipt-value">${transaction.cardType || document.getElementById('cardType').value}</span>
-                </div>
-                ` : ''}
                 <div class="receipt-row">
                     <span class="receipt-label">Approved By:</span>
                     <span class="receipt-value">${currentUser?.username || 'Unknown'}</span>
@@ -903,14 +881,15 @@
             e.preventDefault();
             
             const docId = document.getElementById('docId').value;
+            const paymentMethod = document.getElementById('paymentMethod').value;
             const approvalCode = document.getElementById('approvalCode').value.trim();
             const batchNo = document.getElementById('batchNo').value.trim();
-            const cardType = document.getElementById('cardType').value;
-            const paymentMethod = document.getElementById('modalPaymentMethod').value;
             
-            // Validate based on payment method
-            const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
-            const isCardPayment = cardPayments.includes(paymentMethod);
+            // Validation
+            if (!paymentMethod) {
+                alert('Payment Method is required');
+                return;
+            }
             
             if (!approvalCode) {
                 alert('Approval Code is required');
@@ -922,13 +901,9 @@
                 return;
             }
             
-            if (isCardPayment && !cardType) {
-                alert('Card Type is required for card payments');
-                return;
-            }
-            
             try {
                 const updateData = {
+                    paymentMethod: paymentMethod,
                     approvalCode: approvalCode,
                     batchNo: batchNo,
                     updatedAt: new Date().toISOString(),
@@ -936,28 +911,26 @@
                     approvedAt: new Date().toISOString()
                 };
                 
-                if (isCardPayment) {
-                    updateData.cardType = cardType;
-                }
-                
                 await passengerDb.collection('Kovelipay').doc(docId).update(updateData);
                 
                 // Get the updated transaction data
                 const updatedDoc = await passengerDb.collection('Kovelipay').doc(docId).get();
                 const updatedData = updatedDoc.data();
                 
+                const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
+                const isCardPayment = cardPayments.includes(paymentMethod);
+                
                 const approvedTransaction = {
                     id: docId,
                     receiptNo: updatedData.receiptNo || 'N/A',
                     passengerName: updatedData.passengerName || 'N/A',
-                    paymentMethod: updatedData.paymentMethod || paymentMethod,
+                    paymentMethod: paymentMethod,
                     amount: updatedData.totalAmount || 0,
                     currency: updatedData.currency || 'USD',
                     flightNo: updatedData.flightNo || 'N/A',
                     seatNo: updatedData.seatNo || 'N/A',
                     approvalCode: approvalCode,
                     batchNo: batchNo,
-                    cardType: cardType,
                     isCardPayment: isCardPayment
                 };
                 
@@ -992,7 +965,8 @@
             // Filter by payment method
             if (paymentFilter !== 'ALL') {
                 if (paymentFilter === 'CARD') {
-                    filtered = filtered.filter(t => t.isCardPayment);
+                    const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
+                    filtered = filtered.filter(t => cardPayments.includes(t.paymentMethod));
                 } else {
                     filtered = filtered.filter(t => t.paymentMethod === paymentFilter);
                 }
@@ -1003,7 +977,7 @@
                 filtered = filtered.filter(t => {
                     if (missingFilter === 'approval') return !t.hasApprovalCode;
                     if (missingFilter === 'batch') return !t.hasBatchNo;
-                    if (missingFilter === 'card') return t.isCardPayment && !t.hasCardType;
+                    if (missingFilter === 'card') return !t.hasPaymentMethod;
                     return true;
                 });
             }
