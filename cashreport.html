@@ -538,9 +538,10 @@
             return '';
         }
 
-        // get username from various possible fields
+        // get username directly from transaction data (same way we get other fields)
         function getStaffUsername(tx) {
-            // Try different possible field names for username
+            // Direct field access - same as tx.passengerName, tx.flightNo, etc.
+            // Check the most common field names used in your Firebase collection
             return tx.username || 
                    tx.userName || 
                    tx.user || 
@@ -548,8 +549,7 @@
                    tx.cashier || 
                    tx.operator || 
                    tx.processedBy || 
-                   tx.processed_by || 
-                   tx.createdBy || 
+                   tx.staffName || 
                    tx.enteredBy || 
                    'System';
         }
@@ -567,9 +567,21 @@
             noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">loading...</td></tr>';
 
             try {
-                const snapshot = await passengerDb.collection('Kovelipay').get();
+                // Fetch from Kovelipay collection - same as before
+                const kovelipayRef = passengerDb.collection('Kovelipay');
+                const snapshot = await kovelipayRef.get();
+                
                 const docs = [];
-                snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+                snapshot.forEach(doc => {
+                    // Get all data including any username field
+                    const data = doc.data();
+                    docs.push({ 
+                        id: doc.id, 
+                        ...data 
+                    });
+                });
+
+                console.log('Sample transaction:', docs[0]); // Debug: see what fields are available
 
                 // filter by date
                 const filteredByDate = docs.filter(d => {
@@ -612,7 +624,7 @@
                 
                 footGen.innerText = `updated: ${now.toLocaleString()}  |  ${filtered.length} total receipts (${activeTransactions.length} active, ${voidTransactions.length} void)`;
             } catch (err) {
-                console.error(err);
+                console.error('Error fetching data:', err);
                 tableBody.innerHTML = '<tr><td colspan="9">error loading</td></tr>';
                 noncashBody.innerHTML = '<tr><td colspan="4">error</td></tr>';
             }
@@ -722,12 +734,12 @@
             }
             noncashBody.innerHTML = noncashHtml;
 
-            // Transaction list (with staff username - passenger name and status removed)
+            // Transaction list (with staff username - fetched same way as other fields)
             let listHtml = '';
             allTransactions.forEach(tx => {
                 const isVoid = tx.paymentStatus === 'VOID';
                 const rowClass = isVoid ? 'void-row' : '';
-                const staff = getStaffUsername(tx);
+                const staff = getStaffUsername(tx); // Same way we get passengerName or flightNo
                 
                 listHtml += `<tr class="${rowClass}">
                     <td>${tx.receiptNo || tx.id || ''}</td>
