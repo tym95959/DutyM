@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koveli Receipt - EPSON TM-T88vii</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #f0f0f0;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* EPSON TM-T88vii Optimized Receipt */
+        .receipt-wrapper {
+            width: 80mm;
+            max-width: 80mm;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            padding: 3mm 3mm;
+            border-radius: 3px;
+        }
+
+        /* Print styles for EPSON TM-T88vii */
+        @media print {
+            @page {
+                size: 80mm 297mm; /* Auto height based on content */
+                margin: 0;
+            }
+            
+            body {
+                background: white;
+                padding: 0;
+                margin: 0;
+            }
+            
+            .no-print {
+                display: none !important;
+            }
+            
+            .receipt-wrapper {
+                width: 80mm;
+                max-width: 80mm;
+                margin: 0;
+                padding: 2mm 3mm;
+                box-shadow: none;
+                border-radius: 0;
+                background: white;
+            }
+            
+            .receipt, .receipt * {
+                visibility: visible;
+            }
+        }
+
+        /* Receipt Content Styles - Optimized for EPSON TM-T88vii */
+        .receipt {
+            font-family: 'Courier New', 'Lucida Console', monospace;
+            font-size: 10pt;
+            line-height: 1.3;
+            color: #000000;
+            width: 100%;
+        }
+
+        /* Company Header */
+        .receipt-header {
+            text-align: center;
+            margin-bottom: 2mm;
+            border-bottom: 2px solid #000;
+            padding-bottom: 2mm;
+        }
+
+        .company-name {
+            font-size: 14pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 1mm;
+        }
+
+        .company-address {
+            font-size: 8pt;
+            line-height: 1.3;
+            white-space: pre-line;
+        }
+
+        .company-details {
+            font-size: 8pt;
+            margin-top: 1mm;
+        }
+
+        /* Reprint Mark */
+        .reprint-mark {
+            text-align: center;
+            font-size: 10pt;
+            font-weight: bold;
+            margin: 2mm 0;
+            padding: 1mm 0;
+            border: 2px solid #000;
+            text-transform: uppercase;
+        }
+
+        /* Dividers */
+        .divider {
+            border-top: 2px solid #000;
+            margin: 2mm 0;
+        }
+
+        .divider-light {
+            border-top: 1px solid #000;
+            margin: 1.5mm 0;
+        }
+
+        .divider-dash {
+            border-top: 1px dashed #000;
+            margin: 1.5mm 0;
+        }
+
+        /* Row Layout - EPSON optimized */
+        .row {
+            display: flex;
+            justify-content: space-between;
+            margin: 1mm 0;
+            font-size: 10pt;
+        }
+
+        .row .label {
+            font-weight: bold;
+        }
+
+        .row .value {
+            text-align: right;
+            max-width: 60%;
+        }
+
+        /* Passenger Name - Prominent */
+        .passenger-name {
+            text-align: center;
+            font-size: 14pt;
+            font-weight: bold;
+            margin: 2mm 0;
+            padding: 1.5mm 0;
+            border: 2px solid #000;
+            text-transform: uppercase;
+            background: #fff;
+        }
+
+        /* Flight Details */
+        .flight-details {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin: 1.5mm 0;
+            padding: 1mm 0;
+            border-bottom: 1px solid #000;
+            border-top: 1px solid #000;
+            font-size: 11pt;
+        }
+
+        /* Items Table */
+        .items-table {
+            margin: 1.5mm 0;
+        }
+
+        .item-header {
+            display: flex;
+            font-weight: bold;
+            border-bottom: 1px solid #000;
+            padding-bottom: 0.5mm;
+            margin-bottom: 1mm;
+            font-size: 9pt;
+        }
+
+        .item-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.5mm 0;
+            font-size: 10pt;
+        }
+
+        .item-desc {
+            flex: 3;
+        }
+
+        .item-qty {
+            flex: 1;
+            text-align: center;
+        }
+
+        .item-price {
+            flex: 2;
+            text-align: right;
+        }
+
+        .item-total {
+            flex: 2;
+            text-align: right;
+            font-weight: bold;
+        }
+
+        /* Totals */
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            font-size: 12pt;
+            margin: 2mm 0;
+            padding: 1.5mm 0;
+            border-top: 3px double #000;
+            border-bottom: 1px solid #000;
+        }
+
+        .subtotal-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11pt;
+            margin: 0.5mm 0;
+        }
+
+        /* Payment Method */
+        .payment-info {
+            display: flex;
+            justify-content: space-between;
+            margin: 1mm 0;
+            padding: 1mm 0;
+            font-weight: bold;
+        }
+
+        /* Validity Block - High Visibility */
+        .validity-block {
+            text-align: center;
+            border: 3px solid #000;
+            padding: 2mm;
+            margin: 3mm 0;
+            background: #fff;
+        }
+
+        .valid-label {
+            font-size: 10pt;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+
+        .expiry-time {
+            font-size: 24pt;
+            font-weight: bold;
+            line-height: 1.2;
+            margin: 1mm 0;
+        }
+
+        .valid-note {
+            font-size: 8pt;
+        }
+
+        /* Exchange Rate */
+        .exchange-rate {
+            font-size: 8pt;
+            text-align: right;
+            margin: 0.5mm 0;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 2mm;
+        }
+
+        .thank-you {
+            font-size: 12pt;
+            font-weight: bold;
+            margin: 1mm 0;
+        }
+
+        .footer-note {
+            font-size: 8pt;
+            margin: 0.5mm 0;
+        }
+
+        /* Barcode area (optional) */
+        .barcode-area {
+            text-align: center;
+            margin: 2mm 0;
+            font-family: 'Libre Barcode 39', cursive;
+            font-size: 16pt;
+        }
+
+        /* Loading and Error States */
+        .loading, .error-message, .receipt-data {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .error-message {
+            color: #c68b5e;
+            font-weight: bold;
+        }
+
+        .print-controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .print-btn {
+            background: #6b8e23;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 40px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid #e6b800;
+        }
+
+        .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(107, 142, 35, 0.3);
+        }
+
+        .back-btn {
+            background: #8b6913;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 40px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-left: 10px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .back-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(230, 184, 0, 0.3);
+        }
+
+        /* Utility */
+        .text-center {
+            text-align: center;
+        }
+
+        .text-bold {
+            font-weight: bold;
+        }
+
+        .mt-2 {
+            margin-top: 2mm;
+        }
+
+        .mb-1 {
+            margin-bottom: 1mm;
+        }
+    </style>
+</head>
+<body>
+    <div class="receipt-wrapper">
+        <div class="receipt" id="receipt">
+            <!-- Receipt content will be populated by JavaScript -->
+            <div class="loading" id="loadingMessage">
+                <p>Loading receipt data...</p>
+            </div>
+            <div class="error-message" id="errorMessage" style="display: none;">
+                <p>Error loading receipt. Please try again.</p>
+            </div>
+            <div class="receipt-data" id="receiptData" style="display: none;"></div>
+        </div>
+    </div>
+
+    <div class="print-controls no-print">
+        <button class="print-btn" id="printReceiptBtn" onclick="window.print()">🖨️ PRINT RECEIPT</button>
+        <a href="#" class="back-btn" id="backBtn">← BACK</a>
+    </div>
+
+    <script>
+        // ========== RECEIPT PAGE FOR EPSON TM-T88vii ==========
+        
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const receiptDataParam = urlParams.get('data');
+        const receiptNoParam = urlParams.get('receiptNo');
+        const reprintParam = urlParams.get('reprint') === 'true';
+
+        // Firebase config (should match your main app)
+        const firebaseConfig = {
+            apiKey: "AIzaSyB9vfO9S6BLtOC5b0W7SFoOiAeZ2t7QqaI",
+            authDomain: "koveli-6a6ef.firebaseapp.com",
+            projectId: "koveli-6a6ef",
+            storageBucket: "koveli-6a6ef.appspot.com",
+            messagingSenderId: "989181878797",
+            appId: "1:989181878797:web:3b0d539c2c9c66be7065e1"
+        };
+
+        // Initialize Firebase if not already initialized
+        let passengerDb;
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            passengerDb = firebase.firestore();
+            console.log('Firebase initialized for receipt page');
+        } catch (error) {
+            console.error('Firebase initialization error:', error);
+        }
+
+        // Receipt data object
+        let receiptData = null;
+
+        // Format number to 2 decimals
+        function formatAmount(value) {
+            return parseFloat(value || 0).toFixed(2);
+        }
+
+        // Generate receipt HTML - Optimized for EPSON TM-T88vii
+        function generateReceiptHTML(data) {
+            const isReprint = data.isReprint || reprintParam;
+            const reprintMark = isReprint ? 
+                '<div class="reprint-mark">*** REPRINT COPY ***</div>' : '';
+
+            // Format date and time
+            let dateTimeStr = data.submissionDateTime || data.dateTime || '';
+            let dateOnly = data.shiftDate || data.date || '';
+            let timeOnly = '';
+            
+            if (dateTimeStr) {
+                const parts = dateTimeStr.split(' ');
+                if (parts.length > 1) {
+                    dateOnly = parts[0];
+                    timeOnly = parts[1];
+                } else {
+                    timeOnly = dateTimeStr;
+                }
+            }
+
+            // Prices with 2 decimals
+            const adultPrice = formatAmount(data.adultPrice);
+            const childPrice = formatAmount(data.childrenPrice);
+            const adultSub = formatAmount(data.adultSubtotal);
+            const childSub = formatAmount(data.childrenSubtotal);
+            const subtotal = formatAmount(data.subtotal);
+            const gst = formatAmount(data.gstAmount);
+            const total = formatAmount(data.totalAmount);
+
+            // Exchange rate display
+            const exchangeRateHTML = data.currency === 'MVR' && data.exchangeRate ?
+                `<div class="exchange-rate">1 USD = ${parseFloat(data.exchangeRate).toFixed(2)} MVR</div>` : '';
+
+            return `
+                <div class="receipt-header">
+                    <div class="company-name">KOVELI LOUNGE</div>
+                    <div class="company-address">
+                        VELANA INTERNATIONAL AIRPORT
+                        MALE', REPUBLIC OF MALDIVES
+                    </div>
+                    <div class="company-details">
+                        TEL: +960 304 6677 | EMAIL: info@koveli.com
+                    </div>
+                </div>
+
+                ${reprintMark}
+
+                <div class="divider-light"></div>
+
+                <div class="row">
+                    <span class="label">Receipt No:</span>
+                    <span class="value"><span class="text-bold">${data.receiptNo || 'N/A'}</span></span>
+                </div>
+
+                <div class="row">
+                    <span class="label">Date:</span>
+                    <span class="value">${dateOnly || 'N/A'} ${timeOnly || ''}</span>
+                </div>
+
+                <div class="row">
+                    <span class="label">Shift:</span>
+                    <span class="value">${data.shift || data.shiftName || 'N/A'}</span>
+                </div>
+
+                <div class="row">
+                    <span class="label">Cashier:</span>
+                    <span class="value">${data.cashierName || data.user?.username || 'N/A'} (${data.userRcno || data.user?.rcno || 'N/A'})</span>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="passenger-name">${data.passengerName || 'N/A'}</div>
+
+                <div class="flight-details">
+                    <span>FLIGHT: ${data.flightNo || '---'}</span>
+                    <span>SEAT: ${data.seatNo || '---'}</span>
+                </div>
+
+                <div class="divider-light"></div>
+
+                <div class="items-table">
+                    <div class="item-header">
+                        <span class="item-desc">Description</span>
+                        <span class="item-qty">Qty</span>
+                        <span class="item-price">Price</span>
+                        <span class="item-total">Total</span>
+                    </div>
+                    
+                    <div class="item-row">
+                        <span class="item-desc">Adult (${data.rateType || 'A'})</span>
+                        <span class="item-qty">${data.adult || 0}</span>
+                        <span class="item-price">${data.currency || 'USD'} ${adultPrice}</span>
+                        <span class="item-total">${data.currency || 'USD'} ${adultSub}</span>
+                    </div>
+                    
+                    ${parseInt(data.children || 0) > 0 ? `
+                    <div class="item-row">
+                        <span class="item-desc">Child (${data.rateType || 'A'})</span>
+                        <span class="item-qty">${data.children || 0}</span>
+                        <span class="item-price">${data.currency || 'USD'} ${childPrice}</span>
+                        <span class="item-total">${data.currency || 'USD'} ${childSub}</span>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <div class="divider-dash"></div>
+
+                <div class="subtotal-row">
+                    <span>Subtotal:</span>
+                    <span>${data.currency || 'USD'} ${subtotal}</span>
+                </div>
+
+                <div class="subtotal-row">
+                    <span>GST ${data.gstRate || 8}%:</span>
+                    <span>${data.currency || 'USD'} ${gst}</span>
+                </div>
+
+                <div class="total-row">
+                    <span>TOTAL:</span>
+                    <span>${data.currency || 'USD'} ${total}</span>
+                </div>
+
+                <div class="payment-info">
+                    <span>Payment Method:</span>
+                    <span class="text-bold">${data.paymentMethod || 'CASH'}</span>
+                </div>
+
+                ${exchangeRateHTML}
+
+                <div class="validity-block">
+                    <div class="valid-label">VALID UNTIL</div>
+                    <div class="expiry-time">${data.expiryTime || data.expiryDisplay || '--:--:--'}</div>
+                    <div class="valid-note">(3 hours from issue - ${data.shiftDate || ''})</div>
+                </div>
+
+                <div class="footer">
+                    <div class="thank-you">✈️ THANK YOU ✈️</div>
+                    <div class="footer-note">We hope you enjoyed your visit to Koveli Lounge</div>
+                    <div class="footer-note">www.koveli.com</div>
+                </div>
+
+                ${data.receiptNo ? `
+                <div class="barcode-area">
+                    *${data.receiptNo}*
+                </div>
+                ` : ''}
+            `;
+        }
+
+        // Fetch receipt data from Firebase by receipt number
+        async function fetchReceiptFromFirebase(receiptNo) {
+            try {
+                if (!passengerDb) {
+                    throw new Error('Firebase not initialized');
+                }
+
+                console.log('Fetching receipt:', receiptNo);
+                
+                // Try collection query first
+                const kovelipayRef = passengerDb.collection('Kovelipay');
+                const snapshot = await kovelipayRef.where('receiptNo', '==', receiptNo).limit(1).get();
+                
+                if (!snapshot.empty) {
+                    const doc = snapshot.docs[0];
+                    return { id: doc.id, ...doc.data() };
+                }
+                
+                // Try direct document access
+                const docById = await kovelipayRef.doc(receiptNo).get();
+                if (docById.exists) {
+                    return { id: docById.id, ...docById.data() };
+                }
+                
+                return null;
+            } catch (error) {
+                console.error('Error fetching receipt:', error);
+                throw error;
+            }
+        }
+
+        // Load receipt data
+        async function loadReceipt() {
+            const loadingEl = document.getElementById('loadingMessage');
+            const errorEl = document.getElementById('errorMessage');
+            const receiptDataEl = document.getElementById('receiptData');
+
+            try {
+                // Hide error, show loading
+                if (loadingEl) loadingEl.style.display = 'block';
+                if (errorEl) errorEl.style.display = 'none';
+                if (receiptDataEl) receiptDataEl.style.display = 'none';
+
+                let data = null;
+
+                // Case 1: Data passed via URL parameter
+                if (receiptDataParam) {
+                    try {
+                        data = JSON.parse(decodeURIComponent(receiptDataParam));
+                        console.log('Receipt data from URL parameter');
+                    } catch (e) {
+                        console.error('Error parsing receipt data from URL:', e);
+                    }
+                }
+                
+                // Case 2: Fetch by receipt number from Firebase
+                if (!data && receiptNoParam) {
+                    data = await fetchReceiptFromFirebase(receiptNoParam);
+                    console.log('Receipt data from Firebase:', data ? 'found' : 'not found');
+                }
+                
+                // Case 3: Try to get from localStorage (last transaction)
+                if (!data) {
+                    try {
+                        const lastReceipt = localStorage.getItem('lastReceiptData');
+                        if (lastReceipt) {
+                            data = JSON.parse(lastReceipt);
+                            console.log('Receipt data from localStorage');
+                        }
+                    } catch (e) {
+                        console.error('Error parsing localStorage receipt data:', e);
+                    }
+                }
+
+                if (!data) {
+                    throw new Error('No receipt data found');
+                }
+
+                // Add reprint flag if applicable
+                data.isReprint = reprintParam;
+
+                // Store receipt data
+                receiptData = data;
+
+                // Generate and display receipt HTML
+                const html = generateReceiptHTML(data);
+                if (receiptDataEl) {
+                    receiptDataEl.innerHTML = html;
+                    receiptDataEl.style.display = 'block';
+                }
+
+                // Hide loading
+                if (loadingEl) loadingEl.style.display = 'none';
+
+                // Auto-print for EPSON TM-T88vii if requested
+                const autoPrint = urlParams.get('autoPrint') === 'true';
+                if (autoPrint) {
+                    setTimeout(() => {
+                        window.print();
+                    }, 500);
+                }
+
+            } catch (error) {
+                console.error('Error loading receipt:', error);
+                
+                // Show error message
+                if (loadingEl) loadingEl.style.display = 'none';
+                if (errorEl) {
+                    errorEl.style.display = 'block';
+                    errorEl.innerHTML = `<p>Error: ${error.message}</p>`;
+                }
+            }
+        }
+
+        // Set back button link
+        function setBackLink() {
+            const backBtn = document.getElementById('backBtn');
+            if (backBtn) {
+                const returnTo = urlParams.get('returnTo') || 'index.html';
+                backBtn.href = returnTo;
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadReceipt();
+            setBackLink();
+        });
+
+        // Listen for print events
+        window.addEventListener('beforeprint', () => {
+            console.log('Printing to EPSON TM-T88vii...');
+        });
+
+        window.addEventListener('afterprint', () => {
+            console.log('Print completed');
+        });
+
+    </script>
+</body>
+</html>
