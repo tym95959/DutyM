@@ -174,6 +174,7 @@
         .badge-transfer { background: #c68b5e; color: white; }
         .badge-pending { background: #b63e3e; color: white; }
         .badge-approved { background: #6b8e23; color: white; }
+        .badge-void { background: #000000; color: white; }
         
         .missing-field {
             color: #b63e3e;
@@ -203,6 +204,10 @@
         
         .action-btn.receipt {
             background: #8b6913;
+        }
+        
+        .action-btn.void {
+            background: #b63e3e;
         }
         
         .action-btn:hover {
@@ -496,6 +501,40 @@
         </div>
     </div>
     
+    <!-- Void Reason Modal -->
+    <div id="voidModal" class="modal">
+        <div class="modal-content">
+            <h2>⛔ VOID TRANSACTION</h2>
+            <div class="summary-box" id="voidTransactionSummary"></div>
+            
+            <form id="voidForm">
+                <input type="hidden" id="voidDocId">
+                
+                <div class="form-group">
+                    <label>VOID REASON *</label>
+                    <select id="voidReason" required>
+                        <option value="">SELECT REASON</option>
+                        <option value="CUSTOMER CANCELLATION">CUSTOMER CANCELLATION</option>
+                        <option value="WRONG AMOUNT">WRONG AMOUNT</option>
+                        <option value="DUPLICATE ENTRY">DUPLICATE ENTRY</option>
+                        <option value="PAYMENT ERROR">PAYMENT ERROR</option>
+                        <option value="OTHER">OTHER</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="otherReasonGroup" style="display: none;">
+                    <label>PLEASE SPECIFY</label>
+                    <input type="text" id="otherReason" placeholder="ENTER REASON">
+                </div>
+                
+                <div class="modal-buttons">
+                    <button type="button" class="cancel-btn" onclick="closeVoidModal()">CANCEL</button>
+                    <button type="submit" class="save-btn" style="background: #b63e3e;">CONFIRM VOID</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <!-- Confirmation Dialog for Printing -->
     <div id="printConfirmDialog" class="confirm-dialog">
         <h3>🖨️ PRINT RECEIPT</h3>
@@ -506,10 +545,21 @@
         </div>
     </div>
     
+    <!-- Void Print Confirmation Dialog -->
+    <div id="voidPrintConfirmDialog" class="confirm-dialog">
+        <h3>⛔ VOID RECEIPT</h3>
+        <p id="voidConfirmMessage">Transaction voided successfully!<br>Would you like to print the void receipt?</p>
+        <div class="confirm-buttons">
+            <button class="confirm-btn confirm-yes" id="voidPrintYes">YES, PRINT VOID</button>
+            <button class="confirm-btn confirm-no" id="voidPrintNo">NO, THANKS</button>
+        </div>
+    </div>
+    
     <script>
         let allTransactions = [];
         let currentUser = null;
         let lastApprovedTransaction = null;
+        let lastVoidedTransaction = null;
         
         // Load user data
         function loadUser() {
@@ -542,10 +592,10 @@
             }, 3000);
         }
         
-        // ========== REDIRECT TO RECEIPT PAGE ==========
-        function redirectToReceiptPage(transaction, autoPrint = true) {
+        // ========== REDIRECT TO RECEIPT PAGE WITH VOID SUPPORT ==========
+        function redirectToReceiptPage(transaction, autoPrint = true, isVoid = false) {
             try {
-                // Prepare receipt data
+                // Prepare receipt data with void flag
                 const receiptData = {
                     receiptNo: transaction.receiptNo,
                     passengerName: transaction.passengerName,
@@ -555,7 +605,7 @@
                     children: transaction.children || 0,
                     currency: transaction.currency || 'USD',
                     rateType: transaction.rateType || 'A',
-                    paymentMethod: transaction.paymentMethod,
+                    paymentMethod: transaction.paymentMethod || 'CASH',
                     adultPrice: transaction.adultPrice || '55.00',
                     childrenPrice: transaction.childrenPrice || '55.00',
                     adultSubtotal: transaction.adultSubtotal || (transaction.amount / 1.08).toFixed(2),
@@ -571,7 +621,12 @@
                     cashierName: transaction.cashierName || currentUser?.username || 'N/A',
                     userRcno: transaction.userRcno || currentUser?.rcno || 'N/A',
                     exchangeRate: transaction.exchangeRate || 15.42,
-                    isReprint: false
+                    isReprint: false,
+                    // Add void flag to the data itself (important!)
+                    isVoid: isVoid,
+                    status: isVoid ? 'VOID' : 'APPROVED',
+                    voidReason: transaction.voidReason || null,
+                    voidedAt: transaction.voidedAt || null
                 };
                 
                 // Store in localStorage as backup
@@ -583,10 +638,17 @@
                 // Build URL with parameters
                 let receiptUrl = `receipt.html?data=${encodedData}&returnTo=${encodeURIComponent(window.location.pathname)}`;
                 
+                // Add void parameter to URL if needed (explicitly add it!)
+                if (isVoid) {
+                    receiptUrl += '&void=true';
+                }
+                
                 // Add autoPrint parameter
                 if (autoPrint) {
                     receiptUrl += '&autoPrint=true';
                 }
+                
+                console.log('Redirecting to receipt URL:', receiptUrl);
                 
                 // Redirect to receipt page
                 window.location.href = receiptUrl;
@@ -595,24 +657,65 @@
                 console.error('Error redirecting to receipt page:', error);
                 // Fallback: try with just receipt number
                 if (transaction && transaction.receiptNo) {
-                    window.location.href = `receipt.html?receiptNo=${transaction.receiptNo}&autoPrint=true&returnTo=${encodeURIComponent(window.location.pathname)}`;
+                    let fallbackUrl = `receipt.html?receiptNo=${transaction.receiptNo}&returnTo=${encodeURIComponent(window.location.pathname)}`;
+                    if (isVoid) {
+                        fallbackUrl += '&void=true';
+                    }
+                    if (autoPrint) {
+                        fallbackUrl += '&autoPrint=true';
+                    }
+                    window.location.href = fallbackUrl;
                 } else {
                     alert('Error printing receipt. Please try again.');
                 }
             }
         }
         
-        // Show print confirmation dialog
+        // Show void modal
+        function showVoidModal(transactionId) {
+            const transaction = allTransactions.find(t => t.id === transactionId);
+            if (!transaction) return;
+            
+            document.getElementById('voidDocId').value = transaction.id;
+            document.getElementById('voidTransactionSummary').innerHTML = `
+                <strong>Receipt:</strong> ${transaction.receiptNo}<br>
+                <strong>Passenger:</strong> ${transaction.passengerName}<br>
+                <strong>Amount:</strong> ${transaction.currency} ${Number(transaction.amount).toFixed(2)}
+            `;
+            
+            document.getElementById('voidModal').style.display = 'flex';
+        }
+        
+        function closeVoidModal() {
+            document.getElementById('voidModal').style.display = 'none';
+            document.getElementById('voidReason').value = '';
+            document.getElementById('otherReason').value = '';
+            document.getElementById('otherReasonGroup').style.display = 'none';
+        }
+        
+        // Show print confirmation dialog for normal approval
         function showPrintConfirmation(transaction) {
             lastApprovedTransaction = transaction;
             const dialog = document.getElementById('printConfirmDialog');
             dialog.style.display = 'block';
         }
         
-        // Hide print confirmation dialog
+        // Show print confirmation dialog for void
+        function showVoidPrintConfirmation(transaction) {
+            lastVoidedTransaction = transaction;
+            const dialog = document.getElementById('voidPrintConfirmDialog');
+            document.getElementById('voidConfirmMessage').innerHTML = 
+                `Transaction <strong>${transaction.receiptNo}</strong> voided successfully!<br>Would you like to print the void receipt?`;
+            dialog.style.display = 'block';
+        }
+        
+        // Hide print confirmation dialogs
         function hidePrintConfirmation() {
-            const dialog = document.getElementById('printConfirmDialog');
-            dialog.style.display = 'none';
+            document.getElementById('printConfirmDialog').style.display = 'none';
+        }
+        
+        function hideVoidPrintConfirmation() {
+            document.getElementById('voidPrintConfirmDialog').style.display = 'none';
         }
         
         // Fetch all pending transactions
@@ -636,8 +739,9 @@
                     const data = doc.data();
                     const paymentMethod = data.paymentMethod || '';
                     
-                    // Skip CASH payments
+                    // Skip CASH payments and VOIDED transactions
                     if (paymentMethod === 'CASH') return;
+                    if (data.status === 'VOID' || data.voided === true) return;
                     
                     // Check required fields
                     const hasApprovalCode = (data.approvalCode && data.approvalCode.trim() !== '') || 
@@ -647,10 +751,10 @@
                     const hasPaymentMethod = paymentMethod && paymentMethod.trim() !== '';
                     
                     // Define card payment methods
-                    const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
+                    const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'ECHATPAY', 'ALIPAY', 'QRPAY'];
                     const isCardPayment = cardPayments.includes(paymentMethod);
                     
-                    // Check if complete - all non-cash payments need approval code and batch no
+                    // Check if complete
                     const isComplete = hasApprovalCode && hasBatchNo && hasPaymentMethod;
                     
                     // Only include pending transactions
@@ -762,6 +866,7 @@
                         <td>
                             <button class="action-btn" onclick="editTransaction('${t.id}')">✏️ UPDATE</button>
                             <button class="action-btn approve" onclick="viewDetails('${t.id}')">👁️ VIEW</button>
+                            <button class="action-btn void" onclick="showVoidModal('${t.id}')">⛔ VOID</button>
                         </td>
                     </tr>
                 `;
@@ -810,6 +915,93 @@
             document.getElementById('approvalModal').style.display = 'none';
         }
         
+        // Handle void reason dropdown change
+        document.getElementById('voidReason').addEventListener('change', function() {
+            const otherGroup = document.getElementById('otherReasonGroup');
+            if (this.value === 'OTHER') {
+                otherGroup.style.display = 'block';
+                document.getElementById('otherReason').required = true;
+            } else {
+                otherGroup.style.display = 'none';
+                document.getElementById('otherReason').required = false;
+            }
+        });
+        
+        // Handle void form submission
+        document.getElementById('voidForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const docId = document.getElementById('voidDocId').value;
+            let reason = document.getElementById('voidReason').value;
+            
+            if (reason === 'OTHER') {
+                reason = document.getElementById('otherReason').value.trim();
+                if (!reason) {
+                    alert('Please specify the void reason');
+                    return;
+                }
+            }
+            
+            try {
+                const updateData = {
+                    status: 'VOID',
+                    voided: true,
+                    voidReason: reason,
+                    voidedAt: new Date().toISOString(),
+                    voidedBy: currentUser?.username || 'Unknown'
+                };
+                
+                await passengerDb.collection('Kovelipay').doc(docId).update(updateData);
+                
+                // Get the updated transaction data
+                const updatedDoc = await passengerDb.collection('Kovelipay').doc(docId).get();
+                const updatedData = updatedDoc.data();
+                
+                // Find the original transaction
+                const originalTransaction = allTransactions.find(t => t.id === docId);
+                
+                const voidedTransaction = {
+                    ...originalTransaction,
+                    receiptNo: updatedData.receiptNo || originalTransaction?.receiptNo || 'N/A',
+                    passengerName: updatedData.passengerName || originalTransaction?.passengerName || 'N/A',
+                    paymentMethod: updatedData.paymentMethod || originalTransaction?.paymentMethod || 'VOID',
+                    amount: updatedData.totalAmount || originalTransaction?.amount || 0,
+                    currency: updatedData.currency || originalTransaction?.currency || 'USD',
+                    flightNo: updatedData.flightNo || originalTransaction?.flightNo || 'N/A',
+                    seatNo: updatedData.seatNo || originalTransaction?.seatNo || 'N/A',
+                    adult: updatedData.adult || originalTransaction?.adult || 1,
+                    children: updatedData.children || originalTransaction?.children || 0,
+                    adultPrice: updatedData.adultPrice || originalTransaction?.adultPrice,
+                    childrenPrice: updatedData.childrenPrice || originalTransaction?.childrenPrice,
+                    adultSubtotal: updatedData.adultSubtotal || originalTransaction?.adultSubtotal,
+                    childrenSubtotal: updatedData.childrenSubtotal || originalTransaction?.childrenSubtotal,
+                    subtotal: updatedData.subtotal || originalTransaction?.subtotal,
+                    gstAmount: updatedData.gstAmount || originalTransaction?.gstAmount,
+                    gstRate: updatedData.gstRate || originalTransaction?.gstRate || 8,
+                    expiryTime: updatedData.expiryTime || originalTransaction?.expiryTime,
+                    shiftDate: updatedData.shiftDate || originalTransaction?.shiftDate,
+                    shift: updatedData.shift || originalTransaction?.shift,
+                    cashierName: updatedData.cashierName || originalTransaction?.cashierName,
+                    userRcno: updatedData.userRcno || originalTransaction?.userRcno,
+                    exchangeRate: updatedData.exchangeRate || originalTransaction?.exchangeRate || 15.42,
+                    voidReason: reason,
+                    voidedAt: updateData.voidedAt
+                };
+                
+                showStatus('✅ Transaction voided successfully!');
+                closeVoidModal();
+                
+                // Show void print confirmation
+                showVoidPrintConfirmation(voidedTransaction);
+                
+                fetchPendingTransactions(); // Refresh the list
+                
+            } catch (error) {
+                console.error('Error voiding transaction:', error);
+                showStatus('❌ Error voiding transaction: ' + error.message, true);
+            }
+        });
+        
         // Save approval details
         document.getElementById('approvalForm').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -842,7 +1034,8 @@
                     batchNo: batchNo,
                     updatedAt: new Date().toISOString(),
                     updatedBy: currentUser?.username || 'Unknown',
-                    approvedAt: new Date().toISOString()
+                    approvedAt: new Date().toISOString(),
+                    status: 'APPROVED'
                 };
                 
                 await passengerDb.collection('Kovelipay').doc(docId).update(updateData);
@@ -903,10 +1096,10 @@
             }
         });
         
-        // Confirm dialog buttons
+        // Confirm dialog buttons for normal approval
         document.getElementById('confirmPrintYes').addEventListener('click', function() {
             if (lastApprovedTransaction) {
-                redirectToReceiptPage(lastApprovedTransaction, true);
+                redirectToReceiptPage(lastApprovedTransaction, true, false);
             }
             hidePrintConfirmation();
         });
@@ -914,6 +1107,19 @@
         document.getElementById('confirmPrintNo').addEventListener('click', function() {
             hidePrintConfirmation();
             showStatus('✅ Transaction approved (receipt not printed)');
+        });
+        
+        // Confirm dialog buttons for void
+        document.getElementById('voidPrintYes').addEventListener('click', function() {
+            if (lastVoidedTransaction) {
+                redirectToReceiptPage(lastVoidedTransaction, true, true);
+            }
+            hideVoidPrintConfirmation();
+        });
+        
+        document.getElementById('voidPrintNo').addEventListener('click', function() {
+            hideVoidPrintConfirmation();
+            showStatus('✅ Transaction voided (receipt not printed)');
         });
         
         // Filter functionality
@@ -970,14 +1176,24 @@
             // Close modals when clicking outside
             window.addEventListener('click', function(event) {
                 const approvalModal = document.getElementById('approvalModal');
-                const confirmDialog = document.getElementById('printConfirmDialog');
+                const voidModal = document.getElementById('voidModal');
+                const printDialog = document.getElementById('printConfirmDialog');
+                const voidPrintDialog = document.getElementById('voidPrintConfirmDialog');
                 
                 if (event.target === approvalModal) {
                     closeModal();
                 }
                 
-                if (event.target === confirmDialog) {
+                if (event.target === voidModal) {
+                    closeVoidModal();
+                }
+                
+                if (event.target === printDialog) {
                     hidePrintConfirmation();
+                }
+                
+                if (event.target === voidPrintDialog) {
+                    hideVoidPrintConfirmation();
                 }
             });
         });
