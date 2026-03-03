@@ -418,12 +418,12 @@
     <div class="noncash-breakdown" id="voidSummarySection" style="display: none;">
         <h3>🚫 VOIDED TRANSACTIONS</h3>
         <table class="method-table" id="voidTable">
-            <thead><tr><th>Receipt</th><th>Amount</th><th>Currency</th><th>Method</th><th>Reason</th><th>Processed By</th></tr></thead>
+            <thead><tr><th>Receipt</th><th>Amount</th><th>Currency</th><th>Method</th><th>Reason</th><th>Staff</th></tr></thead>
             <tbody id="voidBody"></tbody>
         </table>
     </div>
 
-    <!-- detailed transaction list (with user who processed) -->
+    <!-- detailed transaction list (with staff who processed) -->
     <div class="table-wrapper">
         <table class="list-table" id="reportTable">
             <thead><tr>
@@ -435,7 +435,7 @@
                 <th>Curr</th>
                 <th>Total</th>
                 <th>Method</th>
-                <th>Processed By</th>
+                <th>Staff</th>
             </tr></thead>
             <tbody id="tableBody"></tbody>
         </table>
@@ -538,18 +538,19 @@
             return '';
         }
 
-        // get user name from various possible fields
-        function getProcessedBy(tx) {
-            // Try different possible field names
-            return tx.processedBy || 
+        // get username from various possible fields
+        function getStaffUsername(tx) {
+            // Try different possible field names for username
+            return tx.username || 
+                   tx.userName || 
                    tx.user || 
-                   tx.operator || 
                    tx.staff || 
                    tx.cashier || 
+                   tx.operator || 
+                   tx.processedBy || 
                    tx.processed_by || 
-                   tx.userName || 
-                   tx.username || 
                    tx.createdBy || 
+                   tx.enteredBy || 
                    'System';
         }
 
@@ -688,17 +689,17 @@
                 // Show void summary section
                 voidSummarySection.style.display = 'block';
                 
-                // Build void transactions table with processed by
+                // Build void transactions table with staff username
                 let voidHtml = '';
                 voidTransactions.forEach(tx => {
-                    const processedBy = getProcessedBy(tx);
+                    const staff = getStaffUsername(tx);
                     voidHtml += `<tr>
                         <td>${tx.receiptNo || tx.id || ''}</td>
                         <td>${(tx.totalAmount || 0).toFixed(2)}</td>
                         <td>${tx.currency || 'USD'}</td>
                         <td>${tx.paymentMethod || 'CASH'}</td>
                         <td>${tx.voidReason || 'No reason provided'}</td>
-                        <td>${processedBy}</td>
+                        <td>${staff}</td>
                     </tr>`;
                 });
                 voidBody.innerHTML = voidHtml;
@@ -721,12 +722,12 @@
             }
             noncashBody.innerHTML = noncashHtml;
 
-            // Transaction list (with user who processed - passenger name and status removed)
+            // Transaction list (with staff username - passenger name and status removed)
             let listHtml = '';
             allTransactions.forEach(tx => {
                 const isVoid = tx.paymentStatus === 'VOID';
                 const rowClass = isVoid ? 'void-row' : '';
-                const processedBy = getProcessedBy(tx);
+                const staff = getStaffUsername(tx);
                 
                 listHtml += `<tr class="${rowClass}">
                     <td>${tx.receiptNo || tx.id || ''}</td>
@@ -737,7 +738,7 @@
                     <td>${tx.currency || 'USD'}</td>
                     <td>${(tx.totalAmount || 0).toFixed(2)}</td>
                     <td>${(tx.paymentMethod || 'CASH').substring(0,12)}</td>
-                    <td>${processedBy}</td>
+                    <td>${staff}</td>
                 </tr>`;
             });
             
