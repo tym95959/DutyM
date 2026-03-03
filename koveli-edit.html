@@ -684,6 +684,7 @@
             <h3>EDIT RECEIPT - <span id="modalReceiptNo"></span></h3>
             
             <input type="hidden" id="editReceiptNo">
+            <input type="hidden" id="editDocumentId">
             <input type="hidden" id="editOriginalPaymentMethod">
             
             <!-- Boarding Pass Details - NOW EDITABLE -->
@@ -852,7 +853,7 @@ async function loadReceipts() {
         allReceipts = [];
         snapshot.forEach(doc => {
             allReceipts.push({
-                id: doc.id,
+                docId: doc.id, // Store the actual document ID
                 ...doc.data()
             });
         });
@@ -961,6 +962,7 @@ function openEditModal(receiptNo) {
     // Populate modal fields
     document.getElementById('modalReceiptNo').textContent = receiptNo;
     document.getElementById('editReceiptNo').value = receiptNo;
+    document.getElementById('editDocumentId').value = receipt.docId; // Store the actual document ID
     document.getElementById('editOriginalPaymentMethod').value = receipt.paymentMethod || '';
     
     // Editable fields
@@ -1113,7 +1115,7 @@ async function saveEdit() {
         return;
     }
     
-    const receiptNo = document.getElementById('editReceiptNo').value;
+    const documentId = document.getElementById('editDocumentId').value;
     const paymentMethod = document.getElementById('editPaymentMethod').value;
     const isCash = paymentMethod === 'CASH';
     
@@ -1128,7 +1130,7 @@ async function saveEdit() {
         }
     }
     
-    if (!confirm(`Update receipt ${receiptNo} with new values?`)) {
+    if (!confirm(`Update receipt with new values?`)) {
         return;
     }
     
@@ -1203,11 +1205,13 @@ async function saveEdit() {
         };
         
         console.log('Saving data:', updateData); // Debug log
+        console.log('Document ID:', documentId); // Debug log
         
-        const kovelipayRef = passengerDb.collection('Kovelipay').doc(receiptNo);
+        // Use the actual document ID, not the receipt number
+        const kovelipayRef = passengerDb.collection('Kovelipay').doc(documentId);
         await kovelipayRef.update(updateData);
         
-        alert(`Receipt ${receiptNo} updated successfully!`);
+        alert(`Receipt updated successfully!`);
         
         // Reload data
         await loadReceipts();
@@ -1285,12 +1289,24 @@ async function confirmVoid() {
         return;
     }
     
+    // Check if receipt is already void
+    if (receiptToVoid.paymentStatus === 'VOID') {
+        alert('This receipt is already voided');
+        closeVoidModal();
+        return;
+    }
+    
     try {
         const voidBtn = document.querySelector('.void-confirm-btn');
         voidBtn.disabled = true;
         voidBtn.textContent = 'VOIDING...';
         
-        const receiptNo = receiptToVoid.receiptNo;
+        // Use the actual document ID, not the receipt number
+        const documentId = receiptToVoid.docId;
+        
+        if (!documentId) {
+            throw new Error('Document ID not found for this receipt');
+        }
         
         const voidData = {
             paymentStatus: 'VOID',
@@ -1301,12 +1317,20 @@ async function confirmVoid() {
             originalCurrency: receiptToVoid.currency
         };
         
-        console.log('Voiding receipt:', receiptNo, voidData);
+        console.log('Voiding receipt with document ID:', documentId);
+        console.log('Void data:', voidData);
         
-        const kovelipayRef = passengerDb.collection('Kovelipay').doc(receiptNo);
+        const kovelipayRef = passengerDb.collection('Kovelipay').doc(documentId);
+        
+        // First check if document exists
+        const doc = await kovelipayRef.get();
+        if (!doc.exists) {
+            throw new Error(`Document with ID ${documentId} does not exist`);
+        }
+        
         await kovelipayRef.update(voidData);
         
-        alert(`Receipt ${receiptNo} has been voided`);
+        alert(`Receipt ${receiptToVoid.receiptNo} has been voided`);
         
         // Create voided receipt object for printing
         const voidedReceipt = {
