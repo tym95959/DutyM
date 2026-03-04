@@ -523,7 +523,9 @@
     </div>
 
 <script>
-// All JavaScript remains identical – only the receipt HTML in generateReceiptContent is updated to the clean style with company address
+// ========== ALL JAVASCRIPT with Dual Scanning Support and Receipt Redirect ==========
+// MODIFIED: Company information saving removed
+
 let currentShiftData = { date: '', shift: '', status: '', openTime: '' };
 let currentCashier = { name: '', level: '', rcno: '' };
 let submissionTime = null;
@@ -535,40 +537,204 @@ let pendingTransactionsCount = 0;
 let lastSavedTransaction = null;
 let shiftDataLoaded = false;
 
+// ========== BOARDING PASS PARSING FUNCTION (used by both fields) ==========
+function parseBoardingPassCode(codeInput) {
+    if (!codeInput) return false;
+    
+    codeInput = codeInput.toUpperCase().trim();
+    
+    if (!codeInput.startsWith('M')) { 
+        alert('PLEASE READ A CORRECT BOARDING PASS (MUST START WITH M, M1, OR M2)'); 
+        return false; 
+    }
+    
+    if (!codeInput.includes('MLE')) { 
+        alert('PLEASE READ A CORRECT BOARDING PASS (MUST CONTAIN MLE)'); 
+        return false; 
+    }
+    
+    try {
+        const mlePosition = codeInput.indexOf('MLE');
+        const isM1orM2 = codeInput.startsWith('M1') || codeInput.startsWith('M2');
+        let namePart = '';
+        
+        if (isM1orM2) {
+            namePart = codeInput.substring(2, mlePosition + 3);
+            const withoutSpaces = namePart.replace(/\s/g, '');
+            if (withoutSpaces.length > 7) {
+                let charCount = 0, cutPosition = namePart.length;
+                for (let i = namePart.length - 1; i >= 0; i--) {
+                    if (namePart[i] !== ' ') { 
+                        charCount++; 
+                        if (charCount === 10) { 
+                            cutPosition = i; 
+                            break; 
+                        }
+                    }
+                }
+                namePart = namePart.substring(0, cutPosition);
+            }
+        } else { 
+            namePart = codeInput.substring(1, mlePosition); 
+        }
+        
+        namePart = namePart.trim();
+        
+        let flightNoPart = '';
+        if (codeInput.length > mlePosition + 3) {
+            flightNoPart = codeInput.substring(mlePosition + 3, mlePosition + 3 + 10);
+            flightNoPart = flightNoPart.substring(3).replace(/\s/g, '');
+        }
+        
+        let seatNo = '';
+        if (isM1orM2 && codeInput.length > mlePosition + 3) {
+            const afterMLE = codeInput.substring(mlePosition + 3);
+            const parts = afterMLE.split(' ').filter(p => p.trim() !== '');
+            let seatString = '';
+            
+            for (let i = 0; i < parts.length; i++) {
+                const part = parts[i];
+                if (/^\d{3}[A-Z]\d{3}[A-Z]\d{4}$/.test(part)) { 
+                    seatString = part; 
+                    break; 
+                }
+            }
+            
+            if (!seatString) {
+                for (let i = 0; i < parts.length; i++) {
+                    const part = parts[i];
+                    if (part.length >= 13 && /[A-Z]/.test(part) && /\d/.test(part)) { 
+                        seatString = part; 
+                        break; 
+                    }
+                }
+            }
+            
+            if (seatString) seatNo = seatString.substring(5, seatString.length - 4);
+        }
+        
+        // Populate all fields
+        document.getElementById('hiddenCode').value = codeInput;
+        document.getElementById('pName').value = namePart.toUpperCase();
+        document.getElementById('flightNo').value = flightNoPart ? flightNoPart.toUpperCase() : '';
+        document.getElementById('seatNo').value = seatNo ? seatNo.toUpperCase() : '';
+        
+        const statusMsg = document.getElementById('statusMessage'); 
+        if (statusMsg) { 
+            statusMsg.textContent = '✓ BOARDING PASS PARSED'; 
+            statusMsg.style.color = '#6b8e23';
+            setTimeout(() => { statusMsg.textContent = ''; }, 2000); 
+        }
+        
+        // Clear the code field if it was used
+        document.getElementById('code').value = '';
+        
+        // Add visual feedback
+        document.getElementById('pName').style.backgroundColor = '#e6f0da';
+        setTimeout(() => {
+            document.getElementById('pName').style.backgroundColor = '';
+        }, 500);
+        
+        return true;
+        
+    } catch (error) { 
+        console.error('Error parsing boarding pass:', error); 
+        alert('ERROR PARSING BOARDING PASS'); 
+        return false; 
+    }
+}
+
+// ========== HANDLE PASSENGER NAME FIELD INPUT ==========
+function handlePassengerNameInput() {
+    const pNameField = document.getElementById('pName');
+    const value = pNameField.value;
+    
+    // Only parse if it looks like a boarding pass code
+    if (value && value.trim().startsWith('M') && value.includes('MLE')) {
+        parseBoardingPassCode(value);
+    }
+}
+
+// ========== ORIGINAL PARSE FUNCTION (for code field) ==========
+function parseAndAddToList() {
+    const codeInput = document.getElementById('code').value;
+    return parseBoardingPassCode(codeInput);
+}
+
+// ========== FIREBASE & DATA FUNCTIONS ==========
 async function fetchPendingTransactionsCount() {
     try {
-        if (typeof passengerDb === 'undefined') { console.warn('passengerDb not initialized'); updatePendingCount(0); return; }
+        if (typeof passengerDb === 'undefined') { 
+            console.warn('passengerDb not initialized'); 
+            updatePendingCount(0); 
+            return; 
+        }
+        
         const kovelipayRef = passengerDb.collection('Kovelipay');
         const snapshot = await kovelipayRef.get();
         let pendingCount = 0;
+        
         snapshot.forEach(doc => {
             const data = doc.data();
             const paymentMethod = data.paymentMethod || '';
+            
+            // Skip CASH transactions - they don't need approval
             if (paymentMethod === 'CASH') return;
-            const hasApprovalCode = data.approvalCode && data.appvalCode?.trim() !== '';
-            const hasBatchNo = data.batchNo && data.batchNo.trim() !== '';
+            
+            // Skip VOIDED transactions
+            if (data.status === 'VOID' || data.voided === true) return;
+            
+            // FIXED: Use correct field names with robust checking
+            const approvalCode = data.approvalCode || data.approvalcode || data.approval || '';
+            const hasApprovalCode = approvalCode.trim() !== '';
+            
+            const batchNo = data.batchNo || data.batchno || data.batch || '';
+            const hasBatchNo = batchNo.trim() !== '';
+            
             let isComplete = false;
+            
+            // Card payments need additional cardType field
             const cardPayments = ['AMEX','VISA','MASTER','UNIONPAY','WECHATPAY','QRPAY','ALIPAY','CARD'];
+            
             if (cardPayments.includes(paymentMethod)) {
-                const hasCardType = data.cardType && data.cardType.trim() !== '';
+                const cardType = data.cardType || data.cardtype || data.card || '';
+                const hasCardType = cardType.trim() !== '';
                 isComplete = hasApprovalCode && hasBatchNo && hasCardType;
-            } else { isComplete = hasApprovalCode && hasBatchNo; }
+            } else { 
+                isComplete = hasApprovalCode && hasBatchNo;
+            }
+            
             if (!isComplete) pendingCount++;
         });
+        
         pendingTransactionsCount = pendingCount;
         updatePendingCount(pendingCount);
-    } catch (error) { console.error('Error fetching pending transactions count:', error); updatePendingCount(0); }
+        
+        console.log(`Pending transactions count updated: ${pendingCount}`);
+        
+    } catch (error) { 
+        console.error('Error fetching pending transactions count:', error); 
+        updatePendingCount(0); 
+    }
 }
+
 function updatePendingCount(count) {
     const pendingBadge = document.getElementById('pendingCount');
     if (pendingBadge) {
         pendingBadge.textContent = count;
-        if (count > 0) { pendingBadge.style.backgroundColor = '#c68b5e'; pendingBadge.style.animation = 'pulse 2s infinite'; }
-        else { pendingBadge.style.backgroundColor = '#6b8e23'; pendingBadge.style.animation = 'none'; }
+        if (count > 0) { 
+            pendingBadge.style.backgroundColor = '#c68b5e'; 
+            pendingBadge.style.animation = 'pulse 2s infinite'; 
+        }
+        else { 
+            pendingBadge.style.backgroundColor = '#6b8e23'; 
+            pendingBadge.style.animation = 'none'; 
+        }
     }
     const approvalBtn = document.getElementById('approvalBtn');
     if (approvalBtn) approvalBtn.title = `${count} pending approval${count !== 1 ? 's' : ''}`;
 }
+
 function loadUserFromLocalStorage() {
     try {
         currentUser = { username: '', level: '', rcno: '', isLoggedIn: false };
@@ -576,20 +742,59 @@ function loadUserFromLocalStorage() {
         const level = localStorage.getItem('level');
         const rcno = localStorage.getItem('rcno');
         const loggedInUserStr = localStorage.getItem('loggedInUser');
-        if (username) { currentUser.username = username; currentUser.isLoggedIn = true; }
-        else if (loggedInUserStr) { try { const loggedInUser = JSON.parse(loggedInUserStr); if (loggedInUser.username) { currentUser.username = loggedInUser.username; currentUser.isLoggedIn = true; } } catch (e) {} }
+        
+        if (username) { 
+            currentUser.username = username; 
+            currentUser.isLoggedIn = true; 
+        }
+        else if (loggedInUserStr) { 
+            try { 
+                const loggedInUser = JSON.parse(loggedInUserStr); 
+                if (loggedInUser.username) { 
+                    currentUser.username = loggedInUser.username; 
+                    currentUser.isLoggedIn = true; 
+                } 
+            } catch (e) {} 
+        }
+        
         if (level) currentUser.level = level;
-        else if (loggedInUserStr) { try { const loggedInUser = JSON.parse(loggedInUserStr); if (loggedInUser.level) currentUser.level = loggedInUser.level; } catch (e) {} }
+        else if (loggedInUserStr) { 
+            try { 
+                const loggedInUser = JSON.parse(loggedInUserStr); 
+                if (loggedInUser.level) currentUser.level = loggedInUser.level; 
+            } catch (e) {} 
+        }
+        
         if (rcno) currentUser.rcno = rcno;
-        else { const rcNo = localStorage.getItem('rcNo'); if (rcNo) currentUser.rcno = rcNo; else { const RCno = localStorage.getItem('RCno'); if (RCno) currentUser.rcno = RCno; } }
-        if (!currentUser.rcno && loggedInUserStr) { try { const loggedInUser = JSON.parse(loggedInUserStr); if (loggedInUser.rcno) currentUser.rcno = loggedInUser.rcno; else if (loggedInUser.rcNo) currentUser.rcno = loggedInUser.rcNo; else if (loggedInUser.RCno) currentUser.rcno = loggedInUser.RCno; } catch (e) {} }
+        else { 
+            const rcNo = localStorage.getItem('rcNo'); 
+            if (rcNo) currentUser.rcno = rcNo; 
+            else { 
+                const RCno = localStorage.getItem('RCno'); 
+                if (RCno) currentUser.rcno = RCno; 
+            } 
+        }
+        
+        if (!currentUser.rcno && loggedInUserStr) { 
+            try { 
+                const loggedInUser = JSON.parse(loggedInUserStr); 
+                if (loggedInUser.rcno) currentUser.rcno = loggedInUser.rcno; 
+                else if (loggedInUser.rcNo) currentUser.rcno = loggedInUser.rcNo; 
+                else if (loggedInUser.RCno) currentUser.rcno = loggedInUser.RCno; 
+            } catch (e) {} 
+        }
+        
         if (!currentUser.username) {
             const statusMsg = document.getElementById('statusMessage');
-            if (statusMsg) { statusMsg.textContent = '⚠️ NOT LOGGED IN - Please log in first'; statusMsg.style.color = '#c68b5e'; }
+            if (statusMsg) { 
+                statusMsg.textContent = '⚠️ NOT LOGGED IN - Please log in first'; 
+                statusMsg.style.color = '#c68b5e'; 
+            }
         }
         updateUserDisplay();
     } catch (error) { console.error('Error loading user from localStorage:', error); }
 }
+
 function updateUserDisplay() {
     const userNameEl = document.getElementById('userName');
     const userLevelEl = document.getElementById('userLevel');
@@ -601,20 +806,42 @@ function updateUserDisplay() {
     if (cashierNameEl) cashierNameEl.textContent = currentUser.username || 'Not logged in';
     currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno };
 }
+
 function logout() {
-    localStorage.removeItem('username'); localStorage.removeItem('level'); localStorage.removeItem('rcno'); localStorage.removeItem('rcNo'); localStorage.removeItem('RCno'); localStorage.removeItem('loggedInUser'); localStorage.removeItem('shiftData'); localStorage.removeItem('cashierData');
+    localStorage.removeItem('username'); 
+    localStorage.removeItem('level'); 
+    localStorage.removeItem('rcno'); 
+    localStorage.removeItem('rcNo'); 
+    localStorage.removeItem('RCno'); 
+    localStorage.removeItem('loggedInUser'); 
+    localStorage.removeItem('shiftData'); 
+    localStorage.removeItem('cashierData');
     window.location.href = 'login.html';
 }
+
 function checkAuth() { loadUserFromLocalStorage(); }
+
 async function loadShiftDataOnce() {
     try {
         const storedShiftData = localStorage.getItem('shiftData');
         if (storedShiftData) {
-            try { const parsedData = JSON.parse(storedShiftData); const timestamp = parsedData._timestamp; const now = Date.now(); if (timestamp && (now - timestamp) < 60 * 60 * 1000) { currentShiftData = parsedData; updateShiftDisplay(); shiftDataLoaded = true; loadCashierData(); return; } } catch (e) { console.error('Error parsing stored shift data:', e); }
+            try { 
+                const parsedData = JSON.parse(storedShiftData); 
+                const timestamp = parsedData._timestamp; 
+                const now = Date.now(); 
+                if (timestamp && (now - timestamp) < 60 * 60 * 1000) { 
+                    currentShiftData = parsedData; 
+                    updateShiftDisplay(); 
+                    shiftDataLoaded = true; 
+                    loadCashierData(); 
+                    return; 
+                } 
+            } catch (e) { console.error('Error parsing stored shift data:', e); }
         }
         await fetchAndStoreShiftData();
     } catch (error) { console.error('Error in loadShiftDataOnce:', error); }
 }
+
 async function fetchAndStoreShiftData() {
     try {
         const shiftInfo = document.getElementById('shiftInfo');
@@ -622,59 +849,157 @@ async function fetchAndStoreShiftData() {
         const shiftElement = document.getElementById('currentShift');
         const statusBadge = document.getElementById('shiftStatus');
         if (!shiftInfo || !dateElement || !shiftElement || !statusBadge) return;
-        dateElement.textContent = 'Loading...'; shiftElement.textContent = 'Loading...'; shiftInfo.classList.add('loading');
-        if (typeof passengerDb === 'undefined') { dateElement.textContent = 'DB ERROR'; shiftElement.textContent = 'NOT INITIALIZED'; shiftInfo.classList.remove('loading'); shiftInfo.classList.add('error'); return; }
+        
+        dateElement.textContent = 'Loading...'; 
+        shiftElement.textContent = 'Loading...'; 
+        shiftInfo.classList.add('loading');
+        
+        if (typeof passengerDb === 'undefined') { 
+            dateElement.textContent = 'DB ERROR'; 
+            shiftElement.textContent = 'NOT INITIALIZED'; 
+            shiftInfo.classList.remove('loading'); 
+            shiftInfo.classList.add('error'); 
+            return; 
+        }
+        
         let shiftDoc = null;
         try { shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get(); } catch (e) {}
-        if (!shiftDoc || !shiftDoc.exists) { try { shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get(); } catch (e) {} }
-        if (!shiftDoc || !shiftDoc.exists) { try { shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get(); } catch (e) {} }
+        if (!shiftDoc || !shiftDoc.exists) { 
+            try { shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get(); } catch (e) {} 
+        }
+        if (!shiftDoc || !shiftDoc.exists) { 
+            try { shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get(); } catch (e) {} 
+        }
+        
         if (shiftDoc && shiftDoc.exists) {
             const data = shiftDoc.data();
-            currentShiftData = { date: data.date || '', shift: '', status: '', openTime: data.updated || data.openTime || '', _timestamp: Date.now() };
-            if (data.morning === 'open') { currentShiftData.shift = 'MORNING'; currentShiftData.status = 'OPEN'; }
-            else if (data.evening === 'open') { currentShiftData.shift = 'EVENING'; currentShiftData.status = 'OPEN'; }
-            else { currentShiftData.shift = 'NO OPEN SHIFT'; currentShiftData.status = 'CLOSED'; }
+            currentShiftData = { 
+                date: data.date || '', 
+                shift: '', 
+                status: '', 
+                openTime: data.updated || data.openTime || '', 
+                _timestamp: Date.now() 
+            };
+            
+            if (data.morning === 'open') { 
+                currentShiftData.shift = 'MORNING'; 
+                currentShiftData.status = 'OPEN'; 
+            }
+            else if (data.evening === 'open') { 
+                currentShiftData.shift = 'EVENING'; 
+                currentShiftData.status = 'OPEN'; 
+            }
+            else { 
+                currentShiftData.shift = 'NO OPEN SHIFT'; 
+                currentShiftData.status = 'CLOSED'; 
+            }
+            
             localStorage.setItem('shiftData', JSON.stringify(currentShiftData));
             shiftDataLoaded = true;
             await fetchAndStoreCashierData();
         } else {
-            currentShiftData = { date: '', shift: 'NO SHIFT DATA', status: 'NOT FOUND', openTime: '', _timestamp: Date.now() };
+            currentShiftData = { 
+                date: '', 
+                shift: 'NO SHIFT DATA', 
+                status: 'NOT FOUND', 
+                openTime: '', 
+                _timestamp: Date.now() 
+            };
         }
         updateShiftDisplay();
     } catch (error) { console.error('Error fetching shift data:', error); }
 }
+
 async function fetchAndStoreCashierData() {
     try {
         const storedCashierData = localStorage.getItem('cashierData');
         if (storedCashierData) {
-            try { const parsedData = JSON.parse(storedCashierData); const timestamp = parsedData._timestamp; const now = Date.now(); if (timestamp && (now - timestamp) < 60 * 60 * 1000) { currentCashier = parsedData; updateCashierDisplay(); return; } } catch (e) { console.error('Error parsing stored cashier data:', e); }
+            try { 
+                const parsedData = JSON.parse(storedCashierData); 
+                const timestamp = parsedData._timestamp; 
+                const now = Date.now(); 
+                if (timestamp && (now - timestamp) < 60 * 60 * 1000) { 
+                    currentCashier = parsedData; 
+                    updateCashierDisplay(); 
+                    return; 
+                } 
+            } catch (e) { console.error('Error parsing stored cashier data:', e); }
         }
+        
         if (currentUser.username) {
-            currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() };
+            currentCashier = { 
+                name: currentUser.username, 
+                level: currentUser.level, 
+                rcno: currentUser.rcno, 
+                _timestamp: Date.now() 
+            };
             localStorage.setItem('cashierData', JSON.stringify(currentCashier));
             updateCashierDisplay();
         }
     } catch (error) { console.error('Error fetching cashier data:', error); }
 }
+
 function loadCashierData() {
     const storedCashierData = localStorage.getItem('cashierData');
     if (storedCashierData) {
-        try { const parsedData = JSON.parse(storedCashierData); const timestamp = parsedData._timestamp; const now = Date.now(); if (timestamp && (now - timestamp) < 60 * 60 * 1000) { currentCashier = parsedData; } else { currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() }; localStorage.setItem('cashierData', JSON.stringify(currentCashier)); } } catch (e) { console.error('Error parsing stored cashier data:', e); currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() }; localStorage.setItem('cashierData', JSON.stringify(currentCashier)); }
-    } else { currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() }; localStorage.setItem('cashierData', JSON.stringify(currentCashier)); }
+        try { 
+            const parsedData = JSON.parse(storedCashierData); 
+            const timestamp = parsedData._timestamp; 
+            const now = Date.now(); 
+            if (timestamp && (now - timestamp) < 60 * 60 * 1000) { 
+                currentCashier = parsedData; 
+            } else { 
+                currentCashier = { 
+                    name: currentUser.username, 
+                    level: currentUser.level, 
+                    rcno: currentUser.rcno, 
+                    _timestamp: Date.now() 
+                }; 
+                localStorage.setItem('cashierData', JSON.stringify(currentCashier)); 
+            } 
+        } catch (e) { 
+            console.error('Error parsing stored cashier data:', e); 
+            currentCashier = { 
+                name: currentUser.username, 
+                level: currentUser.level, 
+                rcno: currentUser.rcno, 
+                _timestamp: Date.now() 
+            }; 
+            localStorage.setItem('cashierData', JSON.stringify(currentCashier)); 
+        }
+    } else { 
+        currentCashier = { 
+            name: currentUser.username, 
+            level: currentUser.level, 
+            rcno: currentUser.rcno, 
+            _timestamp: Date.now() 
+        }; 
+        localStorage.setItem('cashierData', JSON.stringify(currentCashier)); 
+    }
     updateCashierDisplay();
 }
+
 function updateCashierDisplay() {
     const cashierNameEl = document.getElementById('cashierName');
     if (cashierNameEl && currentCashier.name) cashierNameEl.textContent = currentCashier.name;
 }
-function refreshShiftData() { shiftDataLoaded = false; localStorage.removeItem('shiftData'); localStorage.removeItem('cashierData'); fetchAndStoreShiftData(); }
+
+function refreshShiftData() { 
+    shiftDataLoaded = false; 
+    localStorage.removeItem('shiftData'); 
+    localStorage.removeItem('cashierData'); 
+    fetchAndStoreShiftData(); 
+}
+
 function updateShiftDisplay() {
     const dateElement = document.getElementById('currentDate');
     const shiftElement = document.getElementById('currentShift');
     const statusBadge = document.getElementById('shiftStatus');
     const shiftInfo = document.getElementById('shiftInfo');
     if (!dateElement || !shiftElement || !statusBadge) return;
+    
     dateElement.textContent = currentShiftData.date || 'NO DATE';
+    
     if (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') {
         shiftElement.textContent = currentShiftData.shift;
         statusBadge.textContent = currentShiftData.status;
@@ -686,124 +1011,222 @@ function updateShiftDisplay() {
     }
     shiftInfo.classList.remove('loading', 'error');
 }
+
 async function generateReceiptNumber() {
     try {
-        if (typeof passengerDb === 'undefined') { const timestamp = Date.now(); const randomPart = Math.floor(Math.random() * 1000); return 'R-' + timestamp.toString().slice(-5) + randomPart; }
+        if (typeof passengerDb === 'undefined') { 
+            const timestamp = Date.now(); 
+            const randomPart = Math.floor(Math.random() * 1000); 
+            return 'R-' + timestamp.toString().slice(-5) + randomPart; 
+        }
+        
         const kovelipayRef = passengerDb.collection('Kovelipay');
         const snapshot = await kovelipayRef.get();
         let maxNumber = 3059;
+        
         snapshot.forEach(doc => {
             const data = doc.data();
             const receiptNo = data.receiptNo || '';
             let numPart = 0;
+            
             if (receiptNo.startsWith('R-')) numPart = parseInt(receiptNo.substring(2).replace(/^0+/, ''));
             else if (receiptNo.startsWith('R')) numPart = parseInt(receiptNo.substring(1));
             else numPart = parseInt(receiptNo);
+            
             if (!isNaN(numPart) && numPart > maxNumber) maxNumber = numPart;
         });
+        
         const nextNumber = maxNumber + 1;
         const nextReceiptNo = 'R-' + nextNumber.toString().padStart(5, '0');
         return nextReceiptNo;
-    } catch (error) { console.error('Error generating receipt number:', error); const timestamp = Date.now(); return 'R-' + timestamp.toString().slice(-5); }
+    } catch (error) { 
+        console.error('Error generating receipt number:', error); 
+        const timestamp = Date.now(); 
+        return 'R-' + timestamp.toString().slice(-5); 
+    }
 }
+
 async function saveToFirebase(data) {
     try {
         if (typeof passengerDb === 'undefined') throw new Error('passengerDb not initialized');
         const kovelipayRef = passengerDb.collection('Kovelipay');
         const docRef = await kovelipayRef.add(data);
         return { id: docRef.id, ...data };
-    } catch (error) { console.error('Error saving to Firebase:', error); throw error; }
+    } catch (error) { 
+        console.error('Error saving to Firebase:', error); 
+        throw error; 
+    }
 }
+
 async function fetchTransactionByReceipt(receiptNo) {
     try {
         if (typeof passengerDb === 'undefined') throw new Error('passengerDb not initialized');
+        
         const kovelipayRef = passengerDb.collection('Kovelipay');
         const snapshot = await kovelipayRef.where('receiptNo', '==', receiptNo).limit(1).get();
-        if (!snapshot.empty) { const doc = snapshot.docs[0]; return { id: doc.id, ...doc.data() }; }
+        
+        if (!snapshot.empty) { 
+            const doc = snapshot.docs[0]; 
+            return { id: doc.id, ...doc.data() }; 
+        }
+        
         const docById = await kovelipayRef.doc(receiptNo).get();
         if (docById.exists) return { id: docById.id, ...docById.data() };
+        
         return null;
-    } catch (error) { console.error('Error fetching transaction:', error); throw error; }
+    } catch (error) { 
+        console.error('Error fetching transaction:', error); 
+        throw error; 
+    }
 }
+
 function updateDateTime() {
     const now = new Date();
-    const dateTimeString = now.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    const dateTimeString = now.toLocaleString('en-US', { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit', 
+        hour12: false 
+    });
     document.getElementById('currentDateTime').value = dateTimeString;
 }
+
 function calculateExpiryTime() {
     if (!submissionTime) submissionTime = new Date();
     expiryTime = new Date(submissionTime.getTime() + (3 * 60 * 60 * 1000));
+    
     const hours = expiryTime.getHours().toString().padStart(2,'0');
     const minutes = expiryTime.getMinutes().toString().padStart(2,'0');
     const seconds = expiryTime.getSeconds().toString().padStart(2,'0');
     const timeOnlyString = `${hours}:${minutes}:${seconds}`;
-    const fullExpiryString = expiryTime.toLocaleString('en-US', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+    const fullExpiryString = expiryTime.toLocaleString('en-US', { 
+        year:'numeric', 
+        month:'2-digit', 
+        day:'2-digit', 
+        hour:'2-digit', 
+        minute:'2-digit', 
+        second:'2-digit', 
+        hour12:false 
+    });
+    
     document.getElementById('expiryTime').value = timeOnlyString;
     document.getElementById('expiryTimeDisplay').textContent = timeOnlyString;
+    
     return { display: timeOnlyString, full: fullExpiryString, timestamp: expiryTime };
 }
+
 setInterval(updateDateTime, 1000);
+
 function getAirlineName(iataCode) {
     if (!iataCode) return '';
     const airline = window.airlineData?.airlines_flying_to_maldives.find(a => a.iata === iataCode);
     return airline ? airline.airline.toUpperCase() : iataCode.toUpperCase();
 }
+
 function setupNumberInputs() {
     const adultInput = document.getElementById('adult');
     const childrenInput = document.getElementById('children');
-    document.getElementById('adultIncrease').addEventListener('click', function() { let currentValue = parseInt(adultInput.value) || 0; adultInput.value = currentValue + 1; updateTotalPassengers(); });
-    document.getElementById('adultDecrease').addEventListener('click', function() { let currentValue = parseInt(adultInput.value) || 0; if (currentValue > 0) { adultInput.value = currentValue - 1; updateTotalPassengers(); } });
-    document.getElementById('childrenIncrease').addEventListener('click', function() { let currentValue = parseInt(childrenInput.value) || 0; childrenInput.value = currentValue + 1; updateTotalPassengers(); });
-    document.getElementById('childrenDecrease').addEventListener('click', function() { let currentValue = parseInt(childrenInput.value) || 0; if (currentValue > 0) { childrenInput.value = currentValue - 1; updateTotalPassengers(); } });
+    
+    document.getElementById('adultIncrease').addEventListener('click', function() { 
+        let currentValue = parseInt(adultInput.value) || 0; 
+        adultInput.value = currentValue + 1; 
+        updateTotalPassengers(); 
+    });
+    
+    document.getElementById('adultDecrease').addEventListener('click', function() { 
+        let currentValue = parseInt(adultInput.value) || 0; 
+        if (currentValue > 0) { 
+            adultInput.value = currentValue - 1; 
+            updateTotalPassengers(); 
+        } 
+    });
+    
+    document.getElementById('childrenIncrease').addEventListener('click', function() { 
+        let currentValue = parseInt(childrenInput.value) || 0; 
+        childrenInput.value = currentValue + 1; 
+        updateTotalPassengers(); 
+    });
+    
+    document.getElementById('childrenDecrease').addEventListener('click', function() { 
+        let currentValue = parseInt(childrenInput.value) || 0; 
+        if (currentValue > 0) { 
+            childrenInput.value = currentValue - 1; 
+            updateTotalPassengers(); 
+        } 
+    });
 }
+
 function calculatePrices() {
-    if (typeof rates === 'undefined') { console.error('rates object not found'); return; }
+    if (typeof rates === 'undefined') { 
+        console.error('rates object not found'); 
+        return; 
+    }
+    
     const adult = parseInt(document.getElementById('adult').value) || 0;
     const children = parseInt(document.getElementById('children').value) || 0;
     const currency = document.getElementById('currency').value;
     const rateType = document.getElementById('rateType').value;
+    
     if (rates.exchangeRate && rates.exchangeRate.MVRtoUSD) currentExchangeRate = rates.exchangeRate.MVRtoUSD;
+    
     const adultRateKey = `Adult${rateType}${currency}`;
     const childrenRateKey = `Kids${rateType}${currency}`;
+    
     let adultRate = rates[adultRateKey] || { price: 0, GST: 8 };
     let childrenRate = rates[childrenRateKey] || { price: 0, GST: 8 };
+    
     if (currency === 'MVR' && (adultRate.price === 0 || childrenRate.price === 0)) {
         const adultUSDRateKey = `Adult${rateType}USD`;
         const childrenUSDRateKey = `Kids${rateType}USD`;
         const adultUSDRate = rates[adultUSDRateKey] || { price: 0, GST: 8 };
         const childrenUSDRate = rates[childrenUSDRateKey] || { price: 0, GST: 8 };
+        
         if (adultUSDRate.price > 0) adultRate = { price: adultUSDRate.price * currentExchangeRate, GST: adultUSDRate.GST || 8 };
         if (childrenUSDRate.price > 0) childrenRate = { price: childrenUSDRate.price * currentExchangeRate, GST: childrenUSDRate.GST || 8 };
     }
+    
     const gstRate = adultRate.GST || 8;
     document.getElementById('gstRate').value = gstRate;
+    
     const adultSubtotal = adult * adultRate.price;
     const childrenSubtotal = children * childrenRate.price;
     const subtotal = adultSubtotal + childrenSubtotal;
     const gstAmount = subtotal * (gstRate / 100);
     const totalAmount = subtotal + gstAmount;
+    
     document.getElementById('adultPrice').textContent = adultRate.price.toFixed(2);
     document.getElementById('childrenPrice').textContent = childrenRate.price.toFixed(2);
-    document.getElementById('adultCurrency').textContent = currency; document.getElementById('childrenCurrency').textContent = currency;
+    document.getElementById('adultCurrency').textContent = currency; 
+    document.getElementById('childrenCurrency').textContent = currency;
     document.getElementById('adultSubtotal').textContent = adultSubtotal.toFixed(2);
     document.getElementById('childrenSubtotal').textContent = childrenSubtotal.toFixed(2);
-    document.getElementById('adultSubtotalCurrency').textContent = currency; document.getElementById('childrenSubtotalCurrency').textContent = currency;
+    document.getElementById('adultSubtotalCurrency').textContent = currency; 
+    document.getElementById('childrenSubtotalCurrency').textContent = currency;
     document.getElementById('subtotalAmount').textContent = subtotal.toFixed(2);
     document.getElementById('gstAmount').textContent = gstAmount.toFixed(2);
     document.getElementById('totalAmount').textContent = totalAmount.toFixed(2);
     document.getElementById('subtotalCurrency').textContent = currency;
     document.getElementById('gstCurrency').textContent = currency;
     document.getElementById('totalCurrency').textContent = currency;
+    
     let rateInfo = document.getElementById('rateInfo');
     let rateInfoText = `Rate: Adult ${rateType} ${currency} - ${adultRate.price.toFixed(2)} | Kids ${rateType} ${currency} - ${childrenRate.price.toFixed(2)} (GST: ${gstRate}%)`;
+    
     if (currency === 'MVR' && rates.exchangeRate) {
         const adultUSDPrice = adultRate.price / currentExchangeRate;
         const childrenUSDPrice = childrenRate.price / currentExchangeRate;
         rateInfoText += ` (USD: $${adultUSDPrice.toFixed(2)} / $${childrenUSDPrice.toFixed(2)})`;
         document.getElementById('exchangeRateInfo').textContent = `1 USD = ${currentExchangeRate.toFixed(2)} MVR`;
-    } else { document.getElementById('exchangeRateInfo').textContent = ''; }
+    } else { 
+        document.getElementById('exchangeRateInfo').textContent = ''; 
+    }
+    
     rateInfo.textContent = rateInfoText;
 }
+
 function updateTotalPassengers() {
     const adult = parseInt(document.getElementById('adult').value) || 0;
     const children = parseInt(document.getElementById('children').value) || 0;
@@ -811,181 +1234,344 @@ function updateTotalPassengers() {
     document.getElementById('totalPassengers').value = total;
     calculatePrices();
 }
-function clearAllFields() {
-    document.getElementById('hiddenCode').value = ''; document.getElementById('pName').value = ''; document.getElementById('flightNo').value = ''; document.getElementById('seatNo').value = '';
-    document.getElementById('adult').value = '1'; document.getElementById('children').value = '0'; document.getElementById('currency').value = 'USD'; document.getElementById('rateType').value = 'A'; document.getElementById('paymentMethod').value = 'CASH'; document.getElementById('receiptNo').value = '';
-    submissionTime = null; expiryTime = null; currentReceiptNo = ''; document.getElementById('expiryTime').value = ''; document.getElementById('expiryTimeDisplay').textContent = '--:--:--'; document.getElementById('receiptNoDisplay').textContent = '______';
-    updateTotalPassengers();
-    const statusMsg = document.getElementById('statusMessage'); if (statusMsg) { statusMsg.textContent = '✓ ALL FIELDS CLEARED'; setTimeout(() => { statusMsg.textContent = ''; }, 2000); }
-    document.getElementById('code').focus();
-}
-async function submitForm() {
-    if (!currentUser.username) { alert('Please log in first'); window.location.href = 'index.html'; return; }
-    if (!document.getElementById('pName').value) { alert('Please scan a boarding pass first'); return; }
-    if (currentShiftData.status !== 'OPEN') { alert('No open shift found. Please open a shift first.'); return; }
-    if (!currentShiftData.date) { alert('Shift date is missing. Please refresh shift data.'); return; }
-    const submitBtn = document.getElementById('submitBtn'); submitBtn.disabled = true; submitBtn.textContent = 'SAVING...';
-    try {
-        const receiptNo = await generateReceiptNumber(); currentReceiptNo = receiptNo;
-        document.getElementById('receiptNo').value = receiptNo; document.getElementById('receiptNoDisplay').textContent = receiptNo;
-        const shiftDate = currentShiftData.date;
-        let standardizedDate = shiftDate;
-        if (shiftDate.includes('/')) { const parts = shiftDate.split('/'); if (parts.length === 3) standardizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`; }
-        const boardingPassData = { passengerName: document.getElementById('pName').value, flightNo: document.getElementById('flightNo').value, seatNo: document.getElementById('seatNo').value, date: shiftDate, shift: currentShiftData.shift, shiftOpenTime: currentShiftData.openTime };
-        const paymentData = { adult: parseInt(document.getElementById('adult').value) || 0, children: parseInt(document.getElementById('children').value) || 0, totalPassengers: parseInt(document.getElementById('totalPassengers').value) || 0, currency: document.getElementById('currency').value, rateType: document.getElementById('rateType').value, paymentMethod: document.getElementById('paymentMethod').value, adultPrice: parseFloat(document.getElementById('adultPrice').textContent), childrenPrice: parseFloat(document.getElementById('childrenPrice').textContent), adultSubtotal: parseFloat(document.getElementById('adultSubtotal').textContent), childrenSubtotal: parseFloat(document.getElementById('childrenSubtotal').textContent), subtotal: parseFloat(document.getElementById('subtotalAmount').textContent), gstAmount: parseFloat(document.getElementById('gstAmount').textContent), gstRate: parseInt(document.getElementById('gstRate').value), totalAmount: parseFloat(document.getElementById('totalAmount').textContent) };
-        submissionTime = new Date(); const expiryResult = calculateExpiryTime();
-        const companyInfoData = typeof companyInfo !== 'undefined' ? companyInfo : { name: 'Koveli Lounge', address: 'Velana International Airport', phone: '+960 304 6677' };
-        const exchangeRateData = {}; if (typeof rates !== 'undefined' && rates.exchangeRate) { exchangeRateData.exchangeRate = rates.exchangeRate; exchangeRateData.exchangeRateUsed = currentExchangeRate; }
-        const userData = { username: currentUser.username || 'Unknown', level: currentUser.level || 'N/A', rcno: currentUser.rcno || 'N/A', cashierName: currentCashier.name || currentUser.username || 'Unknown', loginTime: new Date().toISOString() };
-        const completeData = { receiptNo: receiptNo, ...boardingPassData, ...paymentData, ...exchangeRateData, user: userData, transactionDate: shiftDate, shiftDate: shiftDate, date: shiftDate, shiftDateStandardized: standardizedDate, submissionDateTime: document.getElementById('currentDateTime').value, submissionTimestamp: new Date().toISOString(), expiryDateTime: expiryResult.full, expiryTime: expiryResult.display, shiftName: currentShiftData.shift, shiftStatus: currentShiftData.status, shiftOpenTimestamp: currentShiftData.openTime, cashier: { name: currentCashier.name || currentUser.username, level: currentCashier.level || currentUser.level, rcno: currentCashier.rcno || currentUser.rcno }, companyInfo: companyInfoData, timestamp: firebase.firestore.FieldValue.serverTimestamp(), createdAt: new Date().toISOString(), shiftMetadata: { date: shiftDate, shift: currentShiftData.shift, openTime: currentShiftData.openTime, status: currentShiftData.status, usedForTransaction: true }, uniqueId: Date.now() + '-' + Math.random().toString(36).substr(2, 9) };
-        const savedData = await saveToFirebase(completeData);
-        lastSavedTransaction = savedData;
-        const statusMsg = document.getElementById('statusMessage'); if (statusMsg) { statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED (Shift: ${shiftDate} ${currentShiftData.shift})`; setTimeout(() => { statusMsg.textContent = ''; }, 5000); }
-        alert(`Receipt #${receiptNo} saved!\nShift Date: ${shiftDate} ${currentShiftData.shift}\nCashier: ${currentCashier.name}\nExpires at: ${expiryResult.display}\nTotal: ${paymentData.currency} ${paymentData.totalAmount.toFixed(2)}`);
-        return savedData;
-    } catch (error) { console.error('Error in submitForm:', error); document.getElementById('statusMessage').textContent = '✗ ERROR SAVING TO DATABASE'; alert('Error saving to database: ' + error.message); }
-    finally { submitBtn.disabled = false; submitBtn.textContent = 'SUBMIT & SAVE'; }
-}
 
-// ========== UPDATED RECEIPT GENERATOR with Company Address Header ==========
-function generateReceiptContent(transactionData = null) {
-    let data;
-    if (transactionData) data = transactionData;
-    else {
-        data = {
-            receiptNo: document.getElementById('receiptNo').value || 'N/A',
-            passengerName: document.getElementById('pName').value || 'N/A',
-            flightNo: document.getElementById('flightNo').value || 'N/A',
-            seatNo: document.getElementById('seatNo').value || 'N/A',
-            adult: document.getElementById('adult').value,
-            children: document.getElementById('children').value,
-            currency: document.getElementById('currency').value,
-            rateType: document.getElementById('rateType').value,
-            paymentMethod: document.getElementById('paymentMethod').value,
-            adultPrice: document.getElementById('adultPrice').textContent,
-            childrenPrice: document.getElementById('childrenPrice').textContent,
-            adultSubtotal: document.getElementById('adultSubtotal').textContent,
-            childrenSubtotal: document.getElementById('childrenSubtotal').textContent,
-            subtotal: document.getElementById('subtotalAmount').textContent,
-            gstAmount: document.getElementById('gstAmount').textContent,
-            gstRate: document.getElementById('gstRate').value,
-            totalAmount: document.getElementById('totalAmount').textContent,
-            submissionDateTime: document.getElementById('currentDateTime').value,
-            expiryTime: document.getElementById('expiryTime').value || '--:--:--',
-            shiftDate: currentShiftData.date || 'N/A',
-            shift: currentShiftData.shift || 'N/A',
-            cashierName: currentCashier.name || currentUser.username || 'N/A',
-            userRcno: currentUser.rcno || 'N/A'
-        };
+function clearAllFields() {
+    document.getElementById('hiddenCode').value = ''; 
+    document.getElementById('pName').value = ''; 
+    document.getElementById('flightNo').value = ''; 
+    document.getElementById('seatNo').value = '';
+    document.getElementById('adult').value = '1'; 
+    document.getElementById('children').value = '0'; 
+    document.getElementById('currency').value = 'USD'; 
+    document.getElementById('rateType').value = 'A'; 
+    document.getElementById('paymentMethod').value = 'CASH'; 
+    document.getElementById('receiptNo').value = '';
+    
+    submissionTime = null; 
+    expiryTime = null; 
+    currentReceiptNo = ''; 
+    document.getElementById('expiryTime').value = ''; 
+    document.getElementById('expiryTimeDisplay').textContent = '--:--:--'; 
+    document.getElementById('receiptNoDisplay').textContent = '______';
+    
+    updateTotalPassengers();
+    
+    const statusMsg = document.getElementById('statusMessage'); 
+    if (statusMsg) { 
+        statusMsg.textContent = '✓ ALL FIELDS CLEARED'; 
+        setTimeout(() => { statusMsg.textContent = ''; }, 2000); 
     }
     
-    const timeOnly = data.submissionDateTime ? 
-        (data.submissionDateTime.split(' ')[1] || data.submissionDateTime) : '';
-    const isReprint = transactionData ? true : false;
-    const reprintMark = isReprint ? 
-        '<div class="reprint">*** R E P R I N T   C O P Y ***</div>' : '';
-
-    // Clean, professional receipt with company address header
-    return `
-        <div class="company-header">
-            <div class="company-name">KOVELI LOUNGE</div>
-            <div class="company-address">
-                <div>Velana International Airport</div>
-                <div>Male', Republic of Maldives</div>
-                <div>Tel: +960 304 6677 | Email: lounge@koveli.mv</div>
-            </div>
-        </div>
-        
-        ${reprintMark}
-        
-        <div class="row">
-            <span class="label">Receipt No:</span>
-            <span class="value">${data.receiptNo}</span>
-        </div>
-        
-        <div class="row">
-            <span class="label">Date:</span>
-            <span class="value">${data.shiftDate} ${timeOnly}</span>
-        </div>
-        
-        <div class="row">
-            <span class="label">Shift:</span>
-            <span class="value">${data.shift}</span>
-        </div>
-        
-        <div class="row">
-            <span class="label">Cashier:</span>
-            <span class="value">${data.cashierName} (${data.userRcno})</span>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="passenger-name">${data.passengerName}</div>
-
-        <div class="flight-details">
-            <span>Flight: ${data.flightNo || 'N/A'}</span>
-            <span>Seat: ${data.seatNo || 'N/A'}</span>
-        </div>
-
-        <table class="items-table">
-            <tr>
-                <td>Adult x${data.adult} (${data.rateType})</td>
-                <td>${data.currency} ${parseFloat(data.adultPrice).toFixed(2)}</td>
-                <td>${data.currency} ${parseFloat(data.adultSubtotal).toFixed(2)}</td>
-            </tr>
-            <tr>
-                <td>Child x${data.children} (${data.rateType})</td>
-                <td>${data.currency} ${parseFloat(data.childrenPrice).toFixed(2)}</td>
-                <td>${data.currency} ${parseFloat(data.childrenSubtotal).toFixed(2)}</td>
-            </tr>
-        </table>
-
-        <div class="divider"></div>
-
-        <div class="row">
-            <span class="label">Subtotal:</span>
-            <span class="value">${data.currency} ${parseFloat(data.subtotal).toFixed(2)}</span>
-        </div>
-        
-        <div class="row">
-            <span class="label">GST ${data.gstRate}%:</span>
-            <span class="value">${data.currency} ${parseFloat(data.gstAmount).toFixed(2)}</span>
-        </div>
-        
-        <div class="total-row">
-            <span>TOTAL:</span>
-            <span>${data.currency} ${parseFloat(data.totalAmount).toFixed(2)}</span>
-        </div>
-
-        <div class="payment-method">
-            <span>Payment Method:</span>
-            <span>${data.paymentMethod}</span>
-        </div>
-
-        ${data.currency === 'MVR' ? 
-            `<div class="row">
-                <span class="label">Exchange Rate:</span>
-                <span class="value">1 USD = ${currentExchangeRate.toFixed(2)} MVR</span>
-            </div>` : ''}
-
-        <div class="validity-block">
-            <div class="valid-label">VALID UNTIL</div>
-            <div class="expiry-time">${data.expiryTime}</div>
-            <div class="valid-note">(3 hours from issue)</div>
-        </div>
-
-        <div class="footer">Thank you for choosing Koveli Lounge</div>
-        <div class="footer thank-you">✈️ Safe travels! ✈️</div>
-    `;
+    document.getElementById('code').focus();
 }
 
-function printReceipt() {
-    if (!document.getElementById('pName').value) { alert('Please scan a boarding pass first'); return; }
-    if (!document.getElementById('receiptNo').value) { alert('Please submit the form first'); return; }
-    const receiptContent = generateReceiptContent();
-    document.getElementById('receiptContent').innerHTML = receiptContent;
-    setTimeout(() => { window.print(); }, 100);
+// ========== ENHANCED REDIRECT TO RECEIPT PAGE WITH VOID SUPPORT ==========
+function redirectToReceiptPage(transactionData, autoPrint = true, isVoid = false) {
+    try {
+        // Ensure transactionData has all required fields
+        const enhancedData = {
+            ...transactionData,
+            // Add void flag if needed
+            isVoid: isVoid,
+            status: isVoid ? 'VOID' : (transactionData.status || 'APPROVED'),
+            // Ensure receipt number is present
+            receiptNo: transactionData.receiptNo || currentReceiptNo || 'N/A'
+        };
+        
+        // Store in localStorage as backup
+        localStorage.setItem('lastReceiptData', JSON.stringify(enhancedData));
+        
+        // Encode data for URL
+        const encodedData = encodeURIComponent(JSON.stringify(enhancedData));
+        
+        // Build URL with parameters
+        let receiptUrl = `receipt.html?data=${encodedData}&returnTo=${encodeURIComponent(window.location.pathname)}`;
+        
+        // Add void parameter to URL if needed (explicitly add it!)
+        if (isVoid) {
+            receiptUrl += '&void=true';
+        }
+        
+        // Add autoPrint parameter
+        if (autoPrint) {
+            receiptUrl += '&autoPrint=true';
+        }
+        
+        // Add reprint flag if this is a reprint
+        if (transactionData.isReprint) {
+            receiptUrl += '&reprint=true';
+        }
+        
+        console.log('Redirecting to receipt URL:', receiptUrl);
+        console.log('Void status:', isVoid);
+        
+        // Redirect to receipt page
+        window.location.href = receiptUrl;
+    } catch (error) {
+        console.error('Error redirecting to receipt page:', error);
+        // Fallback: try with just receipt number
+        if (transactionData && transactionData.receiptNo) {
+            let fallbackUrl = `receipt.html?receiptNo=${transactionData.receiptNo}&autoPrint=true&returnTo=${encodeURIComponent(window.location.pathname)}`;
+            if (isVoid) {
+                fallbackUrl += '&void=true';
+            }
+            window.location.href = fallbackUrl;
+        } else {
+            alert('Error printing receipt. Please use REPRINT function.');
+        }
+    }
 }
+
+// ========== UPDATED SUBMIT FORM WITH REDIRECT ==========
+// MODIFIED: Removed companyInfo from saved data
+async function submitForm() {
+    if (!currentUser.username) { 
+        alert('Please log in first'); 
+        window.location.href = 'index.html'; 
+        return; 
+    }
+    
+    if (!document.getElementById('pName').value) { 
+        alert('Please scan a boarding pass first'); 
+        return; 
+    }
+    
+    if (currentShiftData.status !== 'OPEN') { 
+        alert('No open shift found. Please open a shift first.'); 
+        return; 
+    }
+    
+    if (!currentShiftData.date) { 
+        alert('Shift date is missing. Please refresh shift data.'); 
+        return; 
+    }
+    
+    const submitBtn = document.getElementById('submitBtn'); 
+    const originalText = submitBtn.textContent;
+    
+    // Show loading state
+    submitBtn.disabled = true; 
+    submitBtn.classList.add('btn-loading');
+    submitBtn.textContent = 'SAVING...';
+    
+    try {
+        const receiptNo = await generateReceiptNumber(); 
+        currentReceiptNo = receiptNo;
+        document.getElementById('receiptNo').value = receiptNo; 
+        document.getElementById('receiptNoDisplay').textContent = receiptNo;
+        
+        const shiftDate = currentShiftData.date;
+        let standardizedDate = shiftDate;
+        if (shiftDate.includes('/')) { 
+            const parts = shiftDate.split('/'); 
+            if (parts.length === 3) standardizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`; 
+        }
+        
+        const boardingPassData = { 
+            passengerName: document.getElementById('pName').value, 
+            flightNo: document.getElementById('flightNo').value, 
+            seatNo: document.getElementById('seatNo').value, 
+            date: shiftDate, 
+            shift: currentShiftData.shift, 
+            shiftOpenTime: currentShiftData.openTime 
+        };
+        
+        const paymentData = { 
+            adult: parseInt(document.getElementById('adult').value) || 0, 
+            children: parseInt(document.getElementById('children').value) || 0, 
+            totalPassengers: parseInt(document.getElementById('totalPassengers').value) || 0, 
+            currency: document.getElementById('currency').value, 
+            rateType: document.getElementById('rateType').value, 
+            paymentMethod: document.getElementById('paymentMethod').value, 
+            adultPrice: parseFloat(document.getElementById('adultPrice').textContent), 
+            childrenPrice: parseFloat(document.getElementById('childrenPrice').textContent), 
+            adultSubtotal: parseFloat(document.getElementById('adultSubtotal').textContent), 
+            childrenSubtotal: parseFloat(document.getElementById('childrenSubtotal').textContent), 
+            subtotal: parseFloat(document.getElementById('subtotalAmount').textContent), 
+            gstAmount: parseFloat(document.getElementById('gstAmount').textContent), 
+            gstRate: parseInt(document.getElementById('gstRate').value), 
+            totalAmount: parseFloat(document.getElementById('totalAmount').textContent) 
+        };
+        
+        submissionTime = new Date(); 
+        const expiryResult = calculateExpiryTime();
+        
+        // REMOVED: companyInfoData is no longer created or saved
+        
+        const exchangeRateData = {}; 
+        if (typeof rates !== 'undefined' && rates.exchangeRate) { 
+            exchangeRateData.exchangeRate = rates.exchangeRate; 
+            exchangeRateData.exchangeRateUsed = currentExchangeRate; 
+        }
+        
+        const userData = { 
+            username: currentUser.username || 'Unknown', 
+            level: currentUser.level || 'N/A', 
+            rcno: currentUser.rcno || 'N/A', 
+            cashierName: currentCashier.name || currentUser.username || 'Unknown', 
+            loginTime: new Date().toISOString() 
+        };
+        
+        // MODIFIED: Removed companyInfo from completeData
+        const completeData = { 
+            receiptNo: receiptNo, 
+            ...boardingPassData, 
+            ...paymentData, 
+            ...exchangeRateData, 
+            user: userData, 
+            transactionDate: shiftDate, 
+            shiftDate: shiftDate, 
+            date: shiftDate, 
+            shiftDateStandardized: standardizedDate, 
+            submissionDateTime: document.getElementById('currentDateTime').value, 
+            submissionTimestamp: new Date().toISOString(), 
+            expiryDateTime: expiryResult.full, 
+            expiryTime: expiryResult.display, 
+            shiftName: currentShiftData.shift, 
+            shiftStatus: currentShiftData.status, 
+            shiftOpenTimestamp: currentShiftData.openTime, 
+            cashier: { 
+                name: currentCashier.name || currentUser.username, 
+                level: currentCashier.level || currentUser.level, 
+                rcno: currentCashier.rcno || currentUser.rcno 
+            }, 
+            // companyInfo: companyInfoData,  <-- REMOVED - Company info no longer saved
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(), 
+            createdAt: new Date().toISOString(), 
+            shiftMetadata: { 
+                date: shiftDate, 
+                shift: currentShiftData.shift, 
+                openTime: currentShiftData.openTime, 
+                status: currentShiftData.status, 
+                usedForTransaction: true 
+            }, 
+            uniqueId: Date.now() + '-' + Math.random().toString(36).substr(2, 9) 
+        };
+        
+        // Save to Firebase
+        const savedData = await saveToFirebase(completeData);
+        lastSavedTransaction = savedData;
+        
+        // Show success message briefly
+        const statusMsg = document.getElementById('statusMessage'); 
+        if (statusMsg) { 
+            statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED - Redirecting to print...`; 
+            statusMsg.style.color = '#6b8e23';
+        }
+        
+        // Refresh pending count after new transaction
+        setTimeout(() => {
+            fetchPendingTransactionsCount();
+        }, 1000);
+        
+        // Redirect to receipt page for printing (NOT void)
+        setTimeout(() => {
+            redirectToReceiptPage(savedData, true, false);
+        }, 500); // Small delay to show success message
+        
+    } catch (error) { 
+        console.error('Error in submitForm:', error); 
+        document.getElementById('statusMessage').textContent = '✗ ERROR SAVING TO DATABASE'; 
+        document.getElementById('statusMessage').style.color = '#c68b5e';
+        alert('Error saving to database: ' + error.message);
+        
+        // Reset button
+        submitBtn.disabled = false; 
+        submitBtn.classList.remove('btn-loading');
+        submitBtn.textContent = originalText;
+    }
+}
+
+// ========== UPDATED PRINT RECEIPT FUNCTION ==========
+function printCurrentReceipt() {
+    if (!document.getElementById('pName').value) { 
+        alert('Please scan a boarding pass first'); 
+        return; 
+    }
+    if (!document.getElementById('receiptNo').value) { 
+        alert('Please submit the form first'); 
+        return; 
+    }
+    
+    // Build transaction data from current form
+    const transactionData = {
+        receiptNo: document.getElementById('receiptNo').value,
+        passengerName: document.getElementById('pName').value,
+        flightNo: document.getElementById('flightNo').value,
+        seatNo: document.getElementById('seatNo').value,
+        adult: document.getElementById('adult').value,
+        children: document.getElementById('children').value,
+        currency: document.getElementById('currency').value,
+        rateType: document.getElementById('rateType').value,
+        paymentMethod: document.getElementById('paymentMethod').value,
+        adultPrice: document.getElementById('adultPrice').textContent,
+        childrenPrice: document.getElementById('childrenPrice').textContent,
+        adultSubtotal: document.getElementById('adultSubtotal').textContent,
+        childrenSubtotal: document.getElementById('childrenSubtotal').textContent,
+        subtotal: document.getElementById('subtotalAmount').textContent,
+        gstAmount: document.getElementById('gstAmount').textContent,
+        gstRate: document.getElementById('gstRate').value,
+        totalAmount: document.getElementById('totalAmount').textContent,
+        submissionDateTime: document.getElementById('currentDateTime').value,
+        expiryTime: document.getElementById('expiryTime').value,
+        shiftDate: currentShiftData.date,
+        shift: currentShiftData.shift,
+        cashierName: currentCashier.name || currentUser.username,
+        userRcno: currentUser.rcno,
+        exchangeRate: currentExchangeRate,
+        isReprint: false
+    };
+    
+    redirectToReceiptPage(transactionData, true, false);
+}
+
+// ========== UPDATED REPRINT FUNCTION ==========
+async function searchAndReprintReceipt() {
+    const receiptNo = document.getElementById('reprintReceiptNo').value.trim().toUpperCase();
+    const statusEl = document.getElementById('reprintStatus');
+    const searchBtn = document.getElementById('searchReceiptBtn');
+    
+    if (!receiptNo) { 
+        statusEl.textContent = 'Please enter a receipt number'; 
+        statusEl.style.color = '#c68b5e'; 
+        return; 
+    }
+    
+    statusEl.textContent = 'Searching...'; 
+    statusEl.style.color = '#6b8e23';
+    searchBtn.disabled = true;
+    
+    try {
+        const transaction = await fetchTransactionByReceipt(receiptNo);
+        if (transaction) {
+            statusEl.textContent = '✓ Receipt found. Redirecting to print...'; 
+            statusEl.style.color = '#6b8e23';
+            
+            // Add reprint flag
+            transaction.isReprint = true;
+            
+            // Check if this is a voided transaction
+            const isVoid = transaction.status === 'VOID' || transaction.voided === true;
+            
+            // Close modal and redirect
+            setTimeout(() => {
+                closeReprintModal();
+                redirectToReceiptPage(transaction, true, isVoid);
+            }, 500);
+            
+        } else { 
+            statusEl.textContent = '✗ Receipt not found'; 
+            statusEl.style.color = '#c68b5e';
+            searchBtn.disabled = false;
+        }
+    } catch (error) { 
+        console.error('Error searching for receipt:', error); 
+        statusEl.textContent = '✗ Error searching for receipt'; 
+        statusEl.style.color = '#c68b5e';
+        searchBtn.disabled = false;
+    }
+}
+
 function showReprintModal() {
     const modal = document.getElementById('reprintModal');
     modal.style.display = 'flex';
@@ -993,84 +1579,32 @@ function showReprintModal() {
     document.getElementById('reprintReceiptNo').focus();
     document.getElementById('reprintStatus').textContent = '';
 }
-function closeReprintModal() { document.getElementById('reprintModal').style.display = 'none'; }
-async function searchAndReprintReceipt() {
-    const receiptNo = document.getElementById('reprintReceiptNo').value.trim().toUpperCase();
-    const statusEl = document.getElementById('reprintStatus');
-    if (!receiptNo) { statusEl.textContent = 'Please enter a receipt number'; statusEl.style.color = '#c68b5e'; return; }
-    statusEl.textContent = 'Searching...'; statusEl.style.color = '#6b8e23';
-    try {
-        const transaction = await fetchTransactionByReceipt(receiptNo);
-        if (transaction) {
-            statusEl.textContent = '✓ Receipt found. Printing...'; statusEl.style.color = '#6b8e23';
-            const receiptContent = generateReceiptContent(transaction);
-            document.getElementById('receiptContent').innerHTML = receiptContent;
-            setTimeout(() => { window.print(); closeReprintModal(); }, 100);
-        } else { statusEl.textContent = '✗ Receipt not found'; statusEl.style.color = '#c68b5e'; }
-    } catch (error) { console.error('Error searching for receipt:', error); statusEl.textContent = '✗ Error searching for receipt'; statusEl.style.color = '#c68b5e'; }
+
+function closeReprintModal() { 
+    document.getElementById('reprintModal').style.display = 'none';
+    document.getElementById('searchReceiptBtn').disabled = false;
 }
-function parseAndAddToList() {
-    const codeInput = document.getElementById('code').value.toUpperCase();
-    if (!codeInput) return false;
-    if (!codeInput.startsWith('M')) { alert('PLEASE READ A CORRECT BOARDING PASS (MUST START WITH M, M1, OR M2)'); return false; }
-    if (!codeInput.includes('MLE')) { alert('PLEASE READ A CORRECT BOARDING PASS (MUST CONTAIN MLE)'); return false; }
-    try {
-        const mlePosition = codeInput.indexOf('MLE');
-        const isM1orM2 = codeInput.startsWith('M1') || codeInput.startsWith('M2');
-        let namePart = '';
-        if (isM1orM2) {
-            namePart = codeInput.substring(2, mlePosition + 3);
-            const withoutSpaces = namePart.replace(/\s/g, '');
-            if (withoutSpaces.length > 7) {
-                let charCount = 0, cutPosition = namePart.length;
-                for (let i = namePart.length - 1; i >= 0; i--) {
-                    if (namePart[i] !== ' ') { charCount++; if (charCount === 10) { cutPosition = i; break; } }
-                }
-                namePart = namePart.substring(0, cutPosition);
-            }
-        } else { namePart = codeInput.substring(1, mlePosition); }
-        namePart = namePart.trim();
-        let flightNoPart = '';
-        if (codeInput.length > mlePosition + 3) {
-            flightNoPart = codeInput.substring(mlePosition + 3, mlePosition + 3 + 10);
-            flightNoPart = flightNoPart.substring(3).replace(/\s/g, '');
-        }
-        let seatNo = '';
-        if (isM1orM2 && codeInput.length > mlePosition + 3) {
-            const afterMLE = codeInput.substring(mlePosition + 3);
-            const parts = afterMLE.split(' ').filter(p => p.trim() !== '');
-            let seatString = '';
-            for (let i = 0; i < parts.length; i++) {
-                const part = parts[i];
-                if (/^\d{3}[A-Z]\d{3}[A-Z]\d{4}$/.test(part)) { seatString = part; break; }
-            }
-            if (!seatString) {
-                for (let i = 0; i < parts.length; i++) {
-                    const part = parts[i];
-                    if (part.length >= 13 && /[A-Z]/.test(part) && /\d/.test(part)) { seatString = part; break; }
-                }
-            }
-            if (seatString) seatNo = seatString.substring(5, seatString.length - 4);
-        }
-        document.getElementById('hiddenCode').value = codeInput;
-        document.getElementById('pName').value = namePart.toUpperCase();
-        document.getElementById('flightNo').value = flightNoPart ? flightNoPart.toUpperCase() : '';
-        document.getElementById('seatNo').value = seatNo ? seatNo.toUpperCase() : '';
-        const statusMsg = document.getElementById('statusMessage'); if (statusMsg) { statusMsg.textContent = '✓ BOARDING PASS PARSED'; setTimeout(() => { statusMsg.textContent = ''; }, 2000); }
-        document.getElementById('code').value = '';
-        return true;
-    } catch (error) { console.error('Error parsing boarding pass:', error); alert('ERROR PARSING BOARDING PASS'); return false; }
-}
+
 function debugShiftData() {
     console.log('=== CURRENT SHIFT DATA DEBUG ===', currentShiftData);
     alert(`Shift Data:\nDate: ${currentShiftData.date}\nShift: ${currentShiftData.shift}\nStatus: ${currentShiftData.status}\nCashier: ${currentCashier.name}`);
 }
+
+// ========== DOM CONTENT LOADED ==========
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM fully loaded');
     checkAuth();
-    const logoutBtn = document.getElementById('logoutBtn'); if (logoutBtn) logoutBtn.addEventListener('click', function(e) { e.preventDefault(); logout(); });
-    const floatingLogoutBtn = document.getElementById('floatingLogoutBtn'); if (floatingLogoutBtn) floatingLogoutBtn.addEventListener('click', function(e) { e.preventDefault(); logout(); });
+    
+    // Logout buttons
+    const logoutBtn = document.getElementById('logoutBtn'); 
+    if (logoutBtn) logoutBtn.addEventListener('click', function(e) { e.preventDefault(); logout(); });
+    
+    const floatingLogoutBtn = document.getElementById('floatingLogoutBtn'); 
+    if (floatingLogoutBtn) floatingLogoutBtn.addEventListener('click', function(e) { e.preventDefault(); logout(); });
+    
+    // Get form elements
     const codeField = document.getElementById('code');
+    const pNameField = document.getElementById('pName');
     const currencyField = document.getElementById('currency');
     const rateTypeField = document.getElementById('rateType');
     const submitBtn = document.getElementById('submitBtn');
@@ -1080,29 +1614,118 @@ document.addEventListener('DOMContentLoaded', function() {
     const refreshShiftBtn = document.getElementById('refreshShiftBtn');
     const closeModalBtn = document.getElementById('closeModalBtn');
     const searchReceiptBtn = document.getElementById('searchReceiptBtn');
+    
+    // Setup number inputs
     setupNumberInputs();
+    
+    // Load data
     loadShiftDataOnce();
-    setTimeout(() => { fetchPendingTransactionsCount(); }, 2000);
+    
+    // Fetch pending count with a delay to ensure Firebase is ready
+    setTimeout(() => { 
+        fetchPendingTransactionsCount(); 
+    }, 2000);
+    
+    // Refresh pending count every 30 seconds
+    setInterval(() => {
+        fetchPendingTransactionsCount();
+    }, 30000);
+    
     updateDateTime();
-    setTimeout(() => { if (typeof rates !== 'undefined') { if (rates.exchangeRate) currentExchangeRate = rates.exchangeRate.MVRtoUSD || 15.42; } updateTotalPassengers(); }, 500);
+    
+    setTimeout(() => { 
+        if (typeof rates !== 'undefined') { 
+            if (rates.exchangeRate) currentExchangeRate = rates.exchangeRate.MVRtoUSD || 15.42; 
+        } 
+        updateTotalPassengers(); 
+    }, 500);
+    
+    // Currency and rate type change events
     if (currencyField) currencyField.addEventListener('change', calculatePrices);
     if (rateTypeField) rateTypeField.addEventListener('change', calculatePrices);
+    
+    // ===== CODE FIELD HANDLING (original) =====
     if (codeField) {
-        codeField.addEventListener('keypress', function(e) { if (e.key === 'Enter') parseAndAddToList(); });
-        codeField.addEventListener('blur', function() { if (codeField.value.trim() !== '') parseAndAddToList(); });
-        codeField.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+        codeField.addEventListener('keypress', function(e) { 
+            if (e.key === 'Enter') parseAndAddToList(); 
+        });
+        codeField.addEventListener('blur', function() { 
+            if (codeField.value.trim() !== '') parseAndAddToList(); 
+        });
+        codeField.addEventListener('input', function() { 
+            this.value = this.value.toUpperCase(); 
+        });
         codeField.focus();
     }
+    
+    // ===== PASSENGER NAME FIELD HANDLING (allows scanning directly) =====
+    if (pNameField) {
+        // Handle blur event
+        pNameField.addEventListener('blur', function() {
+            handlePassengerNameInput();
+        });
+        
+        // Handle Enter key press
+        pNameField.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handlePassengerNameInput();
+                setTimeout(() => {
+                    document.getElementById('flightNo').focus();
+                }, 100);
+            }
+        });
+        
+        // Handle paste event for barcode scanners
+        pNameField.addEventListener('paste', function(e) {
+            setTimeout(() => {
+                handlePassengerNameInput();
+            }, 10);
+        });
+        
+        // Auto-capitalize
+        pNameField.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+        
+        // Double-click as alternative trigger
+        pNameField.addEventListener('dblclick', function() {
+            handlePassengerNameInput();
+        });
+    }
+    
+    // Button events
     if (submitBtn) submitBtn.addEventListener('click', submitForm);
-    if (printReceiptBtn) printReceiptBtn.addEventListener('click', printReceipt);
+    if (printReceiptBtn) printReceiptBtn.addEventListener('click', printCurrentReceipt);
     if (reprintReceiptBtn) reprintReceiptBtn.addEventListener('click', showReprintModal);
     if (clearAllBtn) clearAllBtn.addEventListener('click', clearAllFields);
     if (refreshShiftBtn) refreshShiftBtn.addEventListener('click', function() { refreshShiftData(); alert('Shift data refreshed from Firebase'); });
     if (closeModalBtn) closeModalBtn.addEventListener('click', closeReprintModal);
     if (searchReceiptBtn) searchReceiptBtn.addEventListener('click', searchAndReprintReceipt);
-    window.addEventListener('click', function(event) { const modal = document.getElementById('reprintModal'); if (event.target === modal) closeReprintModal(); });
-    const reprintInput = document.getElementById('reprintReceiptNo'); if (reprintInput) reprintInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') searchAndReprintReceipt(); });
-    document.addEventListener('keydown', function(e) { if (e.ctrlKey && e.shiftKey && e.key === 'D') { e.preventDefault(); debugShiftData(); } });
+    
+    // Modal close on outside click
+    window.addEventListener('click', function(event) { 
+        const modal = document.getElementById('reprintModal'); 
+        if (event.target === modal) closeReprintModal(); 
+    });
+    
+    // Reprint modal enter key
+    const reprintInput = document.getElementById('reprintReceiptNo'); 
+    if (reprintInput) reprintInput.addEventListener('keypress', function(e) { 
+        if (e.key === 'Enter') searchAndReprintReceipt(); 
+    });
+    
+    // Debug shortcut
+    document.addEventListener('keydown', function(e) { 
+        if (e.ctrlKey && e.shiftKey && e.key === 'D') { 
+            e.preventDefault(); 
+            debugShiftData(); 
+        } 
+    });
+    
+    console.log('Dual scanning initialized - Redirect to receipt.html for printing');
+    console.log('Void receipt support enabled - Use reprint for voided transactions');
+    console.log('MODIFIED: Company information is NOT being saved to Firebase');
 });
 </script>
 </body>
