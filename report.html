@@ -1306,150 +1306,249 @@
         }, 500);
     }
 
-    // ========== DUPLICATE DETECTION FUNCTIONS ==========
+    // ========== floating button ==========
+    function addFloatingDashboardButton() {
+    // Create button element
+    const floatingBtn = document.createElement('a');
+    floatingBtn.href = 'cardentry.html';
+    floatingBtn.innerHTML = '← Back';
     
-    function detectDuplicates(passengers) {
-        if (!passengers || !currentFlightData) return [];
+    // Style the button
+    floatingBtn.style.position = 'fixed';
+    floatingBtn.style.bottom = '20px';
+    floatingBtn.style.right = '20px';
+    floatingBtn.style.backgroundColor = '#007bff';
+    floatingBtn.style.color = 'white';
+    floatingBtn.style.padding = '12px 24px';
+    floatingBtn.style.borderRadius = '50px';
+    floatingBtn.style.textDecoration = 'none';
+    floatingBtn.style.fontFamily = 'Arial, sans-serif';
+    floatingBtn.style.fontSize = '16px';
+    floatingBtn.style.fontWeight = 'bold';
+    floatingBtn.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+    floatingBtn.style.transition = 'all 0.3s ease';
+    floatingBtn.style.zIndex = '1000';
+    floatingBtn.style.border = 'none';
+    floatingBtn.style.cursor = 'pointer';
+    
+    // Add hover effect
+    floatingBtn.onmouseover = function() {
+        this.style.backgroundColor = '#0056b3';
+        this.style.transform = 'scale(1.05)';
+    };
+    
+    floatingBtn.onmouseout = function() {
+        this.style.backgroundColor = '#007bff';
+        this.style.transform = 'scale(1)';
+    };
+    
+    // Add to page
+    document.body.appendChild(floatingBtn);
+}
+
+// Call the function when page loads
+document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
+
+    
+    // ========== DUPLICATE DETECTION FUNCTIONS ==========
+
+function detectDuplicates(passengers) {
+    if (!passengers || !currentFlightData) return [];
+    
+    const duplicates = [];
+    const seen = new Map();
+    
+    passengers.forEach((passenger, index) => {
+        // Skip delay charge entries
+        if (passenger.isDelayCharge) return;
         
-        const duplicates = [];
-        const seen = new Map();
+        // Get passenger data
+        const name = (passenger.pName || '').toLowerCase().trim();
+        const seat = (passenger.seatNo || '').toUpperCase().trim();
+        const flightNo = currentFlightData.flightNo || '';
         
-        passengers.forEach((passenger, index) => {
-            if (passenger.isDelayCharge) return;
+        // Skip if missing required fields
+        if (!name || !seat) return;
+        
+        // Create key for duplicate detection
+        const key = `${name}|${seat}|${flightNo}`;
+        
+        // Check if this passenger is a guest (has mainPassengerId)
+        const isGuest = passenger.isGuest === true || passenger.mainPassengerId ? true : false;
+        
+        if (seen.has(key)) {
+            // Get the original passenger that created this key
+            const originalIndex = seen.get(key);
+            const originalPassenger = passengers[originalIndex];
             
-            const name = (passenger.pName || '').toLowerCase().trim();
-            const seat = (passenger.seatNo || '').toUpperCase().trim();
-            const flightNo = currentFlightData.flightNo || '';
+            // Check if original is a guest or has main passenger relationship
+            const originalIsGuest = originalPassenger.isGuest === true || originalPassenger.mainPassengerId ? true : false;
             
-            if (!name || !seat) return;
-            
-            const key = `${name}|${seat}|${flightNo}`;
-            
-            if (seen.has(key)) {
-                duplicates.push({
-                    originalIndex: seen.get(key),
-                    duplicateIndex: index,
-                    passenger: passenger,
-                    originalPassenger: passengers[seen.get(key)]
+            // CRITICAL FIX: If either passenger is a guest or has a main passenger, 
+            // they should NOT be considered duplicates of each other
+            if (isGuest || originalIsGuest) {
+                // This is a guest entry - allow same name/seat as host
+                console.log('✅ Guest entry detected - allowing same name/seat:', {
+                    passenger: name,
+                    seat: seat,
+                    isGuest: isGuest,
+                    originalIsGuest: originalIsGuest
                 });
-            } else {
-                seen.set(key, index);
+                return; // Skip duplicate detection for guests
             }
-        });
-        
-        return duplicates;
-    }
-
-    function showDuplicateWarning(duplicates) {
-        if (!duplicates || duplicates.length === 0) return;
-        
-        let warningBanner = document.getElementById('duplicateWarningBanner');
-        
-        if (!warningBanner) {
-            warningBanner = document.createElement('div');
-            warningBanner.id = 'duplicateWarningBanner';
-            warningBanner.className = 'duplicate-warning-banner';
             
-            const tableContainer = document.getElementById('tableContainer');
-            tableContainer.insertBefore(warningBanner, tableContainer.firstChild);
+            // Check if they share the same main passenger ID (both guests of same host)
+            if (passenger.mainPassengerId && originalPassenger.mainPassengerId && 
+                passenger.mainPassengerId === originalPassenger.mainPassengerId) {
+                // Both are guests of the same main passenger - allow multiple guests
+                console.log('✅ Multiple guests of same host - allowing');
+                return;
+            }
+            
+            // Check if this passenger is the main passenger for the other
+            if (passenger.id === originalPassenger.mainPassengerId || 
+                originalPassenger.id === passenger.mainPassengerId) {
+                // One is host, one is guest - allow
+                console.log('✅ Host-guest relationship - allowing');
+                return;
+            }
+            
+            // If we get here, neither is a guest, so this is a real duplicate
+            console.log('⚠️ Real duplicate detected:', {
+                passenger: name,
+                seat: seat,
+                index: index,
+                originalIndex: originalIndex
+            });
+            
+            duplicates.push({
+                originalIndex: originalIndex,
+                duplicateIndex: index,
+                passenger: passenger,
+                originalPassenger: originalPassenger
+            });
+        } else {
+            seen.set(key, index);
         }
+    });
+    
+    return duplicates;
+}
+
+function showDuplicateWarning(duplicates) {
+    if (!duplicates || duplicates.length === 0) return;
+    
+    let warningBanner = document.getElementById('duplicateWarningBanner');
+    
+    if (!warningBanner) {
+        warningBanner = document.createElement('div');
+        warningBanner.id = 'duplicateWarningBanner';
+        warningBanner.className = 'duplicate-warning-banner';
         
-        const duplicateCount = duplicates.length;
-        let message = `⚠️ Found ${duplicateCount} duplicate entr${duplicateCount > 1 ? 'ies' : 'y'} based on same Name, Seat, and Flight Number. `;
+        const tableContainer = document.getElementById('tableContainer');
+        tableContainer.insertBefore(warningBanner, tableContainer.firstChild);
+    }
+    
+    const duplicateCount = duplicates.length;
+    let message = `⚠️ Found ${duplicateCount} duplicate entr${duplicateCount > 1 ? 'ies' : 'y'} based on same Name, Seat, and Flight Number. `;
+    
+    let buttons = '';
+    duplicates.forEach((dup, index) => {
+        const originalName = (dup.originalPassenger.pName || 'Unknown').substring(0, 20);
+        const duplicateName = (dup.passenger.pName || 'Unknown').substring(0, 20);
         
-        let buttons = '';
-        duplicates.forEach((dup, index) => {
-            const originalName = (dup.originalPassenger.pName || 'Unknown').substring(0, 20);
-            const duplicateName = (dup.passenger.pName || 'Unknown').substring(0, 20);
-            
-            buttons += `<button class="duplicate-action-btn" onclick="handleDuplicate('${dup.passenger.docId}', '${dup.originalPassenger.docId}')" title="Keep original and delete duplicate">
-                🗑️ Delete "${duplicateName}" (keep "${originalName}")
-            </button>`;
-        });
+        // Add guest indicator if either is a guest
+        const originalGuest = dup.originalPassenger.isGuest ? '👤 ' : '';
+        const duplicateGuest = dup.passenger.isGuest ? '👤 ' : '';
         
-        warningBanner.innerHTML = `
-            <div class="warning-content">
-                <span class="warning-message">${message}</span>
-                <div class="duplicate-actions">
-                    ${buttons}
-                    <button class="duplicate-action-btn delete-all-duplicates" onclick="deleteAllDuplicates()">
-                        🗑️ Delete ALL duplicates (${duplicateCount})
-                    </button>
-                    <button class="duplicate-action-btn dismiss-warning" onclick="dismissDuplicateWarning()">
-                        ✖ Dismiss
-                    </button>
-                </div>
+        buttons += `<button class="duplicate-action-btn" onclick="handleDuplicate('${dup.passenger.docId}', '${dup.originalPassenger.docId}')" title="Keep original and delete duplicate">
+            🗑️ Delete ${duplicateGuest}"${duplicateName}" (keep ${originalGuest}"${originalName}")
+        </button>`;
+    });
+    
+    warningBanner.innerHTML = `
+        <div class="warning-content">
+            <span class="warning-message">${message}</span>
+            <div class="duplicate-actions">
+                ${buttons}
+                <button class="duplicate-action-btn delete-all-duplicates" onclick="deleteAllDuplicates()">
+                    🗑️ Delete ALL duplicates (${duplicateCount})
+                </button>
+                <button class="duplicate-action-btn dismiss-warning" onclick="dismissDuplicateWarning()">
+                    ✖ Dismiss
+                </button>
             </div>
-        `;
-    }
+        </div>
+    `;
+}
 
-    async function handleDuplicate(duplicateDocId, originalDocId) {
-        if (!confirm('Are you sure you want to delete the duplicate entry and keep the original?')) {
-            return;
-        }
-        
-        try {
-            await currentDatabase.collection('KoveliPass').doc(duplicateDocId).delete();
-            
-            const dupIndex = currentFlightData.passengers.findIndex(p => p.docId === duplicateDocId);
-            if (dupIndex !== -1) {
-                currentFlightData.passengers.splice(dupIndex, 1);
-            }
-            
-            displayPassengerTable(currentFlightData.passengers);
-            
-            document.getElementById('totalPaxStat').textContent = calculateTotalPax(currentFlightData.passengers);
-            document.getElementById('passengerCount').textContent = countRegularPassengers(currentFlightData.passengers) + ' PAX';
-            
-            const remainingDuplicates = detectDuplicates(currentFlightData.passengers);
-            if (remainingDuplicates.length === 0) {
-                dismissDuplicateWarning();
-            } else {
-                showDuplicateWarning(remainingDuplicates);
-            }
-        } catch (error) {
-            console.error('Error deleting duplicate:', error);
-        }
+async function handleDuplicate(duplicateDocId, originalDocId) {
+    if (!confirm('Are you sure you want to delete the duplicate entry and keep the original?')) {
+        return;
     }
-
-    async function deleteAllDuplicates() {
-        const duplicates = detectDuplicates(currentFlightData.passengers);
+    
+    try {
+        await currentDatabase.collection('KoveliPass').doc(duplicateDocId).delete();
         
-        if (duplicates.length === 0) return;
-        
-        if (!confirm(`Are you sure you want to delete ALL ${duplicates.length} duplicate entries? This action cannot be undone.`)) {
-            return;
+        const dupIndex = currentFlightData.passengers.findIndex(p => p.docId === duplicateDocId);
+        if (dupIndex !== -1) {
+            currentFlightData.passengers.splice(dupIndex, 1);
         }
         
-        try {
-            const duplicateIds = duplicates.map(d => d.passenger.docId);
-            
-            for (const docId of duplicateIds) {
-                await currentDatabase.collection('KoveliPass').doc(docId).delete();
-                
-                const index = currentFlightData.passengers.findIndex(p => p.docId === docId);
-                if (index !== -1) {
-                    currentFlightData.passengers.splice(index, 1);
-                }
-            }
-            
-            displayPassengerTable(currentFlightData.passengers);
-            
-            document.getElementById('totalPaxStat').textContent = calculateTotalPax(currentFlightData.passengers);
-            document.getElementById('passengerCount').textContent = countRegularPassengers(currentFlightData.passengers) + ' PAX';
-            
+        displayPassengerTable(currentFlightData.passengers);
+        
+        document.getElementById('totalPaxStat').textContent = calculateTotalPax(currentFlightData.passengers);
+        document.getElementById('passengerCount').textContent = countRegularPassengers(currentFlightData.passengers) + ' PAX';
+        
+        const remainingDuplicates = detectDuplicates(currentFlightData.passengers);
+        if (remainingDuplicates.length === 0) {
             dismissDuplicateWarning();
-        } catch (error) {
-            console.error('Error deleting duplicates:', error);
+        } else {
+            showDuplicateWarning(remainingDuplicates);
         }
+    } catch (error) {
+        console.error('Error deleting duplicate:', error);
     }
+}
 
-    function dismissDuplicateWarning() {
-        const warningBanner = document.getElementById('duplicateWarningBanner');
-        if (warningBanner) {
-            warningBanner.remove();
-        }
+async function deleteAllDuplicates() {
+    const duplicates = detectDuplicates(currentFlightData.passengers);
+    
+    if (duplicates.length === 0) return;
+    
+    if (!confirm(`Are you sure you want to delete ALL ${duplicates.length} duplicate entries? This action cannot be undone.`)) {
+        return;
     }
+    
+    try {
+        const duplicateIds = duplicates.map(d => d.passenger.docId);
+        
+        for (const docId of duplicateIds) {
+            await currentDatabase.collection('KoveliPass').doc(docId).delete();
+            
+            const index = currentFlightData.passengers.findIndex(p => p.docId === docId);
+            if (index !== -1) {
+                currentFlightData.passengers.splice(index, 1);
+            }
+        }
+        
+        displayPassengerTable(currentFlightData.passengers);
+        
+        document.getElementById('totalPaxStat').textContent = calculateTotalPax(currentFlightData.passengers);
+        document.getElementById('passengerCount').textContent = countRegularPassengers(currentFlightData.passengers) + ' PAX';
+        
+        dismissDuplicateWarning();
+    } catch (error) {
+        console.error('Error deleting duplicates:', error);
+    }
+}
+
+function dismissDuplicateWarning() {
+    const warningBanner = document.getElementById('duplicateWarningBanner');
+    if (warningBanner) {
+        warningBanner.remove();
+    }
+}
 
     // ========== FAST SCAN FOR DATES AND FLIGHTS ONLY ==========
     async function scanDatesAndFlights(forceReload = false) {
