@@ -146,13 +146,13 @@ console.log("   Project: dcleeli");
 // 7. DEFAULT CARD ENTRY DATABASE
 // ============================================
 const firebaseConfigDefaultCard = {
-  apiKey: "AIzaSyCLme7iTKJgek-jI7HIM-978Ln2i2w5E5A",
-  authDomain: "cardentry-7bad1.firebaseapp.com",
-  projectId: "cardentry-7bad1",
-  storageBucket: "cardentry-7bad1.firebasestorage.app",
-  messagingSenderId: "501968962957",
-  appId: "1:501968962957:web:2b1588b3968688d35669c4",
-  measurementId: "G-Y5NGGZ4WXD"
+  apiKey: "AIzaSyBBuYwIGYYBe2SCX60W4S5SWjqUut5xVIc",
+  authDomain: "kwakinsys.firebaseapp.com",
+  projectId: "kwakinsys",
+  storageBucket: "kwakinsys.firebasestorage.app",
+  messagingSenderId: "752208362906",
+  appId: "1:752208362906:web:b511604df36a5daab2ce23",
+  measurementId: "G-7LS5BPNVS1"
 };
 
 // Initialize Firebase for default card entry with a named app "defaultCardApp"
