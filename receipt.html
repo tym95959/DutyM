@@ -403,7 +403,7 @@
     </div>
 
     <script>
-        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH FIREBASE LINKED VIA FIRESHIFT.JS ==========
+        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH VOID DETECTION FROM paymentStatus ==========
         
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -484,8 +484,9 @@
             return parseFloat(value).toFixed(2);
         }
 
-        // Check if receipt should be voided
+        // Check if receipt should be voided - FOCUSED ON paymentStatus
         function shouldShowVoid(data) {
+            // Check URL parameter first (most reliable for forced void)
             if (voidParam) {
                 logDebug('✓ VOID: URL parameter void=true detected');
                 return true;
@@ -493,19 +494,25 @@
             
             if (!data) return false;
             
+            // PRIMARY CHECK: paymentStatus field
+            if (data.paymentStatus === 'VOID') {
+                logDebug('✓ VOID: paymentStatus = "VOID" detected');
+                return true;
+            }
+            
+            // SECONDARY CHECKS (for backward compatibility)
             const voidIndicators = [
-                data.isVoid,
                 data.status === 'VOID',
+                data.isVoid === true,
                 data.voided === true,
                 data.void === true,
                 data.receiptStatus === 'VOID',
-                data.paymentMethod === 'VOID',
                 data.transactionStatus === 'VOID'
             ];
             
             for (let indicator of voidIndicators) {
                 if (indicator) {
-                    logDebug(`✓ VOID detected in data`);
+                    logDebug(`✓ VOID detected from alternative field`);
                     return true;
                 }
             }
@@ -682,7 +689,7 @@
 
                 ${data.id ? `
                 <div class="transaction-id" style="font-size: 6pt; text-align: center; margin-top: 1mm; color: #666;">
-                    ID: ${data.id.substring(0, 8)}...
+                   
                 </div>
                 ` : ''}
             `;
@@ -709,6 +716,7 @@
                     const doc = snapshot.docs[0];
                     const data = { id: doc.id, ...doc.data() };
                     logDebug(`✅ Receipt found in Firebase with ID: ${doc.id}`);
+                    logDebug(`paymentStatus: ${data.paymentStatus || 'not set'}`);
                     return data;
                 }
                 
@@ -717,6 +725,7 @@
                 if (docById.exists) {
                     const data = { id: docById.id, ...docById.data() };
                     logDebug(`✅ Receipt found by direct ID: ${receiptNo}`);
+                    logDebug(`paymentStatus: ${data.paymentStatus || 'not set'}`);
                     return data;
                 }
                 
@@ -749,6 +758,7 @@
                     try {
                         data = JSON.parse(decodeURIComponent(receiptDataParam));
                         logDebug(`✅ Data parsed from URL: ${data.receiptNo}`);
+                        logDebug(`paymentStatus from URL: ${data.paymentStatus || 'not set'}`);
                     } catch (e) {
                         logDebug(`❌ Error parsing URL data: ${e.message}`);
                     }
@@ -766,6 +776,7 @@
                         if (lastReceipt) {
                             data = JSON.parse(lastReceipt);
                             logDebug('✅ Data loaded from localStorage');
+                            logDebug(`paymentStatus from localStorage: ${data.paymentStatus || 'not set'}`);
                         }
                     } catch (e) {
                         logDebug(`❌ Error parsing localStorage: ${e.message}`);
@@ -787,16 +798,19 @@
 
                 if (loadingEl) loadingEl.style.display = 'none';
 
+                // Check if receipt should be voided (uses paymentStatus as primary check)
                 const showVoid = shouldShowVoid(data);
                 
                 if (showVoid) {
-                    logDebug('🎯 Adding VOID watermark...');
+                    logDebug('🎯 Adding VOID watermark based on paymentStatus...');
                     setTimeout(() => {
                         const added = addVoidWatermark();
                         if (!added) {
                             setTimeout(addVoidWatermark, 200);
                         }
                     }, 300);
+                } else {
+                    logDebug('No void condition - receipt will be normal');
                 }
 
                 const autoPrint = urlParams.get('autoPrint') === 'true';
@@ -844,6 +858,7 @@
         window.addEventListener('load', () => {
             logDebug('Window fully loaded');
             
+            // Double-check for void watermark if voidParam is true
             if (voidParam && !document.querySelector('.void-watermark')) {
                 logDebug('⚠️ Adding void watermark after window load');
                 addVoidWatermark();
