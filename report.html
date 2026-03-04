@@ -1698,7 +1698,7 @@
                     docId: doc.id,
                     pName: data.pName || data.name || data.Name || '',
                     seatNo: data.seatNo || data.seat || data.Seat || '',
-                    pax: paxValue,
+                    pax: isDelayCharge ? 0 : paxValue,  // ✅ Set to 0 for delay charges
                     FQTV: data.FQTV || data.ffn || data.FFN || '',
                     entryTime: data.entryTime || data.time || data.Time || '',
                     remarks: data.remarks || data.Remark || data.remark || '',
@@ -2098,7 +2098,7 @@
                             ${pnr ? `<span class="pnr-badge" title="PNR extracted from hiddenCode">${pnr}</span>` : '-'}
                         </td>
                         <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
                         <td>${p.entryTime || '-'}</td>
@@ -2117,7 +2117,7 @@
                         <td class="serial-no">${serial}</td>
                         <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge} ${delayBadge}</td>
                         <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
                         <td>${p.entryTime || '-'}</td>
@@ -2665,7 +2665,7 @@
                         <td>${escapeHtml(p.pName) || '-'}</td>
                         <td>${pnr || '-'}</td>
                         <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td>${escapeHtml(p.serialNo) || '-'}</td>
                         <td>${p.entryTime || '-'}</td>
@@ -2678,7 +2678,7 @@
                         <td>${serial}</td>
                         <td>${escapeHtml(p.pName) || '-'}</td>
                         <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '1'}</td>
+                        <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td>${escapeHtml(p.serialNo) || '-'}</td>
                         <td>${p.entryTime || '-'}</td>
@@ -2724,6 +2724,22 @@
 
     // ========== DELAY CHARGE FUNCTIONS ==========
     
+    function togglePassengerSelection(docId) {
+        const passenger = filteredDelayPassengers.find(p => p.docId === docId);
+        if (passenger) {
+            passenger.selected = !passenger.selected;
+        }
+    }
+
+    function updatePassengerPax(docId) {
+        const input = document.getElementById(`pax-${docId}`);
+        const passenger = filteredDelayPassengers.find(p => p.docId === docId);
+        
+        if (passenger && input) {
+            passenger.pax = parseInt(input.value) || 1;
+        }
+    }
+
     function openDelayChargeModal() {
         if (currentFlightData && currentFlightData.isClosed) {
             alert('Cannot add delay charges to a closed flight');
@@ -2856,10 +2872,11 @@
                     pName: data.pName || data.name || '',
                     entryTime: data.entryTime || data.time || '',
                     lastPax: '',
-                    pax: isDelayCharge ? 0 : paxValue,
+                    pax: isDelayCharge ? 0 : paxValue,  // ✅ Set to 0 for delay charges
                     isDelayCharge: isDelayCharge,
                     selected: true,
-                    hoursUsed: 0
+                    hoursUsed: 0,
+                    totalHours: 0
                 });
             });
             
@@ -2935,6 +2952,10 @@
         
         filteredDelayPassengers.forEach((p, index) => {
             const hoursUsed = calculateHoursUsed(p.entryTime, p.lastPax);
+            const delayHours = calculateDelayHours(hoursUsed);
+            
+            // Format hoursUsed to 1 decimal place for display
+            const formattedHours = hoursUsed.toFixed(1);
             
             html += `
                 <div class="passenger-item" id="passenger-${p.docId}">
@@ -2951,7 +2972,7 @@
                     <div>
                         <input type="number" id="pax-${p.docId}" value="${p.pax || 1}" class="edit-input" min="1" onchange="updatePassengerPax('${p.docId}')">
                     </div>
-                    <div id="hours-${p.docId}">${hoursUsed.toFixed(1)} hours</div>
+                    <div id="hours-${p.docId}">${formattedHours} hrs total (${delayHours} chargeable)</div>
                 </div>
             `;
         });
@@ -2963,233 +2984,119 @@
     }
     
     function calculateHoursUsed(entryTime, lastPaxTime) {
-    if (!entryTime || !lastPaxTime) return 0;
-    
-    const [entryHour, entryMinute] = entryTime.split(':').map(Number);
-    const [lastHour, lastMinute] = lastPaxTime.split(':').map(Number);
-    
-    const entryTotalMinutes = entryHour * 60 + entryMinute;
-    const lastTotalMinutes = lastHour * 60 + lastMinute;
-    
-    let diffMinutes = lastTotalMinutes - entryTotalMinutes;
-    
-    // Handle overnight flights
-    if (diffMinutes < 0) {
-        diffMinutes += 24 * 60;
-    }
-    
-    // Convert to decimal hours (not floored yet)
-    const totalHours = diffMinutes / 60;
-    
-    return totalHours;
-}
-
-function calculateDelayHours(totalHours) {
-    // First 3 hours are free
-    // Charge for completed hours beyond 3
-    // If totalHours = 4.2, then 4.2 - 3 = 1.2, floor = 1 hour charge
-    // If totalHours = 5.9, then 5.9 - 3 = 2.9, floor = 2 hours charge
-    const hoursBeyondFree = totalHours - 3;
-    return hoursBeyondFree > 0 ? Math.floor(hoursBeyondFree) : 0;
-}
-
-function displayDelayPassengers() {
-    const container = document.getElementById('passengerList');
-    const noFlightMessage = document.getElementById('noFlightSelectedMessage');
-    const passengerListContainer = document.getElementById('passengerListContainer');
-    
-    if (!filteredDelayPassengers || filteredDelayPassengers.length === 0) {
-        noFlightMessage.style.display = 'block';
-        passengerListContainer.style.display = 'none';
-        return;
-    }
-    
-    noFlightMessage.style.display = 'none';
-    passengerListContainer.style.display = 'block';
-    
-    let html = '';
-    
-    filteredDelayPassengers.forEach((p, index) => {
-        const hoursUsed = calculateHoursUsed(p.entryTime, p.lastPax);
-        const delayHours = calculateDelayHours(hoursUsed);
+        if (!entryTime || !lastPaxTime) return 0;
         
-        // Format hoursUsed to 1 decimal place for display
-        const formattedHours = hoursUsed.toFixed(1);
+        const [entryHour, entryMinute] = entryTime.split(':').map(Number);
+        const [lastHour, lastMinute] = lastPaxTime.split(':').map(Number);
         
-        html += `
-            <div class="passenger-item" id="passenger-${p.docId}">
-                <div>
-                    <input type="checkbox" id="select-${p.docId}" ${p.selected ? 'checked' : ''} onchange="togglePassengerSelection('${p.docId}')">
-                </div>
-                <div>${escapeHtml(p.pName) || '-'}</div>
-                <div>
-                    <input type="time" id="entryTime-${p.docId}" value="${p.entryTime || ''}" class="edit-input" readonly style="background-color:#f5f5f5;">
-                </div>
-                <div>
-                    <input type="time" id="lastPax-${p.docId}" value="${p.lastPax || ''}" class="edit-input" onchange="updatePassengerTime('${p.docId}')" placeholder="Enter Last Pax">
-                </div>
-                <div>
-                    <input type="number" id="pax-${p.docId}" value="${p.pax || 1}" class="edit-input" min="1" onchange="updatePassengerPax('${p.docId}')">
-                </div>
-                <div id="hours-${p.docId}">${formattedHours} hrs total (${delayHours} chargeable)</div>
-            </div>
-        `;
-    });
-    
-    container.innerHTML = html;
-    
-    // Hide summary when list changes
-    document.getElementById('chargeSummary').style.display = 'none';
-}
-
-function updatePassengerTime(docId) {
-    const input = document.getElementById(`lastPax-${docId}`);
-    const passenger = filteredDelayPassengers.find(p => p.docId === docId);
-    
-    if (passenger && input) {
-        passenger.lastPax = input.value;
+        const entryTotalMinutes = entryHour * 60 + entryMinute;
+        const lastTotalMinutes = lastHour * 60 + lastMinute;
         
-        const hoursUsed = calculateHoursUsed(passenger.entryTime, passenger.lastPax);
-        const delayHours = calculateDelayHours(hoursUsed);
-        const formattedHours = hoursUsed.toFixed(1);
-        const hoursDiv = document.getElementById(`hours-${docId}`);
-        if (hoursDiv) {
-            hoursDiv.textContent = `${formattedHours} hrs total (${delayHours} chargeable)`;
+        let diffMinutes = lastTotalMinutes - entryTotalMinutes;
+        
+        // Handle overnight flights
+        if (diffMinutes < 0) {
+            diffMinutes += 24 * 60;
         }
-    }
-}
-
-function calculateDelayCharges() {
-    const selectedPassengers = filteredDelayPassengers.filter(p => p.selected);
-    
-    if (selectedPassengers.length === 0) {
-        alert('Please select at least one passenger');
-        return;
-    }
-    
-    const missingLastPax = selectedPassengers.filter(p => !p.lastPax);
-    if (missingLastPax.length > 0) {
-        alert('Please enter Last Pax time for all selected passengers');
-        return;
-    }
-    
-    const delayGroups = {};
-    
-    selectedPassengers.forEach(p => {
-        const totalHours = calculateHoursUsed(p.entryTime, p.lastPax);
-        const delayHours = calculateDelayHours(totalHours);
-        p.hoursUsed = delayHours; // Store the chargeable hours
-        p.totalHours = totalHours; // Store total hours for reference
         
-        if (delayHours > 0) {
-            if (!delayGroups[delayHours]) {
-                delayGroups[delayHours] = {
-                    hours: delayHours,
-                    passengers: [],
-                    totalPax: 0
-                };
-            }
+        // Convert to decimal hours (not floored yet)
+        const totalHours = diffMinutes / 60;
+        
+        return totalHours;
+    }
+
+    function calculateDelayHours(totalHours) {
+        // First 3 hours are free
+        // Charge for completed hours beyond 3
+        // If totalHours = 4.2, then 4.2 - 3 = 1.2, floor = 1 hour charge
+        // If totalHours = 5.9, then 5.9 - 3 = 2.9, floor = 2 hours charge
+        const hoursBeyondFree = totalHours - 3;
+        return hoursBeyondFree > 0 ? Math.floor(hoursBeyondFree) : 0;
+    }
+
+    function updatePassengerTime(docId) {
+        const input = document.getElementById(`lastPax-${docId}`);
+        const passenger = filteredDelayPassengers.find(p => p.docId === docId);
+        
+        if (passenger && input) {
+            passenger.lastPax = input.value;
             
-            delayGroups[delayHours].passengers.push(p);
-            delayGroups[delayHours].totalPax += p.pax || 1;
-        }
-    });
-    
-    delayCalculatedCharges = Object.values(delayGroups).sort((a, b) => a.hours - b.hours);
-    
-    displayChargeSummary();
-}
-
-function displayChargeSummary() {
-    const summaryDiv = document.getElementById('summaryGroups');
-    const totalSpan = document.getElementById('totalChargeAmount');
-    const summaryContainer = document.getElementById('chargeSummary');
-    
-    if (delayCalculatedCharges.length === 0) {
-        summaryDiv.innerHTML = '<div style="text-align:center; padding:20px;">No delay charges for selected passengers (all within 3 hours)</div>';
-        totalSpan.textContent = '0 hours';
-        summaryContainer.style.display = 'block';
-        return;
-    }
-    
-    let html = '';
-    let totalHours = 0;
-    
-    delayCalculatedCharges.forEach(group => {
-        const groupTotalPax = group.totalPax;
-        const groupHours = group.hours;
-        totalHours += groupTotalPax * groupHours;
-        
-        html += `
-            <div class="summary-group">
-                <div class="group-title">${groupHours} Hour${groupHours > 1 ? 's' : ''} Delay</div>
-        `;
-        
-        const lastPaxGroups = {};
-        group.passengers.forEach(p => {
-            const lastPax = p.lastPax || 'Unknown';
-            if (!lastPaxGroups[lastPax]) {
-                lastPaxGroups[lastPax] = {
-                    lastPax: lastPax,
-                    totalPax: 0,
-                    passengerCount: 0,
-                    details: []
-                };
+            const hoursUsed = calculateHoursUsed(passenger.entryTime, passenger.lastPax);
+            const delayHours = calculateDelayHours(hoursUsed);
+            const formattedHours = hoursUsed.toFixed(1);
+            const hoursDiv = document.getElementById(`hours-${docId}`);
+            if (hoursDiv) {
+                hoursDiv.textContent = `${formattedHours} hrs total (${delayHours} chargeable)`;
             }
-            lastPaxGroups[lastPax].totalPax += p.pax || 1;
-            lastPaxGroups[lastPax].passengerCount++;
-            lastPaxGroups[lastPax].details.push(`${p.pName} (${p.totalHours.toFixed(1)} hrs)`);
-        });
-        
-        Object.values(lastPaxGroups).forEach(lg => {
-            html += `
-                <div class="summary-item">
-                    <span title="${lg.details.join('; ')}">Last Pax: ${lg.lastPax} - ${lg.passengerCount} passenger${lg.passengerCount > 1 ? 's' : ''}</span>
-                    <span>${lg.totalPax} pax × ${groupHours} hr${groupHours > 1 ? 's' : ''}</span>
-                </div>
-            `;
-        });
-        
-        html += `</div>`;
-    });
-    
-    summaryDiv.innerHTML = html;
-    totalSpan.textContent = `${totalHours} hours`;
-    summaryContainer.style.display = 'block';
-}
+        }
+    }
 
-async function submitDelayCharges() {
-    if (delayCalculatedCharges.length === 0) {
-        alert('Please calculate charges first');
-        return;
-    }
-    
-    if (!delaySelectedFlight) {
-        return;
-    }
-    
-    const totalSelected = delayCalculatedCharges.reduce((sum, g) => sum + g.passengers.length, 0);
-    if (!confirm(`Submit delay charges for ${totalSelected} passenger(s)?`)) {
-        return;
-    }
-    
-    try {
-        const targetDb = delaySelectedFlight.dbRef || getFirestoreForFlight(delaySelectedFlight.flightNo);
-        const selectedDate = document.getElementById('delayFlightDate').value;
+    function calculateDelayCharges() {
+        const selectedPassengers = filteredDelayPassengers.filter(p => p.selected);
         
-        let formattedDate = selectedDate;
-        if (selectedDate.includes('/')) {
-            const parts = selectedDate.split('/');
-            if (parts.length === 3) {
-                if (parts[0].length === 4) {
-                    formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-                } else {
-                    formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        if (selectedPassengers.length === 0) {
+            alert('Please select at least one passenger');
+            return;
+        }
+        
+        const missingLastPax = selectedPassengers.filter(p => !p.lastPax);
+        if (missingLastPax.length > 0) {
+            alert('Please enter Last Pax time for all selected passengers');
+            return;
+        }
+        
+        const delayGroups = {};
+        
+        selectedPassengers.forEach(p => {
+            const totalHours = calculateHoursUsed(p.entryTime, p.lastPax);
+            const delayHours = calculateDelayHours(totalHours);
+            p.hoursUsed = delayHours; // Store the chargeable hours
+            p.totalHours = totalHours; // Store total hours for reference
+            
+            if (delayHours > 0) {
+                if (!delayGroups[delayHours]) {
+                    delayGroups[delayHours] = {
+                        hours: delayHours,
+                        passengers: [],
+                        totalPax: 0
+                    };
                 }
+                
+                delayGroups[delayHours].passengers.push(p);
+                delayGroups[delayHours].totalPax += p.pax || 1;
             }
+        });
+        
+        delayCalculatedCharges = Object.values(delayGroups).sort((a, b) => a.hours - b.hours);
+        
+        displayChargeSummary();
+    }
+
+    function displayChargeSummary() {
+        const summaryDiv = document.getElementById('summaryGroups');
+        const totalSpan = document.getElementById('totalChargeAmount');
+        const summaryContainer = document.getElementById('chargeSummary');
+        
+        if (delayCalculatedCharges.length === 0) {
+            summaryDiv.innerHTML = '<div style="text-align:center; padding:20px;">No delay charges for selected passengers (all within 3 hours)</div>';
+            totalSpan.textContent = '0 hours';
+            summaryContainer.style.display = 'block';
+            return;
         }
         
-        for (const group of delayCalculatedCharges) {
+        let html = '';
+        let totalHours = 0;
+        
+        delayCalculatedCharges.forEach(group => {
+            const groupTotalPax = group.totalPax;
+            const groupHours = group.hours;
+            totalHours += groupTotalPax * groupHours;
+            
+            html += `
+                <div class="summary-group">
+                    <div class="group-title">${groupHours} Hour${groupHours > 1 ? 's' : ''} Delay</div>
+            `;
+            
             const lastPaxGroups = {};
             group.passengers.forEach(p => {
                 const lastPax = p.lastPax || 'Unknown';
@@ -3197,64 +3104,129 @@ async function submitDelayCharges() {
                     lastPaxGroups[lastPax] = {
                         lastPax: lastPax,
                         totalPax: 0,
-                        passengerNames: [],
-                        totalHoursList: []
+                        passengerCount: 0,
+                        details: []
                     };
                 }
                 lastPaxGroups[lastPax].totalPax += p.pax || 1;
-                lastPaxGroups[lastPax].passengerNames.push(p.pName || 'Unknown');
-                lastPaxGroups[lastPax].totalHoursList.push(p.totalHours.toFixed(1));
+                lastPaxGroups[lastPax].passengerCount++;
+                lastPaxGroups[lastPax].details.push(`${p.pName} (${p.totalHours.toFixed(1)} hrs)`);
             });
             
-            for (const [lastPax, lg] of Object.entries(lastPaxGroups)) {
-                const passengerCount = lg.passengerNames.length;
-                const totalHoursSummary = lg.totalHoursList.join(', ');
-                const remarks = `Delay Charge: ${passengerCount} passenger${passengerCount > 1 ? 's' : ''} for ${group.hours} hour${group.hours > 1 ? 's' : ''} (Last Pax: ${lastPax}) `;
-                
-                const nameList = lg.passengerNames.join(', ').substring(0, 100);
-                
-                const now = new Date();
-                const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-                
-                const delayData = {
-                    pName: 'DELAY CHARGE',
-                    seatNo: 'N/A',
-                    pax: 0,
-                    FQTV: '',
-                    entryTime: currentTime,
-                    remarks: remarks,
-                    serialNo: '',
-                    date: formattedDate,
-                    flightNo: delaySelectedFlight.flightNo,
-                    shift: delaySelectedFlight.shift || 'UNKNOWN',
-                    airline: delaySelectedFlight.airline || '',
-                    hiddenCode: '',
-                    delayCharge: true,
-                    delayHours: group.hours,
-                    lastPaxTime: lastPax,
-                    passengerList: nameList,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
-                
-                await targetDb.collection('KoveliPass').add(delayData);
-            }
-        }
+            Object.values(lastPaxGroups).forEach(lg => {
+                html += `
+                    <div class="summary-item">
+                        <span title="${lg.details.join('; ')}">Last Pax: ${lg.lastPax} - ${lg.passengerCount} passenger${lg.passengerCount > 1 ? 's' : ''}</span>
+                        <span>${lg.totalPax} pax × ${groupHours} hr${groupHours > 1 ? 's' : ''}</span>
+                    </div>
+                `;
+            });
+            
+            html += `</div>`;
+        });
         
-        alert(`Successfully submitted ${totalSelected} delay charge(s)`);
-        closeDelayChargeModal();
-        
-        // Refresh current flight data if it's the same flight
-        if (currentFlightData && 
-            currentFlightData.flightNo === delaySelectedFlight.flightNo && 
-            document.getElementById('dateDisplay').textContent === selectedDate) {
-            await onFlightSelected();
-        }
-        
-    } catch (error) {
-        console.error('Error submitting delay charges:', error);
-        alert('Error submitting delay charges: ' + error.message);
+        summaryDiv.innerHTML = html;
+        totalSpan.textContent = `${totalHours} hours`;
+        summaryContainer.style.display = 'block';
     }
-}
+
+    async function submitDelayCharges() {
+        if (delayCalculatedCharges.length === 0) {
+            alert('Please calculate charges first');
+            return;
+        }
+        
+        if (!delaySelectedFlight) {
+            return;
+        }
+        
+        const totalSelected = delayCalculatedCharges.reduce((sum, g) => sum + g.passengers.length, 0);
+        if (!confirm(`Submit delay charges for ${totalSelected} passenger(s)?`)) {
+            return;
+        }
+        
+        try {
+            const targetDb = delaySelectedFlight.dbRef || getFirestoreForFlight(delaySelectedFlight.flightNo);
+            const selectedDate = document.getElementById('delayFlightDate').value;
+            
+            let formattedDate = selectedDate;
+            if (selectedDate.includes('/')) {
+                const parts = selectedDate.split('/');
+                if (parts.length === 3) {
+                    if (parts[0].length === 4) {
+                        formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                    } else {
+                        formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    }
+                }
+            }
+            
+            for (const group of delayCalculatedCharges) {
+                const lastPaxGroups = {};
+                group.passengers.forEach(p => {
+                    const lastPax = p.lastPax || 'Unknown';
+                    if (!lastPaxGroups[lastPax]) {
+                        lastPaxGroups[lastPax] = {
+                            lastPax: lastPax,
+                            totalPax: 0,
+                            passengerNames: [],
+                            totalHoursList: []
+                        };
+                    }
+                    lastPaxGroups[lastPax].totalPax += p.pax || 1;
+                    lastPaxGroups[lastPax].passengerNames.push(p.pName || 'Unknown');
+                    lastPaxGroups[lastPax].totalHoursList.push(p.totalHours.toFixed(1));
+                });
+                
+                for (const [lastPax, lg] of Object.entries(lastPaxGroups)) {
+                    const passengerCount = lg.passengerNames.length;
+                    const totalHoursSummary = lg.totalHoursList.join(', ');
+                    const remarks = `Delay Charge: ${passengerCount} passenger${passengerCount > 1 ? 's' : ''} for ${group.hours} hour${group.hours > 1 ? 's' : ''} (Last Pax: ${lastPax}) `;
+                    
+                    const nameList = lg.passengerNames.join(', ').substring(0, 100);
+                    
+                    const now = new Date();
+                    const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    
+                    const delayData = {
+                        pName: 'DELAY CHARGE',
+                        seatNo: 'N/A',
+                        pax: 0,  // ✅ Set to 0 for delay charges
+                        FQTV: '',
+                        entryTime: currentTime,
+                        remarks: remarks,
+                        serialNo: '',
+                        date: formattedDate,
+                        flightNo: delaySelectedFlight.flightNo,
+                        shift: delaySelectedFlight.shift || 'UNKNOWN',
+                        airline: delaySelectedFlight.airline || '',
+                        hiddenCode: '',
+                        delayCharge: true,  // ✅ Mark as delay charge
+                        delayHours: group.hours,
+                        lastPaxTime: lastPax,
+                        passengerList: nameList,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    
+                    await targetDb.collection('KoveliPass').add(delayData);
+                }
+            }
+            
+            alert(`Successfully submitted ${totalSelected} delay charge(s)`);
+            closeDelayChargeModal();
+            
+            // Refresh current flight data if it's the same flight
+            if (currentFlightData && 
+                currentFlightData.flightNo === delaySelectedFlight.flightNo && 
+                document.getElementById('dateDisplay').textContent === selectedDate) {
+                await onFlightSelected();
+            }
+            
+        } catch (error) {
+            console.error('Error submitting delay charges:', error);
+            alert('Error submitting delay charges: ' + error.message);
+        }
+    }
 
     // ========== INITIALIZATION ==========
     document.addEventListener('DOMContentLoaded', function() {
