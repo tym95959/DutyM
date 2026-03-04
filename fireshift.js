@@ -26,13 +26,13 @@ console.log("   Project: psysko-8d035");
 // 2. PASSENGER DATABASE (atten-14f76)
 // ============================================
 const firebaseConfigPassenger = {
-  apiKey: "AIzaSyD4TFX53rGaZAzvZYWvHKpeDZljZNJS-Wg",
-  authDomain: "atten-14f76.firebaseapp.com",
-  projectId: "atten-14f76",
-  storageBucket: "atten-14f76.firebasestorage.app",
-  messagingSenderId: "1074869564190",
-  appId: "1:1074869564190:web:eb5aa41259eab048ea8f0f",
-  measurementId: "G-F3WGD68VC3"
+  apiKey: "AIzaSyBBuYwIGYYBe2SCX60W4S5SWjqUut5xVIc",
+  authDomain: "kwakinsys.firebaseapp.com",
+  projectId: "kwakinsys",
+  storageBucket: "kwakinsys.firebasestorage.app",
+  messagingSenderId: "752208362906",
+  appId: "1:752208362906:web:b511604df36a5daab2ce23",
+  measurementId: "G-7LS5BPNVS1"
 };
 
 // Initialize Firebase for passenger data with a named app "passengerApp"
