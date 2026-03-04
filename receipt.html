@@ -4,9 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Koveli Receipt - EPSON TM-T88vii</title>
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK - linked like previous code -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- fireshift.js contains Firebase initialization - same as payment page -->
+    <script src="fireshift.js"></script>
     
     <style>
         * {
@@ -400,7 +403,7 @@
     </div>
 
     <script>
-        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH IMPROVED VOID DETECTION ==========
+        // ========== RECEIPT PAGE FOR EPSON TM-T88vii WITH FIREBASE LINKED VIA FIRESHIFT.JS ==========
         
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -409,32 +412,10 @@
         const reprintParam = urlParams.get('reprint') === 'true';
         const voidParam = urlParams.get('void') === 'true';
 
-        // Firebase config
-        const firebaseConfig = {
-            apiKey: "AIzaSyB9vfO9S6BLtOC5b0W7SFoOiAeZ2t7QqaI",
-            authDomain: "koveli-6a6ef.firebaseapp.com",
-            projectId: "koveli-6a6ef",
-            storageBucket: "koveli-6a6ef.appspot.com",
-            messagingSenderId: "989181878797",
-            appId: "1:989181878797:web:3b0d539c2c9c66be7065e1"
-        };
-
-        // Initialize Firebase
-        let passengerDb;
-        try {
-            if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
-            }
-            passengerDb = firebase.firestore();
-            console.log('Firebase initialized for receipt page');
-        } catch (error) {
-            console.error('Firebase initialization error:', error);
-        }
-
         // Receipt data object
         let receiptData = null;
 
-        // Debug logging (will appear in console only)
+        // Debug logging
         function logDebug(message) {
             console.log(`[Receipt] ${message}`);
         }
@@ -448,7 +429,7 @@
             }
         }
 
-        // Add VOID watermark to receipt - IMPROVED METHOD
+        // Add VOID watermark
         function addVoidWatermark() {
             logDebug('Attempting to add VOID watermark...');
             
@@ -458,15 +439,12 @@
                 return false;
             }
             
-            // Remove any existing watermark
             removeVoidWatermark();
             
-            // Create watermark with direct style application
             const watermark = document.createElement('div');
             watermark.className = 'void-watermark';
             watermark.textContent = 'VOID';
             
-            // Apply critical styles directly
             watermark.style.cssText = `
                 position: absolute !important;
                 top: 50% !important;
@@ -490,7 +468,6 @@
             
             wrapper.appendChild(watermark);
             
-            // Verify it was added
             const checkWatermark = document.querySelector('.void-watermark');
             if (checkWatermark) {
                 logDebug('✅ VOID watermark added successfully');
@@ -503,12 +480,12 @@
 
         // Format number to 2 decimals
         function formatAmount(value) {
-            return parseFloat(value || 0).toFixed(2);
+            if (value === undefined || value === null) return '0.00';
+            return parseFloat(value).toFixed(2);
         }
 
-        // Check if receipt should be voided - SIMPLIFIED AND IMPROVED
+        // Check if receipt should be voided
         function shouldShowVoid(data) {
-            // Check URL parameter first (most reliable)
             if (voidParam) {
                 logDebug('✓ VOID: URL parameter void=true detected');
                 return true;
@@ -516,7 +493,6 @@
             
             if (!data) return false;
             
-            // Check for void flags in data (case insensitive)
             const voidIndicators = [
                 data.isVoid,
                 data.status === 'VOID',
@@ -546,8 +522,8 @@
                 '<div class="reprint-mark">*** REPRINT COPY ***</div>' : '';
 
             // Format date and time
-            let dateTimeStr = data.submissionDateTime || data.dateTime || '';
-            let dateOnly = data.shiftDate || data.date || '';
+            let dateTimeStr = data.submissionDateTime || data.dateTime || data.createdAt || '';
+            let dateOnly = data.shiftDate || data.date || data.transactionDate || '';
             let timeOnly = '';
             
             if (dateTimeStr) {
@@ -555,6 +531,10 @@
                 if (parts.length > 1) {
                     dateOnly = parts[0];
                     timeOnly = parts[1];
+                } else if (dateTimeStr.includes('T')) {
+                    const isoParts = dateTimeStr.split('T');
+                    dateOnly = isoParts[0];
+                    timeOnly = isoParts[1]?.substring(0, 8) || '';
                 } else {
                     timeOnly = dateTimeStr;
                 }
@@ -568,6 +548,8 @@
                 }
             }
 
+            const currency = data.currency || 'USD';
+
             const adultPrice = formatAmount(data.adultPrice);
             const childPrice = formatAmount(data.childrenPrice);
             const adultSub = formatAmount(data.adultSubtotal);
@@ -576,11 +558,15 @@
             const gst = formatAmount(data.gstAmount);
             const total = formatAmount(data.totalAmount);
 
-            const exchangeRateHTML = data.currency === 'MVR' && data.exchangeRate ?
+            const exchangeRateHTML = currency === 'MVR' && data.exchangeRate ?
                 `<div class="exchange-rate">1 USD = ${parseFloat(data.exchangeRate).toFixed(2)} MVR</div>` : '';
 
-            // Build passenger count display
-            const passengerCount = parseInt(data.adult || 0) + parseInt(data.children || 0);
+            let cashierName = data.cashierName || data.user?.cashierName || data.user?.username || 'N/A';
+            let rcNo = data.userRcno || data.user?.rcno || data.user?.rcNo || data.cashier?.rcno || 'N/A';
+
+            const adultCount = parseInt(data.adult || 0);
+            const childCount = parseInt(data.children || 0);
+            const passengerCount = adultCount + childCount;
             const passengerDisplay = passengerCount > 1 ? ` (${passengerCount} PAX)` : '';
 
             return `
@@ -615,17 +601,17 @@
 
                 <div class="row">
                     <span class="label">Cashier:</span>
-                    <span class="value">${data.cashierName || data.user?.username || 'N/A'}</span>
+                    <span class="value">${cashierName}</span>
                 </div>
 
                 <div class="row">
                     <span class="label">RC No:</span>
-                    <span class="value">${data.userRcno || data.user?.rcno || 'N/A'}</span>
+                    <span class="value">${rcNo}</span>
                 </div>
 
                 <div class="divider"></div>
 
-                <div class="passenger-name">${(data.passengerName || 'N/A')}</div>
+                <div class="passenger-name">${(data.passengerName || 'N/A')}${passengerDisplay}</div>
 
                 <div class="flight-details">
                     <span>FLIGHT: ${data.flightNo || '---'}</span>
@@ -644,17 +630,17 @@
                     
                     <div class="item-row">
                         <span class="item-desc">Adult </span>
-                        <span class="item-qty">${data.adult || 0}</span>
-                        <span class="item-price">${data.currency || 'USD'} ${adultPrice}</span>
-                        <span class="item-total">${data.currency || 'USD'} ${adultSub}</span>
+                        <span class="item-qty">${adultCount}</span>
+                        <span class="item-price">${currency} ${adultPrice}</span>
+                        <span class="item-total">${currency} ${adultSub}</span>
                     </div>
                     
-                    ${parseInt(data.children || 0) > 0 ? `
+                    ${childCount > 0 ? `
                     <div class="item-row">
                         <span class="item-desc">Child </span>
-                        <span class="item-qty">${data.children || 0}</span>
-                        <span class="item-price">${data.currency || 'USD'} ${childPrice}</span>
-                        <span class="item-total">${data.currency || 'USD'} ${childSub}</span>
+                        <span class="item-qty">${childCount}</span>
+                        <span class="item-price">${currency} ${childPrice}</span>
+                        <span class="item-total">${currency} ${childSub}</span>
                     </div>
                     ` : ''}
                 </div>
@@ -663,17 +649,17 @@
 
                 <div class="subtotal-row">
                     <span>Subtotal:</span>
-                    <span>${data.currency || 'USD'} ${subtotal}</span>
+                    <span>${currency} ${subtotal}</span>
                 </div>
 
                 <div class="subtotal-row">
                     <span>GST ${data.gstRate || 8}%:</span>
-                    <span>${data.currency || 'USD'} ${gst}</span>
+                    <span>${currency} ${gst}</span>
                 </div>
 
                 <div class="total-row">
                     <span>TOTAL:</span>
-                    <span>${data.currency || 'USD'} ${total}</span>
+                    <span>${currency} ${total}</span>
                 </div>
 
                 <div class="payment-info">
@@ -694,27 +680,35 @@
                     <div class="footer-note">Thank you for choosing Koveli Lounge</div>
                 </div>
 
-                ${data.receiptNo ? `
-                <div class="barcode-area">
-                    
+                ${data.id ? `
+                <div class="transaction-id" style="font-size: 6pt; text-align: center; margin-top: 1mm; color: #666;">
+                    ID: ${data.id.substring(0, 8)}...
                 </div>
                 ` : ''}
             `;
         }
 
-        // Fetch receipt from Firebase
+        // Fetch receipt from Firebase using passengerDb from fireshift.js
         async function fetchReceiptFromFirebase(receiptNo) {
             try {
-                if (!passengerDb) throw new Error('Firebase not initialized');
+                // Check if passengerDb is available from fireshift.js
+                if (typeof passengerDb === 'undefined') {
+                    logDebug('ERROR: passengerDb not initialized - fireshift.js may not be loaded');
+                    throw new Error('Firebase not initialized');
+                }
                 
                 logDebug(`Fetching receipt from Firebase: ${receiptNo}`);
                 
+                // Query the Kovelipay collection
                 const kovelipayRef = passengerDb.collection('Kovelipay');
+                
+                // Try to find by receiptNo field
                 const snapshot = await kovelipayRef.where('receiptNo', '==', receiptNo).limit(1).get();
                 
                 if (!snapshot.empty) {
-                    const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-                    logDebug('✅ Receipt found in Firebase');
+                    const doc = snapshot.docs[0];
+                    const data = { id: doc.id, ...doc.data() };
+                    logDebug(`✅ Receipt found in Firebase with ID: ${doc.id}`);
                     return data;
                 }
                 
@@ -722,7 +716,7 @@
                 const docById = await kovelipayRef.doc(receiptNo).get();
                 if (docById.exists) {
                     const data = { id: docById.id, ...docById.data() };
-                    logDebug('✅ Receipt found by direct ID');
+                    logDebug(`✅ Receipt found by direct ID: ${receiptNo}`);
                     return data;
                 }
                 
@@ -740,12 +734,10 @@
             const errorEl = document.getElementById('errorMessage');
             const receiptDataEl = document.getElementById('receiptData');
 
-            // Log URL parameters for debugging
             logDebug(`Page loaded - void param: ${voidParam}, reprint: ${reprintParam}`);
             logDebug(`Receipt No: ${receiptNoParam || 'none'}, Has data: ${!!receiptDataParam}`);
 
             try {
-                // Hide error, show loading
                 if (loadingEl) loadingEl.style.display = 'block';
                 if (errorEl) errorEl.style.display = 'none';
                 if (receiptDataEl) receiptDataEl.style.display = 'none';
@@ -767,7 +759,7 @@
                     data = await fetchReceiptFromFirebase(receiptNoParam);
                 }
                 
-                // Case 3: Try to get from localStorage (last transaction)
+                // Case 3: Try localStorage
                 if (!data) {
                     try {
                         const lastReceipt = localStorage.getItem('lastReceiptData');
@@ -784,39 +776,29 @@
                     throw new Error('No receipt data found');
                 }
 
-                // Add reprint flag
                 data.isReprint = reprintParam;
-
-                // Store receipt data
                 receiptData = data;
 
-                // Generate and display receipt HTML
                 const html = generateReceiptHTML(data);
                 if (receiptDataEl) {
                     receiptDataEl.innerHTML = html;
                     receiptDataEl.style.display = 'block';
                 }
 
-                // Hide loading
                 if (loadingEl) loadingEl.style.display = 'none';
 
-                // Check if receipt should be voided
                 const showVoid = shouldShowVoid(data);
                 
                 if (showVoid) {
                     logDebug('🎯 Adding VOID watermark...');
-                    
-                    // Try multiple times to ensure it appears
                     setTimeout(() => {
                         const added = addVoidWatermark();
                         if (!added) {
-                            // Try again after content is fully rendered
                             setTimeout(addVoidWatermark, 200);
                         }
                     }, 300);
                 }
 
-                // Auto-print if requested
                 const autoPrint = urlParams.get('autoPrint') === 'true';
                 if (autoPrint) {
                     logDebug('🖨️ Auto-print enabled');
@@ -829,7 +811,6 @@
                 console.error('Error loading receipt:', error);
                 logDebug(`❌ Error: ${error.message}`);
                 
-                // Show error message
                 if (loadingEl) loadingEl.style.display = 'none';
                 if (errorEl) {
                     errorEl.style.display = 'block';
@@ -851,22 +832,24 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             logDebug('DOM Content Loaded');
-            loadReceipt();
+            
+            // Small delay to ensure fireshift.js has initialized passengerDb
+            setTimeout(() => {
+                loadReceipt();
+            }, 100);
+            
             setBackLink();
         });
 
-        // Also try after window load
         window.addEventListener('load', () => {
             logDebug('Window fully loaded');
             
-            // Final check for void watermark
             if (voidParam && !document.querySelector('.void-watermark')) {
                 logDebug('⚠️ Adding void watermark after window load');
                 addVoidWatermark();
             }
         });
 
-        // Listen for print events
         window.addEventListener('beforeprint', () => {
             console.log('Printing to EPSON TM-T88vii...');
         });
