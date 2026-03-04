@@ -2425,7 +2425,7 @@ function validateEntryForSave(entry) {
 }
 
 // ========== MULTI-DATABASE DUPLICATE CHECK FUNCTION ==========
-async function checkPassengerExistsInDatabase(db, flightNo, date, seatNo, pName, isGuest = false, excludeId = null) {
+async function checkPassengerExistsInDatabase(db, flightNo, date, seatNo, pName, isGuest = false, mainPassengerId = null, excludeId = null) {
     try {
         if (!db) {
             console.error('Database not provided for duplicate check');
@@ -2455,34 +2455,34 @@ async function checkPassengerExistsInDatabase(db, flightNo, date, seatNo, pName,
         snapshot.forEach(doc => {
             const data = doc.data();
             
+            // Skip if this is the same document we're updating
             if (excludeId && doc.id === excludeId) {
                 return;
             }
             
-            if (!isGuest) {
-                const nameMatch = data.pName && data.pName.toUpperCase() === pName.toUpperCase();
-                const seatMatch = data.seatNo && data.seatNo.toUpperCase() === seatNo.toUpperCase();
-                
-                // For SQ and UL, only match by name if seat is empty
-                const flightPrefix = flightNo.substring(0, 2).toUpperCase();
-                if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
-                    if (nameMatch) {
-                        matches.push({
-                            id: doc.id,
-                            ...data
-                        });
-                    }
-                } else {
-                    if (nameMatch && seatMatch) {
-                        matches.push({
-                            id: doc.id,
-                            ...data
-                        });
-                    }
+            // If this is a guest entry, we want to allow same name/seat as the main passenger
+            if (isGuest && mainPassengerId) {
+                // Check if this match is the main passenger
+                if (data.id === mainPassengerId || data.mainPassengerId === mainPassengerId) {
+                    console.log('✅ Guest entry - skipping main passenger in duplicate check');
+                    return;
+                }
+            }
+            
+            const nameMatch = data.pName && data.pName.toUpperCase() === pName.toUpperCase();
+            const seatMatch = data.seatNo && data.seatNo.toUpperCase() === seatNo.toUpperCase();
+            
+            // For SQ and UL, only match by name if seat is empty
+            const flightPrefix = flightNo.substring(0, 2).toUpperCase();
+            if (NO_SEAT_REQUIRED_AIRLINES.includes(flightPrefix)) {
+                if (nameMatch) {
+                    matches.push({
+                        id: doc.id,
+                        ...data
+                    });
                 }
             } else {
-                if (data.pName && data.pName.toUpperCase() === pName.toUpperCase() && 
-                    data.seatNo && data.seatNo.toUpperCase() === seatNo.toUpperCase()) {
+                if (nameMatch && seatMatch) {
                     matches.push({
                         id: doc.id,
                         ...data
@@ -2680,28 +2680,28 @@ async function saveEntryToFirebase(entry) {
         }
         
         // Check for duplicates using the same database that will be used for saving
-        if (!entry.isGuest) {
-            const checkResult = await checkPassengerExistsInDatabase(
-                targetDb,
-                entry.flightNo,
-                entry.date,
-                entry.seatNo || '',
-                entry.pName || '',
-                false,
-                null
-            );
-            
-            if (checkResult.exists) {
-                const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
-                console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
-                return { 
-                    success: false, 
-                    error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists for flight ${entry.flightNo} on ${entry.date} in ${getFirestoreNameForFlight(entry.flightNo)}`,
-                    reason: 'DUPLICATE',
-                    duplicates: checkResult.matches,
-                    database: getFirestoreNameForFlight(entry.flightNo)
-                };
-            }
+        // For guests, pass the mainPassengerId to exclude from duplicate check
+        const checkResult = await checkPassengerExistsInDatabase(
+            targetDb,
+            entry.flightNo,
+            entry.date,
+            entry.seatNo || '',
+            entry.pName || '',
+            entry.isGuest || false,
+            entry.mainPassengerId || null,
+            null
+        );
+        
+        if (checkResult.exists) {
+            const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
+            console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
+            return { 
+                success: false, 
+                error: `DUPLICATE: Passenger ${entry.pName} with seat ${entry.seatNo || 'unknown'} already exists for flight ${entry.flightNo} on ${entry.date} in ${getFirestoreNameForFlight(entry.flightNo)}`,
+                reason: 'DUPLICATE',
+                duplicates: checkResult.matches,
+                database: getFirestoreNameForFlight(entry.flightNo)
+            };
         }
         
         // Prepare the data (remove local-only fields)
@@ -2950,40 +2950,39 @@ async function backgroundSaveToFirebase(entry) {
             // ===== CLEAR ERROR MESSAGES: DUPLICATE CHECK =====
             const targetDb = getFirestoreForFlight(currentEntry.flightNo);
             
-            if (!currentEntry.isGuest) {
-                const checkResult = await checkPassengerExistsInDatabase(
-                    targetDb,
-                    currentEntry.flightNo,
-                    currentEntry.date,
-                    currentEntry.seatNo || '',
-                    currentEntry.pName || '',
-                    false,
-                    null
-                );
+            const checkResult = await checkPassengerExistsInDatabase(
+                targetDb,
+                currentEntry.flightNo,
+                currentEntry.date,
+                currentEntry.seatNo || '',
+                currentEntry.pName || '',
+                currentEntry.isGuest || false,
+                currentEntry.mainPassengerId || null,
+                null
+            );
+            
+            if (checkResult.exists) {
+                const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
+                console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
                 
-                if (checkResult.exists) {
-                    const duplicateInfo = checkResult.matches.map(m => `${m.pName} (${m.seatNo})`).join(', ');
-                    console.warn('⚠️ DUPLICATE DETECTED:', duplicateInfo);
-                    
-                    savedPasses[currentIndex].firebaseError = `DUPLICATE: Passenger ${currentEntry.pName} already exists`;
-                    savedPasses[currentIndex].firebaseReason = 'DUPLICATE';
-                    savedPasses[currentIndex].firebaseStatus = 'error';
-                    savedPasses[currentIndex].firebaseRetry = true;
-                    savedPasses[currentIndex].firebaseSaved = false;
-                    savedPasses[currentIndex].errorCode = getErrorCode('DUPLICATE');
-                    savedPasses[currentIndex].errorMessage = getErrorMessage('DUPLICATE');
-                    savedPasses[currentIndex].errorTimestamp = new Date().toISOString();
-                    savedPasses[currentIndex].errorDetails = `Duplicate of: ${duplicateInfo}`;
-                    
-                    saveSavedToLocalStorage();
-                    renderTables();
-                    updateErrorSummary();
-                    
-                    showTemporaryNotification(`❌ [ERR-DUP-001] DUPLICATE: This passenger already exists for this flight`, 'error');
-                    saveQueue.delete(entryId);
-                    saveTimeouts.delete(entryId);
-                    return;
-                }
+                savedPasses[currentIndex].firebaseError = `DUPLICATE: Passenger ${currentEntry.pName} already exists`;
+                savedPasses[currentIndex].firebaseReason = 'DUPLICATE';
+                savedPasses[currentIndex].firebaseStatus = 'error';
+                savedPasses[currentIndex].firebaseRetry = true;
+                savedPasses[currentIndex].firebaseSaved = false;
+                savedPasses[currentIndex].errorCode = getErrorCode('DUPLICATE');
+                savedPasses[currentIndex].errorMessage = getErrorMessage('DUPLICATE');
+                savedPasses[currentIndex].errorTimestamp = new Date().toISOString();
+                savedPasses[currentIndex].errorDetails = `Duplicate of: ${duplicateInfo}`;
+                
+                saveSavedToLocalStorage();
+                renderTables();
+                updateErrorSummary();
+                
+                showTemporaryNotification(`❌ [ERR-DUP-001] DUPLICATE: This passenger already exists for this flight`, 'error');
+                saveQueue.delete(entryId);
+                saveTimeouts.delete(entryId);
+                return;
             }
             
             // ===== ATTEMPT SAVE =====
@@ -3578,8 +3577,13 @@ function addGuestToPassenger(mainPassengerId, guestData) {
             createdAtTimestamp: Date.now()
         };
         
-        const mainIndex = pendingPasses.findIndex(p => p.id === mainPassengerId);
-        pendingPasses.splice(mainIndex + 1, 0, guestEntry);
+        // Add guest entry immediately after the main passenger
+        // Instead of pushing to the end, we insert it right after the main passenger
+        const insertPosition = mainPassengerIndex + 1;
+        
+        // Check if there's already a guest at this position (to avoid duplicates)
+        // But we still want to allow multiple guests
+        pendingPasses.splice(insertPosition, 0, guestEntry);
         
         savePendingToLocalStorage();
         
@@ -3969,7 +3973,7 @@ function createEditableCell(text, entryId, field, isSaved, className = '') {
     return cell;
 }
 
-// ========== RENDER FUNCTIONS ==========
+// ========== FIXED RENDER FUNCTIONS - FIXED GUEST DUPLICATION ==========
 function renderTables() {
     renderPendingTable();
     renderSavedTable();
@@ -4004,25 +4008,31 @@ function renderPendingTable() {
         return idB.localeCompare(idA);
     });
     
-    // Now process with guest relationships
+    // FIXED: Build the sorted array with proper guest ordering without duplicates
     const sortedPasses = [];
     const processedIds = new Set();
     
+    // First, add all non-guest entries (hosts)
     sortedPendingPasses.forEach(entry => {
-        if (processedIds.has(entry.id)) return;
-        
-        sortedPasses.push(entry);
-        processedIds.add(entry.id);
-        
-        if (!entry.isGuest) {
-            const guests = pendingPasses.filter(g => g.isGuest && g.mainPassengerId === entry.id);
-            // Sort guests by creation time as well
+        if (!entry.isGuest && !processedIds.has(entry.id)) {
+            sortedPasses.push(entry);
+            processedIds.add(entry.id);
+            
+            // Then find all guests for this host
+            const guests = sortedPendingPasses.filter(g => 
+                g.isGuest && 
+                g.mainPassengerId === entry.id && 
+                !processedIds.has(g.id)
+            );
+            
+            // Sort guests by creation time
             const sortedGuests = guests.sort((a, b) => {
                 const timeA = a.entryTime || '00:00:00';
                 const timeB = b.entryTime || '00:00:00';
                 return timeB.localeCompare(timeA);
             });
             
+            // Add all guests immediately after their host
             sortedGuests.forEach(guest => {
                 sortedPasses.push(guest);
                 processedIds.add(guest.id);
@@ -4030,13 +4040,14 @@ function renderPendingTable() {
         }
     });
     
-    // Add any remaining passes that weren't processed
+    // Then add any remaining passes that weren't processed (should be none, but just in case)
     sortedPendingPasses.forEach(entry => {
         if (!processedIds.has(entry.id)) {
             sortedPasses.push(entry);
         }
     });
     
+    // Render each entry
     sortedPasses.forEach(entry => {
         const row = document.createElement('tr');
         row.setAttribute('data-id', entry.id);
