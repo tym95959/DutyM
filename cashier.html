@@ -2537,7 +2537,7 @@
     }
 
     // ========== SALES FUNCTIONS - MODIFIED TO FILTER CASH ONLY ==========
-    // ========== SALES FUNCTIONS - FETCH CASH ONLY EXCLUDING VOIDS ==========
+// ========== SALES FUNCTIONS - FETCH CASH ONLY EXCLUDING VOIDS ==========
 async function fetchSalesData() {
     try {
         const isShiftOpen = currentShift && 
@@ -2580,16 +2580,12 @@ async function fetchSalesData() {
         
         // Try multiple query approaches to get cash transactions excluding voids
         
-        // Approach 1: Direct query with both filters (if Firestore supports it)
+        // Approach 1: Direct query with paymentStatus filter (if supported)
         try {
             let query = db_ref.collection('Kovelipay')
                 .where('date', '==', targetDate)
-                .where('paymentMethod', '==', 'CASH');
-            
-            // Add void filter if the field exists in your database
-            // Option A: If you have a 'status' or 'voided' field
-            // query = query.where('status', '!=', 'voided');
-            // query = query.where('voided', '==', false);
+                .where('paymentMethod', '==', 'CASH')
+                .where('paymentStatus', '!=', 'VOID');  // Exclude void transactions
             
             if (currentShiftType) {
                 query = query.where('shift', '==', currentShiftType);
@@ -2601,72 +2597,9 @@ async function fetchSalesData() {
                 snapshot.forEach(doc => {
                     const data = doc.data();
                     
-                    // Double-check to exclude voided transactions
-                    const isVoided = data.voided === true || 
-                                    data.status === 'voided' || 
-                                    data.status === 'VOIDED' ||
-                                    data.isVoid === true;
-                    
-                    // Skip voided transactions
-                    if (isVoided) {
-                        return;
-                    }
-                    
-                    const currency = (data.currency || 'USD').toUpperCase();
-                    const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
-                    
-                    if (currency === 'USD') {
-                        totalUSD += amount;
-                    } else {
-                        totalMVR += amount;
-                    }
-                });
-                
-                totalUSD = roundUSD(totalUSD);
-                
-                salesData = { mvr: totalMVR, usd: totalUSD };
-                
-                if (mvrSales) mvrSales.textContent = totalMVR.toFixed(2);
-                if (usdSales) usdSales.textContent = totalUSD.toFixed(2);
-                
-                if (totalMVR > 0 || totalUSD > 0) {
-                    showMessage(`Loaded CASH sales (excluding voids) for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
-                } else {
-                    showMessage(`No CASH sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
-                }
-                return;
-            }
-        } catch (e) {
-            console.log('Complex query failed, trying simpler approach:', e);
-        }
-        
-        // Approach 2: Get cash transactions then filter voids manually
-        try {
-            let query = db_ref.collection('Kovelipay')
-                .where('date', '==', targetDate)
-                .where('paymentMethod', '==', 'CASH');
-            
-            if (currentShiftType) {
-                query = query.where('shift', '==', currentShiftType);
-            }
-            
-            const snapshot = await query.get();
-            
-            if (!snapshot.empty) {
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    
-                    // Manual void check - skip voided transactions
-                    const isVoided = 
-                        data.voided === true || 
-                        data.status === 'voided' || 
-                        data.status === 'VOIDED' ||
-                        data.isVoid === true ||
-                        data.void === true ||
-                        (data.transactionStatus && data.transactionStatus.toLowerCase() === 'voided');
-                    
-                    if (isVoided) {
-                        console.log('Skipping voided transaction:', doc.id);
+                    // Double-check to ensure we're not including voids
+                    // (the query should already filter them, but double-check to be safe)
+                    if (data.paymentStatus === 'VOID') {
                         return; // Skip voided transactions
                     }
                     
@@ -2695,10 +2628,60 @@ async function fetchSalesData() {
                 return;
             }
         } catch (e) {
-            console.log('Cash query with manual void filtering failed:', e);
+            console.log('Complex query with paymentStatus failed, trying simpler approach:', e);
         }
         
-        // Approach 3: Get all transactions and filter for cash and non-voided
+        // Approach 2: Get cash transactions then filter voids manually by checking paymentStatus
+        try {
+            let query = db_ref.collection('Kovelipay')
+                .where('date', '==', targetDate)
+                .where('paymentMethod', '==', 'CASH');
+            
+            if (currentShiftType) {
+                query = query.where('shift', '==', currentShiftType);
+            }
+            
+            const snapshot = await query.get();
+            
+            if (!snapshot.empty) {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    
+                    // Check paymentStatus to exclude VOID transactions
+                    if (data.paymentStatus === 'VOID') {
+                        console.log('Skipping voided transaction (paymentStatus = VOID):', doc.id);
+                        return; // Skip voided transactions
+                    }
+                    
+                    const currency = (data.currency || 'USD').toUpperCase();
+                    const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
+                    
+                    if (currency === 'USD') {
+                        totalUSD += amount;
+                    } else {
+                        totalMVR += amount;
+                    }
+                });
+                
+                totalUSD = roundUSD(totalUSD);
+                
+                salesData = { mvr: totalMVR, usd: totalUSD };
+                
+                if (mvrSales) mvrSales.textContent = totalMVR.toFixed(2);
+                if (usdSales) usdSales.textContent = totalUSD.toFixed(2);
+                
+                if (totalMVR > 0 || totalUSD > 0) {
+                    showMessage(`Loaded CASH sales (excluding voids) for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
+                } else {
+                    showMessage(`No CASH sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
+                }
+                return;
+            }
+        } catch (e) {
+            console.log('Cash query with manual paymentStatus filtering failed:', e);
+        }
+        
+        // Approach 3: Get all transactions and filter for cash and non-voided by checking paymentStatus
         try {
             let query = db_ref.collection('Kovelipay').where('date', '==', targetDate);
             
@@ -2718,17 +2701,9 @@ async function fetchSalesData() {
                         return;
                     }
                     
-                    // Skip voided transactions
-                    const isVoided = 
-                        data.voided === true || 
-                        data.status === 'voided' || 
-                        data.status === 'VOIDED' ||
-                        data.isVoid === true ||
-                        data.void === true ||
-                        (data.transactionStatus && data.transactionStatus.toLowerCase() === 'voided');
-                    
-                    if (isVoided) {
-                        console.log('Skipping voided transaction:', doc.id);
+                    // Skip voided transactions based on paymentStatus
+                    if (data.paymentStatus === 'VOID') {
+                        console.log('Skipping voided transaction (paymentStatus = VOID):', doc.id);
                         return; // Skip voided transactions
                     }
                     
@@ -2757,7 +2732,7 @@ async function fetchSalesData() {
                 return;
             }
         } catch (e) {
-            console.log('Full query with filtering failed:', e);
+            console.log('Full query with paymentStatus filtering failed:', e);
         }
         
         // If we get here, no transactions found
