@@ -2537,153 +2537,245 @@
     }
 
     // ========== SALES FUNCTIONS - MODIFIED TO FILTER CASH ONLY ==========
-    async function fetchSalesData() {
+    // ========== SALES FUNCTIONS - FETCH CASH ONLY EXCLUDING VOIDS ==========
+async function fetchSalesData() {
+    try {
+        const isShiftOpen = currentShift && 
+            (currentShift.morning === 'open' || currentShift.evening === 'open');
+        
+        const mvrSales = document.getElementById('mvrSales');
+        const usdSales = document.getElementById('usdSales');
+        const comparisonSection = document.getElementById('comparisonSection');
+        
+        if (!isShiftOpen) {
+            salesData = { mvr: 0, usd: 0 };
+            if (mvrSales) mvrSales.textContent = '0.00';
+            if (usdSales) usdSales.textContent = '0.00';
+            if (comparisonSection) comparisonSection.style.display = 'none';
+            return;
+        }
+
+        const db_ref = typeof passengerDb !== 'undefined' ? passengerDb : database;
+        
+        if (!db_ref) return;
+
+        let targetDate;
+        if (currentShift && currentShift.date) {
+            targetDate = currentShift.date;
+        } else {
+            targetDate = new Date().toISOString().split('T')[0];
+        }
+        
+        let currentShiftType = null;
+        if (currentShift) {
+            if (currentShift.morning === 'open') {
+                currentShiftType = 'MORNING';
+            } else if (currentShift.evening === 'open') {
+                currentShiftType = 'EVENING';
+            }
+        }
+        
+        let totalMVR = 0;
+        let totalUSD = 0;
+        
+        // Try multiple query approaches to get cash transactions excluding voids
+        
+        // Approach 1: Direct query with both filters (if Firestore supports it)
         try {
-            const isShiftOpen = currentShift && 
-                (currentShift.morning === 'open' || currentShift.evening === 'open');
+            let query = db_ref.collection('Kovelipay')
+                .where('date', '==', targetDate)
+                .where('paymentMethod', '==', 'CASH');
             
-            const mvrSales = document.getElementById('mvrSales');
-            const usdSales = document.getElementById('usdSales');
-            const comparisonSection = document.getElementById('comparisonSection');
+            // Add void filter if the field exists in your database
+            // Option A: If you have a 'status' or 'voided' field
+            // query = query.where('status', '!=', 'voided');
+            // query = query.where('voided', '==', false);
             
-            if (!isShiftOpen) {
-                salesData = { mvr: 0, usd: 0 };
-                if (mvrSales) mvrSales.textContent = '0.00';
-                if (usdSales) usdSales.textContent = '0.00';
-                if (comparisonSection) comparisonSection.style.display = 'none';
+            if (currentShiftType) {
+                query = query.where('shift', '==', currentShiftType);
+            }
+            
+            const snapshot = await query.get();
+            
+            if (!snapshot.empty) {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    
+                    // Double-check to exclude voided transactions
+                    const isVoided = data.voided === true || 
+                                    data.status === 'voided' || 
+                                    data.status === 'VOIDED' ||
+                                    data.isVoid === true;
+                    
+                    // Skip voided transactions
+                    if (isVoided) {
+                        return;
+                    }
+                    
+                    const currency = (data.currency || 'USD').toUpperCase();
+                    const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
+                    
+                    if (currency === 'USD') {
+                        totalUSD += amount;
+                    } else {
+                        totalMVR += amount;
+                    }
+                });
+                
+                totalUSD = roundUSD(totalUSD);
+                
+                salesData = { mvr: totalMVR, usd: totalUSD };
+                
+                if (mvrSales) mvrSales.textContent = totalMVR.toFixed(2);
+                if (usdSales) usdSales.textContent = totalUSD.toFixed(2);
+                
+                if (totalMVR > 0 || totalUSD > 0) {
+                    showMessage(`Loaded CASH sales (excluding voids) for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
+                } else {
+                    showMessage(`No CASH sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
+                }
                 return;
             }
-
-            const db_ref = typeof passengerDb !== 'undefined' ? passengerDb : database;
-            
-            if (!db_ref) return;
-
-            let targetDate;
-            if (currentShift && currentShift.date) {
-                targetDate = currentShift.date;
-            } else {
-                targetDate = new Date().toISOString().split('T')[0];
-            }
-            
-            let currentShiftType = null;
-            if (currentShift) {
-                if (currentShift.morning === 'open') {
-                    currentShiftType = 'MORNING';
-                } else if (currentShift.evening === 'open') {
-                    currentShiftType = 'EVENING';
-                }
-            }
-            
-            let totalMVR = 0;
-            let totalUSD = 0;
-            
-            try {
-                // Modified query to filter for CASH transactions only
-                let query = db_ref.collection('Kovelipay')
-                    .where('date', '==', targetDate)
-                    .where('paymentMethod', '==', 'CASH'); // Only CASH transactions
-                
-                if (currentShiftType) {
-                    query = query.where('shift', '==', currentShiftType);
-                }
-                
-                const snapshot = await query.get();
-                
-                if (!snapshot.empty) {
-                    snapshot.forEach(doc => {
-                        const data = doc.data();
-                        const currency = (data.currency || 'USD').toUpperCase();
-                        const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
-                        
-                        if (currency === 'USD') {
-                            totalUSD += amount;
-                        } else {
-                            totalMVR += amount;
-                        }
-                    });
-                    
-                    totalUSD = roundUSD(totalUSD);
-                    
-                    salesData = { mvr: totalMVR, usd: totalUSD };
-                    
-                    if (mvrSales) mvrSales.textContent = totalMVR.toFixed(2);
-                    if (usdSales) usdSales.textContent = totalUSD.toFixed(2);
-                    
-                    if (totalMVR > 0 || totalUSD > 0) {
-                        showMessage(`Loaded CASH sales for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
-                    } else {
-                        showMessage(`No CASH sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
-                    }
-                    return;
-                } else {
-                    // If no CASH transactions found with direct query, try fallback with manual filtering
-                    console.log('No CASH transactions found with direct query, trying fallback');
-                }
-            } catch (e) {
-                console.log('Date field query with paymentMethod failed:', e);
-            }
-            
-            // Fallback: Get all transactions and filter manually
-            try {
-                let query = db_ref.collection('Kovelipay').where('date', '==', targetDate);
-                
-                if (currentShiftType) {
-                    query = query.where('shift', '==', currentShiftType);
-                }
-                
-                const snapshot = await query.get();
-                
-                if (!snapshot.empty) {
-                    snapshot.forEach(doc => {
-                        const data = doc.data();
-                        const paymentMethod = (data.paymentMethod || '').toUpperCase();
-                        
-                        // Only include CASH transactions
-                        if (paymentMethod === 'CASH') {
-                            const currency = (data.currency || 'USD').toUpperCase();
-                            const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
-                            
-                            if (currency === 'USD') {
-                                totalUSD += amount;
-                            } else {
-                                totalMVR += amount;
-                            }
-                        }
-                    });
-                    
-                    totalUSD = roundUSD(totalUSD);
-                    
-                    salesData = { mvr: totalMVR, usd: totalUSD };
-                    
-                    if (mvrSales) mvrSales.textContent = totalMVR.toFixed(2);
-                    if (usdSales) usdSales.textContent = totalUSD.toFixed(2);
-                    
-                    if (totalMVR > 0 || totalUSD > 0) {
-                        showMessage(`Loaded CASH sales for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
-                    } else {
-                        showMessage(`No CASH sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
-                    }
-                    return;
-                }
-            } catch (e) {
-                console.log('Manual filtering fallback failed:', e);
-            }
-            
-            // If we get here, no transactions found
-            salesData = { mvr: 0, usd: 0 };
-            if (mvrSales) mvrSales.textContent = '0.00';
-            if (usdSales) usdSales.textContent = '0.00';
-            showMessage(`No CASH sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
-            
-        } catch (error) {
-            console.error('Error fetching sales:', error);
-            salesData = { mvr: 0, usd: 0 };
-            const mvrSales = document.getElementById('mvrSales');
-            const usdSales = document.getElementById('usdSales');
-            if (mvrSales) mvrSales.textContent = '0.00';
-            if (usdSales) usdSales.textContent = '0.00';
+        } catch (e) {
+            console.log('Complex query failed, trying simpler approach:', e);
         }
+        
+        // Approach 2: Get cash transactions then filter voids manually
+        try {
+            let query = db_ref.collection('Kovelipay')
+                .where('date', '==', targetDate)
+                .where('paymentMethod', '==', 'CASH');
+            
+            if (currentShiftType) {
+                query = query.where('shift', '==', currentShiftType);
+            }
+            
+            const snapshot = await query.get();
+            
+            if (!snapshot.empty) {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    
+                    // Manual void check - skip voided transactions
+                    const isVoided = 
+                        data.voided === true || 
+                        data.status === 'voided' || 
+                        data.status === 'VOIDED' ||
+                        data.isVoid === true ||
+                        data.void === true ||
+                        (data.transactionStatus && data.transactionStatus.toLowerCase() === 'voided');
+                    
+                    if (isVoided) {
+                        console.log('Skipping voided transaction:', doc.id);
+                        return; // Skip voided transactions
+                    }
+                    
+                    const currency = (data.currency || 'USD').toUpperCase();
+                    const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
+                    
+                    if (currency === 'USD') {
+                        totalUSD += amount;
+                    } else {
+                        totalMVR += amount;
+                    }
+                });
+                
+                totalUSD = roundUSD(totalUSD);
+                
+                salesData = { mvr: totalMVR, usd: totalUSD };
+                
+                if (mvrSales) mvrSales.textContent = totalMVR.toFixed(2);
+                if (usdSales) usdSales.textContent = totalUSD.toFixed(2);
+                
+                if (totalMVR > 0 || totalUSD > 0) {
+                    showMessage(`Loaded CASH sales (excluding voids) for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
+                } else {
+                    showMessage(`No CASH sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
+                }
+                return;
+            }
+        } catch (e) {
+            console.log('Cash query with manual void filtering failed:', e);
+        }
+        
+        // Approach 3: Get all transactions and filter for cash and non-voided
+        try {
+            let query = db_ref.collection('Kovelipay').where('date', '==', targetDate);
+            
+            if (currentShiftType) {
+                query = query.where('shift', '==', currentShiftType);
+            }
+            
+            const snapshot = await query.get();
+            
+            if (!snapshot.empty) {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const paymentMethod = (data.paymentMethod || '').toUpperCase();
+                    
+                    // Skip non-cash transactions
+                    if (paymentMethod !== 'CASH') {
+                        return;
+                    }
+                    
+                    // Skip voided transactions
+                    const isVoided = 
+                        data.voided === true || 
+                        data.status === 'voided' || 
+                        data.status === 'VOIDED' ||
+                        data.isVoid === true ||
+                        data.void === true ||
+                        (data.transactionStatus && data.transactionStatus.toLowerCase() === 'voided');
+                    
+                    if (isVoided) {
+                        console.log('Skipping voided transaction:', doc.id);
+                        return; // Skip voided transactions
+                    }
+                    
+                    const currency = (data.currency || 'USD').toUpperCase();
+                    const amount = parseFloat(data.totalAmount || data.amount || 0) || 0;
+                    
+                    if (currency === 'USD') {
+                        totalUSD += amount;
+                    } else {
+                        totalMVR += amount;
+                    }
+                });
+                
+                totalUSD = roundUSD(totalUSD);
+                
+                salesData = { mvr: totalMVR, usd: totalUSD };
+                
+                if (mvrSales) mvrSales.textContent = totalMVR.toFixed(2);
+                if (usdSales) usdSales.textContent = totalUSD.toFixed(2);
+                
+                if (totalMVR > 0 || totalUSD > 0) {
+                    showMessage(`Loaded CASH sales (excluding voids) for ${targetDate} (${currentShiftType} shift): MVR ${totalMVR.toFixed(2)} / USD ${totalUSD.toFixed(2)}`, 'success');
+                } else {
+                    showMessage(`No CASH sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
+                }
+                return;
+            }
+        } catch (e) {
+            console.log('Full query with filtering failed:', e);
+        }
+        
+        // If we get here, no transactions found
+        salesData = { mvr: 0, usd: 0 };
+        if (mvrSales) mvrSales.textContent = '0.00';
+        if (usdSales) usdSales.textContent = '0.00';
+        showMessage(`No CASH sales found for ${targetDate} (${currentShiftType} shift)`, 'info');
+        
+    } catch (error) {
+        console.error('Error fetching sales:', error);
+        salesData = { mvr: 0, usd: 0 };
+        const mvrSales = document.getElementById('mvrSales');
+        const usdSales = document.getElementById('usdSales');
+        if (mvrSales) mvrSales.textContent = '0.00';
+        if (usdSales) usdSales.textContent = '0.00';
+        showMessage('Error loading sales data: ' + error.message, 'danger');
     }
+}
 
     // ========== COMPARISON FUNCTIONS ==========
     function handleCountedInput() {
