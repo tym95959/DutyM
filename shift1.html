@@ -262,12 +262,76 @@
             cursor: not-allowed;
         }
 
+        /* supervisor back-date panel */
+        .backdate-panel {
+            background: #fff3e0;
+            border-radius: 30px;
+            padding: 20px 25px;
+            margin-bottom: 25px;
+            border: 2px dashed #e6b800;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .backdate-panel.visible {
+            display: flex;
+        }
+        .backdate-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            color: #7b592b;
+        }
+        .backdate-title span {
+            font-size: 28px;
+        }
+        .backdate-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .backdate-controls input {
+            padding: 12px 20px;
+            border-radius: 60px;
+            border: 1px solid #e6b800;
+            background: white;
+            font-size: 16px;
+            color: #4f3e22;
+            font-weight: 500;
+        }
+        .backdate-controls button {
+            padding: 12px 28px;
+            border: none;
+            border-radius: 60px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.15s;
+            border: 1px solid;
+            box-shadow: 0 5px 0 #b78f5b;
+        }
+        .backdate-controls button:active { transform: translateY(4px); box-shadow: 0 1px 0 #b78f5b; }
+        .btn-apply-backdate {
+            background: #e6b800;
+            color: #3d2e0f;
+            border-color: #c9a100;
+        }
+        .btn-cancel-backdate {
+            background: #f0e0cc;
+            color: #7b592b;
+            border-color: #dbb78b;
+        }
+
         /* bottom bar — new */
         .bottom-dock {
             display: flex;
             gap: 20px;
             margin-top: 28px;
             align-items: center;
+            flex-wrap: wrap;
         }
         .refresh-large {
             flex: 2;
@@ -297,7 +361,7 @@
             box-shadow: 0 8px 0 #cb9f62, 0 10px 20px -8px #a5713a;
             display: flex; align-items: center; justify-content: center; gap: 10px;
         }
-        .reset-super {
+        .reset-btn {
             flex: 1;
             padding: 18px;
             background: #fbe7c4;
@@ -310,8 +374,23 @@
             border: 1px solid #f5c58c;
             box-shadow: 0 8px 0 #b88744, 0 10px 20px -8px #8b621f;
             display: flex; align-items: center; justify-content: center;
+            transition: 0.15s;
         }
-        .reset-super:disabled { opacity: 0.4; box-shadow: 0 4px 0 #886b40; transform: translateY(4px); cursor: not-allowed; }
+        .reset-btn:active { transform: translateY(5px); box-shadow: 0 3px 0 #b88744; }
+        .backdate-toggle {
+            flex: 1;
+            padding: 18px;
+            background: #e6d7b8;
+            border: none;
+            border-radius: 30px;
+            font-size: 20px;
+            font-weight: 600;
+            color: #5e451f;
+            cursor: pointer;
+            border: 1px solid #e6b800;
+            box-shadow: 0 8px 0 #b88744;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
 
         /* message — sleek */
         #message {
@@ -368,6 +447,22 @@
         <button class="logout-btn" onclick="logout()">sign out</button>
     </div>
 
+    <!-- supervisor backdate panel -->
+    <div class="backdate-panel" id="backdatePanel">
+        <div class="backdate-title">
+            <span>📆</span> Supervisor: Open Back-Date Shift
+        </div>
+        <div class="backdate-controls">
+            <input type="date" id="backdatePicker">
+            <select id="backdateShiftSelect">
+                <option value="morning">Morning Shift</option>
+                <option value="evening">Evening Shift</option>
+            </select>
+            <button class="btn-apply-backdate" onclick="supervisorBackdateOpen()">✓ Open Shift</button>
+            <button class="btn-cancel-backdate" onclick="toggleBackdatePanel()">Cancel</button>
+        </div>
+    </div>
+
     <!-- message area -->
     <div id="message"></div>
 
@@ -400,11 +495,12 @@
         </div>
     </div>
 
-    <!-- bottom dock with new buttons + dashboard -->
+    <!-- bottom dock with new buttons + dashboard + backdate toggle -->
     <div class="bottom-dock">
         <button class="refresh-large" onclick="loadTodayData()"><span>⟳</span> refresh status</button>
         <button class="dashboard-btn" onclick="goToDashboard()"><span>📋</span> back to dashboard</button>
-        <button class="reset-super" id="resetSuperBtn" onclick="supervisorReset()"><span>✨</span> reset</button>
+        <button class="reset-btn" onclick="resetShifts()"><span>✨</span> reset day</button>
+        <button class="backdate-toggle" id="backdateToggleBtn" onclick="toggleBackdatePanel()"><span>📅</span> back‑date</button>
     </div>
 
     <div class="footer-note" id="lastUpdatedInfo">synced: —</div>
@@ -414,6 +510,29 @@
     // ===== fresh new logic (same core, adapted to new IDs) =====
     let currentUser = { name: 'operator', level: 'operator', rcno: '', isSupervisor: false };
     let currentShiftData = { date: '', shift: '', status: '', openTime: '' };
+
+    // Helper function to get today's date in YYYY-MM-DD format using system date
+    function getSystemDateString() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    // Format date for display (DD/MM/YYYY)
+    function formatDateForDisplay(dateStr) {
+        if (!dateStr) return 'no date';
+        try { 
+            if (dateStr.includes('-')) { 
+                const [y, m, d] = dateStr.split('-'); 
+                return `${d}/${m}/${y}`; 
+            } 
+            return dateStr; 
+        } catch { 
+            return dateStr; 
+        }
+    }
 
     function loadUserFromLogin() {
         try {
@@ -441,6 +560,7 @@
             currentUser = { name: 'operator', level: 'operator', rcno: 'N/A', isSupervisor: false };
         }
         updateUserDisplay();
+        updateBackdateToggleVisibility();
     }
 
     function updateUserDisplay() {
@@ -450,12 +570,132 @@
         if (currentUser.isSupervisor) levelSpan.classList.add('supervisor');
         else levelSpan.classList.remove('supervisor');
         document.getElementById('userRcnoDisplay').textContent = `RC: ${currentUser.rcno}`;
-        const resetBtn = document.getElementById('resetSuperBtn');
-        if (resetBtn) {
-            resetBtn.disabled = !currentUser.isSupervisor;
-            resetBtn.title = currentUser.isSupervisor ? 'reset new day' : 'supervisor only';
+    }
+
+    function updateBackdateToggleVisibility() {
+        const toggleBtn = document.getElementById('backdateToggleBtn');
+        if (currentUser.isSupervisor) {
+            toggleBtn.style.display = 'flex';
+        } else {
+            toggleBtn.style.display = 'none';
+            // Also hide panel if open
+            document.getElementById('backdatePanel').classList.remove('visible');
         }
     }
+
+    window.toggleBackdatePanel = function() {
+        if (!currentUser.isSupervisor) {
+            showMessage('Only supervisors can access back-date functions', true);
+            return;
+        }
+        const panel = document.getElementById('backdatePanel');
+        panel.classList.toggle('visible');
+        
+        // Set default date to today if not set
+        const picker = document.getElementById('backdatePicker');
+        if (!picker.value) {
+            picker.value = getSystemDateString();
+        }
+    };
+
+    window.supervisorBackdateOpen = async function() {
+        if (!currentUser.isSupervisor) {
+            showMessage('Supervisor access required', true);
+            return;
+        }
+
+        const selectedDate = document.getElementById('backdatePicker').value;
+        const selectedShift = document.getElementById('backdateShiftSelect').value;
+        
+        if (!selectedDate) {
+            showMessage('Please select a date', true);
+            return;
+        }
+
+        // Confirm with supervisor
+        const confirmOpen = confirm(
+            `⚠️ Supervisor Back-Date Shift Open\n\n` +
+            `Date: ${formatDateForDisplay(selectedDate)}\n` +
+            `Shift: ${selectedShift.toUpperCase()}\n\n` +
+            `This will override any existing shift data for this date.\n` +
+            `Are you sure you want to proceed?`
+        );
+
+        if (!confirmOpen) return;
+
+        try {
+            // Check if there's an existing document for this date
+            // We'll use the date as the document ID in a collection
+            const backdateDocRef = passengerDb.collection('backdate_shifts').doc(selectedDate);
+            const doc = await backdateDocRef.get();
+            
+            const now = new Date().toLocaleString();
+            
+            // Prepare shift data
+            let shiftData = {};
+            
+            if (selectedShift === 'morning') {
+                shiftData = {
+                    morning: 'open',
+                    evening: 'pending', // Reset evening to pending
+                    date: selectedDate,
+                    updated: now,
+                    updatedBy: currentUser.name,
+                    updatedByLevel: currentUser.level,
+                    updatedByRC: currentUser.rcno,
+                    openedBy: 'supervisor',
+                    supervisorAction: 'backdate_open',
+                    originalDate: selectedDate
+                };
+            } else { // evening
+                // For evening shift, ensure morning is closed
+                if (doc.exists && doc.data().morning === 'open') {
+                    showMessage('Cannot open evening shift - morning shift is still open', true);
+                    return;
+                }
+                
+                shiftData = {
+                    evening: 'open',
+                    morning: 'closed', // Force morning closed for evening shift
+                    date: selectedDate,
+                    updated: now,
+                    updatedBy: currentUser.name,
+                    updatedByLevel: currentUser.level,
+                    updatedByRC: currentUser.rcno,
+                    openedBy: 'supervisor',
+                    supervisorAction: 'backdate_open',
+                    originalDate: selectedDate
+                };
+            }
+
+            // Save to backdate_shifts collection
+            await backdateDocRef.set(shiftData, { merge: true });
+            
+            // Also update the current shift document to reflect this backdate operation
+            // This helps with reporting and dashboard views
+            await passengerDb.collection('shifts').doc('currentshift').set({
+                lastBackdate: {
+                    date: selectedDate,
+                    shift: selectedShift,
+                    action: 'open',
+                    by: currentUser.name,
+                    at: now
+                }
+            }, { merge: true });
+
+            showMessage(`✅ Back-date shift opened for ${formatDateForDisplay(selectedDate)} (${selectedShift})`);
+            
+            // Hide panel
+            toggleBackdatePanel();
+            
+            // Refresh current data
+            await loadTodayData();
+            
+        } catch (error) {
+            console.error('Backdate error:', error);
+            showMessage('Failed to open back-date shift: ' + error.message, true);
+        }
+    };
 
     window.logout = function() {
         localStorage.removeItem('username'); localStorage.removeItem('level'); localStorage.removeItem('rcno'); localStorage.removeItem('loggedInUser');
@@ -468,11 +708,6 @@
         const msg = document.getElementById('message');
         msg.style.display = 'block'; msg.textContent = text; msg.className = isError ? 'error' : 'success';
         setTimeout(() => msg.style.display = 'none', 3000);
-    }
-
-    function formatDateForDisplay(dateStr) {
-        if (!dateStr) return 'no date';
-        try { if (dateStr.includes('-')) { const [y,m,d]=dateStr.split('-'); return `${d}/${m}/${y}`; } return dateStr; } catch { return dateStr; }
     }
 
     function updateShiftUI(data) {
@@ -500,12 +735,13 @@
         // button states
         document.getElementById('openMorningBtn').disabled = !(m === 'pending');
         document.getElementById('closeMorningBtn').disabled = !(m === 'open');
+        // evening open allowed only if morning closed AND evening pending
         document.getElementById('openEveningBtn').disabled = !(m === 'closed' && e === 'pending');
         document.getElementById('closeEveningBtn').disabled = !(e === 'open');
 
-        // header date
-        if (data.date) document.getElementById('currentDateHeader').innerText = formatDateForDisplay(data.date);
-        else document.getElementById('currentDateHeader').innerText = '--';
+        // IMPORTANT: Always show the current system date, not the date from Firebase
+        const todaySystemDate = getSystemDateString();
+        document.getElementById('currentDateHeader').innerText = formatDateForDisplay(todaySystemDate);
 
         // last updated
         if (data.updated) document.getElementById('lastUpdatedInfo').innerText = `synced: ${data.updated}`;
@@ -516,15 +752,34 @@
         try {
             if (typeof passengerDb === 'undefined') { showMessage('firebase not ready', true); return; }
             const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+            
+            // Get current system date
+            const todaySystemDate = getSystemDateString();
+            
             if (shiftDoc.exists) {
                 const data = shiftDoc.data();
+                
+                // Store the Firebase date but DON'T display it - we'll show system date instead
+                currentShiftData = { 
+                    date: data.date, // Keep for reference
+                    shift: data.morning==='open'?'MORNING':data.evening==='open'?'EVENING':'none', 
+                    status: data.morning==='open'?'OPEN':data.evening==='open'?'OPEN':'CLOSED', 
+                    openTime: data.updated 
+                };
+                
+                // Update UI with shift data but force system date display
                 updateShiftUI(data);
-                currentShiftData = { date: data.date, shift: data.morning==='open'?'MORNING':data.evening==='open'?'EVENING':'none', status: data.morning==='open'?'OPEN':data.evening==='open'?'OPEN':'CLOSED', openTime: data.updated };
             } else {
-                // fallback empty
-                updateShiftUI({ morning:'pending', evening:'pending', date:new Date().toISOString().split('T')[0] });
+                // fallback empty with system date
+                updateShiftUI({ 
+                    morning:'pending', 
+                    evening:'pending'
+                });
             }
-        } catch (error) { console.error(error); showMessage('error loading', true); }
+        } catch (error) { 
+            console.error(error); 
+            showMessage('error loading', true); 
+        }
     }
 
     // ===== ENHANCED HANDLE SHIFT WITH AUTO RESET ON DATE MISMATCH =====
@@ -533,18 +788,18 @@
             const doc = await passengerDb.collection('shifts').doc('currentshift').get();
             const currentData = doc.exists ? doc.data() : {};
             const existingDate = currentData.date;
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getSystemDateString(); // Using system date consistently
 
             // ===== AUTO RESET WHEN CLOSING SHIFT WITH DATE MISMATCH =====
             if (action === 'close' && existingDate && existingDate !== todayStr) {
-                const confirmReset = confirm(`⚠️ Date Mismatch Detected!\n\nShift Date: ${formatDateForDisplay(existingDate)}\nToday's Date: ${formatDateForDisplay(todayStr)}\n\nDo you want to reset for the new day?`);
+                const confirmReset = confirm(`⚠️ Date Mismatch Detected!\n\nShift Date: ${formatDateForDisplay(existingDate)}\nToday's System Date: ${formatDateForDisplay(todayStr)}\n\nDo you want to reset for the new day?`);
                 
                 if (confirmReset) {
                     const now = new Date().toLocaleString();
                     await passengerDb.collection('shifts').doc('currentshift').set({
                         morning: 'pending',
                         evening: 'pending',
-                        date: todayStr,
+                        date: todayStr, // Using system date
                         updated: now,
                         updatedBy: currentUser.name,
                         updatedByLevel: currentUser.level,
@@ -553,7 +808,7 @@
                         resetAt: now,
                         resetReason: 'auto_reset_on_shift_close_date_mismatch'
                     });
-                    showMessage(`✅ Reset to new day: ${formatDateForDisplay(todayStr)}`);
+                    showMessage(`✅ Reset to new day: ${formatDateForDisplay(todayStr)} (system date)`);
                     await loadTodayData();
                     return;
                 } else {
@@ -564,7 +819,7 @@
 
             // Normal shift operations - only proceed if dates match or no existing date
             if (existingDate && existingDate !== todayStr && action !== 'close') {
-                showMessage(`⚠️ Date mismatch. Please refresh or contact supervisor.`, true);
+                showMessage(`⚠️ Date mismatch. System date: ${formatDateForDisplay(todayStr)}. Please refresh or reset the day.`, true);
                 return;
             }
 
@@ -607,20 +862,82 @@
         }
     }
 
-    async function supervisorReset() {
-        if (!currentUser.isSupervisor) { showMessage('supervisor only', true); return; }
-        if (!confirm('reset shifts for new day?')) return;
-        const today = new Date().toISOString().split('T')[0];
-        const now = new Date().toLocaleString();
+    // ===== ENHANCED RESET FUNCTION =====
+    // Now asks to close any open shift before resetting, and uses system date
+    window.resetShifts = async function() {
         try {
+            // Fetch current shift data
+            const doc = await passengerDb.collection('shifts').doc('currentshift').get();
+            const currentData = doc.exists ? doc.data() : {};
+            
+            const morningStatus = currentData.morning || 'pending';
+            const eveningStatus = currentData.evening || 'pending';
+            
+            // Check if any shift is open
+            const openShiftExists = (morningStatus === 'open' || eveningStatus === 'open');
+            
+            let proceedWithReset = true;
+            
+            if (openShiftExists) {
+                // Ask user to close open shifts first
+                const userChoice = confirm(
+                    `⚠️ Open Shift Detected!\n\n` +
+                    `Morning: ${morningStatus === 'open' ? '🟢 OPEN' : morningStatus}\n` +
+                    `Evening: ${eveningStatus === 'open' ? '🟢 OPEN' : eveningStatus}\n\n` +
+                    `You must close any open shifts before resetting the day.\n` +
+                    
+                );
+                
+                if (userChoice) {
+                    // User wants to go to dashboard to close shifts
+                   
+                    setTimeout(() => window.location.href = 'shift.html', 1000);
+                    return; // Stop reset process
+                } else {
+                    // User chose to cancel
+                    
+                    return;
+                }
+            }
+            
+            // If no open shifts, proceed with normal reset confirmation
+            const todayStr = getSystemDateString();
+            const confirmReset = confirm(
+                `🔄 Reset shifts for new day?\n\n` +
+                `This will:\n` +
+                `• Set both shifts to PENDING\n` +
+                `• Update date to today: ${formatDateForDisplay(todayStr)}\n\n` +
+                `All users will see this change.`
+            );
+            
+            if (!confirmReset) {
+                showMessage('Reset cancelled', true);
+                return;
+            }
+            
+            // Perform the reset
+            const now = new Date().toLocaleString();
             await passengerDb.collection('shifts').doc('currentshift').set({
-                morning:'pending', evening:'pending', date:today, updated:now,
-                updatedBy:currentUser.name, updatedByLevel:currentUser.level, updatedByRC:currentUser.rcno,
-                resetBy:currentUser.name, resetAt:now
+                morning: 'pending',
+                evening: 'pending',
+                date: todayStr, // Force system date
+                updated: now,
+                updatedBy: currentUser.name,
+                updatedByLevel: currentUser.level,
+                updatedByRC: currentUser.rcno,
+                resetBy: currentUser.name,
+                resetAt: now,
+                resetReason: 'user_reset_after_closing_shifts'
             });
-            showMessage('✅ new day started'); await loadTodayData();
-        } catch (error) { showMessage('reset error', true); }
-    }
+            
+            showMessage(`✅ New day started with system date: ${formatDateForDisplay(todayStr)}`);
+            await loadTodayData();
+            
+        } catch (error) {
+            console.error('Reset error:', error);
+            showMessage('Reset failed: ' + error.message, true);
+        }
+    };
 
     function checkLogin() { if (!localStorage.getItem('username')) { window.location.href='login.html'; return false; } return true; }
 
