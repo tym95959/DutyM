@@ -514,6 +514,7 @@
         // button states
         document.getElementById('openMorningBtn').disabled = !(m === 'pending');
         document.getElementById('closeMorningBtn').disabled = !(m === 'open');
+        // evening open allowed only if morning closed AND evening pending
         document.getElementById('openEveningBtn').disabled = !(m === 'closed' && e === 'pending');
         document.getElementById('closeEveningBtn').disabled = !(e === 'open');
 
@@ -640,33 +641,82 @@
         }
     }
 
-    // Reset function - now available for ALL users
-    async function resetShifts() {
-        if (!confirm('⚠️ Reset shifts for new day?\n\nThis will:\n• Set both shifts to pending\n• Update date to today\'s system date\n\nAll users will see this change.')) return;
-        
-        const todayStr = getSystemDateString(); // Get system date explicitly
-        const now = new Date().toLocaleString();
-        
+    // ===== ENHANCED RESET FUNCTION =====
+    // Now asks to close any open shift before resetting, and uses system date
+    window.resetShifts = async function() {
         try {
+            // Fetch current shift data
+            const doc = await passengerDb.collection('shifts').doc('currentshift').get();
+            const currentData = doc.exists ? doc.data() : {};
+            
+            const morningStatus = currentData.morning || 'pending';
+            const eveningStatus = currentData.evening || 'pending';
+            
+            // Check if any shift is open
+            const openShiftExists = (morningStatus === 'open' || eveningStatus === 'open');
+            
+            let proceedWithReset = true;
+            
+            if (openShiftExists) {
+                // Ask user to close open shifts first
+                const userChoice = confirm(
+                    `⚠️ Open Shift Detected!\n\n` +
+                    `Morning: ${morningStatus === 'open' ? '🟢 OPEN' : morningStatus}\n` +
+                    `Evening: ${eveningStatus === 'open' ? '🟢 OPEN' : eveningStatus}\n\n` +
+                    `You must close any open shifts before resetting the day.\n` +
+                    `Would you like to go to DASHBOARD to close them now?`
+                );
+                
+                if (userChoice) {
+                    // User wants to go to dashboard to close shifts
+                    showMessage('Redirecting to dashboard to close open shifts...', false);
+                    setTimeout(() => window.location.href = 'dashboard.html', 1000);
+                    return; // Stop reset process
+                } else {
+                    // User chose to cancel
+                    showMessage('Reset cancelled. Please close shifts manually.', true);
+                    return;
+                }
+            }
+            
+            // If no open shifts, proceed with normal reset confirmation
+            const todayStr = getSystemDateString();
+            const confirmReset = confirm(
+                `🔄 Reset shifts for new day?\n\n` +
+                `This will:\n` +
+                `• Set both shifts to PENDING\n` +
+                `• Update date to today: ${formatDateForDisplay(todayStr)}\n\n` +
+                `All users will see this change.`
+            );
+            
+            if (!confirmReset) {
+                showMessage('Reset cancelled', true);
+                return;
+            }
+            
+            // Perform the reset
+            const now = new Date().toLocaleString();
             await passengerDb.collection('shifts').doc('currentshift').set({
-                morning: 'pending', 
-                evening: 'pending', 
-                date: todayStr, // Force using system date
+                morning: 'pending',
+                evening: 'pending',
+                date: todayStr, // Force system date
                 updated: now,
-                updatedBy: currentUser.name, 
-                updatedByLevel: currentUser.level, 
+                updatedBy: currentUser.name,
+                updatedByLevel: currentUser.level,
                 updatedByRC: currentUser.rcno,
-                resetBy: currentUser.name, 
+                resetBy: currentUser.name,
                 resetAt: now,
-                resetReason: 'user_reset_with_system_date'
+                resetReason: 'user_reset_after_closing_shifts'
             });
-            showMessage(`✅ New day started with system date: ${formatDateForDisplay(todayStr)}`); 
+            
+            showMessage(`✅ New day started with system date: ${formatDateForDisplay(todayStr)}`);
             await loadTodayData();
-        } catch (error) { 
-            console.error(error);
-            showMessage('reset error', true); 
+            
+        } catch (error) {
+            console.error('Reset error:', error);
+            showMessage('Reset failed: ' + error.message, true);
         }
-    }
+    };
 
     function checkLogin() { if (!localStorage.getItem('username')) { window.location.href='login.html'; return false; } return true; }
 
