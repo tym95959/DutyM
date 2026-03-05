@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Koveli Lounge · Apex Shift</title>
     <!-- ===== MODERN GEOMETRIC + WARM MINIMALISM ===== -->
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <!-- Link to external fireshift.js -->
+    <script src="fireshift.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -405,6 +412,21 @@
             margin-top: 5px;
             text-align: right;
         }
+        
+        /* Loading spinner */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #e6b800;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -480,28 +502,12 @@
 </div>
 
 <script>
-    // ===== STANDALONE VERSION - NO FIREBASE =====
-    // Using localStorage for data persistence
+    // ===== FIREBASE INTEGRATION VERSION =====
+    // Using Firebase Firestore for data persistence with firebaseConfigPassenger from fireshift.js
     
     let currentUser = { name: 'operator', level: 'operator', rcno: '', isSupervisor: false };
     let currentWorkingDate = ''; // Will be set to today or selected date
-
-    // Initialize data structure in localStorage if not exists
-    function initializeStorage() {
-        if (!localStorage.getItem('shiftData')) {
-            const today = getSystemDateString();
-            const initialData = {
-                [today]: {
-                    morning: 'pending',
-                    evening: 'pending',
-                    date: today,
-                    updated: new Date().toLocaleString(),
-                    updatedBy: 'system'
-                }
-            };
-            localStorage.setItem('shiftData', JSON.stringify(initialData));
-        }
-    }
+    let db; // Firestore database reference
 
     // Helper function to get today's date in YYYY-MM-DD format
     function getSystemDateString() {
@@ -526,7 +532,40 @@
         }
     }
 
-    // Load user from login
+    // Initialize Firebase using config from fireshift.js
+    function initializeFirebase() {
+        try {
+            // Check if firebaseConfigPassenger exists (from fireshift.js)
+            if (typeof firebaseConfigPassenger !== 'undefined') {
+                // Initialize Firebase
+                firebase.initializeApp(firebaseConfigPassenger);
+                db = firebase.firestore();
+                console.log('Firebase initialized successfully with passenger config');
+                
+                // Enable offline persistence (optional)
+                db.enablePersistence()
+                    .catch((err) => {
+                        if (err.code == 'failed-precondition') {
+                            console.log('Persistence failed: Multiple tabs open');
+                        } else if (err.code == 'unimplemented') {
+                            console.log('Persistence not supported by browser');
+                        }
+                    });
+                
+                return true;
+            } else {
+                console.error('firebaseConfigPassenger not found in fireshift.js');
+                showMessage('Firebase configuration not found', true);
+                return false;
+            }
+        } catch (error) {
+            console.error('Firebase initialization error:', error);
+            showMessage('Failed to initialize Firebase: ' + error.message, true);
+            return false;
+        }
+    }
+
+    // Load user from login (from localStorage)
     function loadUserFromLogin() {
         try {
             const username = localStorage.getItem('username');
@@ -597,27 +636,54 @@
         showMessage(`Loaded shifts for ${formatDateForDisplay(selectedDate)}`);
     };
 
-    // Load shifts for current working date
-    window.loadShiftsForDate = function() {
+    // Load shifts for current working date from Firebase
+    window.loadShiftsForDate = async function() {
+        if (!db) {
+            showMessage('Firebase not initialized', true);
+            return;
+        }
+        
         if (!currentWorkingDate) {
             currentWorkingDate = getSystemDateString();
         }
         
-        const allShifts = JSON.parse(localStorage.getItem('shiftData') || '{}');
-        
-        // If no data for this date, create default
-        if (!allShifts[currentWorkingDate]) {
-            allShifts[currentWorkingDate] = {
-                morning: 'pending',
-                evening: 'pending',
-                date: currentWorkingDate,
-                updated: new Date().toLocaleString(),
-                updatedBy: 'system'
-            };
-            localStorage.setItem('shiftData', JSON.stringify(allShifts));
+        try {
+            // Show loading state
+            const mornDiv = document.getElementById('morningStatusDisplay');
+            const eveDiv = document.getElementById('eveningStatusDisplay');
+            mornDiv.innerHTML = '⏳ loading...';
+            eveDiv.innerHTML = '⏳ loading...';
+            
+            // Get document reference from Firestore
+            const docRef = db.collection('shifts').doc(currentWorkingDate);
+            const docSnap = await docRef.get();
+            
+            if (docSnap.exists) {
+                // Data exists, update UI
+                updateShiftUI(docSnap.data());
+            } else {
+                // Create default document
+                const defaultData = {
+                    morning: 'pending',
+                    evening: 'pending',
+                    date: currentWorkingDate,
+                    updated: new Date().toLocaleString(),
+                    updatedBy: 'system',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                await docRef.set(defaultData);
+                updateShiftUI(defaultData);
+                showMessage(`Created new shift record for ${formatDateForDisplay(currentWorkingDate)}`);
+            }
+        } catch (error) {
+            console.error('Error loading shifts:', error);
+            showMessage('Error loading shifts: ' + error.message, true);
+            
+            // Reset status displays
+            document.getElementById('morningStatusDisplay').innerHTML = '⚠️ error';
+            document.getElementById('eveningStatusDisplay').innerHTML = '⚠️ error';
         }
-        
-        updateShiftUI(allShifts[currentWorkingDate]);
     };
 
     // Update UI based on shift data
@@ -657,11 +723,13 @@
         // Update last updated info
         if (data.updated) {
             document.getElementById('lastUpdatedInfo').innerHTML = `working date: <span id="currentWorkingDate">${formatDateForDisplay(currentWorkingDate)}</span> · last action: ${data.updated}`;
+        } else {
+            document.getElementById('lastUpdatedInfo').innerHTML = `working date: <span id="currentWorkingDate">${formatDateForDisplay(currentWorkingDate)}</span>`;
         }
     }
 
     // Handle shift actions
-    window.handleShift = function(shift, action) {
+    window.handleShift = async function(shift, action) {
         // Check if user can edit this date
         const today = getSystemDateString();
         if (currentWorkingDate !== today && !currentUser.isSupervisor) {
@@ -669,67 +737,85 @@
             return;
         }
         
-        const allShifts = JSON.parse(localStorage.getItem('shiftData') || '{}');
-        const currentData = allShifts[currentWorkingDate] || {
-            morning: 'pending',
-            evening: 'pending',
-            date: currentWorkingDate
-        };
-
-        // Validations
-        if (shift === 'morning') {
-            if (action === 'open' && currentData.morning === 'open') { 
-                showMessage('morning already open!', true); 
-                return; 
-            }
-            if (action === 'close' && currentData.morning !== 'open') { 
-                showMessage('open morning first!', true); 
-                return; 
-            }
+        if (!db) {
+            showMessage('Firebase not initialized', true);
+            return;
         }
         
-        if (shift === 'evening') {
-            if (currentData.morning !== 'closed') { 
-                showMessage('close morning first!', true); 
-                return; 
+        try {
+            // Get current data from Firebase
+            const docRef = db.collection('shifts').doc(currentWorkingDate);
+            const docSnap = await docRef.get();
+            
+            let currentData;
+            if (docSnap.exists) {
+                currentData = docSnap.data();
+            } else {
+                currentData = {
+                    morning: 'pending',
+                    evening: 'pending',
+                    date: currentWorkingDate
+                };
             }
-            if (action === 'open' && currentData.evening === 'open') { 
-                showMessage('evening already open!', true); 
-                return; 
-            }
-            if (action === 'close' && currentData.evening !== 'open') { 
-                showMessage('open evening first!', true); 
-                return; 
-            }
-        }
 
-        // Update data
-        const newStatus = action === 'open' ? 'open' : 'closed';
-        const now = new Date().toLocaleString();
-        
-        currentData[shift] = newStatus;
-        currentData.updated = now;
-        currentData.updatedBy = currentUser.name;
-        currentData.updatedByLevel = currentUser.level;
-        
-        // Save back to storage
-        allShifts[currentWorkingDate] = currentData;
-        localStorage.setItem('shiftData', JSON.stringify(allShifts));
-        
-        // Show message and update UI
-        showMessage(`✓ ${shift} ${newStatus} for ${formatDateForDisplay(currentWorkingDate)}`);
-        
-        // Check if we need to redirect (only for current date opens)
-        if (action === 'open' && currentWorkingDate === today) {
-            showMessage(`✓ ${shift} ${newStatus} · redirecting to dashboard...`);
-            setTimeout(() => window.location.href = 'dashboard.html', 900);
-        } else {
-            loadShiftsForDate(); // Refresh the current view
+            // Validations
+            if (shift === 'morning') {
+                if (action === 'open' && currentData.morning === 'open') { 
+                    showMessage('morning already open!', true); 
+                    return; 
+                }
+                if (action === 'close' && currentData.morning !== 'open') { 
+                    showMessage('open morning first!', true); 
+                    return; 
+                }
+            }
+            
+            if (shift === 'evening') {
+                if (currentData.morning !== 'closed') { 
+                    showMessage('close morning first!', true); 
+                    return; 
+                }
+                if (action === 'open' && currentData.evening === 'open') { 
+                    showMessage('evening already open!', true); 
+                    return; 
+                }
+                if (action === 'close' && currentData.evening !== 'open') { 
+                    showMessage('open evening first!', true); 
+                    return; 
+                }
+            }
+
+            // Update data
+            const newStatus = action === 'open' ? 'open' : 'closed';
+            const now = new Date().toLocaleString();
+            
+            currentData[shift] = newStatus;
+            currentData.updated = now;
+            currentData.updatedBy = currentUser.name;
+            currentData.updatedByLevel = currentUser.level;
+            currentData.lastModified = firebase.firestore.FieldValue.serverTimestamp();
+            
+            // Save to Firestore
+            await docRef.set(currentData, { merge: true });
+            
+            // Show message and update UI
+            showMessage(`✓ ${shift} ${newStatus} for ${formatDateForDisplay(currentWorkingDate)}`);
+            
+            // Check if we need to redirect (only for current date opens)
+            if (action === 'open' && currentWorkingDate === today) {
+                showMessage(`✓ ${shift} ${newStatus} · redirecting to dashboard...`);
+                setTimeout(() => window.location.href = 'dashboard.html', 900);
+            } else {
+                loadShiftsForDate(); // Refresh the current view
+            }
+        } catch (error) {
+            console.error('Error updating shift:', error);
+            showMessage('Error updating shift: ' + error.message, true);
         }
     };
 
     // Reset shifts for current working date
-    window.resetShifts = function() {
+    window.resetShifts = async function() {
         const today = getSystemDateString();
         
         // Check if user can reset this date
@@ -738,53 +824,66 @@
             return;
         }
         
-        const allShifts = JSON.parse(localStorage.getItem('shiftData') || '{}');
-        const currentData = allShifts[currentWorkingDate];
-        
-        if (currentData) {
-            // Check for open shifts
-            if (currentData.morning === 'open' || currentData.evening === 'open') {
-                const confirmClose = confirm(
-                    `⚠️ Open shifts detected!\n\n` +
-                    `Morning: ${currentData.morning}\n` +
-                    `Evening: ${currentData.evening}\n\n` +
-                    `Do you want to close all and reset?`
-                );
-                
-                if (!confirmClose) {
-                    showMessage('Reset cancelled', true);
-                    return;
-                }
-            }
-        }
-        
-        // Confirm reset
-        const confirmReset = confirm(
-            `🔄 Reset shifts for ${formatDateForDisplay(currentWorkingDate)}?\n\n` +
-            `This will set both shifts to PENDING.`
-        );
-        
-        if (!confirmReset) {
-            showMessage('Reset cancelled', true);
+        if (!db) {
+            showMessage('Firebase not initialized', true);
             return;
         }
         
-        // Perform reset
-        const now = new Date().toLocaleString();
-        allShifts[currentWorkingDate] = {
-            morning: 'pending',
-            evening: 'pending',
-            date: currentWorkingDate,
-            updated: now,
-            updatedBy: currentUser.name,
-            updatedByLevel: currentUser.level,
-            resetBy: currentUser.name,
-            resetAt: now
-        };
-        
-        localStorage.setItem('shiftData', JSON.stringify(allShifts));
-        showMessage(`✅ Reset shifts for ${formatDateForDisplay(currentWorkingDate)}`);
-        loadShiftsForDate();
+        try {
+            const docRef = db.collection('shifts').doc(currentWorkingDate);
+            const docSnap = await docRef.get();
+            
+            if (docSnap.exists) {
+                const currentData = docSnap.data();
+                
+                // Check for open shifts
+                if (currentData.morning === 'open' || currentData.evening === 'open') {
+                    const confirmClose = confirm(
+                        `⚠️ Open shifts detected!\n\n` +
+                        `Morning: ${currentData.morning}\n` +
+                        `Evening: ${currentData.evening}\n\n` +
+                        `Do you want to close all and reset?`
+                    );
+                    
+                    if (!confirmClose) {
+                        showMessage('Reset cancelled', true);
+                        return;
+                    }
+                }
+            }
+            
+            // Confirm reset
+            const confirmReset = confirm(
+                `🔄 Reset shifts for ${formatDateForDisplay(currentWorkingDate)}?\n\n` +
+                `This will set both shifts to PENDING.`
+            );
+            
+            if (!confirmReset) {
+                showMessage('Reset cancelled', true);
+                return;
+            }
+            
+            // Perform reset
+            const now = new Date().toLocaleString();
+            const resetData = {
+                morning: 'pending',
+                evening: 'pending',
+                date: currentWorkingDate,
+                updated: now,
+                updatedBy: currentUser.name,
+                updatedByLevel: currentUser.level,
+                resetBy: currentUser.name,
+                resetAt: now,
+                lastModified: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            
+            await docRef.set(resetData, { merge: true });
+            showMessage(`✅ Reset shifts for ${formatDateForDisplay(currentWorkingDate)}`);
+            loadShiftsForDate();
+        } catch (error) {
+            console.error('Error resetting shifts:', error);
+            showMessage('Error resetting shifts: ' + error.message, true);
+        }
     };
 
     // Navigation
@@ -816,13 +915,38 @@
         return true; 
     }
 
+    // Set up real-time listener for shifts (optional - live updates)
+    function setupRealtimeListener() {
+        if (!db || !currentWorkingDate) return;
+        
+        const docRef = db.collection('shifts').doc(currentWorkingDate);
+        return docRef.onSnapshot((doc) => {
+            if (doc.exists) {
+                console.log('Real-time update received');
+                updateShiftUI(doc.data());
+            }
+        }, (error) => {
+            console.error('Real-time listener error:', error);
+        });
+    }
+
     // Initialize on load
-    window.onload = () => {
+    window.onload = async () => {
         if (!checkLogin()) return;
-        initializeStorage();
+        
+        // Initialize Firebase first
+        const firebaseInitialized = initializeFirebase();
+        if (!firebaseInitialized) {
+            showMessage('Failed to initialize Firebase. Please check fireshift.js', true);
+            return;
+        }
+        
         loadUserFromLogin();
         initDatePicker();
-        loadShiftsForDate();
+        await loadShiftsForDate();
+        
+        // Optional: Set up real-time listener for live updates
+        // setupRealtimeListener();
     };
 </script>
 </body>
