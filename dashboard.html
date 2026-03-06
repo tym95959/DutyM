@@ -409,6 +409,46 @@
             font-weight: 600;
         }
 
+        /* Payment Card States */
+        .payment-card-active {
+            border: 2px solid #28a745;
+            box-shadow: 0 5px 20px rgba(40, 167, 69, 0.2);
+        }
+
+        .payment-card-inactive {
+            opacity: 0.7;
+            filter: grayscale(30%);
+            border: 1px dashed #dc3545;
+            cursor: not-allowed;
+        }
+
+        .payment-card-inactive:hover {
+            transform: none;
+            box-shadow: 0 3px 15px rgba(230, 184, 0, 0.1);
+            border-color: #dc3545;
+        }
+
+        .inactive-overlay {
+            position: relative;
+        }
+
+        .inactive-overlay::after {
+            content: '⛔ CASHIER CLOSED';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(220, 53, 69, 0.9);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+            z-index: 10;
+            border: 1px solid white;
+        }
+
         /* Flight Stats Grid */
         .flight-stats {
             display: grid;
@@ -736,7 +776,7 @@
         <div class="modal-content">
             <div class="modal-icon">💰</div>
             <h3 class="modal-title">Cashier Not Open</h3>
-            <p class="modal-message" id="cashierWarningMessage">Cashier is currently closed. Please open cashier before processing payments.</p>
+            <p class="modal-message" id="cashierWarningMessage">Cashier is currently closed. Payment processing is disabled. Please open cashier to accept payments.</p>
             <div class="modal-buttons">
                 <button class="modal-btn modal-btn-secondary" onclick="closeCashierModal()">Cancel</button>
                 <button class="modal-btn modal-btn-primary" onclick="goToCashier()">Go to Cashier</button>
@@ -862,12 +902,13 @@
                 <div class="card-stats" id="shiftDuration">Loading...</div>
             </div>
 
-            <!-- Payment Card -->
-            <div class="dashboard-card" onclick="handlePaymentClick()">
+            <!-- Payment Card - Will be dynamically enabled/disabled -->
+            <div class="dashboard-card" id="paymentCard" onclick="handlePaymentClick()">
                 <div class="card-icon">💰</div>
                 <h3 class="card-title">Payment</h3>
                 <p class="card-description">Process payments, view transactions, and settlements</p>
                 <div class="card-stats" id="pendingPayments">Loading...</div>
+                <div class="card-badge" id="paymentBadge">PENDING</div>
             </div>
         </div>
 
@@ -974,11 +1015,13 @@
                     };
                     
                     updateCashierDisplay();
+                    updatePaymentCardState();
                     return data;
                 } else {
                     console.log('No cashier document found in Firebase');
                     cashierStatus = { username: null, status: 'CLOSED' };
                     updateCashierDisplay();
+                    updatePaymentCardState();
                     return null;
                 }
 
@@ -1005,6 +1048,44 @@
             if (cashierStatusBadge) {
                 cashierStatusBadge.textContent = cashierStatus.status;
                 cashierStatusBadge.className = `cashier-status-badge status-${cashierStatus.status === 'OPEN' ? 'open' : 'closed'}`;
+            }
+        }
+
+        // Update payment card state based on cashier status
+        function updatePaymentCardState() {
+            const paymentCard = document.getElementById('paymentCard');
+            const paymentBadge = document.getElementById('paymentBadge');
+            
+            if (!paymentCard || !paymentBadge) return;
+            
+            if (cashierStatus.status === 'OPEN') {
+                // Cashier is open - enable payment card
+                paymentCard.classList.remove('payment-card-inactive', 'inactive-overlay');
+                paymentCard.classList.add('payment-card-active');
+                paymentCard.style.cursor = 'pointer';
+                paymentBadge.textContent = 'ACTIVE';
+                paymentBadge.style.background = '#28a745';
+                
+                // Remove any existing overlay
+                const existingOverlay = paymentCard.querySelector('.payment-overlay');
+                if (existingOverlay) existingOverlay.remove();
+                
+                // Enable onclick
+                paymentCard.onclick = function() { handlePaymentClick(); };
+                
+            } else {
+                // Cashier is closed - disable payment card
+                paymentCard.classList.remove('payment-card-active');
+                paymentCard.classList.add('payment-card-inactive');
+                paymentCard.style.cursor = 'not-allowed';
+                paymentBadge.textContent = 'CASHIER CLOSED';
+                paymentBadge.style.background = '#dc3545';
+                
+                // Disable onclick - show warning instead
+                paymentCard.onclick = function() { 
+                    showCashierWarningModal(); 
+                    return false;
+                };
             }
         }
 
@@ -1213,6 +1294,8 @@
                 return;
             }
             
+            // This function should only be called when cashier is open
+            // But double-check just in case
             if (!isCashierOpen()) {
                 showCashierWarningModal();
                 return;
@@ -1233,8 +1316,8 @@
 
         function showCashierWarningModal() {
             const message = cashierStatus.username 
-                ? `Cashier (${cashierStatus.username}) is currently CLOSED. Please open cashier before processing payments.`
-                : 'Cashier is not assigned. Please go to Cashier to open.';
+                ? `Cashier (${cashierStatus.username}) is currently CLOSED. Payment processing is disabled. Please open cashier to accept payments.`
+                : 'Cashier is not assigned. Payment processing is disabled. Please go to Cashier to open.';
             
             document.getElementById('cashierWarningMessage').textContent = message;
             document.getElementById('cashierWarningModal').style.display = 'flex';
@@ -1535,7 +1618,7 @@
                 if (checkSession()) {
                     fetchShiftData();
                     loadDashboardStats();
-                    fetchCashierStatus();
+                    fetchCashierStatus(); // This will also update payment card state
                 }
             }, 30000);
         });
