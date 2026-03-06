@@ -252,7 +252,7 @@
                 <span><strong>USER:</strong> <span id="userName">Loading...</span></span>
                 <span><strong>LEVEL:</strong> <span id="userLevel">Loading...</span></span>
                 <span><strong>RC NO:</strong> <span id="userRcNo">Loading...</span></span>
-                <span><strong>CASHIER:</strong> <span id="cashierName">Loading...</span></span>
+                <span><strong>CASHIER:</strong> <span id="cashierName">Loading...</span> <span id="cashierStatusBadge" class="status-badge" style="margin-left: 5px; font-size: 10px;"></span></span>
                 <a class="logout-link" id="logoutBtn">← LOGOUT</a>
             </div>
             
@@ -337,12 +337,10 @@
     </div>
 
 <script>
-// ========== ALL JAVASCRIPT with Dual Scanning Support and Receipt Redirect ==========
-// MODIFIED: Company information, shiftMetadata, and individual shift fields removed
-// UPDATED: Cashier fetching logic identical to cashier.html
+// ========== ALL JAVASCRIPT with Cashier Fetch from Firebase ==========
 
 let currentShiftData = { date: '', shift: '', status: '', openTime: '' };
-let currentCashier = { name: '', level: '', rcno: '' };
+let currentCashier = { name: '', level: '', rcno: '', status: 'CLOSED' };
 let submissionTime = null;
 let expiryTime = null;
 let currentReceiptNo = '';
@@ -351,7 +349,26 @@ let currentUser = { username: '', level: '', rcno: '', isLoggedIn: false };
 let pendingTransactionsCount = 0;
 let lastSavedTransaction = null;
 let shiftDataLoaded = false;
-let database = null; // Added for Firestore reference
+let database = null; // Firebase database reference
+let usersList = []; // Users list from users.js
+
+// ========== LOAD USERS FUNCTION ==========
+function loadUsers() {
+    if (typeof window.users !== 'undefined' && Array.isArray(window.users)) {
+        usersList = window.users;
+        console.log('Users loaded from users.js:', usersList.length);
+        return true;
+    }
+    
+    if (typeof users !== 'undefined' && Array.isArray(users)) {
+        usersList = users;
+        console.log('Users loaded from global scope:', usersList.length);
+        return true;
+    }
+    
+    console.warn('users.js not found or invalid');
+    return false;
+}
 
 // ========== BOARDING PASS PARSING FUNCTION (used by both fields) ==========
 function parseBoardingPassCode(codeInput) {
@@ -475,6 +492,84 @@ function handlePassengerNameInput() {
 function parseAndAddToList() {
     const codeInput = document.getElementById('code').value;
     return parseBoardingPassCode(codeInput);
+}
+
+// ========== CASHIER FUNCTIONS - Fetch from Firebase ==========
+
+// Initialize database reference
+function initializeDatabase() {
+    if (typeof passengerDb !== 'undefined') {
+        database = passengerDb;
+        console.log('Using passengerDb for database operations');
+    } else if (typeof db !== 'undefined') {
+        database = db;
+        console.log('Using db for database operations');
+    } else {
+        console.warn('No database reference found');
+    }
+}
+
+// Fetch cashier status from Firebase
+async function fetchCashierStatus() {
+    try {
+        if (typeof database === 'undefined' || !database) {
+            console.warn('Database not initialized');
+            return null;
+        }
+
+        const cashierDoc = await database.collection('cashier').doc('current').get();
+        
+        if (cashierDoc.exists) {
+            const data = cashierDoc.data();
+            console.log('Fetched cashier status from Firebase:', data);
+            
+            currentCashier = {
+                name: data.username || null,
+                level: '',
+                rcno: '',
+                status: data.status || 'CLOSED'
+            };
+            
+            // Get RC number and level from users.js if available
+            if (currentCashier.name) {
+                const matchedUser = usersList.find(u => 
+                    u.username && u.username.toLowerCase() === currentCashier.name.toLowerCase()
+                );
+                
+                if (matchedUser) {
+                    currentCashier.rcno = matchedUser.rcno || '';
+                    currentCashier.level = matchedUser.level || '';
+                }
+            }
+            
+            updateCashierDisplay();
+            return data;
+        } else {
+            console.log('No cashier document found in Firebase');
+            currentCashier = { name: null, level: '', rcno: '', status: 'CLOSED' };
+            updateCashierDisplay();
+            return null;
+        }
+
+    } catch (error) {
+        console.error('Error fetching cashier status:', error);
+        return null;
+    }
+}
+
+// Update cashier display in UI
+function updateCashierDisplay() {
+    const cashierNameEl = document.getElementById('cashierName');
+    const cashierStatusBadge = document.getElementById('cashierStatusBadge');
+    
+    if (cashierNameEl) {
+        cashierNameEl.textContent = currentCashier.name || 'Not assigned';
+    }
+    
+    if (cashierStatusBadge) {
+        cashierStatusBadge.textContent = currentCashier.status;
+        cashierStatusBadge.style.backgroundColor = currentCashier.status === 'OPEN' ? '#6b8e23' : '#c68b5e';
+    }
 }
 
 // ========== FIREBASE & DATA FUNCTIONS ==========
@@ -629,109 +724,11 @@ function logout() {
     localStorage.removeItem('RCno'); 
     localStorage.removeItem('loggedInUser'); 
     localStorage.removeItem('shiftData'); 
-    localStorage.removeItem('cashierData');
     window.location.href = 'login.html';
 }
 
 function checkAuth() { loadUserFromLocalStorage(); }
 
-// ========== CASHIER TRACKING FUNCTIONS - IDENTICAL TO CASHIER.HTML ==========
-async function loadCurrentCashier() {
-    try {
-        const cashierNameEl = document.getElementById('cashierName');
-        if (!cashierNameEl) return;
-        
-        // Set loading state
-        cashierNameEl.textContent = 'Loading...';
-        
-        // Use passengerDb as the database reference (same as cashier.html)
-        const db = typeof passengerDb !== 'undefined' ? passengerDb : database;
-        if (!db) {
-            console.warn('Database not initialized');
-            cashierNameEl.textContent = currentUser.username || 'Not assigned';
-            return;
-        }
-        
-        // Get today's date in YYYY-MM-DD format
-        const today = new Date().toISOString().split('T')[0];
-        
-        // Fetch from CashierTracking collection - EXACTLY like cashier.html
-        const cashierDoc = await db.collection('CashierTracking').doc(today).get();
-        
-        if (cashierDoc.exists) {
-            const data = cashierDoc.data();
-            
-            // Update currentCashier object with data from Firestore
-            currentCashier = {
-                name: data.currentCashier || null,
-                rcno: data.cashierRcno || null,
-                since: data.cashierSince || null,
-                level: currentUser.level || 'operator'
-            };
-            
-            // Update display
-            cashierNameEl.textContent = currentCashier.name || 'Not assigned';
-            
-            // Store in localStorage as backup
-            localStorage.setItem('cashierData', JSON.stringify({
-                name: currentCashier.name,
-                rcno: currentCashier.rcno,
-                since: currentCashier.since,
-                _timestamp: Date.now()
-            }));
-            
-            console.log('Cashier loaded from Firestore:', currentCashier.name);
-            
-        } else {
-            // If no document for today, try to get the most recent one
-            try {
-                const snapshot = await db.collection('CashierTracking')
-                    .orderBy('lastUpdated', 'desc')
-                    .limit(1)
-                    .get();
-                
-                if (!snapshot.empty) {
-                    const data = snapshot.docs[0].data();
-                    
-                    currentCashier = {
-                        name: data.currentCashier || null,
-                        rcno: data.cashierRcno || null,
-                        since: data.cashierSince || null,
-                        level: currentUser.level || 'operator'
-                    };
-                    
-                    cashierNameEl.textContent = currentCashier.name || 'Not assigned';
-                    
-                    localStorage.setItem('cashierData', JSON.stringify({
-                        name: currentCashier.name,
-                        rcno: currentCashier.rcno,
-                        since: currentCashier.since,
-                        _timestamp: Date.now()
-                    }));
-                    
-                    console.log('Cashier loaded from most recent document:', currentCashier.name);
-                } else {
-                    // No cashier data at all - fallback to current user
-                    cashierNameEl.textContent = currentUser.username || 'Not assigned';
-                    currentCashier.name = currentUser.username;
-                }
-            } catch (e) {
-                console.log('Error fetching most recent cashier:', e);
-                cashierNameEl.textContent = currentUser.username || 'Not assigned';
-                currentCashier.name = currentUser.username;
-            }
-        }
-        
-    } catch (error) {
-        console.error('Error loading cashier:', error);
-        const cashierNameEl = document.getElementById('cashierName');
-        if (cashierNameEl) {
-            cashierNameEl.textContent = currentUser.username || 'Error';
-        }
-    }
-}
-
-// ========== SHIFT FUNCTIONS ==========
 async function loadShiftDataOnce() {
     try {
         const storedShiftData = localStorage.getItem('shiftData');
@@ -744,10 +741,6 @@ async function loadShiftDataOnce() {
                     currentShiftData = parsedData; 
                     updateShiftDisplay(); 
                     shiftDataLoaded = true; 
-                    
-                    // Load cashier data AFTER shift data
-                    await loadCurrentCashier();
-                    
                     return; 
                 } 
             } catch (e) { console.error('Error parsing stored shift data:', e); }
@@ -773,9 +766,6 @@ async function fetchAndStoreShiftData() {
             shiftElement.textContent = 'NOT INITIALIZED'; 
             shiftInfo.classList.remove('loading'); 
             shiftInfo.classList.add('error'); 
-            
-            // Still try to load cashier
-            await loadCurrentCashier();
             return; 
         }
         
@@ -813,10 +803,6 @@ async function fetchAndStoreShiftData() {
             
             localStorage.setItem('shiftData', JSON.stringify(currentShiftData));
             shiftDataLoaded = true;
-            
-            // Load cashier data AFTER shift data
-            await loadCurrentCashier();
-            
         } else {
             currentShiftData = { 
                 date: '', 
@@ -825,16 +811,15 @@ async function fetchAndStoreShiftData() {
                 openTime: '', 
                 _timestamp: Date.now() 
             };
-            
-            // Still try to load cashier
-            await loadCurrentCashier();
         }
         updateShiftDisplay();
-    } catch (error) { 
-        console.error('Error fetching shift data:', error);
-        // Try to load cashier anyway
-        await loadCurrentCashier();
-    }
+    } catch (error) { console.error('Error fetching shift data:', error); }
+}
+
+function refreshShiftData() { 
+    shiftDataLoaded = false; 
+    localStorage.removeItem('shiftData'); 
+    fetchAndStoreShiftData(); 
 }
 
 function updateShiftDisplay() {
@@ -858,14 +843,6 @@ function updateShiftDisplay() {
     shiftInfo.classList.remove('loading', 'error');
 }
 
-function refreshShiftData() { 
-    shiftDataLoaded = false; 
-    localStorage.removeItem('shiftData'); 
-    localStorage.removeItem('cashierData'); 
-    fetchAndStoreShiftData(); 
-}
-
-// ========== RECEIPT FUNCTIONS ==========
 async function generateReceiptNumber() {
     try {
         if (typeof passengerDb === 'undefined') { 
@@ -1199,6 +1176,12 @@ async function submitForm() {
         return; 
     }
     
+    // Check if cashier is open
+    if (currentCashier.status !== 'OPEN') {
+        alert('Cashier is not open. Please open cashier first.');
+        return;
+    }
+    
     const submitBtn = document.getElementById('submitBtn'); 
     const originalText = submitBtn.textContent;
     
@@ -1258,7 +1241,6 @@ async function submitForm() {
             username: currentUser.username || 'Unknown', 
             level: currentUser.level || 'N/A', 
             rcno: currentUser.rcno || 'N/A', 
-            cashierName: currentCashier.name || currentUser.username || 'Unknown', 
             loginTime: new Date().toISOString() 
         };
         
@@ -1278,8 +1260,9 @@ async function submitForm() {
             expiryTime: expiryResult.display,
             cashier: { 
                 name: currentCashier.name || currentUser.username, 
-                level: currentCashier.level || currentUser.level, 
-                rcno: currentCashier.rcno || currentUser.rcno 
+                status: currentCashier.status,
+                rcno: currentCashier.rcno || currentUser.rcno, 
+                level: currentCashier.level || currentUser.level
             }, 
             timestamp: firebase.firestore.FieldValue.serverTimestamp(), 
             createdAt: new Date().toISOString(), 
@@ -1355,6 +1338,7 @@ function printCurrentReceipt() {
         shiftDate: currentShiftData.date,
         shift: currentShiftData.shift,
         cashierName: currentCashier.name || currentUser.username,
+        cashierStatus: currentCashier.status,
         userRcno: currentUser.rcno,
         exchangeRate: currentExchangeRate,
         isReprint: false
@@ -1425,7 +1409,8 @@ function closeReprintModal() {
 
 function debugShiftData() {
     console.log('=== CURRENT SHIFT DATA DEBUG ===', currentShiftData);
-    alert(`Shift Data:\nDate: ${currentShiftData.date}\nShift: ${currentShiftData.shift}\nStatus: ${currentShiftData.status}\nCashier: ${currentCashier.name}`);
+    console.log('=== CURRENT CASHIER DATA DEBUG ===', currentCashier);
+    alert(`Shift Data:\nDate: ${currentShiftData.date}\nShift: ${currentShiftData.shift}\nStatus: ${currentShiftData.status}\n\nCashier Data:\nName: ${currentCashier.name}\nStatus: ${currentCashier.status}\nRC: ${currentCashier.rcno}`);
 }
 
 // ========== DOM CONTENT LOADED ==========
@@ -1433,10 +1418,11 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM fully loaded');
     checkAuth();
     
-    // Set database reference
-    if (typeof passengerDb !== 'undefined') {
-        database = passengerDb;
-    }
+    // Load users from users.js
+    loadUsers();
+    
+    // Initialize database
+    initializeDatabase();
     
     // Logout buttons
     const logoutBtn = document.getElementById('logoutBtn'); 
@@ -1461,18 +1447,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Setup number inputs
     setupNumberInputs();
     
-    // Load data - this will now also fetch cashier from Firestore
+    // Load data
     loadShiftDataOnce();
     
-    // Set up periodic cashier refresh (every 30 seconds)
-    setInterval(async () => {
-        await loadCurrentCashier();
-    }, 30000);
-    
-    // Refresh on window focus
-    window.addEventListener('focus', async () => {
-        await loadCurrentCashier();
-    });
+    // Fetch cashier status from Firebase
+    setTimeout(() => {
+        fetchCashierStatus();
+    }, 1000);
     
     // Fetch pending count with a delay to ensure Firebase is ready
     setTimeout(() => { 
@@ -1482,6 +1463,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Refresh pending count every 30 seconds
     setInterval(() => {
         fetchPendingTransactionsCount();
+    }, 30000);
+    
+    // Refresh cashier status every 30 seconds
+    setInterval(() => {
+        fetchCashierStatus();
     }, 30000);
     
     updateDateTime();
@@ -1577,7 +1563,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     console.log('Dual scanning initialized - Redirect to receipt.html for printing');
-    console.log('Cashier fetching from Firestore initialized - same as cashier.html');
+    console.log('Cashier status fetched from Firebase cashier/current collection');
+    console.log('Void receipt support enabled - Use reprint for voided transactions');
 });
 </script>
 </body>
