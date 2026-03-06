@@ -315,12 +315,21 @@
             color: #2c3e50;
         }
 
-        .cashier-history {
-            font-size: 12px;
-            color: #6c757d;
-            padding: 5px 10px;
-            background: white;
+        .cashier-status-badge {
+            padding: 4px 12px;
             border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
         }
 
         /* Cashier Container */
@@ -1087,12 +1096,6 @@
             border: 1px solid #bee5eb;
         }
 
-        .cashier-timeline {
-            font-size: 11px;
-            color: #8b6913;
-            margin-top: 5px;
-        }
-
         /* Password Popup Styles */
         .password-popup .input-field {
             margin-bottom: 1.8rem;
@@ -1318,7 +1321,7 @@
             </div>
         </div>
 
-        <!-- Cashier Info Bar - Shows Current Cashier -->
+        <!-- Cashier Info Bar - Shows Current Cashier from Firebase -->
         <div class="cashier-info-bar" id="cashierInfoBar">
             <div class="cashier-info-item">
                 <div class="cashier-info-icon">👤</div>
@@ -1328,20 +1331,19 @@
                 </div>
             </div>
             <div class="cashier-info-item">
-                <div class="cashier-info-icon">⏰</div>
-                <div class="cashier-info-text">
-                    <span class="cashier-info-label">Cashier Since</span>
-                    <span class="cashier-info-value" id="cashierSince">--:--</span>
-                </div>
-            </div>
-            <div class="cashier-info-item">
                 <div class="cashier-info-icon">📋</div>
                 <div class="cashier-info-text">
                     <span class="cashier-info-label">RC Number</span>
                     <span class="cashier-info-value" id="cashierRcno">---</span>
                 </div>
             </div>
-            <div class="cashier-history" id="cashierHistory"></div>
+            <div class="cashier-info-item">
+                <div class="cashier-info-icon">⚡</div>
+                <div class="cashier-info-text">
+                    <span class="cashier-info-label">Status</span>
+                    <span class="cashier-status-badge" id="cashierStatus">INACTIVE</span>
+                </div>
+            </div>
         </div>
 
         <!-- Loading State -->
@@ -1555,10 +1557,9 @@
                 <!-- Message Area -->
                 <div id="messageArea" class="alert" style="display: none;"></div>
 
-                <!-- Action Buttons -->
-                <div class="action-buttons">
-                    <button id="openCashierBtn" class="btn btn-open" disabled>Open Cashier</button>
-                    <button id="closeCashierBtn" class="btn btn-close" disabled>Close Cashier</button>
+                <!-- Action Buttons - Dynamically show Open or Close based on status -->
+                <div class="action-buttons" id="actionButtons">
+                    <!-- Buttons will be dynamically populated -->
                 </div>
             </div>
 
@@ -1579,24 +1580,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Shift History Section with Cashier Status -->
-            <div class="recent-activity-section" style="margin-top: 25px;">
-                <div class="recent-activity-header">
-                    <h3>
-                        <span>📋</span> Shift History with Cashier Status
-                    </h3>
-                    <button class="refresh-btn" onclick="displayShiftHistory()">
-                        <span>↻</span> Refresh
-                    </button>
-                </div>
-                <div class="recent-activity-grid" id="shiftHistoryList">
-                    <div class="recent-activity-item">
-                        <div class="recent-activity-time">Loading...</div>
-                        <div class="recent-activity-desc">Fetching shift history</div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -1609,7 +1592,7 @@
     let countedData = { mvr: 0, usd: 0 };
     let pettyCashData = { mvr: 0, usd: 0, lastUpdated: null, updatedBy: null, isPersistent: true };
     let countedPettyData = { mvr: 0, usd: 0 };
-    let currentCashierData = { name: null, since: null, rcno: null, history: [] };
+    let cashierStatus = { username: null, status: 'CLOSED' }; // Track cashier status
     let refreshInterval;
     let activityInterval;
     let database = null;
@@ -1754,9 +1737,8 @@
             userInfoDiv.style.borderColor = '#28a745';
         } else if (action === 'close') {
             title.textContent = 'Close Cashier';
-            const cashierName = (currentCashierData && currentCashierData.name) || (currentUser ? currentUser.username : 'Unknown');
-            userInfo.textContent = cashierName;
-            avatar.textContent = cashierName.charAt(0).toUpperCase();
+            userInfo.textContent = cashierStatus.username || currentUser?.username || 'Unknown';
+            avatar.textContent = (cashierStatus.username || currentUser?.username || '?').charAt(0).toUpperCase();
             userInfoDiv.style.borderColor = '#dc3545';
         }
         
@@ -1811,7 +1793,7 @@
             if (pendingAction === 'open') {
                 usernameToValidate = currentUser ? currentUser.username : null;
             } else if (pendingAction === 'close') {
-                usernameToValidate = (currentCashierData && currentCashierData.name) || (currentUser ? currentUser.username : null);
+                usernameToValidate = cashierStatus.username || currentUser?.username || null;
             }
             
             if (!usernameToValidate) {
@@ -2016,15 +1998,11 @@
         const salesSection = document.querySelector('.sales-section');
         const countSection = document.querySelector('.count-section');
         const pettyCashSection = document.getElementById('pettyCashTallySection');
-        const actionButtons = document.querySelector('.action-buttons');
-        const openBtn = document.getElementById('openCashierBtn');
-        const closeBtn = document.getElementById('closeCashierBtn');
         
         if (isOpen) {
             if (salesSection) salesSection.style.display = 'block';
             if (countSection) countSection.style.display = 'block';
             if (pettyCashSection) pettyCashSection.style.display = 'block';
-            if (actionButtons) actionButtons.style.display = 'flex';
         } else {
             if (salesSection) {
                 salesSection.style.display = 'none';
@@ -2035,9 +2013,6 @@
             }
             if (countSection) countSection.style.display = 'block';
             if (pettyCashSection) pettyCashSection.style.display = 'block';
-            if (actionButtons) actionButtons.style.display = 'flex';
-            if (openBtn) openBtn.disabled = false;
-            if (closeBtn) closeBtn.disabled = true;
             
             const comparisonSection = document.getElementById('comparisonSection');
             if (comparisonSection) comparisonSection.style.display = 'none';
@@ -2045,185 +2020,10 @@
         }
     }
 
-    // ========== FETCH CURRENT CASHIER FROM FIREBASE ==========
-    async function fetchCurrentCashierFromFirebase() {
-        try {
-            if (typeof database === 'undefined' || !database) {
-                console.error('Database not initialized');
-                return null;
-            }
-
-            const cashierDoc = await database.collection('CurrentCashier').doc('active').get();
-            
-            if (cashierDoc.exists) {
-                const data = cashierDoc.data();
-                console.log('Fetched current cashier from Firebase:', data);
-                
-                currentCashierData = {
-                    name: data.currentCashier,
-                    since: data.cashierSince,
-                    rcno: data.cashierRcno,
-                    history: data.history || []
-                };
-                
-                updateCashierUI(data);
-                
-                return data;
-            } else {
-                console.log('No active cashier found in Firebase');
-                
-                const defaultData = {
-                    currentCashier: null,
-                    cashierSince: null,
-                    cashierRcno: null,
-                    lastUpdated: new Date().toISOString(),
-                    updatedBy: 'system',
-                    status: 'INACTIVE'
-                };
-                
-                await database.collection('CurrentCashier').doc('active').set(defaultData);
-                return defaultData;
-            }
-
-        } catch (error) {
-            console.error('Error fetching cashier from Firebase:', error);
-            return null;
-        }
-    }
-
-    // ========== UPDATE CASHIER UI ==========
-    function updateCashierUI(cashierData) {
-        const currentCashierName = document.getElementById('currentCashierName');
-        const cashierRcno = document.getElementById('cashierRcno');
-        const cashierSince = document.getElementById('cashierSince');
-        const cashierHistory = document.getElementById('cashierHistory');
-        
-        if (currentCashierName) {
-            currentCashierName.textContent = cashierData.currentCashier || 'Not assigned';
-        }
-        
-        if (cashierRcno) {
-            cashierRcno.textContent = cashierData.cashierRcno || '---';
-        }
-        
-        if (cashierData.cashierSince && cashierSince) {
-            const date = new Date(cashierData.cashierSince);
-            cashierSince.textContent = date.toLocaleTimeString();
-        } else if (cashierSince) {
-            cashierSince.textContent = '--:--';
-        }
-    }
-
-    // ========== SAVE SHIFT STATUS WITH CASHIER INFO ==========
-    async function saveShiftStatusWithCashier(action, shiftType) {
-        try {
-            if (typeof database === 'undefined' || !database) return;
-            
-            const now = new Date().toISOString();
-            const today = now.split('T')[0];
-            
-            const shiftEventId = `${today}_${shiftType}_${action}_${Date.now()}`;
-            
-            const pettyCashDoc = await database.collection('PettyCash').doc('current').get();
-            const pettyCashData = pettyCashDoc.exists ? pettyCashDoc.data() : { mvr: 0, usd: 0 };
-            
-            const shiftStatus = {
-                shiftId: shiftEventId,
-                date: today,
-                shiftType: shiftType,
-                action: action,
-                timestamp: now,
-                cashier: {
-                    name: currentUser.username,
-                    rcno: currentUser.rcno,
-                    level: currentUser.level
-                },
-                cashCounts: {
-                    mvr: countedData.mvr || 0,
-                    usd: countedData.usd || 0
-                },
-                salesData: {
-                    mvr: salesData.mvr || 0,
-                    usd: salesData.usd || 0
-                },
-                pettyCash: {
-                    mvr: pettyCashData.mvr || 0,
-                    usd: pettyCashData.usd || 0,
-                    note: 'Persistent amount - same for all shifts until admin changes'
-                },
-                status: action === 'OPEN' ? 'ACTIVE' : 'CLOSED',
-                createdBy: currentUser.username,
-                createdAt: now
-            };
-
-            await database.collection('ShiftHistory').doc(shiftEventId).set(shiftStatus);
-            
-            const dailyShiftRef = database.collection('DailyShiftSummary').doc(today);
-            await dailyShiftRef.set({
-                date: today,
-                [shiftType]: {
-                    [action.toLowerCase()]: {
-                        timestamp: now,
-                        cashier: currentUser.username,
-                        rcno: currentUser.rcno,
-                        cashCounts: {
-                            mvr: countedData.mvr || 0,
-                            usd: countedData.usd || 0
-                        }
-                    }
-                },
-                lastUpdated: now
-            }, { merge: true });
-
-            console.log(`Shift ${action} status saved with cashier info:`, shiftStatus);
-            return shiftEventId;
-
-        } catch (error) {
-            console.error('Error saving shift status:', error);
-            throw error;
-        }
-    }
-
-    // ========== CASHIER TRACKING FUNCTIONS ==========
-    async function loadCurrentCashier() {
-        try {
-            if (typeof database === 'undefined' || !database) return;
-            
-            const firebaseData = await fetchCurrentCashierFromFirebase();
-            
-            if (firebaseData && firebaseData.currentCashier) {
-                console.log('Loaded cashier from Firebase:', firebaseData);
-                return;
-            }
-            
-            const today = new Date().toISOString().split('T')[0];
-            const cashierDoc = await database.collection('CashierTracking').doc(today).get();
-            
-            if (cashierDoc.exists) {
-                const data = cashierDoc.data();
-                currentCashierData = {
-                    name: data.currentCashier || null,
-                    since: data.cashierSince || null,
-                    rcno: data.cashierRcno || null,
-                    history: data.cashierHistory || []
-                };
-                
-                await saveCurrentCashierToFirebase();
-                
-                updateCashierUI({
-                    currentCashier: currentCashierData.name,
-                    cashierSince: currentCashierData.since,
-                    cashierRcno: currentCashierData.rcno,
-                    status: currentCashierData.name ? 'ACTIVE' : 'INACTIVE'
-                });
-            }
-            
-        } catch (error) {
-            console.error('Error loading cashier:', error);
-        }
-    }
-
-    async function saveCurrentCashierToFirebase() {
+    // ========== CASHIER FUNCTIONS - NEW SIMPLIFIED VERSION ==========
+    
+    // Save cashier status to Firebase (always updates the same document)
+    async function saveCashierStatus(username, status) {
         try {
             if (typeof database === 'undefined' || !database) {
                 console.error('Database not initialized');
@@ -2231,194 +2031,128 @@
             }
 
             const now = new Date().toISOString();
-            const today = now.split('T')[0];
             
-            const cashierData = {
-                currentCashier: currentCashierData.name || currentUser?.username || null,
-                cashierSince: currentCashierData.since || now,
-                cashierRcno: currentCashierData.rcno || currentUser?.rcno || null,
-                lastUpdated: now,
-                updatedBy: currentUser?.username || 'system',
-                shiftType: currentShift?.morning === 'open' ? 'MORNING' : 
-                          currentShift?.evening === 'open' ? 'EVENING' : 'CLOSED',
-                shiftDate: currentShift?.date || today,
-                cashCounts: {
-                    mvr: countedData.mvr || 0,
-                    usd: countedData.usd || 0
-                },
-                pettyCash: {
-                    mvr: pettyCashData.mvr || 0,
-                    usd: pettyCashData.usd || 0
-                },
-                status: currentCashierData.name ? 'ACTIVE' : 'INACTIVE'
-            };
-
-            await database.collection('CurrentCashier').doc('active').set(cashierData, { merge: true });
-            
-            await database.collection('CashierHistory').add({
-                ...cashierData,
-                timestamp: now,
-                action: currentCashierData.name ? 'ASSIGNED' : 'UNASSIGNED'
+            // Always use the same document ID 'current' to ensure we update, not create new
+            await database.collection('cashier').doc('current').set({
+                username: username,
+                status: status,
+                updatedAt: now,
+                updatedBy: currentUser?.username || 'system'
             });
 
-            console.log('Cashier data saved to Firebase:', cashierData);
+            console.log(`Cashier status saved: ${username} - ${status}`);
+            
+            // Update local variable
+            cashierStatus = {
+                username: username,
+                status: status
+            };
+            
+            // Update UI
+            updateCashierUI();
+            
             return true;
 
         } catch (error) {
-            console.error('Error saving cashier to Firebase:', error);
+            console.error('Error saving cashier status:', error);
             return false;
         }
     }
 
-    async function updateCashierTracking(action) {
+    // Fetch cashier status from Firebase
+    async function fetchCashierStatus() {
         try {
-            if (typeof database === 'undefined' || !database) return;
-            
-            const today = new Date().toISOString().split('T')[0];
-            const now = new Date().toISOString();
-            const cashierRef = database.collection('CashierTracking').doc(today);
-            
-            const doc = await cashierRef.get();
-            let history = [];
-            
-            if (doc.exists) {
-                history = doc.data().cashierHistory || [];
+            if (typeof database === 'undefined' || !database) {
+                console.error('Database not initialized');
+                return null;
             }
+
+            const cashierDoc = await database.collection('cashier').doc('current').get();
             
-            const hours = new Date().getHours();
-            const shiftType = hours < 12 ? 'MORNING' : 'EVENING';
-            
-            history.push({
-                name: currentUser.username,
-                rcno: currentUser.rcno,
-                action: action,
-                time: now,
-                shiftType: shiftType
-            });
-            
-            await cashierRef.set({
-                currentCashier: action === 'open' ? currentUser.username : null,
-                cashierSince: action === 'open' ? now : null,
-                cashierRcno: action === 'open' ? currentUser.rcno : null,
-                cashierHistory: history,
-                lastUpdated: now,
-                lastAction: action,
-                lastActionBy: currentUser.username,
-                lastShiftType: shiftType
-            }, { merge: true });
-            
-            await database.collection('CurrentCashier').doc('active').set({
-                currentCashier: action === 'open' ? currentUser.username : null,
-                cashierSince: action === 'open' ? now : null,
-                cashierRcno: action === 'open' ? currentUser.rcno : null,
-                lastUpdated: now,
-                updatedBy: currentUser.username,
-                shiftType: shiftType,
-                shiftDate: currentShift?.date || today,
-                status: action === 'open' ? 'ACTIVE' : 'INACTIVE',
-                lastAction: action,
-                lastActionTime: now
-            }, { merge: true });
-            
-            await saveShiftStatusWithCashier(action.toUpperCase(), shiftType);
-            
-            await database.collection('CashierHistory').add({
-                cashier: action === 'open' ? currentUser.username : null,
-                rcno: action === 'open' ? currentUser.rcno : null,
-                action: action,
-                timestamp: now,
-                shiftType: shiftType,
-                shiftDate: currentShift?.date || today,
-                performedBy: currentUser.username,
-                cashCounts: {
-                    mvr: countedData.mvr || 0,
-                    usd: countedData.usd || 0
-                }
-            });
-            
-            await addActivity({
-                type: 'cashier',
-                action: action,
-                amount: null,
-                description: `${currentUser.username} ${action}ed cashier for ${shiftType} shift`
-            });
-            
-            await loadCurrentCashier();
-            
+            if (cashierDoc.exists) {
+                const data = cashierDoc.data();
+                console.log('Fetched cashier status from Firebase:', data);
+                
+                cashierStatus = {
+                    username: data.username || null,
+                    status: data.status || 'CLOSED'
+                };
+                
+                // Update UI
+                updateCashierUI();
+                
+                return data;
+            } else {
+                console.log('No cashier document found, creating default');
+                
+                // Create default document if it doesn't exist
+                const defaultData = {
+                    username: null,
+                    status: 'CLOSED',
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: 'system'
+                };
+                
+                await database.collection('cashier').doc('current').set(defaultData);
+                
+                cashierStatus = {
+                    username: null,
+                    status: 'CLOSED'
+                };
+                
+                updateCashierUI();
+                return defaultData;
+            }
+
         } catch (error) {
-            console.error('Error updating cashier tracking:', error);
+            console.error('Error fetching cashier status:', error);
+            return null;
         }
     }
 
-    // ========== FETCH SHIFT HISTORY ==========
-    async function fetchShiftHistory(date = null, cashierName = null) {
-        try {
-            if (typeof database === 'undefined' || !database) return [];
-            
-            let query = database.collection('ShiftHistory').orderBy('timestamp', 'desc');
-            
-            if (date) {
-                query = query.where('date', '==', date);
-            }
-            
-            if (cashierName) {
-                query = query.where('cashier.name', '==', cashierName);
-            }
-            
-            const snapshot = await query.limit(100).get();
-            
-            const shiftHistory = [];
-            snapshot.forEach(doc => {
-                shiftHistory.push({
-                    id: doc.id,
-                    ...doc.data()
-                });
-            });
-            
-            return shiftHistory;
-            
-        } catch (error) {
-            console.error('Error fetching shift history:', error);
-            return [];
+    // Update UI with cashier info
+    function updateCashierUI() {
+        const currentCashierName = document.getElementById('currentCashierName');
+        const cashierRcno = document.getElementById('cashierRcno');
+        const cashierStatusEl = document.getElementById('cashierStatus');
+        const actionButtons = document.getElementById('actionButtons');
+        
+        if (currentCashierName) {
+            currentCashierName.textContent = cashierStatus.username || 'Not assigned';
         }
-    }
-
-    // ========== GET SHIFT SUMMARY FOR DISPLAY ==========
-    async function displayShiftHistory() {
-        try {
-            const history = await fetchShiftHistory();
-            const historyContainer = document.getElementById('shiftHistoryList');
+        
+        // Get RC number from users.js where username matches
+        if (cashierStatus.username) {
+            const matchedUser = usersList.find(u => 
+                u.username && u.username.toLowerCase() === cashierStatus.username.toLowerCase()
+            );
             
-            if (!historyContainer) return;
-            
-            if (history.length === 0) {
-                historyContainer.innerHTML = '<div class="recent-activity-item">No shift history found</div>';
-                return;
+            if (cashierRcno) {
+                cashierRcno.textContent = matchedUser ? matchedUser.rcno : '---';
             }
-            
-            let html = '';
-            history.forEach(shift => {
-                const time = new Date(shift.timestamp).toLocaleString();
-                html += `
-                    <div class="recent-activity-item">
-                        <div class="recent-activity-time">${time}</div>
-                        <div class="recent-activity-desc">
-                            ${shift.action} - ${shift.shiftType} SHIFT
-                        </div>
-                        <div class="recent-activity-meta">
-                            <span class="recent-activity-user">${shift.cashier.name}</span>
-                            <span>RC: ${shift.cashier.rcno}</span>
-                            <span>MVR: ${shift.cashCounts.mvr.toFixed(2)}</span>
-                            <span>USD: ${shift.cashCounts.usd.toFixed(2)}</span>
-                        </div>
-                    </div>
+        } else {
+            if (cashierRcno) cashierRcno.textContent = '---';
+        }
+        
+        // Update status badge
+        if (cashierStatusEl) {
+            cashierStatusEl.textContent = cashierStatus.status;
+            cashierStatusEl.className = `cashier-status-badge status-${cashierStatus.status === 'OPEN' ? 'active' : 'inactive'}`;
+        }
+        
+        // Update action buttons based on status
+        if (actionButtons) {
+            if (cashierStatus.status === 'OPEN') {
+                // Show Close button
+                actionButtons.innerHTML = `
+                    <button id="closeCashierBtn" class="btn btn-close" onclick="handleCloseCashier()">Close Cashier</button>
                 `;
-            });
-            
-            historyContainer.innerHTML = html;
-            
-        } catch (error) {
-            console.error('Error displaying shift history:', error);
+            } else {
+                // Show Open button
+                actionButtons.innerHTML = `
+                    <button id="openCashierBtn" class="btn btn-open" onclick="handleOpenCashier()">Open Cashier</button>
+                `;
+            }
         }
     }
 
@@ -3132,14 +2866,7 @@
         const isShiftOpen = currentShift && 
             (currentShift.morning === 'open' || currentShift.evening === 'open');
         
-        const openBtn = document.getElementById('openCashierBtn');
-        const closeBtn = document.getElementById('closeCashierBtn');
-        
-        if (!openBtn || !closeBtn) return;
-        
         if (!isShiftOpen) {
-            openBtn.disabled = false;
-            closeBtn.disabled = true;
             return;
         }
         
@@ -3153,8 +2880,11 @@
         
         const allMatch = salesMatch && pettyCashMatch;
         
-        openBtn.disabled = true;
-        closeBtn.disabled = !allMatch;
+        // Enable/disable close button based on matches
+        const closeBtn = document.getElementById('closeCashierBtn');
+        if (closeBtn) {
+            closeBtn.disabled = !allMatch;
+        }
         
         if (!salesMatch) {
             showMessage(`Cash amounts do not match CASH sales records. MVR: ${countedData.mvr.toFixed(2)} vs ${salesData.mvr.toFixed(2)}, USD: ${countedData.usd.toFixed(2)} vs ${salesData.usd.toFixed(2)}`, 'warning');
@@ -3165,12 +2895,19 @@
         }
     }
 
-    // ========== CASHIER ACTIONS WITH PASSWORD ==========
+    // ========== CASHIER ACTIONS ==========
     function handleOpenCashier() {
+        // Check if shift is already open
         const isShiftOpen = currentShift && 
             (currentShift.morning === 'open' || currentShift.evening === 'open');
         
-        if (isShiftOpen) {
+        if (!isShiftOpen) {
+            showMessage('Please open a shift first!', 'warning');
+            return;
+        }
+        
+        // Check if cashier is already open
+        if (cashierStatus.status === 'OPEN') {
             showMessage('Cashier is already open!', 'warning');
             return;
         }
@@ -3179,6 +2916,7 @@
     }
 
     function handleCloseCashier() {
+        // Check if shift is open
         const isShiftOpen = currentShift && 
             (currentShift.morning === 'open' || currentShift.evening === 'open');
         
@@ -3187,6 +2925,13 @@
             return;
         }
         
+        // Check if cashier is already closed
+        if (cashierStatus.status === 'CLOSED') {
+            showMessage('Cashier is already closed!', 'warning');
+            return;
+        }
+        
+        // Check if all matches are valid
         const salesMVRMatch = Math.abs(countedData.mvr - salesData.mvr) < 0.01;
         const salesUSDMatch = countedData.usd === salesData.usd;
         const pettyMVRMatch = Math.abs(countedPettyData.mvr - pettyCashData.mvr) < 0.01;
@@ -3205,65 +2950,38 @@
         try {
             showMessage('Opening cashier...', 'info');
             
-            if (typeof passengerDb !== 'undefined') {
-                const shiftRef = passengerDb.collection('shifts').doc('currentshift');
-                
-                const now = new Date();
-                const dateStr = now.toISOString().split('T')[0];
-                const hours = now.getHours();
-                const shiftToOpen = hours < 12 ? 'morning' : 'evening';
-                const shiftType = hours < 12 ? 'MORNING' : 'EVENING';
-                
-                console.log('Opening cashier:', { shift: shiftToOpen, date: dateStr });
-                
-                await shiftRef.set({
-                    [shiftToOpen]: 'open',
-                    date: dateStr,
-                    openTime: now.toISOString(),
-                    updated: now.toISOString(),
-                    openedBy: currentUser.username,
-                    openedByRcno: currentUser.rcno
-                }, { merge: true });
-                
-                await updateCashierTracking('open');
-                
-                await fetchShiftData();
-                
-                await fetchSalesData();
-                
-                showMessage('Cashier opened successfully!', 'success');
-                
-                const countedMVR = document.getElementById('countedMVR');
-                const countedUSD = document.getElementById('countedUSD');
-                const countedPettyMVR = document.getElementById('countedPettyMVR');
-                const countedPettyUSD = document.getElementById('countedPettyUSD');
-                
-                if (countedMVR) countedMVR.value = '0';
-                if (countedUSD) countedUSD.value = '0';
-                if (countedPettyMVR) countedPettyMVR.value = '0';
-                if (countedPettyUSD) countedPettyUSD.value = '0';
-                
-                countedData = { mvr: 0, usd: 0 };
-                countedPettyData = { mvr: 0, usd: 0 };
-                
-                const comparisonSection = document.getElementById('comparisonSection');
-                const pettyComparisonSection = document.getElementById('pettyComparisonSection');
-                
-                if (comparisonSection) comparisonSection.style.display = 'none';
-                if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
-                
-                await addActivity({
-                    type: 'cashier',
-                    action: 'open',
-                    amount: null,
-                    description: `${currentUser.username} opened cashier for ${shiftType} shift`
-                });
-                
-                await displayShiftHistory();
-                
-            } else {
-                showMessage('Database not available', 'danger');
-            }
+            // Save to cashier collection
+            await saveCashierStatus(currentUser.username, 'OPEN');
+            
+            // Log activity
+            await addActivity({
+                type: 'cashier',
+                action: 'open',
+                amount: null,
+                description: `${currentUser.username} opened cashier`
+            });
+            
+            showMessage('Cashier opened successfully!', 'success');
+            
+            // Clear inputs
+            const countedMVR = document.getElementById('countedMVR');
+            const countedUSD = document.getElementById('countedUSD');
+            const countedPettyMVR = document.getElementById('countedPettyMVR');
+            const countedPettyUSD = document.getElementById('countedPettyUSD');
+            
+            if (countedMVR) countedMVR.value = '0';
+            if (countedUSD) countedUSD.value = '0';
+            if (countedPettyMVR) countedPettyMVR.value = '0';
+            if (countedPettyUSD) countedPettyUSD.value = '0';
+            
+            countedData = { mvr: 0, usd: 0 };
+            countedPettyData = { mvr: 0, usd: 0 };
+            
+            const comparisonSection = document.getElementById('comparisonSection');
+            const pettyComparisonSection = document.getElementById('pettyComparisonSection');
+            
+            if (comparisonSection) comparisonSection.style.display = 'none';
+            if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
             
         } catch (error) {
             console.error('Error opening cashier:', error);
@@ -3275,59 +2993,38 @@
         try {
             showMessage('Closing cashier...', 'info');
             
-            if (typeof passengerDb !== 'undefined' && currentShift) {
-                const shiftRef = passengerDb.collection('shifts').doc('currentshift');
-                
-                const shiftToClose = currentShift.morning === 'open' ? 'morning' : 'evening';
-                const shiftType = currentShift.morning === 'open' ? 'MORNING' : 'EVENING';
-                
-                console.log('Closing cashier:', { shift: shiftToClose });
-                
-                await shiftRef.set({
-                    [shiftToClose]: 'closed',
-                    updated: new Date().toISOString(),
-                    closedBy: currentUser.username,
-                    closedByRcno: currentUser.rcno,
-                    closedAt: new Date().toISOString()
-                }, { merge: true });
-                
-                await updateCashierTracking('close');
-                
-                await fetchShiftData();
-                
-                showMessage('Cashier closed successfully!', 'success');
-                
-                const countedMVR = document.getElementById('countedMVR');
-                const countedUSD = document.getElementById('countedUSD');
-                const countedPettyMVR = document.getElementById('countedPettyMVR');
-                const countedPettyUSD = document.getElementById('countedPettyUSD');
-                
-                if (countedMVR) countedMVR.value = '0';
-                if (countedUSD) countedUSD.value = '0';
-                if (countedPettyMVR) countedPettyMVR.value = '0';
-                if (countedPettyUSD) countedPettyUSD.value = '0';
-                
-                countedData = { mvr: 0, usd: 0 };
-                countedPettyData = { mvr: 0, usd: 0 };
-                
-                const comparisonSection = document.getElementById('comparisonSection');
-                const pettyComparisonSection = document.getElementById('pettyComparisonSection');
-                
-                if (comparisonSection) comparisonSection.style.display = 'none';
-                if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
-                
-                await addActivity({
-                    type: 'cashier',
-                    action: 'close',
-                    amount: null,
-                    description: `${currentUser.username} closed cashier for ${shiftType} shift`
-                });
-                
-                await displayShiftHistory();
-                
-            } else {
-                showMessage('No open shift to close', 'warning');
-            }
+            // Save to cashier collection
+            await saveCashierStatus(cashierStatus.username, 'CLOSED');
+            
+            // Log activity
+            await addActivity({
+                type: 'cashier',
+                action: 'close',
+                amount: null,
+                description: `${currentUser.username} closed cashier`
+            });
+            
+            showMessage('Cashier closed successfully!', 'success');
+            
+            // Clear inputs
+            const countedMVR = document.getElementById('countedMVR');
+            const countedUSD = document.getElementById('countedUSD');
+            const countedPettyMVR = document.getElementById('countedPettyMVR');
+            const countedPettyUSD = document.getElementById('countedPettyUSD');
+            
+            if (countedMVR) countedMVR.value = '0';
+            if (countedUSD) countedUSD.value = '0';
+            if (countedPettyMVR) countedPettyMVR.value = '0';
+            if (countedPettyUSD) countedPettyUSD.value = '0';
+            
+            countedData = { mvr: 0, usd: 0 };
+            countedPettyData = { mvr: 0, usd: 0 };
+            
+            const comparisonSection = document.getElementById('comparisonSection');
+            const pettyComparisonSection = document.getElementById('pettyComparisonSection');
+            
+            if (comparisonSection) comparisonSection.style.display = 'none';
+            if (pettyComparisonSection) pettyComparisonSection.style.display = 'none';
             
         } catch (error) {
             console.error('Error closing cashier:', error);
@@ -3395,13 +3092,13 @@
             
             if (!loadUserFromStorage()) return;
             
-            await fetchCurrentCashierFromFirebase();
+            // Fetch cashier status from Firebase first
+            await fetchCashierStatus();
             
             await fetchShiftData();
             await fetchSalesData();
             await loadPettyCashData();
             await loadRecentActivity();
-            await displayShiftHistory();
             
             const loading = document.getElementById('loading');
             const mainContent = document.getElementById('mainContent');
@@ -3423,12 +3120,6 @@
             if (setPettyMVR) setPettyMVR.value = '0';
             if (setPettyUSD) setPettyUSD.value = '0';
             
-            const openBtn = document.getElementById('openCashierBtn');
-            const closeBtn = document.getElementById('closeCashierBtn');
-            
-            if (openBtn) openBtn.addEventListener('click', handleOpenCashier);
-            if (closeBtn) closeBtn.addEventListener('click', handleCloseCashier);
-            
             if (currentUser && currentUser.level.toLowerCase() === 'admin') {
                 const saveBtn = document.getElementById('savePettyCashBtn');
                 if (saveBtn) saveBtn.addEventListener('click', savePettyCash);
@@ -3437,12 +3128,11 @@
             refreshInterval = setInterval(async () => {
                 await fetchShiftData();
                 await fetchSalesData();
-                await loadCurrentCashier();
+                await fetchCashierStatus(); // Refresh cashier status
             }, 30000);
             
             activityInterval = setInterval(async () => {
                 await loadRecentActivity();
-                await displayShiftHistory();
             }, 10000);
             
         } catch (error) {
@@ -3479,7 +3169,8 @@
     window.loadRecentActivity = loadRecentActivity;
     window.closePasswordPopup = closePasswordPopup;
     window.authorizeAction = authorizeAction;
-    window.displayShiftHistory = displayShiftHistory;
+    window.handleOpenCashier = handleOpenCashier;
+    window.handleCloseCashier = handleCloseCashier;
 </script>
 
 </body>
