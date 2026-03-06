@@ -1592,7 +1592,7 @@
     let countedData = { mvr: 0, usd: 0 };
     let pettyCashData = { mvr: 0, usd: 0, lastUpdated: null, updatedBy: null, isPersistent: true };
     let countedPettyData = { mvr: 0, usd: 0 };
-    let cashierStatus = { username: null, status: 'CLOSED' }; // Track cashier status
+    let cashierStatus = { username: 'Unassigned', status: 'CLOSED' }; // Track cashier status - default Unassigned
     let refreshInterval;
     let activityInterval;
     let database = null;
@@ -1991,7 +1991,7 @@
         }
     }
 
-    // ========== CASHIER FUNCTIONS - SIMPLIFIED VERSION ==========
+    // ========== CASHIER FUNCTIONS - UPDATED to save "Unassigned" when closed ==========
     
     // Save cashier status to Firebase (always updates the same document)
     async function saveCashierStatus(username, status) {
@@ -2003,19 +2003,22 @@
 
             const now = new Date().toISOString();
             
+            // If status is CLOSED, always set username to "Unassigned"
+            const usernameToSave = status === 'CLOSED' ? 'Unassigned' : username;
+            
             // Always use the same document ID 'current' to ensure we update, not create new
             await database.collection('cashier').doc('current').set({
-                username: username,
+                username: usernameToSave,
                 status: status,
                 updatedAt: now,
                 updatedBy: currentUser?.username || 'system'
             });
 
-            console.log(`Cashier status saved: ${username} - ${status}`);
+            console.log(`Cashier status saved: ${usernameToSave} - ${status}`);
             
             // Update local variable
             cashierStatus = {
-                username: username,
+                username: usernameToSave,
                 status: status
             };
             
@@ -2045,7 +2048,7 @@
                 console.log('Fetched cashier status from Firebase:', data);
                 
                 cashierStatus = {
-                    username: data.username || null,
+                    username: data.username || 'Unassigned',
                     status: data.status || 'CLOSED'
                 };
                 
@@ -2054,11 +2057,11 @@
                 
                 return data;
             } else {
-                console.log('No cashier document found, creating default');
+                console.log('No cashier document found, creating default with Unassigned');
                 
-                // Create default document if it doesn't exist
+                // Create default document with Unassigned
                 const defaultData = {
-                    username: null,
+                    username: 'Unassigned',
                     status: 'CLOSED',
                     updatedAt: new Date().toISOString(),
                     updatedBy: 'system'
@@ -2067,7 +2070,7 @@
                 await database.collection('cashier').doc('current').set(defaultData);
                 
                 cashierStatus = {
-                    username: null,
+                    username: 'Unassigned',
                     status: 'CLOSED'
                 };
                 
@@ -2081,26 +2084,25 @@
         }
     }
 
-    // Update UI with cashier info - MODIFIED: Show "Unassigned" when status is CLOSED
+    // Update UI with cashier info - MODIFIED: Show "Unassigned" from Firebase
     function updateCashierUI() {
         const currentCashierName = document.getElementById('currentCashierName');
         const cashierRcno = document.getElementById('cashierRcno');
         const cashierStatusEl = document.getElementById('cashierStatus');
         const actionButtons = document.getElementById('actionButtons');
         
-        // MODIFIED: Show "Unassigned" when status is CLOSED or username is null
+        // Show the username from Firebase (will be "Unassigned" when closed)
         if (currentCashierName) {
-            if (cashierStatus.status === 'OPEN' && cashierStatus.username) {
-                currentCashierName.textContent = cashierStatus.username;
-                currentCashierName.classList.remove('unassigned-text');
-            } else {
-                currentCashierName.textContent = 'Unassigned';
+            currentCashierName.textContent = cashierStatus.username || 'Unassigned';
+            if (cashierStatus.status === 'CLOSED') {
                 currentCashierName.classList.add('unassigned-text');
+            } else {
+                currentCashierName.classList.remove('unassigned-text');
             }
         }
         
         // Get RC number from users.js where username matches - only show if OPEN
-        if (cashierStatus.status === 'OPEN' && cashierStatus.username) {
+        if (cashierStatus.status === 'OPEN' && cashierStatus.username && cashierStatus.username !== 'Unassigned') {
             const matchedUser = usersList.find(u => 
                 u.username && u.username.toLowerCase() === cashierStatus.username.toLowerCase()
             );
@@ -2856,7 +2858,7 @@
         try {
             showMessage('Opening cashier...', 'info');
             
-            // Save to cashier collection
+            // Save to cashier collection with actual username
             await saveCashierStatus(currentUser.username, 'OPEN');
             
             // Log activity
@@ -2899,8 +2901,8 @@
         try {
             showMessage('Closing cashier...', 'info');
             
-            // Save to cashier collection
-            await saveCashierStatus(cashierStatus.username, 'CLOSED');
+            // Save to cashier collection with "Unassigned" username
+            await saveCashierStatus('Unassigned', 'CLOSED');
             
             // Log activity
             await addActivity({
