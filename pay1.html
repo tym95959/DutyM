@@ -218,6 +218,53 @@
         @keyframes spinner {
             to { transform: rotate(360deg); }
         }
+
+        /* Cashier closed warning */
+        .cashier-closed-warning {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 8px 15px;
+            border-radius: 40px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            border: 1px solid #f5c6cb;
+            margin-left: 10px;
+        }
+        
+        .cashier-closed-warning::before {
+            content: "⚠️";
+            font-size: 14px;
+        }
+        
+        .payment-disabled {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+        
+        .disabled-overlay {
+            position: relative;
+        }
+        
+        .disabled-overlay::after {
+            content: "CASHIER CLOSED - CANNOT PROCESS PAYMENTS";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            border-radius: 16px;
+            z-index: 10;
+            backdrop-filter: blur(2px);
+        }
     </style>
 </head>
 <body>
@@ -253,6 +300,7 @@
                 <span><strong>LEVEL:</strong> <span id="userLevel">Loading...</span></span>
                 <span><strong>RC NO:</strong> <span id="userRcNo">Loading...</span></span>
                 <span><strong>CASHIER:</strong> <span id="cashierName">Loading...</span> <span id="cashierStatusBadge" class="status-badge" style="margin-left: 5px; font-size: 10px;"></span></span>
+                <span id="cashierClosedWarning" class="cashier-closed-warning" style="display: none;">CASHIER CLOSED</span>
                 <a class="logout-link" id="logoutBtn">← LOGOUT</a>
             </div>
             
@@ -261,8 +309,8 @@
                 <span id="statusMessage" class="status-message"></span>
             </div>
 
-            <!-- Two Column Layout -->
-            <div class="two-column-layout">
+            <!-- Two Column Layout with conditional overlay -->
+            <div id="paymentContainer" class="two-column-layout">
                 <!-- LEFT - Passenger Section -->
                 <div class="passenger-section">
                     <div class="section-title">PASSENGER DETAILS</div>
@@ -284,7 +332,7 @@
                 </div>
                 
                 <!-- RIGHT - Payment Section -->
-                <div class="payment-section">
+                <div class="payment-section" id="paymentSection">
                     <div class="section-title">PAYMENT DETAILS</div>
                     <div class="grid-3">
                         <div class="form-group"><label>CURRENCY</label><select id="currency"><option value="USD">USD</option><option value="MVR">MVR</option></select></div>
@@ -337,7 +385,7 @@
     </div>
 
 <script>
-// ========== ALL JAVASCRIPT with Cashier Fetch from Firebase ==========
+// ========== ALL JAVASCRIPT with Cashier Fetch from Firebase and Payment Blocking ==========
 
 let currentShiftData = { date: '', shift: '', status: '', openTime: '' };
 let currentCashier = { name: '', level: '', rcno: '', status: 'CLOSED' };
@@ -494,7 +542,7 @@ function parseAndAddToList() {
     return parseBoardingPassCode(codeInput);
 }
 
-// ========== CASHIER FUNCTIONS - Fetch from Firebase ==========
+// ========== CASHIER FUNCTIONS - Fetch from Firebase and Block Payments ==========
 
 // Initialize database reference
 function initializeDatabase() {
@@ -543,17 +591,128 @@ async function fetchCashierStatus() {
             }
             
             updateCashierDisplay();
+            
+            // Block or unblock payments based on cashier status
+            togglePaymentBlock(currentCashier.status !== 'OPEN');
+            
             return data;
         } else {
             console.log('No cashier document found in Firebase');
             currentCashier = { name: null, level: '', rcno: '', status: 'CLOSED' };
             updateCashierDisplay();
+            
+            // Block payments if no cashier document
+            togglePaymentBlock(true);
+            
             return null;
         }
 
     } catch (error) {
         console.error('Error fetching cashier status:', error);
         return null;
+    }
+}
+
+// Toggle payment blocking based on cashier status
+function togglePaymentBlock(block) {
+    const submitBtn = document.getElementById('submitBtn');
+    const printBtn = document.getElementById('printReceiptBtn');
+    const paymentSection = document.getElementById('paymentSection');
+    const paymentContainer = document.getElementById('paymentContainer');
+    const cashierWarning = document.getElementById('cashierClosedWarning');
+    
+    if (block) {
+        // Disable payment buttons
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.title = 'Cashier is closed - cannot process payments';
+        }
+        
+        if (printBtn) {
+            printBtn.disabled = true;
+            printBtn.style.opacity = '0.5';
+            printBtn.title = 'Cashier is closed - cannot print receipts';
+        }
+        
+        // Show warning
+        if (cashierWarning) {
+            cashierWarning.style.display = 'inline-flex';
+        }
+        
+        // Add visual indicator to payment section
+        if (paymentSection) {
+            paymentSection.style.opacity = '0.7';
+            paymentSection.style.position = 'relative';
+            
+            // Remove any existing overlay
+            const existingOverlay = document.getElementById('paymentOverlay');
+            if (existingOverlay) existingOverlay.remove();
+            
+            // Create overlay
+            const overlay = document.createElement('div');
+            overlay.id = 'paymentOverlay';
+            overlay.style.position = 'absolute';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.right = '0';
+            overlay.style.bottom = '0';
+            overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+            overlay.style.color = 'white';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.fontWeight = 'bold';
+            overlay.style.borderRadius = '16px';
+            overlay.style.zIndex = '10';
+            overlay.style.backdropFilter = 'blur(2px)';
+            overlay.style.fontSize = '18px';
+            overlay.style.textAlign = 'center';
+            overlay.style.padding = '20px';
+            overlay.innerHTML = '⚠️ CASHIER CLOSED<br>CANNOT PROCESS PAYMENTS';
+            
+            paymentSection.style.position = 'relative';
+            paymentSection.appendChild(overlay);
+        }
+        
+        // Show status message
+        const statusMsg = document.getElementById('statusMessage');
+        if (statusMsg) {
+            statusMsg.textContent = '⚠️ CASHIER IS CLOSED - Cannot process payments';
+            statusMsg.style.color = '#dc3545';
+        }
+        
+    } else {
+        // Enable payment buttons
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.title = '';
+        }
+        
+        if (printBtn) {
+            printBtn.disabled = false;
+            printBtn.style.opacity = '1';
+            printBtn.title = '';
+        }
+        
+        // Hide warning
+        if (cashierWarning) {
+            cashierWarning.style.display = 'none';
+        }
+        
+        // Remove overlay from payment section
+        if (paymentSection) {
+            paymentSection.style.opacity = '1';
+            const overlay = document.getElementById('paymentOverlay');
+            if (overlay) overlay.remove();
+        }
+        
+        // Clear status message if it's the cashier closed message
+        const statusMsg = document.getElementById('statusMessage');
+        if (statusMsg && statusMsg.textContent.includes('CASHIER IS CLOSED')) {
+            statusMsg.textContent = '';
+        }
     }
 }
 
@@ -1153,7 +1312,7 @@ function redirectToReceiptPage(transactionData, autoPrint = true, isVoid = false
     }
 }
 
-// ========== UPDATED SUBMIT FORM WITH REDIRECT ==========
+// ========== UPDATED SUBMIT FORM WITH REDIRECT AND CASHIER CHECK ==========
 async function submitForm() {
     if (!currentUser.username) { 
         alert('Please log in first'); 
@@ -1176,9 +1335,9 @@ async function submitForm() {
         return; 
     }
     
-    // Check if cashier is open
+    // Check if cashier is open - this is the key validation
     if (currentCashier.status !== 'OPEN') {
-        alert('Cashier is not open. Please open cashier first.');
+        alert('❌ CASHIER IS CLOSED - Cannot process payments. Please open cashier first.');
         return;
     }
     
@@ -1303,7 +1462,7 @@ async function submitForm() {
     }
 }
 
-// ========== UPDATED PRINT RECEIPT FUNCTION ==========
+// ========== UPDATED PRINT RECEIPT FUNCTION WITH CASHIER CHECK ==========
 function printCurrentReceipt() {
     if (!document.getElementById('pName').value) { 
         alert('Please scan a boarding pass first'); 
@@ -1312,6 +1471,12 @@ function printCurrentReceipt() {
     if (!document.getElementById('receiptNo').value) { 
         alert('Please submit the form first'); 
         return; 
+    }
+    
+    // Check if cashier is open
+    if (currentCashier.status !== 'OPEN') {
+        alert('❌ CASHIER IS CLOSED - Cannot print receipts. Please open cashier first.');
+        return;
     }
     
     // Build transaction data from current form
@@ -1450,7 +1615,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load data
     loadShiftDataOnce();
     
-    // Fetch cashier status from Firebase
+    // Fetch cashier status from Firebase - this will also block payments if closed
     setTimeout(() => {
         fetchCashierStatus();
     }, 1000);
@@ -1465,7 +1630,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fetchPendingTransactionsCount();
     }, 30000);
     
-    // Refresh cashier status every 30 seconds
+    // Refresh cashier status every 30 seconds and update payment blocking
     setInterval(() => {
         fetchCashierStatus();
     }, 30000);
@@ -1564,6 +1729,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('Dual scanning initialized - Redirect to receipt.html for printing');
     console.log('Cashier status fetched from Firebase cashier/current collection');
+    console.log('PAYMENTS ARE BLOCKED WHEN CASHIER IS CLOSED');
     console.log('Void receipt support enabled - Use reprint for voided transactions');
 });
 </script>
