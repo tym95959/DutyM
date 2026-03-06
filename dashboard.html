@@ -12,6 +12,7 @@
     <!-- Your config files -->
     <script src="fireshift.js"></script>
     <script src="Co.js"></script>
+    <script src="users.js"></script>
     
     <style>
         * {
@@ -97,6 +98,9 @@
             border-left: 4px solid #e6b800;
             font-weight: 500;
             font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .shift-badge {
@@ -110,6 +114,28 @@
             padding: 3px 10px;
             border-radius: 20px;
             font-size: 12px;
+        }
+
+        /* Cashier Status Badge */
+        .cashier-status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+
+        .status-open {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-closed {
+            background: #f8d7da;
+            color: #721c24;
         }
 
         .nav-right {
@@ -259,6 +285,7 @@
             margin-top: 15px;
             padding-top: 15px;
             border-top: 2px dashed #e6b80030;
+            flex-wrap: wrap;
         }
 
         .shift-detail-item {
@@ -520,6 +547,21 @@
             background: linear-gradient(135deg, #34ce57, #28a745);
         }
 
+        /* Cashier Info in Shift Indicator */
+        .cashier-info {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: 10px;
+            padding-left: 10px;
+            border-left: 2px solid #e6b80030;
+        }
+
+        .cashier-name {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
         /* Loading Spinner */
         .loading-spinner {
             display: inline-block;
@@ -651,11 +693,26 @@
             }
             
             .main-container {
-                margin-top: 150px;
+                margin-top: 200px;
             }
             
             .flight-stats {
                 grid-template-columns: 1fr;
+            }
+            
+            .shift-indicator {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+            
+            .cashier-info {
+                border-left: none;
+                border-top: 1px solid #e6b80030;
+                margin-left: 0;
+                padding-left: 0;
+                padding-top: 5px;
+                width: 100%;
             }
         }
     </style>
@@ -670,6 +727,19 @@
             <div class="modal-buttons">
                 <button class="modal-btn modal-btn-secondary" onclick="closeModal()">Cancel</button>
                 <button class="modal-btn modal-btn-primary" onclick="goToShiftManagement()">Go to Shift Management</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for cashier warning -->
+    <div id="cashierWarningModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-icon">💰</div>
+            <h3 class="modal-title">Cashier Not Open</h3>
+            <p class="modal-message" id="cashierWarningMessage">Cashier is currently closed. Please open cashier before processing payments.</p>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="closeCashierModal()">Cancel</button>
+                <button class="modal-btn modal-btn-primary" onclick="goToCashier()">Go to Cashier</button>
             </div>
         </div>
     </div>
@@ -689,6 +759,11 @@
                 <div class="shift-indicator">
                     <span class="shift-badge" id="shiftType">LOADING...</span>
                     <span class="shift-date" id="shiftDate">--</span>
+                    <div class="cashier-info" id="cashierInfo">
+                        <span>💰</span>
+                        <span class="cashier-name" id="cashierName">Loading...</span>
+                        <span id="cashierStatusBadge" class="cashier-status-badge status-closed">CLOSED</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -750,6 +825,13 @@
                         <span class="detail-value" id="shiftStatus">Active</span>
                     </div>
                 </div>
+                <div class="shift-detail-item">
+                    <div class="detail-icon">💰</div>
+                    <div class="detail-text">
+                        <span class="detail-label">Cashier</span>
+                        <span class="detail-value" id="detailCashierName">--</span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -781,7 +863,7 @@
             </div>
 
             <!-- Payment Card -->
-            <div class="dashboard-card" onclick="navigateTo('pay.html')">
+            <div class="dashboard-card" onclick="handlePaymentClick()">
                 <div class="card-icon">💰</div>
                 <h3 class="card-title">Payment</h3>
                 <p class="card-description">Process payments, view transactions, and settlements</p>
@@ -837,6 +919,94 @@
         let currentUser = null;
         let sessionCheckInterval;
         let lastActivity = Date.now();
+        let database = null;
+        let usersList = [];
+        let cashierStatus = { username: null, status: 'CLOSED' };
+
+        // ========== LOAD USERS FUNCTION ==========
+        function loadUsers() {
+            if (typeof window.users !== 'undefined' && Array.isArray(window.users)) {
+                usersList = window.users;
+                console.log('Users loaded from users.js:', usersList.length);
+                return true;
+            }
+            
+            if (typeof users !== 'undefined' && Array.isArray(users)) {
+                usersList = users;
+                console.log('Users loaded from global scope:', usersList.length);
+                return true;
+            }
+            
+            console.warn('users.js not found or invalid');
+            return false;
+        }
+
+        // ========== DATABASE INITIALIZATION ==========
+        function initializeDatabase() {
+            if (typeof passengerDb !== 'undefined') {
+                database = passengerDb;
+                console.log('Using passengerDb for database operations');
+            } else if (typeof db !== 'undefined') {
+                database = db;
+                console.log('Using db for database operations');
+            } else {
+                console.warn('No database reference found');
+            }
+        }
+
+        // ========== CASHIER FUNCTIONS ==========
+        async function fetchCashierStatus() {
+            try {
+                if (typeof database === 'undefined' || !database) {
+                    console.warn('Database not initialized');
+                    return null;
+                }
+
+                const cashierDoc = await database.collection('cashier').doc('current').get();
+                
+                if (cashierDoc.exists) {
+                    const data = cashierDoc.data();
+                    console.log('Fetched cashier status from Firebase:', data);
+                    
+                    cashierStatus = {
+                        username: data.username || null,
+                        status: data.status || 'CLOSED'
+                    };
+                    
+                    updateCashierDisplay();
+                    return data;
+                } else {
+                    console.log('No cashier document found in Firebase');
+                    cashierStatus = { username: null, status: 'CLOSED' };
+                    updateCashierDisplay();
+                    return null;
+                }
+
+            } catch (error) {
+                console.error('Error fetching cashier status:', error);
+                return null;
+            }
+        }
+
+        // Update cashier display in UI
+        function updateCashierDisplay() {
+            const cashierNameEl = document.getElementById('cashierName');
+            const cashierStatusBadge = document.getElementById('cashierStatusBadge');
+            const detailCashierName = document.getElementById('detailCashierName');
+            
+            if (cashierNameEl) {
+                cashierNameEl.textContent = cashierStatus.username || 'Not assigned';
+            }
+            
+            if (detailCashierName) {
+                detailCashierName.textContent = cashierStatus.username || 'Not assigned';
+            }
+            
+            if (cashierStatusBadge) {
+                cashierStatusBadge.textContent = cashierStatus.status;
+                cashierStatusBadge.className = `cashier-status-badge status-${cashierStatus.status === 'OPEN' ? 'open' : 'closed'}`;
+            }
+        }
 
         // ========== SESSION MANAGEMENT ==========
         function checkSession() {
@@ -1016,6 +1186,11 @@
             return (currentShift.morning === 'open' || currentShift.evening === 'open');
         }
 
+        // ========== CHECK IF CASHIER IS OPEN ==========
+        function isCashierOpen() {
+            return cashierStatus.status === 'OPEN';
+        }
+
         // ========== HANDLE PASSENGER ENTRY CLICK ==========
         function handlePassengerEntryClick() {
             if (!checkSession()) return;
@@ -1029,6 +1204,24 @@
             }
         }
 
+        // ========== HANDLE PAYMENT CLICK ==========
+        function handlePaymentClick() {
+            if (!checkSession()) return;
+            
+            if (!isShiftOpen()) {
+                showShiftWarningModal();
+                return;
+            }
+            
+            if (!isCashierOpen()) {
+                showCashierWarningModal();
+                return;
+            }
+            
+            // Both shift and cashier are open, navigate to payment
+            navigateTo('pay.html');
+        }
+
         // ========== MODAL FUNCTIONS ==========
         function showShiftWarningModal() {
             document.getElementById('shiftWarningModal').style.display = 'flex';
@@ -1038,9 +1231,27 @@
             document.getElementById('shiftWarningModal').style.display = 'none';
         }
 
+        function showCashierWarningModal() {
+            const message = cashierStatus.username 
+                ? `Cashier (${cashierStatus.username}) is currently CLOSED. Please open cashier before processing payments.`
+                : 'Cashier is not assigned. Please go to Cashier to open.';
+            
+            document.getElementById('cashierWarningMessage').textContent = message;
+            document.getElementById('cashierWarningModal').style.display = 'flex';
+        }
+
+        function closeCashierModal() {
+            document.getElementById('cashierWarningModal').style.display = 'none';
+        }
+
         function goToShiftManagement() {
             closeModal();
             navigateTo('shift.html');
+        }
+
+        function goToCashier() {
+            closeCashierModal();
+            navigateTo('cashier.html');
         }
 
         // ========== DASHBOARD STATS ==========
@@ -1265,6 +1476,12 @@
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Dashboard loading...');
             
+            // Load users from users.js
+            loadUsers();
+            
+            // Initialize database
+            initializeDatabase();
+            
             // Load user data from localStorage first
             const userLoaded = loadUserFromStorage();
             
@@ -1303,6 +1520,11 @@
                 }
             });
             
+            // Fetch cashier status from Firebase
+            setTimeout(() => {
+                fetchCashierStatus();
+            }, 1000);
+            
             // Then fetch other data
             fetchShiftData();
             loadDashboardStats();
@@ -1313,6 +1535,7 @@
                 if (checkSession()) {
                     fetchShiftData();
                     loadDashboardStats();
+                    fetchCashierStatus();
                 }
             }, 30000);
         });
@@ -1333,8 +1556,11 @@
         window.showProfile = showProfile;
         window.showSettings = showSettings;
         window.handlePassengerEntryClick = handlePassengerEntryClick;
+        window.handlePaymentClick = handlePaymentClick;
         window.closeModal = closeModal;
         window.goToShiftManagement = goToShiftManagement;
+        window.closeCashierModal = closeCashierModal;
+        window.goToCashier = goToCashier;
     </script>
 </body>
 </html>
