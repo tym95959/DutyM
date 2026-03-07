@@ -276,6 +276,30 @@
             font-weight: bold;
         }
 
+        /* Batch and Approval Code Section */
+        .transaction-codes {
+            margin: 0.5mm 0;
+            padding: 0.5mm 0;
+            font-size: 9pt;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+        }
+
+        .code-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.3mm 0;
+        }
+
+        .code-label {
+            font-weight: bold;
+        }
+
+        .code-value {
+            font-family: 'Courier New', monospace;
+            letter-spacing: 0.5px;
+        }
+
         /* Validity Block */
         .validity-block {
             text-align: center;
@@ -521,6 +545,11 @@
             return false;
         }
 
+        // Check if batch and approval codes exist
+        function hasTransactionCodes(data) {
+            return (data.batchNo || data.batchNumber || data.approvalCode || data.authCode);
+        }
+
         // Generate receipt HTML
         function generateReceiptHTML(data) {
             const isReprint = data.isReprint || reprintParam;
@@ -573,8 +602,27 @@
 
             const adultCount = parseInt(data.adult || 0);
             const childCount = parseInt(data.children || 0);
-            const passengerCount = adultCount + childCount;
-            const passengerDisplay = passengerCount > 1 ? ` (${passengerCount} PAX)` : '';
+            
+            // Batch and Approval Code Section (only if available)
+            const batchNo = data.batchNo || data.batchNumber || '';
+            const approvalCode = data.approvalCode || data.authCode || '';
+            
+            const transactionCodesHTML = (batchNo || approvalCode) ? `
+                <div class="transaction-codes">
+                    ${batchNo ? `
+                    <div class="code-row">
+                        <span class="code-label">Batch No:</span>
+                        <span class="code-value">${batchNo}</span>
+                    </div>
+                    ` : ''}
+                    ${approvalCode ? `
+                    <div class="code-row">
+                        <span class="code-label">Approval Code:</span>
+                        <span class="code-value">${approvalCode}</span>
+                    </div>
+                    ` : ''}
+                </div>
+            ` : '';
 
             return `
                 <div class="receipt-header">
@@ -674,6 +722,8 @@
                     <span class="text-bold">${data.paymentMethod || 'CASH'}</span>
                 </div>
 
+                ${transactionCodesHTML}
+
                 ${exchangeRateHTML}
 
                 <div class="validity-block">
@@ -686,12 +736,6 @@
                     <div class="thank-you">✈️ THANK YOU ✈️</div>
                     <div class="footer-note">Thank you for choosing Koveli Lounge</div>
                 </div>
-
-                ${data.id ? `
-                <div class="transaction-id" style="font-size: 6pt; text-align: center; margin-top: 1mm; color: #666;">
-                   
-                </div>
-                ` : ''}
             `;
         }
 
@@ -717,6 +761,8 @@
                     const data = { id: doc.id, ...doc.data() };
                     logDebug(`✅ Receipt found in Firebase with ID: ${doc.id}`);
                     logDebug(`paymentStatus: ${data.paymentStatus || 'not set'}`);
+                    logDebug(`batchNo: ${data.batchNo || data.batchNumber || 'not set'}`);
+                    logDebug(`approvalCode: ${data.approvalCode || data.authCode || 'not set'}`);
                     return data;
                 }
                 
@@ -726,6 +772,8 @@
                     const data = { id: docById.id, ...docById.data() };
                     logDebug(`✅ Receipt found by direct ID: ${receiptNo}`);
                     logDebug(`paymentStatus: ${data.paymentStatus || 'not set'}`);
+                    logDebug(`batchNo: ${data.batchNo || data.batchNumber || 'not set'}`);
+                    logDebug(`approvalCode: ${data.approvalCode || data.authCode || 'not set'}`);
                     return data;
                 }
                 
@@ -759,6 +807,8 @@
                         data = JSON.parse(decodeURIComponent(receiptDataParam));
                         logDebug(`✅ Data parsed from URL: ${data.receiptNo}`);
                         logDebug(`paymentStatus from URL: ${data.paymentStatus || 'not set'}`);
+                        logDebug(`batchNo from URL: ${data.batchNo || data.batchNumber || 'not set'}`);
+                        logDebug(`approvalCode from URL: ${data.approvalCode || data.authCode || 'not set'}`);
                     } catch (e) {
                         logDebug(`❌ Error parsing URL data: ${e.message}`);
                     }
@@ -777,6 +827,8 @@
                             data = JSON.parse(lastReceipt);
                             logDebug('✅ Data loaded from localStorage');
                             logDebug(`paymentStatus from localStorage: ${data.paymentStatus || 'not set'}`);
+                            logDebug(`batchNo from localStorage: ${data.batchNo || data.batchNumber || 'not set'}`);
+                            logDebug(`approvalCode from localStorage: ${data.approvalCode || data.authCode || 'not set'}`);
                         }
                     } catch (e) {
                         logDebug(`❌ Error parsing localStorage: ${e.message}`);
