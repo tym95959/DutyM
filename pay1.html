@@ -754,33 +754,27 @@ async function fetchPendingTransactionsCount() {
             // Skip VOIDED transactions
             if (data.status === 'VOID' || data.voided === true) return;
             
-            // FIXED: Use correct field names with robust checking
+            // FIXED: Check if transaction is complete based on approvalCode and batchNo
             const approvalCode = data.approvalCode || data.approvalcode || data.approval || '';
             const hasApprovalCode = approvalCode.trim() !== '';
             
             const batchNo = data.batchNo || data.batchno || data.batch || '';
             const hasBatchNo = batchNo.trim() !== '';
             
-            let isComplete = false;
+            // For non-CASH, non-CARD payments, having approvalCode and batchNo makes it complete
+            // For CARD payments, also need cardType (handled in approval page)
+            // For now, just check if both approvalCode and batchNo are present
+            // This means if they are filled, it's complete and should NOT show in pending
+            const isComplete = hasApprovalCode && hasBatchNo;
             
-            // Card payments need additional cardType field
-            const cardPayments = ['AMEX','VISA','MASTER','UNIONPAY','WECHATPAY','QRPAY','ALIPAY','CARD'];
-            
-            if (cardPayments.includes(paymentMethod)) {
-                const cardType = data.cardType || data.cardtype || data.card || '';
-                const hasCardType = cardType.trim() !== '';
-                isComplete = hasApprovalCode && hasBatchNo && hasCardType;
-            } else { 
-                isComplete = hasApprovalCode && hasBatchNo;
-            }
-            
+            // If it's NOT complete, count as pending
             if (!isComplete) pendingCount++;
         });
         
         pendingTransactionsCount = pendingCount;
         updatePendingCount(pendingCount);
         
-        console.log(`Pending transactions count updated: ${pendingCount}`);
+        console.log(`Pending transactions count updated: ${pendingCount} (only transactions missing approvalCode or batchNo count as pending)`);
         
     } catch (error) { 
         console.error('Error fetching pending transactions count:', error); 
@@ -1356,11 +1350,6 @@ async function submitForm() {
         document.getElementById('receiptNoDisplay').textContent = receiptNo;
         
         const shiftDate = currentShiftData.date;
-        let standardizedDate = shiftDate;
-        if (shiftDate.includes('/')) { 
-            const parts = shiftDate.split('/'); 
-            if (parts.length === 3) standardizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`; 
-        }
         
         const boardingPassData = { 
             passengerName: document.getElementById('pName').value, 
@@ -1396,11 +1385,9 @@ async function submitForm() {
             exchangeRateData.exchangeRateUsed = currentExchangeRate; 
         }
         
+        // SIMPLIFIED: Only user data fields (no cashier info, no rcno in user, no level in user)
         const userData = { 
-            username: currentUser.username || 'Unknown', 
-            level: currentUser.level || 'N/A', 
-            rcno: currentUser.rcno || 'N/A', 
-            loginTime: new Date().toISOString() 
+            username: currentUser.username || 'Unknown' // Only username, no level, no rcno
         };
         
         const completeData = { 
@@ -1408,21 +1395,15 @@ async function submitForm() {
             ...boardingPassData, 
             ...paymentData, 
             ...exchangeRateData, 
-            user: userData, 
+            user: userData, // Only contains username
             transactionDate: shiftDate, 
             shiftDate: shiftDate, 
             date: shiftDate, 
-            shiftDateStandardized: standardizedDate, 
             submissionDateTime: document.getElementById('currentDateTime').value, 
             submissionTimestamp: new Date().toISOString(), 
             expiryDateTime: expiryResult.full, 
             expiryTime: expiryResult.display,
-            cashier: { 
-                name: currentCashier.name || currentUser.username, 
-                status: currentCashier.status,
-                rcno: currentCashier.rcno || currentUser.rcno, 
-                level: currentCashier.level || currentUser.level
-            }, 
+            // No cashier data, no loginTime, no rcno, no level
             timestamp: firebase.firestore.FieldValue.serverTimestamp(), 
             createdAt: new Date().toISOString(), 
             uniqueId: Date.now() + '-' + Math.random().toString(36).substr(2, 9) 
@@ -1731,6 +1712,8 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Cashier status fetched from Firebase cashier/current collection');
     console.log('PAYMENTS ARE BLOCKED WHEN CASHIER IS CLOSED');
     console.log('Void receipt support enabled - Use reprint for voided transactions');
+    console.log('UPDATED: No cashier status, rcno, level, shiftDateStandardized, loginTime saved');
+    console.log('UPDATED: Pending count only shows transactions missing approvalCode or batchNo');
 });
 </script>
 </body>
