@@ -1030,34 +1030,57 @@ async function generateReceiptNumber() {
     }
 }
 
+// ========== UPDATED SAVE TO FIREBASE WITH RECEIPT NUMBER AS DOCUMENT ID ==========
 async function saveToFirebase(data) {
     try {
         if (typeof passengerDb === 'undefined') throw new Error('passengerDb not initialized');
+        
         const kovelipayRef = passengerDb.collection('Kovelipay');
-        const docRef = await kovelipayRef.add(data);
-        return { id: docRef.id, ...data };
+        const receiptNo = data.receiptNo;
+        
+        if (!receiptNo) {
+            throw new Error('Receipt number is required for document ID');
+        }
+        
+        // Use receipt number as the document ID
+        const docRef = kovelipayRef.doc(receiptNo);
+        await docRef.set(data);
+        
+        console.log(`Document saved with ID: ${receiptNo}`);
+        return { id: receiptNo, ...data };
+        
     } catch (error) { 
         console.error('Error saving to Firebase:', error); 
         throw error; 
     }
 }
 
+// ========== UPDATED FETCH TRANSACTION BY RECEIPT ==========
 async function fetchTransactionByReceipt(receiptNo) {
     try {
         if (typeof passengerDb === 'undefined') throw new Error('passengerDb not initialized');
         
-        const kovelipayRef = passengerDb.collection('Kovelipay');
-        const snapshot = await kovelipayRef.where('receiptNo', '==', receiptNo).limit(1).get();
+        // Try to get document directly by receipt number (which is now the document ID)
+        const docRef = passengerDb.collection('Kovelipay').doc(receiptNo);
+        const docSnapshot = await docRef.get();
         
-        if (!snapshot.empty) { 
-            const doc = snapshot.docs[0]; 
+        if (docSnapshot.exists) {
+            return { id: docSnapshot.id, ...docSnapshot.data() };
+        }
+        
+        // Fallback: try query by receiptNo field (for backward compatibility)
+        const querySnapshot = await passengerDb.collection('Kovelipay')
+            .where('receiptNo', '==', receiptNo)
+            .limit(1)
+            .get();
+        
+        if (!querySnapshot.empty) { 
+            const doc = querySnapshot.docs[0]; 
             return { id: doc.id, ...doc.data() }; 
         }
         
-        const docById = await kovelipayRef.doc(receiptNo).get();
-        if (docById.exists) return { id: docById.id, ...docById.data() };
-        
         return null;
+        
     } catch (error) { 
         console.error('Error fetching transaction:', error); 
         throw error; 
@@ -1409,7 +1432,7 @@ async function submitForm() {
             uniqueId: Date.now() + '-' + Math.random().toString(36).substr(2, 9) 
         };
         
-        // Save to Firebase
+        // Save to Firebase with receipt number as document ID
         const savedData = await saveToFirebase(completeData);
         lastSavedTransaction = savedData;
         
@@ -1714,6 +1737,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Void receipt support enabled - Use reprint for voided transactions');
     console.log('UPDATED: No cashier status, rcno, level, shiftDateStandardized, loginTime saved');
     console.log('UPDATED: Pending count only shows transactions missing approvalCode or batchNo');
+    console.log('UPDATED: Document ID is now the receipt number');
 });
 </script>
 </body>
