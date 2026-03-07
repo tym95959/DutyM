@@ -1310,8 +1310,8 @@
     function addFloatingDashboardButton() {
     // Create button element
     const floatingBtn = document.createElement('a');
-    floatingBtn.href = 'dashboard.html';
-    floatingBtn.innerHTML = '← Dashboard';
+    floatingBtn.href = 'cardentry.html';
+    floatingBtn.innerHTML = '← Back';
     
     // Style the button
     floatingBtn.style.position = 'fixed';
@@ -1350,7 +1350,9 @@
 document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
 
     
-    // ========== DUPLICATE DETECTION FUNCTIONS ==========
+    // ========== UPDATED DUPLICATE DETECTION FUNCTIONS ==========
+    // Now properly detects duplicates when name and seat number are the same
+    // for the same flight and date, regardless of guest status
 
 function detectDuplicates(passengers) {
     if (!passengers || !currentFlightData) return [];
@@ -1362,63 +1364,34 @@ function detectDuplicates(passengers) {
         // Skip delay charge entries
         if (passenger.isDelayCharge) return;
         
-        // Get passenger data
+        // Get passenger data - normalize for comparison
         const name = (passenger.pName || '').toLowerCase().trim();
         const seat = (passenger.seatNo || '').toUpperCase().trim();
         const flightNo = currentFlightData.flightNo || '';
+        const date = currentFlightData.date || '';
         
         // Skip if missing required fields
         if (!name || !seat) return;
         
-        // Create key for duplicate detection
-        const key = `${name}|${seat}|${flightNo}`;
-        
-        // Check if this passenger is a guest (has mainPassengerId)
-        const isGuest = passenger.isGuest === true || passenger.mainPassengerId ? true : false;
+        // Create key for duplicate detection - simple name + seat combination
+        // isGuest flag is completely ignored - if name and seat are same, it's a duplicate
+        const key = `${name}|${seat}|${flightNo}|${date}`;
         
         if (seen.has(key)) {
             // Get the original passenger that created this key
             const originalIndex = seen.get(key);
             const originalPassenger = passengers[originalIndex];
             
-            // Check if original is a guest or has main passenger relationship
-            const originalIsGuest = originalPassenger.isGuest === true || originalPassenger.mainPassengerId ? true : false;
+            // CRITICAL FIX: isGuest flag is completely ignored
+            // If name and seat are the same, it's ALWAYS a duplicate regardless of guest status
             
-            // CRITICAL FIX: If either passenger is a guest or has a main passenger, 
-            // they should NOT be considered duplicates of each other
-            if (isGuest || originalIsGuest) {
-                // This is a guest entry - allow same name/seat as host
-                console.log('✅ Guest entry detected - allowing same name/seat:', {
-                    passenger: name,
-                    seat: seat,
-                    isGuest: isGuest,
-                    originalIsGuest: originalIsGuest
-                });
-                return; // Skip duplicate detection for guests
-            }
-            
-            // Check if they share the same main passenger ID (both guests of same host)
-            if (passenger.mainPassengerId && originalPassenger.mainPassengerId && 
-                passenger.mainPassengerId === originalPassenger.mainPassengerId) {
-                // Both are guests of the same main passenger - allow multiple guests
-                console.log('✅ Multiple guests of same host - allowing');
-                return;
-            }
-            
-            // Check if this passenger is the main passenger for the other
-            if (passenger.id === originalPassenger.mainPassengerId || 
-                originalPassenger.id === passenger.mainPassengerId) {
-                // One is host, one is guest - allow
-                console.log('✅ Host-guest relationship - allowing');
-                return;
-            }
-            
-            // If we get here, neither is a guest, so this is a real duplicate
-            console.log('⚠️ Real duplicate detected:', {
+            console.log('⚠️ Duplicate detected:', {
                 passenger: name,
                 seat: seat,
                 index: index,
-                originalIndex: originalIndex
+                originalIndex: originalIndex,
+                passengerIsGuest: passenger.isGuest ? 'Yes' : 'No',
+                originalIsGuest: originalPassenger.isGuest ? 'Yes' : 'No'
             });
             
             duplicates.push({
@@ -1450,19 +1423,17 @@ function showDuplicateWarning(duplicates) {
     }
     
     const duplicateCount = duplicates.length;
-    let message = `⚠️ Found ${duplicateCount} duplicate entr${duplicateCount > 1 ? 'ies' : 'y'} based on same Name, Seat, and Flight Number. `;
+    let message = `⚠️ Found ${duplicateCount} duplicate entr${duplicateCount > 1 ? 'ies' : 'y'} based on same Name and Seat Number for this flight. `;
     
     let buttons = '';
     duplicates.forEach((dup, index) => {
         const originalName = (dup.originalPassenger.pName || 'Unknown').substring(0, 20);
         const duplicateName = (dup.passenger.pName || 'Unknown').substring(0, 20);
-        
-        // Add guest indicator if either is a guest
-        const originalGuest = dup.originalPassenger.isGuest ? '👤 ' : '';
-        const duplicateGuest = dup.passenger.isGuest ? '👤 ' : '';
+        const originalSeat = dup.originalPassenger.seatNo || 'Unknown';
+        const duplicateSeat = dup.passenger.seatNo || 'Unknown';
         
         buttons += `<button class="duplicate-action-btn" onclick="handleDuplicate('${dup.passenger.docId}', '${dup.originalPassenger.docId}')" title="Keep original and delete duplicate">
-            🗑️ Delete ${duplicateGuest}"${duplicateName}" (keep ${originalGuest}"${originalName}")
+            🗑️ Delete "${duplicateName}" (seat ${duplicateSeat}) — keep "${originalName}" (seat ${originalSeat})
         </button>`;
     });
     
@@ -1803,7 +1774,8 @@ function dismissDuplicateWarning() {
                     remarks: data.remarks || data.Remark || data.remark || '',
                     serialNo: data.serialNo || data.serial || data.Serial || '',
                     hiddenCode: hiddenCode,
-                    isDelayCharge: isDelayCharge
+                    isDelayCharge: isDelayCharge,
+                    isGuest: data.isGuest || false  // Include guest flag
                 };
                 
                 passengers.push(passenger);
@@ -1827,6 +1799,7 @@ function dismissDuplicateWarning() {
             // Create full flight data object with passengers
             currentFlightData = {
                 ...flightInfo,
+                date: selectedDate,
                 passengers: passengers,
                 firstPax: firstPax,
                 lastPax: lastPax,
@@ -2186,7 +2159,7 @@ function dismissDuplicateWarning() {
                     </tr>`;
                 }
             } else {
-                const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate entry based on same Name, Seat, and Flight Number">⚠️ DUPLICATE</span>' : '';
+                const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate entry based on same Name and Seat Number">⚠️ DUPLICATE</span>' : '';
                 const delayBadge = p.isDelayCharge ? '<span class="delay-charge-badge" title="Delay Charge Entry">⏰ DELAY</span>' : '';
                 
                 if (isFZ) {
