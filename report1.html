@@ -1351,14 +1351,15 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
 
     
     // ========== UPDATED DUPLICATE DETECTION FUNCTIONS ==========
-    // Now properly detects duplicates when name and seat number are the same
-    // for the same flight and date, regardless of guest status
+    // Now properly handles isGuest flag:
+    // - If isGuest = true: NOT considered a duplicate (can have multiple guests with same name/seat)
+    // - If isGuest = false: MUST be unique (only one transaction allowed with same name, flight, date, seat)
 
 function detectDuplicates(passengers) {
     if (!passengers || !currentFlightData) return [];
     
     const duplicates = [];
-    const seen = new Map();
+    const seen = new Map(); // For tracking regular passengers (isGuest = false)
     
     passengers.forEach((passenger, index) => {
         // Skip delay charge entries
@@ -1369,29 +1370,41 @@ function detectDuplicates(passengers) {
         const seat = (passenger.seatNo || '').toUpperCase().trim();
         const flightNo = currentFlightData.flightNo || '';
         const date = currentFlightData.date || '';
+        const isGuest = passenger.isGuest === true; // Check if guest
         
         // Skip if missing required fields
         if (!name || !seat) return;
         
-        // Create key for duplicate detection - simple name + seat combination
-        // isGuest flag is completely ignored - if name and seat are same, it's a duplicate
+        // KEY RULE: 
+        // If isGuest = true → ALLOW duplicates (guests can have same name/seat)
+        // If isGuest = false → NO duplicates allowed (regular passengers must be unique)
+        
+        if (isGuest) {
+            // Guest entries are NEVER considered duplicates
+            // They can have same name/seat as other guests or regular passengers
+            console.log('✅ Guest entry - allowing potential duplicate:', {
+                passenger: name,
+                seat: seat,
+                isGuest: true
+            });
+            return; // Skip duplicate checking for guests
+        }
+        
+        // For regular passengers (isGuest = false), check for duplicates
         const key = `${name}|${seat}|${flightNo}|${date}`;
         
         if (seen.has(key)) {
-            // Get the original passenger that created this key
+            // Found a duplicate regular passenger
             const originalIndex = seen.get(key);
             const originalPassenger = passengers[originalIndex];
             
-            // CRITICAL FIX: isGuest flag is completely ignored
-            // If name and seat are the same, it's ALWAYS a duplicate regardless of guest status
-            
-            console.log('⚠️ Duplicate detected:', {
+            console.log('⚠️ Duplicate regular passenger detected:', {
                 passenger: name,
                 seat: seat,
                 index: index,
                 originalIndex: originalIndex,
-                passengerIsGuest: passenger.isGuest ? 'Yes' : 'No',
-                originalIsGuest: originalPassenger.isGuest ? 'Yes' : 'No'
+                originalIsGuest: originalPassenger.isGuest ? 'Yes' : 'No',
+                currentIsGuest: 'No'
             });
             
             duplicates.push({
@@ -1401,6 +1414,7 @@ function detectDuplicates(passengers) {
                 originalPassenger: originalPassenger
             });
         } else {
+            // First time seeing this regular passenger
             seen.set(key, index);
         }
     });
@@ -1423,7 +1437,7 @@ function showDuplicateWarning(duplicates) {
     }
     
     const duplicateCount = duplicates.length;
-    let message = `⚠️ Found ${duplicateCount} duplicate entr${duplicateCount > 1 ? 'ies' : 'y'} based on same Name and Seat Number for this flight. `;
+    let message = `⚠️ Found ${duplicateCount} duplicate regular passenger entr${duplicateCount > 1 ? 'ies' : 'y'} with same Name and Seat Number. `;
     
     let buttons = '';
     duplicates.forEach((dup, index) => {
@@ -1768,14 +1782,14 @@ function dismissDuplicateWarning() {
                     docId: doc.id,
                     pName: data.pName || data.name || data.Name || '',
                     seatNo: data.seatNo || data.seat || data.Seat || '',
-                    pax: isDelayCharge ? 0 : paxValue,  // ✅ Set to 0 for delay charges
+                    pax: isDelayCharge ? 0 : paxValue,
                     FQTV: data.FQTV || data.ffn || data.FFN || '',
                     entryTime: data.entryTime || data.time || data.Time || '',
                     remarks: data.remarks || data.Remark || data.remark || '',
                     serialNo: data.serialNo || data.serial || data.Serial || '',
                     hiddenCode: hiddenCode,
                     isDelayCharge: isDelayCharge,
-                    isGuest: data.isGuest || false  // Include guest flag
+                    isGuest: data.isGuest || false  // Include guest flag from Firebase
                 };
                 
                 passengers.push(passenger);
@@ -2159,7 +2173,7 @@ function dismissDuplicateWarning() {
                     </tr>`;
                 }
             } else {
-                const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate entry based on same Name and Seat Number">⚠️ DUPLICATE</span>' : '';
+                const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate regular passenger with same Name and Seat Number">⚠️ DUPLICATE</span>' : '';
                 const delayBadge = p.isDelayCharge ? '<span class="delay-charge-badge" title="Delay Charge Entry">⏰ DELAY</span>' : '';
                 
                 if (isFZ) {
@@ -2944,7 +2958,7 @@ function dismissDuplicateWarning() {
                     pName: data.pName || data.name || '',
                     entryTime: data.entryTime || data.time || '',
                     lastPax: '',
-                    pax: isDelayCharge ? 0 : paxValue,  // ✅ Set to 0 for delay charges
+                    pax: isDelayCharge ? 0 : paxValue,
                     isDelayCharge: isDelayCharge,
                     selected: true,
                     hoursUsed: 0,
@@ -3263,7 +3277,7 @@ function dismissDuplicateWarning() {
                     const delayData = {
                         pName: 'DELAY CHARGE',
                         seatNo: 'N/A',
-                        pax: 0,  // ✅ Set to 0 for delay charges
+                        pax: 0,
                         FQTV: '',
                         entryTime: currentTime,
                         remarks: remarks,
@@ -3273,7 +3287,7 @@ function dismissDuplicateWarning() {
                         shift: delaySelectedFlight.shift || 'UNKNOWN',
                         airline: delaySelectedFlight.airline || '',
                         hiddenCode: '',
-                        delayCharge: true,  // ✅ Mark as delay charge
+                        delayCharge: true,
                         delayHours: group.hours,
                         lastPaxTime: lastPax,
                         passengerList: nameList,
