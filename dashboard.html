@@ -995,6 +995,148 @@
             }
         }
 
+        // ========== LOAD FROM LOCALSTORAGE ==========
+        function loadFromLocalStorage() {
+            try {
+                // Load shift data from localStorage
+                const storedShift = localStorage.getItem('currentShift');
+                if (storedShift) {
+                    currentShift = JSON.parse(storedShift);
+                    console.log('Loaded shift from localStorage:', currentShift);
+                }
+
+                // Load cashier status from localStorage
+                const storedCashier = localStorage.getItem('cashierStatus');
+                if (storedCashier) {
+                    cashierStatus = JSON.parse(storedCashier);
+                    console.log('Loaded cashier status from localStorage:', cashierStatus);
+                }
+
+                // Update UI with stored data
+                updateShiftDisplay();
+                updateCashierDisplay();
+                updatePaymentCardState();
+                
+                return true;
+            } catch (error) {
+                console.error('Error loading from localStorage:', error);
+                return false;
+            }
+        }
+
+        // ========== SAVE TO LOCALSTORAGE ==========
+        function saveToLocalStorage() {
+            try {
+                if (currentShift) {
+                    localStorage.setItem('currentShift', JSON.stringify(currentShift));
+                }
+                
+                if (cashierStatus) {
+                    localStorage.setItem('cashierStatus', JSON.stringify(cashierStatus));
+                }
+                
+                console.log('Saved data to localStorage');
+            } catch (error) {
+                console.error('Error saving to localStorage:', error);
+            }
+        }
+
+        // ========== FETCH FROM FIREBASE ==========
+        async function fetchFromFirebase() {
+            try {
+                if (typeof passengerDb === 'undefined') {
+                    console.error('passengerDb not initialized');
+                    return false;
+                }
+
+                console.log('Fetching data from Firebase...');
+                
+                // Fetch shift data
+                const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+                if (shiftDoc.exists) {
+                    currentShift = shiftDoc.data();
+                    console.log('Fetched shift from Firebase:', currentShift);
+                } else {
+                    console.log('No shift document found in Firebase');
+                    currentShift = null;
+                }
+
+                // Fetch cashier status
+                const cashierDoc = await passengerDb.collection('cashier').doc('current').get();
+                if (cashierDoc.exists) {
+                    cashierStatus = cashierDoc.data();
+                    console.log('Fetched cashier status from Firebase:', cashierStatus);
+                } else {
+                    console.log('No cashier document found in Firebase');
+                    cashierStatus = { username: null, status: 'CLOSED' };
+                }
+
+                // Save to localStorage
+                saveToLocalStorage();
+
+                // Update UI
+                updateShiftDisplay();
+                updateCashierDisplay();
+                updatePaymentCardState();
+                
+                return true;
+
+            } catch (error) {
+                console.error('Error fetching from Firebase:', error);
+                return false;
+            }
+        }
+
+        // ========== UPDATE SHIFT DISPLAY ==========
+        function updateShiftDisplay() {
+            const shiftType = document.getElementById('shiftType');
+            const shiftDate = document.getElementById('shiftDate');
+            const detailShiftDate = document.getElementById('detailShiftDate');
+            const detailShiftType = document.getElementById('detailShiftType');
+            const shiftMessage = document.getElementById('shiftMessage');
+            const shiftDetails = document.getElementById('shiftDetails');
+            
+            if (!currentShift) {
+                shiftType.textContent = 'NO OPEN SHIFT';
+                shiftDate.textContent = '--';
+                shiftMessage.textContent = 'No active shift. Please start a shift.';
+                shiftDetails.style.display = 'none';
+                return;
+            }
+            
+            const date = currentShift.date || 'No date';
+            const morning = currentShift.morning || 'closed';
+            const evening = currentShift.evening || 'closed';
+            
+            let activeShift = '';
+            let shiftTypeText = '';
+            
+            if (morning === 'open') {
+                activeShift = 'MORNING SHIFT';
+                shiftTypeText = 'Morning';
+                shiftMessage.textContent = 'Morning shift is currently active';
+                shiftDetails.style.display = 'flex';
+            } else if (evening === 'open') {
+                activeShift = 'EVENING SHIFT';
+                shiftTypeText = 'Evening';
+                shiftMessage.textContent = 'Evening shift is currently active';
+                shiftDetails.style.display = 'flex';
+            } else {
+                activeShift = 'NO OPEN SHIFT';
+                shiftTypeText = 'None';
+                shiftMessage.textContent = 'No active shift. Please start a shift.';
+                shiftDetails.style.display = 'none';
+            }
+            
+            shiftType.textContent = activeShift;
+            shiftDate.textContent = date;
+            
+            if (morning === 'open' || evening === 'open') {
+                detailShiftDate.textContent = date;
+                detailShiftType.textContent = shiftTypeText;
+            }
+        }
+
         // ========== CASHIER FUNCTIONS ==========
         async function fetchCashierStatus() {
             try {
@@ -1014,12 +1156,16 @@
                         status: data.status || 'CLOSED'
                     };
                     
+                    // Save to localStorage
+                    saveToLocalStorage();
+                    
                     updateCashierDisplay();
                     updatePaymentCardState();
                     return data;
                 } else {
                     console.log('No cashier document found in Firebase');
                     cashierStatus = { username: null, status: 'CLOSED' };
+                    saveToLocalStorage();
                     updateCashierDisplay();
                     updatePaymentCardState();
                     return null;
@@ -1216,43 +1362,15 @@
                     const data = shiftDoc.data();
                     currentShift = data;
                     
-                    const shiftType = document.getElementById('shiftType');
-                    const shiftDate = document.getElementById('shiftDate');
-                    const detailShiftDate = document.getElementById('detailShiftDate');
-                    const detailShiftType = document.getElementById('detailShiftType');
-                    const shiftMessage = document.getElementById('shiftMessage');
-                    const shiftDetails = document.getElementById('shiftDetails');
+                    // Save to localStorage
+                    saveToLocalStorage();
                     
-                    const date = data.date || 'No date';
-                    const morning = data.morning || 'closed';
-                    const evening = data.evening || 'closed';
-                    
-                    let activeShift = '';
-                    let shiftTypeText = '';
-                    
-                    if (morning === 'open') {
-                        activeShift = 'MORNING SHIFT';
-                        shiftTypeText = 'Morning';
-                        shiftMessage.textContent = 'Morning shift is currently active';
-                    } else if (evening === 'open') {
-                        activeShift = 'EVENING SHIFT';
-                        shiftTypeText = 'Evening';
-                        shiftMessage.textContent = 'Evening shift is currently active';
-                    } else {
-                        activeShift = 'NO OPEN SHIFT';
-                        shiftTypeText = 'None';
-                        shiftMessage.textContent = 'No active shift. Please start a shift.';
-                        shiftDetails.style.display = 'none';
-                    }
-                    
-                    shiftType.textContent = activeShift;
-                    shiftDate.textContent = date;
-                    
-                    if (morning === 'open' || evening === 'open') {
-                        shiftDetails.style.display = 'flex';
-                        detailShiftDate.textContent = date;
-                        detailShiftType.textContent = shiftTypeText;
-                    }
+                    updateShiftDisplay();
+                } else {
+                    console.log('No shift document found');
+                    currentShift = null;
+                    saveToLocalStorage();
+                    updateShiftDisplay();
                 }
             } catch (error) {
                 console.error('Error fetching shift:', error);
@@ -1487,9 +1605,13 @@
         function navigateTo(page) {
             if (!checkSession()) return;
             
-            // Store current shift data in sessionStorage for the next page
+            // Store current shift data in localStorage for the next page
             if (currentShift) {
-                sessionStorage.setItem('currentShift', JSON.stringify(currentShift));
+                localStorage.setItem('currentShift', JSON.stringify(currentShift));
+            }
+            
+            if (cashierStatus) {
+                localStorage.setItem('cashierStatus', JSON.stringify(cashierStatus));
             }
             
             window.location.href = page;
@@ -1533,6 +1655,8 @@
                     localStorage.removeItem('level');
                     localStorage.removeItem('rcno');
                     localStorage.removeItem('loggedInUser');
+                    localStorage.removeItem('currentShift');
+                    localStorage.removeItem('cashierStatus');
                     
                     // Clear session storage
                     sessionStorage.clear();
@@ -1573,6 +1697,16 @@
                 return;
             }
             
+            // First, load from localStorage for immediate display
+            loadFromLocalStorage();
+            
+            // Then fetch fresh data from Firebase
+            fetchFromFirebase().then(() => {
+                // After Firebase fetch, load dashboard stats
+                loadDashboardStats();
+                loadRecentActivity();
+            });
+            
             // Track user activity
             ['click', 'keypress', 'scroll', 'mousemove'].forEach(event => {
                 document.addEventListener(event, updateActivity);
@@ -1601,24 +1735,19 @@
                     console.warn('Logged out in another tab');
                     redirectToLogin('Logged out in another tab');
                 }
+                
+                // If shift or cashier data changed in another tab, reload from localStorage
+                if (e.key === 'currentShift' || e.key === 'cashierStatus') {
+                    console.log('Data changed in another tab, reloading from localStorage');
+                    loadFromLocalStorage();
+                }
             });
-            
-            // Fetch cashier status from Firebase
-            setTimeout(() => {
-                fetchCashierStatus();
-            }, 1000);
-            
-            // Then fetch other data
-            fetchShiftData();
-            loadDashboardStats();
-            loadRecentActivity();
             
             // Refresh data every 30 seconds
             refreshInterval = setInterval(() => {
                 if (checkSession()) {
-                    fetchShiftData();
+                    fetchFromFirebase();
                     loadDashboardStats();
-                    fetchCashierStatus(); // This will also update payment card state
                 }
             }, 30000);
         });
