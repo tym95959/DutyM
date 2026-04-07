@@ -1065,6 +1065,68 @@
     let filteredDelayPassengers = [];
     let delayCalculatedCharges = [];
 
+    // ========== USER DATA FROM LOCALSTORAGE (same as Koveli Lounge code) ==========
+    // This function extracts the current logged-in user exactly as the second code does
+    function getCurrentLoggedInUser() {
+        try {
+            // Method 1: Try to get from localStorage items used in Koveli Lounge
+            const storedUsername = localStorage.getItem('username');
+            const storedName = localStorage.getItem('name');
+            const currentUserData = localStorage.getItem('currentUser');
+            
+            // Method 2: Parse currentUser object
+            if (currentUserData) {
+                try {
+                    const parsedUser = JSON.parse(currentUserData);
+                    if (parsedUser.name) return parsedUser.name;
+                    if (parsedUser.username) return parsedUser.username;
+                } catch (e) {
+                    console.error('Error parsing currentUser:', e);
+                }
+            }
+            
+            // Method 3: Use stored name or username
+            if (storedName && storedName !== '') return storedName;
+            if (storedUsername && storedUsername !== '') return storedUsername;
+            
+            // Method 4: Try loggedInUser
+            const loggedInUser = localStorage.getItem('loggedInUser');
+            if (loggedInUser) {
+                try {
+                    const parsed = JSON.parse(loggedInUser);
+                    if (parsed.name) return parsed.name;
+                    if (parsed.username) return parsed.username;
+                } catch (e) {}
+            }
+            
+            // Method 5: Fallback to a default or any other indicator
+            const userLevel = localStorage.getItem('level');
+            if (userLevel) return `Operator (${userLevel})`;
+            
+            // Final fallback - user not logged in properly
+            console.warn('No user data found in localStorage');
+            return 'System User';
+            
+        } catch (error) {
+            console.error('Error getting current user:', error);
+            return 'System User';
+        }
+    }
+
+    // Also provide a function to get full user details if needed
+    function getCurrentUserDetails() {
+        try {
+            return {
+                name: localStorage.getItem('name') || localStorage.getItem('username') || 'User',
+                rcno: localStorage.getItem('rcno') || 'N/A',
+                level: localStorage.getItem('level') || 'OPERATOR',
+                username: localStorage.getItem('username') || 'unknown'
+            };
+        } catch (e) {
+            return { name: 'User', rcno: 'N/A', level: 'OPERATOR', username: 'unknown' };
+        }
+    }
+
     // ========== MULTI-DATABASE HELPER FUNCTIONS ==========
     
     function getFirestoreForFlight(flightNo) {
@@ -1826,7 +1888,7 @@ function dismissDuplicateWarning() {
             
         } catch (error) {
             console.error('Error loading passengers:', error);
-            document.getElementById('passengerTableBody').innerHTML = '<td><td colspan="10" class="no-data">Error loading passengers</td></tr>';
+            document.getElementById('passengerTableBody').innerHTML = '<tr><td colspan="10" class="no-data">Error loading passengers</td></tr>';
             return;
         }
         
@@ -2018,7 +2080,7 @@ function dismissDuplicateWarning() {
         if (!passengers || passengers.length === 0) {
             if (isFZ) {
                 tableHeader.innerHTML = `
-                    <tr>
+                    <table>
                         <th>No.</th>
                         <th>Name</th>
                         <th>PNR</th>
@@ -2053,7 +2115,7 @@ function dismissDuplicateWarning() {
         
         if (isFZ) {
             tableHeader.innerHTML = `
-                <tr>
+                <table>
                     <th>No.</th>
                     <th>Name</th>
                     <th>PNR</th>
@@ -2147,7 +2209,7 @@ function dismissDuplicateWarning() {
                             <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
                             <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
                         </td>
-                    </tr>`;
+                    <tr>`;
                 } else {
                     html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
                         <td class="serial-no">${serial}</td>
@@ -2461,21 +2523,7 @@ function dismissDuplicateWarning() {
         displayPassengerTable(currentFlightData.passengers);
     }
 
-    // ========== ENHANCED PRINT REPORT FUNCTION ==========
-    // Helper to get current logged-in user from localStorage or session (set during login)
-    function getCurrentLoggedInUser() {
-        // Try to get from localStorage (set during login in cardentry.html)
-        let user = localStorage.getItem('currentLoggedInUser');
-        if (user) return user;
-        // Fallback to sessionStorage
-        user = sessionStorage.getItem('currentLoggedInUser');
-        if (user) return user;
-        // Try to read from a global variable if set
-        if (window.currentUser) return window.currentUser;
-        // Default fallback
-        return 'User';
-    }
-
+    // ========== ENHANCED PRINT REPORT FUNCTION WITH USERNAME FROM SECOND CODE ==========
     function printReport() {
         if (!currentFlightData || !currentFlightData.isClosed) { 
             return; 
@@ -2512,15 +2560,16 @@ function dismissDuplicateWarning() {
         // Calculate total pax (excluding pax=0)
         const totalPaxSum = calculateTotalPax(currentFlightData.passengers);
         
-        // Get currently logged-in user for "Prepared by" field
-        const preparedByUser = getCurrentLoggedInUser();
-
+        // Get current logged-in user using the same method as the second code (Koveli Lounge)
+        const currentUserDetails = getCurrentUserDetails();
+        const preparedByUser = currentUserDetails.name || currentUserDetails.username || 'System User';
+        
         const printWindow = window.open('', '_blank');
         
         let tableHeaders = '';
         if (isFZ) {
             tableHeaders = `
-                <table>
+                <tr>
                     <th>No.</th>
                     <th>Name</th>
                     <th>PNR</th>
@@ -2764,7 +2813,7 @@ function dismissDuplicateWarning() {
                 const pnr = extractPNRFromHiddenCode(p.hiddenCode);
                 printWindow.document.write(`
                     <tr class="${rowClass}">
-                        <tr>${serial}</td>
+                        <td>${serial}</td>
                         <td>${escapeHtml(p.pName) || '-'}</td>
                         <td>${pnr || '-'}</td>
                         <td>${escapeHtml(p.seatNo) || '-'}</td>
