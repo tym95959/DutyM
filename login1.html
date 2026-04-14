@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Koveli · Device Authorization · Master Password</title>
+    <title>Koveli · One-Time Device Authorization</title>
     <!--
-        ======================================================================
-        KOVELI DEVICE AUTHORIZATION
-        External config file: deviceauth.js
-        Expected to contain: window.AUTH_CONFIG = { deviceMasterPassword: "..." }
-        ======================================================================
+        ==================================================================
+        KOVELI ONE-TIME DEVICE AUTHORIZATION
+        External config: deviceauth.js must contain:
+        window.AUTH_CONFIG = { deviceMasterPassword: "YOUR_PASSWORD" }
+        ==================================================================
     -->
     <script src="deviceauth.js"></script>
     <style>
@@ -48,6 +48,7 @@
             border-radius: 60px;
             box-shadow: 0 35px 55px -20px rgba(70, 45, 15, 0.5), inset 0 1px 0 0 #fffef5, 0 0 0 1px #f2dfae;
             overflow: hidden;
+            transition: all 0.3s ease;
         }
 
         .gold-stripe {
@@ -107,9 +108,9 @@
 
         .one-time-banner {
             margin: 1.3rem 2rem 0 2rem;
-            background: #f7efdb;
+            background: linear-gradient(135deg, #f7efdb, #fcf5e6);
             border-radius: 48px;
-            padding: 0.7rem 1.2rem;
+            padding: 0.9rem 1.2rem;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -117,10 +118,11 @@
             color: #755e2c;
             font-size: 0.8rem;
             font-weight: 500;
+            box-shadow: inset 0 1px 2px rgba(255,255,200,0.8), 0 2px 5px rgba(0,0,0,0.02);
         }
 
         .one-time-banner span:first-child {
-            font-size: 1.4rem;
+            font-size: 1.5rem;
         }
 
         .auth-body {
@@ -259,6 +261,11 @@
             border-left-color: #e6a017;
         }
 
+        .message-panel.info {
+            background: #faf3e2;
+            border-left-color: #eabe6c;
+        }
+
         .footer-security {
             font-size: 0.7rem;
             text-align: center;
@@ -297,6 +304,16 @@
             color: #8f7a51;
             cursor: default;
         }
+
+        /* Already authorized state - subtle lock indicator */
+        .auth-card.authorized {
+            box-shadow: 0 35px 55px -20px #3a6b2e, inset 0 1px 0 0 #fffef5;
+        }
+
+        .authorized-badge {
+            background: #5e9b3a20;
+            border: 1px solid #5e9b3a40;
+        }
     </style>
 </head>
 <body>
@@ -304,28 +321,28 @@
 <div class="auth-card" id="authCard">
     <div class="gold-stripe"></div>
     <div class="card-header">
-        <div class="logo-badge">
+        <div class="logo-badge" id="statusBadge">
             <span>🏛️</span> KOVELI LOUNGE · SECURE TERMINAL
         </div>
         <h1>Device Authorization</h1>
         <div class="sub-line">
-            <span>⚡ master password required</span>
-            <span class="device-chip">🖥️ authorized device only</span>
+            <span>⚡ one‑time password · enter once</span>
+            <span class="device-chip">🖥️ device binding</span>
         </div>
     </div>
 
-    <div class="one-time-banner">
+    <div class="one-time-banner" id="bannerMessage">
         <span>🔐</span>
-        <span><strong>Single‑use entry</strong> — after successful authorization, password cannot be re‑entered. Session is bound to this browser.</span>
+        <span id="bannerText"><strong>One-time entry</strong> — password required only once. After successful authorization, you won't need to enter it again.</span>
     </div>
 
     <div class="auth-body">
         <form id="authForm">
             <div class="input-field">
-                <label for="devicePassword">DEVICE MASTER PASSWORD</label>
+                <label for="devicePassword">ONE‑TIME MASTER PASSWORD</label>
                 <div class="input-wrapper">
                     <span class="input-icon">🔒</span>
-                    <input type="password" id="devicePassword" name="devicePassword" placeholder="Enter device master password" autocomplete="off">
+                    <input type="password" id="devicePassword" name="devicePassword" placeholder="Enter once · never again" autocomplete="off">
                     <button type="button" class="toggle-password" id="togglePwBtn" aria-label="Show password">👁️</button>
                 </div>
             </div>
@@ -335,33 +352,29 @@
             </button>
         </form>
 
-        <div id="statusBlock" class="message-panel">
+        <div id="statusBlock" class="message-panel info">
             <span>🔔</span>
-            <span id="statusMessage">Enter device master password to authorize.</span>
+            <span id="statusMessage">Ready — enter the one-time master password to authorize this device.</span>
         </div>
     </div>
 
     <div class="footer-security">
-        <span>✔️ master password validation</span>
-        <span>🔄 device‑bound session</span>
-        <span>⏱️ one‑time entry enforced</span>
+        <span>✔️ one‑time authorization</span>
+        <span>🔄 persists until logout/clear</span>
+        <span>⏱️ enter once, done</span>
     </div>
 </div>
 
 <script>
     (function() {
         // ==================================================================
-        // KOVELI DEVICE AUTHORIZATION | MASTER PASSWORD MODE
+        // KOVELI ONE-TIME DEVICE AUTHORIZATION
         // ==================================================================
-        // External config: deviceauth.js must define:
-        //   window.AUTH_CONFIG = { deviceMasterPassword: "MA2026SECURE" }
-        // 
-        // Features:
-        // - ONE-TIME entry: after success, all further attempts blocked.
-        // - Compares entered password against AUTH_CONFIG.deviceMasterPassword
-        // - Stores device authorization flag in localStorage
-        // - Can redirect to dashboard or any secure area
-        // - No username required — pure device-level master password
+        // CORE FEATURE: Password only needs to be entered ONCE.
+        // After successful authorization, the device stays authorized
+        // even if the page is refreshed, closed, or revisited.
+        // The password prompt will NOT appear again unless the user
+        // explicitly clears site data or logs out.
         // ==================================================================
 
         // DOM elements
@@ -371,10 +384,19 @@
         const statusDiv = document.getElementById('statusBlock');
         const statusMsgSpan = document.getElementById('statusMessage');
         const toggleBtn = document.getElementById('togglePwBtn');
+        const authCard = document.getElementById('authCard');
+        const bannerTextSpan = document.getElementById('bannerText');
+        const statusBadge = document.getElementById('statusBadge');
 
-        // State variables
-        let isAuthorized = false;       // one-time gate
+        // State
         let isProcessing = false;
+
+        // Storage keys
+        const STORAGE_KEY_AUTHORIZED = 'koveli_device_authorized';
+        const STORAGE_KEY_AUTH_TIME = 'koveli_device_auth_time';
+        const STORAGE_KEY_AUTH_VERSION = 'koveli_auth_version';
+
+        const AUTH_VERSION = '1.0';
 
         // Helper: update status message
         function setStatusMessage(text, type = 'info') {
@@ -386,18 +408,124 @@
                 statusDiv.classList.add('success');
             } else if (type === 'warning') {
                 statusDiv.classList.add('warning');
+            } else {
+                statusDiv.classList.add('info');
             }
         }
 
-        // Clear any existing session data on page load
-        function resetLocalSession() {
-            localStorage.removeItem('device_authorized');
-            localStorage.removeItem('device_auth_time');
-            localStorage.removeItem('device_master_validated');
-            sessionStorage.removeItem('auth_once');
+        // Helper: update banner
+        function setBannerMessage(text, isAuthorizedState = false) {
+            bannerTextSpan.innerHTML = text;
+            const bannerDiv = document.querySelector('.one-time-banner');
+            if (isAuthorizedState) {
+                bannerDiv.style.background = '#eaf7e1';
+                bannerDiv.style.borderColor = '#9bc86a';
+                bannerDiv.querySelector('span:first-child').textContent = '✅';
+            } else {
+                bannerDiv.style.background = '#f7efdb';
+                bannerDiv.style.borderColor = '#eedbb0';
+                bannerDiv.querySelector('span:first-child').textContent = '🔐';
+            }
         }
 
-        // Check if AUTH_CONFIG is loaded from deviceauth.js
+        // Check if device is already authorized (persistent)
+        function isDeviceAuthorized() {
+            const authorized = localStorage.getItem(STORAGE_KEY_AUTHORIZED);
+            const version = localStorage.getItem(STORAGE_KEY_AUTH_VERSION);
+            
+            if (authorized === 'true' && version === AUTH_VERSION) {
+                return true;
+            }
+            // If version mismatch or not authorized, return false
+            return false;
+        }
+
+        // Mark device as authorized (one-time success - persists forever)
+        function markDeviceAuthorized() {
+            localStorage.setItem(STORAGE_KEY_AUTHORIZED, 'true');
+            localStorage.setItem(STORAGE_KEY_AUTH_TIME, new Date().toISOString());
+            localStorage.setItem(STORAGE_KEY_AUTH_VERSION, AUTH_VERSION);
+            
+            // Also store a session flag for quick access
+            sessionStorage.setItem('koveli_session_validated', 'true');
+        }
+
+        // Clear authorization (logout functionality)
+        function clearDeviceAuthorization() {
+            localStorage.removeItem(STORAGE_KEY_AUTHORIZED);
+            localStorage.removeItem(STORAGE_KEY_AUTH_TIME);
+            localStorage.removeItem(STORAGE_KEY_AUTH_VERSION);
+            sessionStorage.removeItem('koveli_session_validated');
+        }
+
+        // Show authorized UI (hide password form, show success message)
+        function showAuthorizedUI() {
+            // Hide the form completely
+            form.style.display = 'none';
+            
+            // Update badge
+            statusBadge.innerHTML = '<span>✅</span> DEVICE AUTHORIZED · SECURE ACCESS';
+            statusBadge.style.background = '#eaf7e1';
+            statusBadge.style.borderColor = '#9bc86a';
+            statusBadge.style.color = '#2a5c0c';
+            
+            // Update banner
+            setBannerMessage('✓ Device is authorized. One-time password已验证 — access granted. You don\'t need to enter the password again.', true);
+            
+            // Update status message
+            setStatusMessage('✅ Device already authorized! Redirecting to dashboard...', 'success');
+            
+            // Add class to card for visual feedback
+            authCard.classList.add('authorized');
+            
+            // Get authorization time
+            const authTime = localStorage.getItem(STORAGE_KEY_AUTH_TIME);
+            if (authTime) {
+                const timeStr = new Date(authTime).toLocaleString();
+                const footerNote = document.querySelector('.footer-security');
+                if (footerNote && !document.getElementById('authTimeNote')) {
+                    const timeNote = document.createElement('div');
+                    timeNote.id = 'authTimeNote';
+                    timeNote.style.width = '100%';
+                    timeNote.style.textAlign = 'center';
+                    timeNote.style.marginTop = '8px';
+                    timeNote.style.fontSize = '0.65rem';
+                    timeNote.style.color = '#7d9a5c';
+                    timeNote.innerHTML = `🔒 Authorized on: ${timeStr}`;
+                    footerNote.appendChild(timeNote);
+                }
+            }
+            
+            // Redirect to dashboard after short delay
+            setTimeout(() => {
+                window.location.href = 'dashboard.html';
+            }, 1500);
+        }
+
+        // Show login UI (password form visible)
+        function showLoginUI() {
+            form.style.display = 'block';
+            passwordField.disabled = false;
+            submitButton.disabled = false;
+            passwordField.value = '';
+            passwordField.focus();
+            
+            statusBadge.innerHTML = '<span>🏛️</span> KOVELI LOUNGE · SECURE TERMINAL';
+            statusBadge.style.background = '#f3e7cf';
+            statusBadge.style.borderColor = '#f7e5bd';
+            statusBadge.style.color = '#7b5c2c';
+            
+            setBannerMessage('<strong>One-time entry</strong> — password required only once. After successful authorization, you won\'t need to enter it again.', false);
+            setStatusMessage('Ready — enter the one-time master password to authorize this device.', 'info');
+            
+            authCard.classList.remove('authorized');
+            
+            // Remove time note if exists
+            const timeNote = document.getElementById('authTimeNote');
+            if (timeNote) timeNote.remove();
+        }
+
+        // Check config is loaded from deviceauth.js
         function isConfigLoaded() {
             if (typeof window.AUTH_CONFIG === 'undefined') {
                 setStatusMessage('❌ CRITICAL: deviceauth.js not loaded. Please ensure deviceauth.js exists with window.AUTH_CONFIG.', 'error');
@@ -417,10 +545,10 @@
             return true;
         }
 
-        // Core authentication: compare with master password from config
+        // Core authentication: one-time password verification
         function authenticateDevice(enteredPassword) {
             if (!enteredPassword || enteredPassword.trim() === '') {
-                setStatusMessage('⚠️ Please enter the device master password.', 'warning');
+                setStatusMessage('⚠️ Please enter the one-time master password.', 'warning');
                 return false;
             }
 
@@ -428,84 +556,63 @@
             
             // Direct comparison (case-sensitive for security)
             if (enteredPassword !== configPassword) {
-                setStatusMessage('❌ Authorization failed: Invalid master password.', 'error');
+                setStatusMessage('❌ Authorization failed: Invalid one-time password.', 'error');
                 return false;
             }
 
             // ---- SUCCESS: ONE-TIME DEVICE AUTHORIZATION ----
-            // Store authorization proof in localStorage
-            const authData = {
-                authorized: true,
-                timestamp: new Date().toISOString(),
-                method: 'master_password'
-            };
-            localStorage.setItem('device_authorized', 'true');
-            localStorage.setItem('device_auth_time', authData.timestamp);
-            localStorage.setItem('device_master_validated', 'true');
+            // Mark as authorized persistently
+            markDeviceAuthorized();
             
-            // Also store a clean flag for dashboard to check
-            sessionStorage.setItem('device_session_active', 'true');
-            
-            // Mark this page session as permanently authorized
-            isAuthorized = true;
-            
-            setStatusMessage('✅ Device authorized successfully! Access granted. Redirecting...', 'success');
-            
-            // Disable inputs and button to enforce one-time rule
-            passwordField.disabled = true;
-            submitButton.disabled = true;
+            setStatusMessage('✅ Device authorized successfully! One-time password recorded. Redirecting...', 'success');
             
             // Clear sensitive field
             passwordField.value = '';
             
-            // Visual feedback - subtle glow
-            const card = document.getElementById('authCard');
-            if (card) card.style.transition = '0.2s';
+            // Disable inputs during redirect
+            passwordField.disabled = true;
+            submitButton.disabled = true;
             
-            // Redirect after success (to dashboard or main page)
+            // Update UI to show authorized state before redirect
+            setBannerMessage('✓ Authorization successful! Device is now authorized. Redirecting to dashboard...', true);
+            
+            // Redirect after success
             setTimeout(() => {
-                // You can change this to any secure page (dashboard.html, index.html, etc.)
                 window.location.href = 'dashboard.html';
-            }, 1300);
+            }, 1200);
             
             return true;
         }
 
-        // Form submit handler – strict ONE-TIME enforcement
+        // Form submit handler
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             
-            // ONE-TIME GATE: if already authorized, absolutely block any further submit
-            if (isAuthorized) {
-                setStatusMessage('🔒 Device already authorized. Session is locked. Redirecting...', 'warning');
-                setTimeout(() => {
-                    if (localStorage.getItem('device_authorized') === 'true') {
-                        window.location.href = 'dashboard.html';
-                    }
-                }, 800);
+            // Double-check: if already authorized, just redirect
+            if (isDeviceAuthorized()) {
+                showAuthorizedUI();
                 return;
             }
             
-            // prevent double submission
             if (isProcessing) {
-                setStatusMessage('⏳ Please wait, verification in progress...', 'info');
+                setStatusMessage('⏳ Please wait, verifying password...', 'info');
                 return;
             }
             
             const password = passwordField.value;
             
             if (!password) {
-                setStatusMessage('📛 Please enter the device master password.', 'warning');
+                setStatusMessage('📛 Please enter the one-time master password to authorize this device.', 'warning');
                 return;
             }
             
             isProcessing = true;
             submitButton.disabled = true;
             const originalButtonHTML = submitButton.innerHTML;
-            submitButton.innerHTML = `<span class="loader-icon"></span> Verifying master password...`;
+            submitButton.innerHTML = `<span class="loader-icon"></span> Authorizing device...`;
             
             try {
-                // Simulate a tiny delay for better UX (optional)
+                // Small delay for UX
                 await new Promise(resolve => setTimeout(resolve, 300));
                 
                 const authResult = authenticateDevice(password);
@@ -517,7 +624,6 @@
                     passwordField.value = '';
                     passwordField.focus();
                 }
-                // if authResult true, isAuthorized = true, fields disabled, redirect pending
             } catch (err) {
                 console.error('Unexpected auth error:', err);
                 setStatusMessage('⚠️ Unexpected error. Please try again.', 'error');
@@ -526,9 +632,6 @@
                 passwordField.value = '';
             } finally {
                 isProcessing = false;
-                if (!isAuthorized && submitButton.disabled === true && !isProcessing) {
-                    submitButton.disabled = false;
-                }
             }
         });
         
@@ -542,76 +645,52 @@
         
         // Clear message styles on focus
         function resetMessageOnFocus() {
-            if (isAuthorized) return;
+            if (isDeviceAuthorized()) return;
             if (statusDiv.classList.contains('error') || statusDiv.classList.contains('success')) {
-                setStatusMessage('🔐 Enter device master password to authorize.', 'info');
+                setStatusMessage('🔐 Enter the one-time master password to authorize this device.', 'info');
             }
         }
         
         passwordField.addEventListener('focus', resetMessageOnFocus);
         
-        // Initialization: reset previous session and validate config
-        resetLocalSession();
+        // ==================================================================
+        // INITIALIZATION - Check if already authorized
+        // ==================================================================
         
-        // Wait a tick for deviceauth.js to fully load
+        // Wait for deviceauth.js to load
         setTimeout(() => {
             if (!isConfigLoaded()) {
                 console.warn('AUTH_CONFIG validation failed — check deviceauth.js');
+                return;
+            }
+            
+            // CRITICAL: Check if device is already authorized (persistent)
+            if (isDeviceAuthorized()) {
+                console.log('Device already authorized — showing authorized UI');
+                showAuthorizedUI();
             } else {
-                setStatusMessage('⚡ Ready — enter device master password to authorize this device.', 'info');
-                passwordField.focus();
-                
-                // Optional: display a masked hint of the configured password length (security)
-                const pwLength = window.AUTH_CONFIG.deviceMasterPassword.length;
-                console.log(`Device auth ready. Master password length: ${pwLength} chars`);
+                console.log('Device not authorized — showing password entry form');
+                showLoginUI();
             }
         }, 50);
         
-        // Additional security: clear any browser autofill that might leak
-        window.addEventListener('load', () => {
-            passwordField.value = '';
-            // Ensure no stale flags remain
-            if (localStorage.getItem('device_authorized') === 'true' && !isAuthorized) {
-                // This should not happen because we cleared on load, but just in case
-                localStorage.removeItem('device_authorized');
-            }
-        });
+        // Clean up on page unload? No, we want persistence.
+        // But provide a way to logout if needed (optional, can be called from dashboard)
+        window.clearDeviceAuth = function() {
+            clearDeviceAuthorization();
+            location.reload();
+        };
         
-        // One-time principle: if user uses back/forward cache and is already authorized, redirect
-        window.addEventListener('pageshow', (event) => {
-            if (event.persisted && isAuthorized) {
-                if (localStorage.getItem('device_authorized') === 'true') {
-                    window.location.href = 'dashboard.html';
-                }
-            } else if (!isAuthorized && localStorage.getItem('device_authorized') === 'true') {
-                // This case means another tab authorized, but this tab didn't. We sync.
-                isAuthorized = true;
-                passwordField.disabled = true;
-                submitButton.disabled = true;
-                setStatusMessage('✅ Device already authorized in another tab. Redirecting...', 'success');
-                setTimeout(() => {
-                    window.location.href = 'dashboard.html';
-                }, 1000);
-            }
-        });
-        
-        // Listen for localStorage changes across tabs (optional sync)
+        // Listen for storage events (if authorized in another tab)
         window.addEventListener('storage', (event) => {
-            if (event.key === 'device_authorized' && event.newValue === 'true' && !isAuthorized) {
-                isAuthorized = true;
-                passwordField.disabled = true;
-                submitButton.disabled = true;
-                setStatusMessage('✅ Device authorized in another window. Redirecting...', 'success');
-                setTimeout(() => {
-                    window.location.href = 'dashboard.html';
-                }, 800);
+            if (event.key === STORAGE_KEY_AUTHORIZED && event.newValue === 'true' && !isDeviceAuthorized()) {
+                // Another tab authorized the device
+                location.reload();
             }
         });
         
-        console.log('Koveli Device Gateway · MASTER PASSWORD MODE (one-time entry)');
+        console.log('Koveli One-Time Device Auth · Password required only once per device');
     })();
 </script>
-
-
 </body>
 </html>
