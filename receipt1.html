@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Koveli Receipt | EPSON TM-T88VII | Printable Area Adjusted</title>
+    <title>Koveli Receipt | EPSON TM-T88VII | Width Adjusted for Printable Area</title>
     <!-- Firebase SDK - compatibility with fireshift.js -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -18,10 +18,10 @@
             box-sizing: border-box;
         }
 
-        /* EPSON TM-T88VII (Model M371A) - FIX FOR LEFT SIDE CUTOFF
-           Problem: Some text on left edge was outside printer's printable area
-           Solution: Shift entire content right by adding left padding/margin
-           that compensates for printer's mechanical margin (typically 1-2mm)
+        /* EPSON TM-T88VII (Model M371A) - INCREASED LEFT SHIFT
+           Problem: Text still getting cut off on left side
+           Solution: Increase left padding to 4mm to push content further right
+           Also slightly reduce content width to ensure everything fits
         */
         body {
             background: #e2e6e9;
@@ -35,7 +35,7 @@
             margin: 0;
         }
 
-        /* WRAPPER - paper width 80mm, with left offset to avoid printer dead zone */
+        /* WRAPPER - 80mm paper width, with 4mm left offset to avoid printer dead zone */
         .receipt-wrapper {
             width: 80mm;
             max-width: 80mm;
@@ -43,16 +43,15 @@
             margin: 0 auto;
             background: white;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            /* CRITICAL FIX: Left padding shifts content right into printable area
-               EPSON TM-T88VII has ~1.5-2mm unprintable left margin
-               Adding 2.5mm ensures all text starts after the mechanical dead zone */
-            padding: 0 0 0 2.5mm;
+            /* CRITICAL FIX: Increased left padding to 4mm - pushes content further right
+               This ensures text starts well past the printer's unprintable zone */
+            padding: 0 0 0 4mm;
             position: relative;
             page-break-after: avoid;
             break-inside: avoid;
         }
 
-        /* ========= ENHANCED VOID WATERMARK - HIGH VISIBILITY ========= */
+        /* ========= ENHANCED VOID WATERMARK ========= */
         .void-watermark {
             position: absolute !important;
             top: 50% !important;
@@ -74,13 +73,12 @@
             text-shadow: 1px 1px 0 rgba(0,0,0,0.1);
         }
 
-        /* CRITICAL PRINT OPTIMIZATION - SHIFT CONTENT RIGHT FOR EPSON */
+        /* CRITICAL PRINT OPTIMIZATION - INCREASED LEFT SHIFT */
         @media print {
             @page {
                 size: 80mm auto;
-                /* Printer's physical margin: typically 1-2mm on left
-                   We set @page margin to 0 but content shift handles it */
-                margin: 0mm !important;
+                /* Small left margin as additional safety */
+                margin: 0mm 0mm 0mm 0.5mm !important;
                 padding: 0mm !important;
             }
             html, body {
@@ -103,8 +101,8 @@
                 max-width: 80mm !important;
                 min-width: 80mm !important;
                 margin: 0 !important;
-                /* CRITICAL: Left padding ensures text starts AFTER printer's unprintable zone */
-                padding: 0 0 0 2.5mm !important;
+                /* 4mm left padding ensures content clears the printer's dead zone */
+                padding: 0 0 0 4mm !important;
                 box-shadow: none !important;
                 background: white !important;
                 page-break-inside: avoid !important;
@@ -128,7 +126,7 @@
             }
         }
 
-        /* RECEIPT BASE STYLES - COMPACT, CONTENT ALIGNED PROPERLY */
+        /* RECEIPT BASE STYLES - Slightly narrower content for safety */
         .receipt {
             font-family: 'Courier New', 'Lucida Console', monospace;
             font-size: 10pt;
@@ -137,12 +135,12 @@
             width: 100%;
             position: relative;
             z-index: 1;
-            /* No left padding here - wrapper handles the shift */
-            padding: 1mm 1.5mm 1mm 0;
+            /* Reduced right side slightly to balance the left shift */
+            padding: 1mm 2mm 1mm 0;
             margin: 0;
         }
 
-        /* HEADER - TIGHT */
+        /* HEADER */
         .receipt-header {
             text-align: center;
             margin-bottom: 1.5mm;
@@ -256,7 +254,6 @@
             font-weight: bold;
             padding: 0.2mm 0;
         }
-        /* TRANSACTION CODES - PROMINENT SECTION */
         .transaction-codes {
             margin: 1.2mm 0;
             padding: 0.8mm 0.5mm;
@@ -358,11 +355,6 @@
         .back-btn {
             background: #7a5d2e;
         }
-        
-        /* Additional safety: ensure text never gets clipped on left even in extreme cases */
-        .receipt *:first-child {
-            margin-left: 0;
-        }
     </style>
 </head>
 <body>
@@ -384,11 +376,6 @@
 </div>
 
 <script>
-    // =============== KOVELI RECEIPT - EPSON TM-T88VII LEFT EDGE FIX ===============
-    // Problem: Left side text was outside printer's printable area
-    // Solution: Added 2.5mm left padding to wrapper - shifts entire content right
-    // This compensates for EPSON's mechanical margin (typically 1.5-2mm unprintable zone)
-    
     (function(){
         const loadingEl = document.getElementById('loadingMessage');
         const errorEl = document.getElementById('errorMessage');
@@ -403,7 +390,7 @@
         
         let receiptMaster = null;
         
-        function debugLog(msg) { console.log(`[TM88-LEFT-FIX] ${msg}`); }
+        function debugLog(msg) { console.log(`[TM88-WIDTH-FIX] ${msg}`); }
         
         function formatAmount(val) {
             if (val === undefined || val === null) return '0.00';
@@ -433,8 +420,7 @@
             if (!data) return false;
             if (voidParam === true) return true;
             if (data.paymentStatus && String(data.paymentStatus).toUpperCase() === 'VOID') return true;
-            const alternativeFlags = [data.status === 'VOID', data.isVoid === true, data.voided === true, data.transactionStatus === 'VOID', data.receiptStatus === 'VOID'];
-            return alternativeFlags.some(v => v === true);
+            return false;
         }
         
         function getBatchCode(data) {
@@ -460,7 +446,6 @@
             });
         }
         
-        // Generate receipt HTML - all content will be shifted right by wrapper's left padding
         function generateReceiptHTML(data) {
             const isReprint = reprintParam || data.isReprint === true;
             const reprintMarkup = isReprint ? '<div class="reprint-mark">*** REPRINT COPY ***</div>' : '';
@@ -562,25 +547,17 @@
         
         async function fetchReceiptFromFB(receiptNumber) {
             if (typeof passengerDb === 'undefined') {
-                debugLog('ERROR: passengerDb not available from fireshift.js');
                 throw new Error('Firestore connection missing');
             }
-            debugLog(`Querying Kovelipay collection for receiptNo: ${receiptNumber}`);
             const kpRef = passengerDb.collection('Kovelipay');
             const snap = await kpRef.where('receiptNo', '==', receiptNumber).limit(1).get();
             if (!snap.empty) {
-                const doc = snap.docs[0];
-                const record = { id: doc.id, ...doc.data() };
-                debugLog(`Found receipt: ${record.receiptNo}, paymentStatus=${record.paymentStatus}`);
-                return record;
+                return { id: snap.docs[0].id, ...snap.docs[0].data() };
             }
             const docById = await kpRef.doc(receiptNumber).get();
             if (docById.exists) {
-                const record = { id: docById.id, ...docById.data() };
-                debugLog(`Found by doc ID: ${receiptNumber}`);
-                return record;
+                return { id: docById.id, ...docById.data() };
             }
-            debugLog(`No receipt found for ${receiptNumber}`);
             return null;
         }
         
@@ -596,8 +573,7 @@
                     try {
                         const decoded = decodeURIComponent(receiptDataParam);
                         receiptObj = JSON.parse(decoded);
-                        debugLog(`Receipt loaded via URL param: ${receiptObj.receiptNo}`);
-                    } catch(e) { debugLog(`URL parse error: ${e.message}`); }
+                    } catch(e) {}
                 }
                 
                 if (!receiptObj && receiptNoParam) {
@@ -609,13 +585,12 @@
                     if (localRaw) {
                         try {
                             receiptObj = JSON.parse(localRaw);
-                            debugLog('Receipt loaded from localStorage fallback');
                         } catch(e) {}
                     }
                 }
                 
                 if (!receiptObj) {
-                    throw new Error('No receipt data available. Please scan again or contact lounge support.');
+                    throw new Error('No receipt data available.');
                 }
                 
                 receiptObj.isReprint = reprintParam;
@@ -628,19 +603,14 @@
                 }
                 if (loadingEl) loadingEl.style.display = 'none';
                 
-                const voidActive = isReceiptVoided(receiptObj);
-                debugLog(`VOID status final: ${voidActive}`);
-                if (voidActive) {
+                if (isReceiptVoided(receiptObj)) {
                     setTimeout(() => addVoidWatermark(), 60);
                 } else {
                     removeVoidWatermark();
                 }
                 
                 if (autoPrintFlag) {
-                    setTimeout(() => { 
-                        debugLog('Auto-print triggered - EPSON TM-T88VII with left edge fix applied');
-                        window.print(); 
-                    }, 500);
+                    setTimeout(() => { window.print(); }, 500);
                 }
                 
                 localStorage.setItem('lastReceiptData', JSON.stringify(receiptObj));
@@ -650,7 +620,7 @@
                 if (loadingEl) loadingEl.style.display = 'none';
                 if (errorEl) {
                     errorEl.style.display = 'block';
-                    errorEl.innerHTML = `<p>⚠️ ${escapeHtml(err.message)}</p><p style="font-size:9pt;">Please verify transaction or contact support.</p>`;
+                    errorEl.innerHTML = `<p>⚠️ ${escapeHtml(err.message)}</p>`;
                 }
             }
         }
@@ -663,47 +633,31 @@
             }
         }
         
-        // Ensure left padding is applied consistently for EPSON printer
         function enforceLeftMarginFix() {
             const wrapper = document.querySelector('.receipt-wrapper');
             if (wrapper) {
-                // Double-check padding is applied (2.5mm left shift)
-                wrapper.style.paddingLeft = '2.5mm';
-                debugLog('Left padding enforced: 2.5mm to avoid printer dead zone');
+                wrapper.style.paddingLeft = '4mm';
+                debugLog('Left padding set to 4mm to prevent cutoff');
             }
         }
         
         document.addEventListener('DOMContentLoaded', () => {
-            debugLog('DOM ready - LEFT EDGE FIX ACTIVE: 2.5mm left padding applied');
+            debugLog('DOM ready - WIDTH ADJUSTED: 4mm left padding');
             enforceLeftMarginFix();
-            setTimeout(() => {
-                loadReceipt();
-            }, 120);
+            setTimeout(() => loadReceipt(), 120);
             setBackNavigation();
         });
         
-        window.addEventListener('load', () => {
-            if (voidParam && !document.querySelector('.void-watermark') && receiptMaster && isReceiptVoided(receiptMaster)) {
-                addVoidWatermark();
-            }
-            enforceLeftMarginFix();
-        });
-        
         window.addEventListener('beforeprint', () => {
-            debugLog('[PRINT] EPSON TM-T88VII M371A - LEFT EDGE FIX ENABLED');
-            debugLog('[PRINT] Content shifted right by 2.5mm to avoid printer dead zone');
+            debugLog('[PRINT] Width adjusted - 4mm left shift applied');
             const wrapper = document.querySelector('.receipt-wrapper');
             if (wrapper) {
-                wrapper.style.margin = '0';
-                wrapper.style.paddingLeft = '2.5mm';
-                wrapper.style.paddingRight = '0';
+                wrapper.style.paddingLeft = '4mm';
             }
             if (receiptMaster && isReceiptVoided(receiptMaster) && !document.querySelector('.void-watermark')) {
                 addVoidWatermark();
             }
         });
-        
-        window.addEventListener('afterprint', () => debugLog('[PRINT] Job completed - left edge fix prevented cutoff'));
         
     })();
 </script>
