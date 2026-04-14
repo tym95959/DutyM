@@ -21,7 +21,7 @@ window.AUTH_CONFIG = {
      * CHANGE THIS PASSWORD BEFORE DEPLOYMENT!
      * Default: MA2026SECURE
      */
-    deviceMasterPassword: "MACL2026SECURE",
+    deviceMasterPassword: "MACL2026SECURE1",
     
     /**
      * Optional configuration settings
