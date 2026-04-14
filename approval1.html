@@ -173,6 +173,8 @@
         .badge-card { background: #4a6fa5; color: white; }
         .badge-transfer { background: #c68b5e; color: white; }
         .badge-pending { background: #b63e3e; color: white; }
+        .badge-approved { background: #6b8e23; color: white; }
+        .badge-void { background: #000000; color: white; }
         
         .missing-field {
             color: #b63e3e;
@@ -194,6 +196,18 @@
         
         .action-btn.approve {
             background: #4a6fa5;
+        }
+        
+        .action-btn.print {
+            background: #c68b5e;
+        }
+        
+        .action-btn.receipt {
+            background: #8b6913;
+        }
+        
+        .action-btn.void {
+            background: #b63e3e;
         }
         
         .action-btn:hover {
@@ -279,6 +293,16 @@
             font-weight: 600;
         }
         
+        .print-btn {
+            background: #4a6fa5;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
         .no-data {
             text-align: center;
             padding: 50px;
@@ -317,6 +341,58 @@
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
+        
+        /* Confirmation Dialog */
+        .confirm-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border: 3px solid #e6b800;
+            border-radius: 16px;
+            padding: 25px;
+            max-width: 400px;
+            width: 90%;
+            z-index: 3500;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: none;
+        }
+        
+        .confirm-dialog h3 {
+            color: #8b6913;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .confirm-dialog p {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .confirm-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        .confirm-btn {
+            padding: 10px 25px;
+            border: none;
+            border-radius: 30px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .confirm-yes {
+            background: #6b8e23;
+            color: white;
+        }
+        
+        .confirm-no {
+            background: #c68b5e;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -325,7 +401,7 @@
             <h1>PENDING APPROVALS</h1>
             <div class="header-actions">
                 <button class="refresh-btn" id="refreshBtn">↻ REFRESH</button>
-                <a href="index.html" class="back-btn">← BACK TO PAYMENT</a>
+                <a href="pay.html" class="back-btn">← BACK TO PAYMENT</a>
             </div>
         </div>
         
@@ -348,16 +424,13 @@
             <select class="filter-select" id="paymentFilter">
                 <option value="ALL">ALL PAYMENT METHODS</option>
                 <option value="CARD">CARD ONLY</option>
-                <option value="BANK TRANSFER">BANK TRANSFER</option>
-                <option value="MOBILE PAYMENT">MOBILE PAYMENT</option>
-                <option value="VOUCHER">VOUCHER</option>
             </select>
             
             <select class="filter-select" id="missingFilter">
                 <option value="ALL">ALL MISSING FIELDS</option>
                 <option value="approval">MISSING APPROVAL CODE</option>
                 <option value="batch">MISSING BATCH NO</option>
-                <option value="card">MISSING CARD TYPE</option>
+                <option value="card">MISSING PAYMENT METHOD</option>
             </select>
             
             <input type="text" class="search-input" id="searchInput" placeholder="🔍 SEARCH BY RECEIPT # OR PASSENGER NAME...">
@@ -398,7 +471,16 @@
                 
                 <div class="form-group">
                     <label>PAYMENT METHOD</label>
-                    <input type="text" id="modalPaymentMethod" readonly>
+                    <select id="paymentMethod" required>
+                        <option value="">SELECT PAYMENT METHOD</option>
+                        <option value="VISA">VISA</option>
+                        <option value="MASTERCARD">MASTERCARD</option>
+                        <option value="AMEX">AMEX</option>
+                        <option value="UNIONPAY">UNIONPAY</option>
+                        <option value="WECHATPAY">WECHATPAY</option>
+                        <option value="ALIPAY">ALIPAY</option>
+                        <option value="QRPAY">QRPAY</option>
+                    </select>
                 </div>
                 
                 <div class="form-group" id="approvalCodeGroup">
@@ -411,20 +493,6 @@
                     <input type="text" id="batchNo" placeholder="ENTER BATCH NUMBER">
                 </div>
                 
-                <div class="form-group" id="cardTypeGroup">
-                    <label>CARD TYPE *</label>
-                    <select id="cardType">
-                        <option value="">SELECT CARD TYPE</option>
-                        <option value="VISA">VISA</option>
-                        <option value="MASTER">MASTER</option>
-                        <option value="AMEX">AMEX</option>
-                        <option value="UNIONPAY">UNIONPAY</option>
-                        <option value="WECHATPAY">WECHATPAY</option>
-                        <option value="ALIPAY">ALIPAY</option>
-                        <option value="QRPAY">QRPAY</option>
-                    </select>
-                </div>
-                
                 <div class="modal-buttons">
                     <button type="button" class="cancel-btn" onclick="closeModal()">CANCEL</button>
                     <button type="submit" class="save-btn">SAVE & APPROVE</button>
@@ -433,9 +501,65 @@
         </div>
     </div>
     
+    <!-- Void Reason Modal -->
+    <div id="voidModal" class="modal">
+        <div class="modal-content">
+            <h2>⛔ VOID TRANSACTION</h2>
+            <div class="summary-box" id="voidTransactionSummary"></div>
+            
+            <form id="voidForm">
+                <input type="hidden" id="voidDocId">
+                
+                <div class="form-group">
+                    <label>VOID REASON *</label>
+                    <select id="voidReason" required>
+                        <option value="">SELECT REASON</option>
+                        <option value="CUSTOMER CANCELLATION">CUSTOMER CANCELLATION</option>
+                        <option value="WRONG AMOUNT">WRONG AMOUNT</option>
+                        <option value="DUPLICATE ENTRY">DUPLICATE ENTRY</option>
+                        <option value="PAYMENT ERROR">PAYMENT ERROR</option>
+                        <option value="OTHER">OTHER</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="otherReasonGroup" style="display: none;">
+                    <label>PLEASE SPECIFY</label>
+                    <input type="text" id="otherReason" placeholder="ENTER REASON">
+                </div>
+                
+                <div class="modal-buttons">
+                    <button type="button" class="cancel-btn" onclick="closeVoidModal()">CANCEL</button>
+                    <button type="submit" class="save-btn" style="background: #b63e3e;">CONFIRM VOID</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Confirmation Dialog for Printing -->
+    <div id="printConfirmDialog" class="confirm-dialog">
+        <h3>🖨️ PRINT RECEIPT</h3>
+        <p id="confirmMessage">Transaction approved successfully!<br>Would you like to print the receipt?</p>
+        <div class="confirm-buttons">
+            <button class="confirm-btn confirm-yes" id="confirmPrintYes">YES, PRINT</button>
+            <button class="confirm-btn confirm-no" id="confirmPrintNo">NO, THANKS</button>
+        </div>
+    </div>
+    
+    <!-- Void Print Confirmation Dialog -->
+    <div id="voidPrintConfirmDialog" class="confirm-dialog">
+        <h3>⛔ VOID RECEIPT</h3>
+        <p id="voidConfirmMessage">Transaction voided successfully!<br>Would you like to print the void receipt?</p>
+        <div class="confirm-buttons">
+            <button class="confirm-btn confirm-yes" id="voidPrintYes">YES, PRINT VOID</button>
+            <button class="confirm-btn confirm-no" id="voidPrintNo">NO, THANKS</button>
+        </div>
+    </div>
+    
     <script>
         let allTransactions = [];
         let currentUser = null;
+        let lastApprovedTransaction = null;
+        let lastVoidedTransaction = null;
         
         // Load user data
         function loadUser() {
@@ -468,6 +592,128 @@
             }, 3000);
         }
         
+        // ========== REDIRECT TO RECEIPT PAGE WITH BATCH & APPROVAL CODE ==========
+        function redirectToReceiptPage(transaction, autoPrint = true, isVoid = false) {
+            try {
+                // Build comprehensive receipt data including batchNo and approvalCode
+                const receiptData = {
+                    receiptNo: transaction.receiptNo,
+                    passengerName: transaction.passengerName,
+                    flightNo: transaction.flightNo || 'N/A',
+                    seatNo: transaction.seatNo || 'N/A',
+                    adult: transaction.adult || 1,
+                    children: transaction.children || 0,
+                    currency: transaction.currency || 'USD',
+                    rateType: transaction.rateType || 'A',
+                    paymentMethod: transaction.paymentMethod || 'CASH',
+                    adultPrice: transaction.adultPrice || '55.00',
+                    childrenPrice: transaction.childrenPrice || '55.00',
+                    adultSubtotal: transaction.adultSubtotal || (transaction.amount / 1.08).toFixed(2),
+                    childrenSubtotal: transaction.childrenSubtotal || '0.00',
+                    subtotal: transaction.subtotal || (transaction.amount / 1.08).toFixed(2),
+                    gstAmount: transaction.gstAmount || (transaction.amount - (transaction.amount / 1.08)).toFixed(2),
+                    gstRate: transaction.gstRate || 8,
+                    totalAmount: transaction.amount,
+                    submissionDateTime: transaction.submissionDateTime || new Date().toLocaleString(),
+                    expiryTime: transaction.expiryTime || '--:--:--',
+                    shiftDate: transaction.shiftDate || transaction.date || new Date().toLocaleDateString(),
+                    shift: transaction.shift || transaction.shiftName || 'N/A',
+                    cashierName: transaction.cashierName || currentUser?.username || 'N/A',
+                    userRcno: transaction.userRcno || currentUser?.rcno || 'N/A',
+                    exchangeRate: transaction.exchangeRate || 15.42,
+                    isReprint: false,
+                    // CRITICAL: Include approvalCode and batchNo for receipt display
+                    approvalCode: transaction.approvalCode || '',
+                    batchNo: transaction.batchNo || '',
+                    isVoid: isVoid,
+                    status: isVoid ? 'VOID' : 'APPROVED',
+                    voidReason: transaction.voidReason || null,
+                    voidedAt: transaction.voidedAt || null
+                };
+                
+                // Store in localStorage as backup
+                localStorage.setItem('lastReceiptData', JSON.stringify(receiptData));
+                
+                // Encode data for URL
+                const encodedData = encodeURIComponent(JSON.stringify(receiptData));
+                
+                // Build URL with parameters
+                let receiptUrl = `receipt.html?data=${encodedData}&returnTo=${encodeURIComponent(window.location.pathname)}`;
+                
+                // Add void parameter to URL if needed
+                if (isVoid) {
+                    receiptUrl += '&void=true';
+                }
+                
+                // Add autoPrint parameter
+                if (autoPrint) {
+                    receiptUrl += '&autoPrint=true';
+                }
+                
+                console.log('Redirecting to receipt with approval details:', { approvalCode: receiptData.approvalCode, batchNo: receiptData.batchNo });
+                window.location.href = receiptUrl;
+                
+            } catch (error) {
+                console.error('Error redirecting to receipt page:', error);
+                // Fallback: try with just receipt number
+                if (transaction && transaction.receiptNo) {
+                    let fallbackUrl = `receipt.html?receiptNo=${transaction.receiptNo}&returnTo=${encodeURIComponent(window.location.pathname)}`;
+                    if (isVoid) fallbackUrl += '&void=true';
+                    if (autoPrint) fallbackUrl += '&autoPrint=true';
+                    window.location.href = fallbackUrl;
+                } else {
+                    alert('Error printing receipt. Please try again.');
+                }
+            }
+        }
+        
+        // Show void modal
+        function showVoidModal(transactionId) {
+            const transaction = allTransactions.find(t => t.id === transactionId);
+            if (!transaction) return;
+            
+            document.getElementById('voidDocId').value = transaction.id;
+            document.getElementById('voidTransactionSummary').innerHTML = `
+                <strong>Receipt:</strong> ${transaction.receiptNo}<br>
+                <strong>Passenger:</strong> ${transaction.passengerName}<br>
+                <strong>Amount:</strong> ${transaction.currency} ${Number(transaction.amount).toFixed(2)}
+            `;
+            
+            document.getElementById('voidModal').style.display = 'flex';
+        }
+        
+        function closeVoidModal() {
+            document.getElementById('voidModal').style.display = 'none';
+            document.getElementById('voidReason').value = '';
+            document.getElementById('otherReason').value = '';
+            document.getElementById('otherReasonGroup').style.display = 'none';
+        }
+        
+        // Show print confirmation dialog for normal approval
+        function showPrintConfirmation(transaction) {
+            lastApprovedTransaction = transaction;
+            const dialog = document.getElementById('printConfirmDialog');
+            dialog.style.display = 'block';
+        }
+        
+        // Show print confirmation dialog for void
+        function showVoidPrintConfirmation(transaction) {
+            lastVoidedTransaction = transaction;
+            const dialog = document.getElementById('voidPrintConfirmDialog');
+            document.getElementById('voidConfirmMessage').innerHTML = 
+                `Transaction <strong>${transaction.receiptNo}</strong> voided successfully!<br>Would you like to print the void receipt?`;
+            dialog.style.display = 'block';
+        }
+        
+        // Hide print confirmation dialogs
+        function hidePrintConfirmation() {
+            document.getElementById('printConfirmDialog').style.display = 'none';
+        }
+        
+        function hideVoidPrintConfirmation() {
+            document.getElementById('voidPrintConfirmDialog').style.display = 'none';
+        }
+        
         // Fetch all pending transactions
         async function fetchPendingTransactions() {
             try {
@@ -489,30 +735,18 @@
                     const data = doc.data();
                     const paymentMethod = data.paymentMethod || '';
                     
-                    // Skip CASH payments
                     if (paymentMethod === 'CASH') return;
+                    if (data.status === 'VOID' || data.voided === true) return;
                     
-                    // Check required fields
                     const hasApprovalCode = (data.approvalCode && data.approvalCode.trim() !== '') || 
                                            (data.approval && data.approval.trim() !== '');
                     const hasBatchNo = (data.batchNo && data.batchNo.trim() !== '') || 
                                       (data.batch && data.batch.trim() !== '');
-                    const hasCardType = (data.cardType && data.cardType.trim() !== '') || 
-                                       (data.card && data.card.trim() !== '');
-                    
-                    // Determine if this is a card payment
-                    const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
+                    const hasPaymentMethod = paymentMethod && paymentMethod.trim() !== '';
+                    const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
                     const isCardPayment = cardPayments.includes(paymentMethod);
+                    const isComplete = hasApprovalCode && hasBatchNo && hasPaymentMethod;
                     
-                    // Check if complete
-                    let isComplete = false;
-                    if (isCardPayment) {
-                        isComplete = hasApprovalCode && hasBatchNo && hasCardType;
-                    } else {
-                        isComplete = hasApprovalCode && hasBatchNo;
-                    }
-                    
-                    // Only include pending transactions
                     if (!isComplete) {
                         const transaction = {
                             id: doc.id,
@@ -526,200 +760,186 @@
                             seatNo: data.seatNo || 'N/A',
                             adult: data.adult || 0,
                             children: data.children || 0,
+                            adultPrice: data.adultPrice,
+                            childrenPrice: data.childrenPrice,
+                            adultSubtotal: data.adultSubtotal,
+                            childrenSubtotal: data.childrenSubtotal,
+                            subtotal: data.subtotal,
+                            gstAmount: data.gstAmount,
+                            gstRate: data.gstRate,
+                            expiryTime: data.expiryTime,
+                            shiftDate: data.shiftDate,
+                            shift: data.shift,
+                            cashierName: data.cashierName,
+                            userRcno: data.userRcno,
+                            exchangeRate: data.exchangeRate,
                             hasApprovalCode: hasApprovalCode,
                             hasBatchNo: hasBatchNo,
-                            hasCardType: hasCardType,
+                            hasPaymentMethod: hasPaymentMethod,
                             isCardPayment: isCardPayment,
                             approvalCode: data.approvalCode || data.approval || '',
-                            batchNo: data.batchNo || data.batch || '',
-                            cardType: data.cardType || data.card || ''
+                            batchNo: data.batchNo || data.batch || ''
                         };
-                        
                         allTransactions.push(transaction);
-                        
-                        if (isCardPayment) {
-                            cardPending++;
-                        } else {
-                            otherPending++;
-                        }
+                        if (isCardPayment) cardPending++;
+                        else otherPending++;
                     }
                 });
                 
-                // Update stats
                 document.getElementById('totalPending').textContent = allTransactions.length;
                 document.getElementById('cardPending').textContent = cardPending;
                 document.getElementById('otherPending').textContent = otherPending;
-                
-                // Display transactions
                 displayTransactions(allTransactions);
-                
-                console.log('Pending transactions loaded:', allTransactions);
                 
             } catch (error) {
                 console.error('Error fetching pending transactions:', error);
-                document.getElementById('tableBody').innerHTML = 
-                    `<tr><td colspan="8" class="loading" style="color: #c68b5e;">Error loading transactions: ${error.message}</td></tr>`;
+                document.getElementById('tableBody').innerHTML = `<tr><td colspan="8" class="loading" style="color: #c68b5e;">Error loading transactions: ${error.message}</td></tr>`;
             }
         }
         
-        // Display transactions in table
         function displayTransactions(transactions) {
             const tableBody = document.getElementById('tableBody');
-            
             if (transactions.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="8" class="no-data">✅ NO PENDING APPROVALS FOUND</td></tr>';
                 return;
             }
-            
             let html = '';
-            
             transactions.forEach(t => {
-                // Determine missing fields
                 const missingFields = [];
+                if (!t.hasPaymentMethod) missingFields.push('Payment Method');
                 if (!t.hasApprovalCode) missingFields.push('Approval Code');
                 if (!t.hasBatchNo) missingFields.push('Batch No');
-                if (t.isCardPayment && !t.hasCardType) missingFields.push('Card Type');
-                
-                // Format date/time
                 let dateTime = t.dateTime;
                 if (dateTime && dateTime.includes(',')) {
                     const parts = dateTime.split(',');
                     dateTime = parts[0].trim() + ' ' + (parts[1] || '').trim();
                 }
-                
-                html += `
-                    <tr>
-                        <td>${dateTime}</td>
-                        <td><strong>${t.receiptNo}</strong></td>
-                        <td>
-                            ${t.passengerName}<br>
-                            <small style="color: #8b6913;">${t.flightNo} / Seat ${t.seatNo}</small>
-                        </td>
-                        <td>
-                            <span class="payment-badge ${getBadgeClass(t.paymentMethod)}">${t.paymentMethod}</span>
-                        </td>
-                        <td><strong>${t.currency} ${Number(t.amount).toFixed(2)}</strong></td>
-                        <td>
-                            ${missingFields.map(f => `<span class="missing-field">⚠️ MISSING: ${f}</span>`).join('')}
-                            ${missingFields.length === 0 ? '✅ ALL FIELDS OK' : ''}
-                        </td>
-                        <td>
-                            <span class="payment-badge badge-pending">PENDING</span>
-                        </td>
-                        <td>
-                            <button class="action-btn" onclick="editTransaction('${t.id}')">✏️ EDIT</button>
-                            <button class="action-btn approve" onclick="viewDetails('${t.id}')">👁️ VIEW</button>
-                        </td>
-                    </tr>
-                `;
+                html += `<tr>
+                    <td>${dateTime}</td>
+                    <td><strong>${t.receiptNo}</strong></td>
+                    <td>${t.passengerName}<br><small style="color: #8b6913;">${t.flightNo} / Seat ${t.seatNo}</small></td>
+                    <td><span class="payment-badge ${getBadgeClass(t.paymentMethod)}">${t.paymentMethod || 'NOT SET'}</span></td>
+                    <td><strong>${t.currency} ${Number(t.amount).toFixed(2)}</strong></td>
+                    <td>${missingFields.map(f => `<span class="missing-field">⚠️ MISSING: ${f}</span>`).join('')}${missingFields.length === 0 ? '✅ ALL FIELDS OK' : ''}</td>
+                    <td><span class="payment-badge badge-pending">PENDING</span></td>
+                    <td><button class="action-btn" onclick="editTransaction('${t.id}')">✏️ UPDATE</button>
+                        <button class="action-btn approve" onclick="viewDetails('${t.id}')">👁️ VIEW</button>
+                        <button class="action-btn void" onclick="showVoidModal('${t.id}')">⛔ VOID</button></td>
+                </tr>`;
             });
-            
             tableBody.innerHTML = html;
         }
         
         function getBadgeClass(method) {
-            if (method === 'CARD' || method.includes('VISA') || method.includes('MASTER')) {
-                return 'badge-card';
-            } else if (method === 'BANK TRANSFER') {
-                return 'badge-transfer';
-            } else {
-                return 'badge-cash';
-            }
+            const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
+            if (cardPayments.includes(method)) return 'badge-card';
+            if (method === 'BANK TRANSFER') return 'badge-transfer';
+            return 'badge-cash';
         }
         
-        // Edit transaction
         function editTransaction(transactionId) {
             const transaction = allTransactions.find(t => t.id === transactionId);
             if (!transaction) return;
-            
             document.getElementById('transactionId').value = transaction.receiptNo;
             document.getElementById('docId').value = transaction.id;
-            document.getElementById('modalPaymentMethod').value = transaction.paymentMethod;
+            document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
             document.getElementById('approvalCode').value = transaction.approvalCode || '';
             document.getElementById('batchNo').value = transaction.batchNo || '';
-            document.getElementById('cardType').value = transaction.cardType || '';
-            
-            // Show/hide card type field based on payment method
-            const cardTypeGroup = document.getElementById('cardTypeGroup');
-            if (transaction.isCardPayment) {
-                cardTypeGroup.style.display = 'block';
-            } else {
-                cardTypeGroup.style.display = 'none';
-            }
-            
-            // Update summary
-            document.getElementById('transactionSummary').innerHTML = `
-                <strong>Receipt:</strong> ${transaction.receiptNo}<br>
-                <strong>Passenger:</strong> ${transaction.passengerName}<br>
-                <strong>Amount:</strong> ${transaction.currency} ${Number(transaction.amount).toFixed(2)}
-            `;
-            
+            document.getElementById('transactionSummary').innerHTML = `<strong>Receipt:</strong> ${transaction.receiptNo}<br><strong>Passenger:</strong> ${transaction.passengerName}<br><strong>Amount:</strong> ${transaction.currency} ${Number(transaction.amount).toFixed(2)}`;
             document.getElementById('approvalModal').style.display = 'flex';
         }
         
-        function viewDetails(transactionId) {
-            // You can implement a view-only modal here
-            editTransaction(transactionId);
-        }
+        function viewDetails(transactionId) { editTransaction(transactionId); }
+        function closeModal() { document.getElementById('approvalModal').style.display = 'none'; }
         
-        function closeModal() {
-            document.getElementById('approvalModal').style.display = 'none';
-        }
-        
-        // Save approval details
-        document.getElementById('approvalForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const docId = document.getElementById('docId').value;
-            const approvalCode = document.getElementById('approvalCode').value.trim();
-            const batchNo = document.getElementById('batchNo').value.trim();
-            const cardType = document.getElementById('cardType').value;
-            const paymentMethod = document.getElementById('modalPaymentMethod').value;
-            
-            // Validate based on payment method
-            const cardPayments = ['AMEX', 'VISA', 'MASTER', 'UNIONPAY', 'WECHATPAY', 'QRPAY', 'ALIPAY', 'CARD'];
-            const isCardPayment = cardPayments.includes(paymentMethod);
-            
-            if (!approvalCode) {
-                alert('Approval Code is required');
-                return;
-            }
-            
-            if (!batchNo) {
-                alert('Batch Number is required');
-                return;
-            }
-            
-            if (isCardPayment && !cardType) {
-                alert('Card Type is required for card payments');
-                return;
-            }
-            
-            try {
-                const updateData = {
-                    approvalCode: approvalCode,
-                    batchNo: batchNo,
-                    updatedAt: new Date().toISOString(),
-                    updatedBy: currentUser?.username || 'Unknown'
-                };
-                
-                if (isCardPayment) {
-                    updateData.cardType = cardType;
-                }
-                
-                await passengerDb.collection('Kovelipay').doc(docId).update(updateData);
-                
-                showStatus('✅ Transaction approved successfully!');
-                closeModal();
-                fetchPendingTransactions(); // Refresh the list
-                
-            } catch (error) {
-                console.error('Error updating transaction:', error);
-                showStatus('❌ Error updating transaction: ' + error.message, true);
+        document.getElementById('voidReason').addEventListener('change', function() {
+            const otherGroup = document.getElementById('otherReasonGroup');
+            if (this.value === 'OTHER') {
+                otherGroup.style.display = 'block';
+                document.getElementById('otherReason').required = true;
+            } else {
+                otherGroup.style.display = 'none';
+                document.getElementById('otherReason').required = false;
             }
         });
         
-        // Filter functionality
+        document.getElementById('voidForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const docId = document.getElementById('voidDocId').value;
+            let reason = document.getElementById('voidReason').value;
+            if (reason === 'OTHER') reason = document.getElementById('otherReason').value.trim();
+            if (!reason) { alert('Please specify the void reason'); return; }
+            try {
+                await passengerDb.collection('Kovelipay').doc(docId).update({ status: 'VOID', voided: true, voidReason: reason, voidedAt: new Date().toISOString(), voidedBy: currentUser?.username || 'Unknown' });
+                const updatedDoc = await passengerDb.collection('Kovelipay').doc(docId).get();
+                const updatedData = updatedDoc.data();
+                const originalTransaction = allTransactions.find(t => t.id === docId);
+                const voidedTransaction = { ...originalTransaction, receiptNo: updatedData.receiptNo, passengerName: updatedData.passengerName, amount: updatedData.totalAmount, currency: updatedData.currency, flightNo: updatedData.flightNo, seatNo: updatedData.seatNo, adult: updatedData.adult, children: updatedData.children, adultPrice: updatedData.adultPrice, childrenPrice: updatedData.childrenPrice, adultSubtotal: updatedData.adultSubtotal, childrenSubtotal: updatedData.childrenSubtotal, subtotal: updatedData.subtotal, gstAmount: updatedData.gstAmount, gstRate: updatedData.gstRate, expiryTime: updatedData.expiryTime, shiftDate: updatedData.shiftDate, shift: updatedData.shift, cashierName: updatedData.cashierName, userRcno: updatedData.userRcno, exchangeRate: updatedData.exchangeRate, voidReason: reason, voidedAt: new Date().toISOString() };
+                showStatus('✅ Transaction voided successfully!');
+                closeVoidModal();
+                showVoidPrintConfirmation(voidedTransaction);
+                fetchPendingTransactions();
+            } catch (error) { console.error(error); showStatus('❌ Error voiding transaction: ' + error.message, true); }
+        });
+        
+        // APPROVAL SUBMIT: captures approvalCode and batchNo then passes to receipt
+        document.getElementById('approvalForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const docId = document.getElementById('docId').value;
+            const paymentMethod = document.getElementById('paymentMethod').value;
+            const approvalCode = document.getElementById('approvalCode').value.trim();
+            const batchNo = document.getElementById('batchNo').value.trim();
+            if (!paymentMethod || !approvalCode || !batchNo) { alert('All fields are required (Payment Method, Approval Code, Batch Number)'); return; }
+            try {
+                const updateData = { paymentMethod, approvalCode, batchNo, updatedAt: new Date().toISOString(), updatedBy: currentUser?.username || 'Unknown', approvedAt: new Date().toISOString(), status: 'APPROVED' };
+                await passengerDb.collection('Kovelipay').doc(docId).update(updateData);
+                const updatedDoc = await passengerDb.collection('Kovelipay').doc(docId).get();
+                const updatedData = updatedDoc.data();
+                const originalTransaction = allTransactions.find(t => t.id === docId);
+                const approvedTransaction = {
+                    ...originalTransaction,
+                    receiptNo: updatedData.receiptNo || originalTransaction?.receiptNo,
+                    passengerName: updatedData.passengerName || originalTransaction?.passengerName,
+                    paymentMethod: paymentMethod,
+                    amount: updatedData.totalAmount || originalTransaction?.amount,
+                    currency: updatedData.currency || originalTransaction?.currency,
+                    flightNo: updatedData.flightNo || originalTransaction?.flightNo,
+                    seatNo: updatedData.seatNo || originalTransaction?.seatNo,
+                    adult: updatedData.adult || originalTransaction?.adult,
+                    children: updatedData.children || originalTransaction?.children,
+                    adultPrice: updatedData.adultPrice || originalTransaction?.adultPrice,
+                    childrenPrice: updatedData.childrenPrice || originalTransaction?.childrenPrice,
+                    adultSubtotal: updatedData.adultSubtotal || originalTransaction?.adultSubtotal,
+                    childrenSubtotal: updatedData.childrenSubtotal || originalTransaction?.childrenSubtotal,
+                    subtotal: updatedData.subtotal || originalTransaction?.subtotal,
+                    gstAmount: updatedData.gstAmount || originalTransaction?.gstAmount,
+                    gstRate: updatedData.gstRate || originalTransaction?.gstRate || 8,
+                    expiryTime: updatedData.expiryTime || originalTransaction?.expiryTime,
+                    shiftDate: updatedData.shiftDate || originalTransaction?.shiftDate,
+                    shift: updatedData.shift || originalTransaction?.shift,
+                    cashierName: updatedData.cashierName || originalTransaction?.cashierName,
+                    userRcno: updatedData.userRcno || originalTransaction?.userRcno,
+                    exchangeRate: updatedData.exchangeRate || originalTransaction?.exchangeRate || 15.42,
+                    approvalCode: approvalCode,
+                    batchNo: batchNo
+                };
+                showStatus('✅ Transaction approved successfully!');
+                closeModal();
+                lastApprovedTransaction = approvedTransaction;
+                document.getElementById('confirmMessage').innerHTML = `Transaction <strong>${approvedTransaction.receiptNo}</strong> approved successfully!<br>Would you like to print the receipt?`;
+                document.getElementById('printConfirmDialog').style.display = 'block';
+                fetchPendingTransactions();
+            } catch (error) { console.error(error); showStatus('❌ Error updating transaction: ' + error.message, true); }
+        });
+        
+        document.getElementById('confirmPrintYes').addEventListener('click', function() {
+            if (lastApprovedTransaction) redirectToReceiptPage(lastApprovedTransaction, true, false);
+            hidePrintConfirmation();
+        });
+        document.getElementById('confirmPrintNo').addEventListener('click', function() { hidePrintConfirmation(); showStatus('✅ Transaction approved (receipt not printed)'); });
+        document.getElementById('voidPrintYes').addEventListener('click', function() { if (lastVoidedTransaction) redirectToReceiptPage(lastVoidedTransaction, true, true); hideVoidPrintConfirmation(); });
+        document.getElementById('voidPrintNo').addEventListener('click', function() { hideVoidPrintConfirmation(); showStatus('✅ Transaction voided (receipt not printed)'); });
+        
         document.getElementById('paymentFilter').addEventListener('change', filterTransactions);
         document.getElementById('missingFilter').addEventListener('change', filterTransactions);
         document.getElementById('searchInput').addEventListener('input', filterTransactions);
@@ -728,55 +948,18 @@
             const paymentFilter = document.getElementById('paymentFilter').value;
             const missingFilter = document.getElementById('missingFilter').value;
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            
             let filtered = [...allTransactions];
-            
-            // Filter by payment method
             if (paymentFilter !== 'ALL') {
-                if (paymentFilter === 'CARD') {
-                    filtered = filtered.filter(t => t.isCardPayment);
-                } else {
-                    filtered = filtered.filter(t => t.paymentMethod === paymentFilter);
-                }
+                const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
+                if (paymentFilter === 'CARD') filtered = filtered.filter(t => cardPayments.includes(t.paymentMethod));
+                else filtered = filtered.filter(t => t.paymentMethod === paymentFilter);
             }
-            
-            // Filter by missing fields
-            if (missingFilter !== 'ALL') {
-                filtered = filtered.filter(t => {
-                    if (missingFilter === 'approval') return !t.hasApprovalCode;
-                    if (missingFilter === 'batch') return !t.hasBatchNo;
-                    if (missingFilter === 'card') return t.isCardPayment && !t.hasCardType;
-                    return true;
-                });
-            }
-            
-            // Filter by search term
-            if (searchTerm) {
-                filtered = filtered.filter(t => 
-                    t.receiptNo.toLowerCase().includes(searchTerm) ||
-                    t.passengerName.toLowerCase().includes(searchTerm) ||
-                    t.flightNo.toLowerCase().includes(searchTerm)
-                );
-            }
-            
+            if (missingFilter !== 'ALL') filtered = filtered.filter(t => { if (missingFilter === 'approval') return !t.hasApprovalCode; if (missingFilter === 'batch') return !t.hasBatchNo; if (missingFilter === 'card') return !t.hasPaymentMethod; return true; });
+            if (searchTerm) filtered = filtered.filter(t => t.receiptNo.toLowerCase().includes(searchTerm) || t.passengerName.toLowerCase().includes(searchTerm) || t.flightNo.toLowerCase().includes(searchTerm));
             displayTransactions(filtered);
         }
         
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            loadUser();
-            fetchPendingTransactions();
-            
-            document.getElementById('refreshBtn').addEventListener('click', fetchPendingTransactions);
-            
-            // Close modal when clicking outside
-            window.addEventListener('click', function(event) {
-                const modal = document.getElementById('approvalModal');
-                if (event.target === modal) {
-                    closeModal();
-                }
-            });
-        });
+        document.addEventListener('DOMContentLoaded', function() { loadUser(); fetchPendingTransactions(); document.getElementById('refreshBtn').addEventListener('click', fetchPendingTransactions); window.addEventListener('click', function(event) { if (event.target === document.getElementById('approvalModal')) closeModal(); if (event.target === document.getElementById('voidModal')) closeVoidModal(); if (event.target === document.getElementById('printConfirmDialog')) hidePrintConfirmation(); if (event.target === document.getElementById('voidPrintConfirmDialog')) hideVoidPrintConfirmation(); }); });
     </script>
 </body>
 </html>
