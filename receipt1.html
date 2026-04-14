@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Koveli Receipt | EPSON TM-T88VII | Width Adjusted for Printable Area</title>
+    <title>Koveli Receipt | EPSON TM-T88VII | Cash Payment Details</title>
     <!-- Firebase SDK - compatibility with fireshift.js -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -254,6 +254,22 @@
             font-weight: bold;
             padding: 0.2mm 0;
         }
+        /* New cash detail rows styling */
+        .cash-detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.4mm 0;
+            font-weight: 600;
+            padding-left: 0;
+            font-size: 9.5pt;
+        }
+        .cash-detail-row .label-cash {
+            font-weight: 800;
+        }
+        .cash-detail-row .value-cash {
+            font-weight: 700;
+            font-family: monospace;
+        }
         .transaction-codes {
             margin: 1.2mm 0;
             padding: 0.8mm 0.5mm;
@@ -446,6 +462,36 @@
             });
         }
         
+        // Helper to safely format cash fields if payment method is Cash
+        function generateCashDetailsSection(data) {
+            const paymentMethod = (data.paymentMethod || 'CASH').toUpperCase();
+            // Only show cash received & change if payment method contains "CASH"
+            if (paymentMethod !== 'CASH') return '';
+            
+            const cashReceived = data.cashReceived !== undefined && data.cashReceived !== null ? data.cashReceived : data.cashTendered;
+            const changeAmount = data.changeAmount !== undefined && data.changeAmount !== null ? data.changeAmount : data.changeDue;
+            
+            // If both fields are missing, don't render anything (avoid empty section)
+            if (cashReceived === undefined && changeAmount === undefined) return '';
+            
+            const currency = data.currency || 'USD';
+            let cashHtml = '<div class="divider-light"></div>';
+            
+            if (cashReceived !== undefined && cashReceived !== null && cashReceived !== '') {
+                const receivedVal = formatAmount(cashReceived);
+                cashHtml += `<div class="cash-detail-row"><span class="label-cash">💰 CASH RECEIVED:</span><span class="value-cash">${currency} ${receivedVal}</span></div>`;
+            }
+            
+            if (changeAmount !== undefined && changeAmount !== null && changeAmount !== '') {
+                const changeVal = formatAmount(changeAmount);
+                cashHtml += `<div class="cash-detail-row"><span class="label-cash">💵 CHANGE:</span><span class="value-cash">${currency} ${changeVal}</span></div>`;
+            }
+            
+            // Only add separator line if we actually printed cash details
+            cashHtml += '<div class="divider-light"></div>';
+            return cashHtml;
+        }
+        
         function generateReceiptHTML(data) {
             const isReprint = reprintParam || data.isReprint === true;
             const reprintMarkup = isReprint ? '<div class="reprint-mark">*** REPRINT COPY ***</div>' : '';
@@ -503,6 +549,9 @@
             const expiryDisplay = data.expiryTime || data.expiryDisplay || '--:--:--';
             const passengerDisplay = data.passengerName ? escapeHtml(data.passengerName) : 'GUEST';
             
+            // Generate cash details section if payment is cash
+            const cashDetailsHtml = generateCashDetailsSection(data);
+            
             return `
                 <div class="receipt-header">
                     <div class="company-name">KOVELI LOUNGE</div>
@@ -530,6 +579,7 @@
                 <div class="subtotal-row"><span>GST ${gstRate}%:</span><span>${currency} ${gst}</span></div>
                 <div class="total-row"><span>TOTAL (incl. tax):</span><span>${currency} ${totalAmt}</span></div>
                 <div class="payment-info"><span>Payment Method:</span><span>${escapeHtml(data.paymentMethod || 'CASH')}</span></div>
+                ${cashDetailsHtml}
                 ${transactionHtml}
                 ${exchangeRateHtml}
                 <div class="validity-block">
@@ -642,14 +692,14 @@
         }
         
         document.addEventListener('DOMContentLoaded', () => {
-            debugLog('DOM ready - WIDTH ADJUSTED: 4mm left padding');
+            debugLog('DOM ready - WIDTH ADJUSTED: 4mm left padding | Cash details integrated');
             enforceLeftMarginFix();
             setTimeout(() => loadReceipt(), 120);
             setBackNavigation();
         });
         
         window.addEventListener('beforeprint', () => {
-            debugLog('[PRINT] Width adjusted - 4mm left shift applied');
+            debugLog('[PRINT] Width adjusted - 4mm left shift applied | Cash fields preserved');
             const wrapper = document.querySelector('.receipt-wrapper');
             if (wrapper) {
                 wrapper.style.paddingLeft = '4mm';
