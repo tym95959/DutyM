@@ -592,10 +592,10 @@
             }, 3000);
         }
         
-        // ========== REDIRECT TO RECEIPT PAGE WITH VOID SUPPORT ==========
+        // ========== REDIRECT TO RECEIPT PAGE WITH BATCH & APPROVAL CODE ==========
         function redirectToReceiptPage(transaction, autoPrint = true, isVoid = false) {
             try {
-                // Prepare receipt data with void flag
+                // Build comprehensive receipt data including batchNo and approvalCode
                 const receiptData = {
                     receiptNo: transaction.receiptNo,
                     passengerName: transaction.passengerName,
@@ -622,7 +622,9 @@
                     userRcno: transaction.userRcno || currentUser?.rcno || 'N/A',
                     exchangeRate: transaction.exchangeRate || 15.42,
                     isReprint: false,
-                    // Add void flag to the data itself (important!)
+                    // CRITICAL: Include approvalCode and batchNo for receipt display
+                    approvalCode: transaction.approvalCode || '',
+                    batchNo: transaction.batchNo || '',
                     isVoid: isVoid,
                     status: isVoid ? 'VOID' : 'APPROVED',
                     voidReason: transaction.voidReason || null,
@@ -638,7 +640,7 @@
                 // Build URL with parameters
                 let receiptUrl = `receipt.html?data=${encodedData}&returnTo=${encodeURIComponent(window.location.pathname)}`;
                 
-                // Add void parameter to URL if needed (explicitly add it!)
+                // Add void parameter to URL if needed
                 if (isVoid) {
                     receiptUrl += '&void=true';
                 }
@@ -648,9 +650,7 @@
                     receiptUrl += '&autoPrint=true';
                 }
                 
-                console.log('Redirecting to receipt URL:', receiptUrl);
-                
-                // Redirect to receipt page
+                console.log('Redirecting to receipt with approval details:', { approvalCode: receiptData.approvalCode, batchNo: receiptData.batchNo });
                 window.location.href = receiptUrl;
                 
             } catch (error) {
@@ -658,12 +658,8 @@
                 // Fallback: try with just receipt number
                 if (transaction && transaction.receiptNo) {
                     let fallbackUrl = `receipt.html?receiptNo=${transaction.receiptNo}&returnTo=${encodeURIComponent(window.location.pathname)}`;
-                    if (isVoid) {
-                        fallbackUrl += '&void=true';
-                    }
-                    if (autoPrint) {
-                        fallbackUrl += '&autoPrint=true';
-                    }
+                    if (isVoid) fallbackUrl += '&void=true';
+                    if (autoPrint) fallbackUrl += '&autoPrint=true';
                     window.location.href = fallbackUrl;
                 } else {
                     alert('Error printing receipt. Please try again.');
@@ -739,25 +735,18 @@
                     const data = doc.data();
                     const paymentMethod = data.paymentMethod || '';
                     
-                    // Skip CASH payments and VOIDED transactions
                     if (paymentMethod === 'CASH') return;
                     if (data.status === 'VOID' || data.voided === true) return;
                     
-                    // Check required fields
                     const hasApprovalCode = (data.approvalCode && data.approvalCode.trim() !== '') || 
                                            (data.approval && data.approval.trim() !== '');
                     const hasBatchNo = (data.batchNo && data.batchNo.trim() !== '') || 
                                       (data.batch && data.batch.trim() !== '');
                     const hasPaymentMethod = paymentMethod && paymentMethod.trim() !== '';
-                    
-                    // Define card payment methods
-                    const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'ECHATPAY', 'ALIPAY', 'QRPAY'];
+                    const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
                     const isCardPayment = cardPayments.includes(paymentMethod);
-                    
-                    // Check if complete
                     const isComplete = hasApprovalCode && hasBatchNo && hasPaymentMethod;
                     
-                    // Only include pending transactions
                     if (!isComplete) {
                         const transaction = {
                             id: doc.id,
@@ -791,131 +780,78 @@
                             approvalCode: data.approvalCode || data.approval || '',
                             batchNo: data.batchNo || data.batch || ''
                         };
-                        
                         allTransactions.push(transaction);
-                        
-                        if (isCardPayment) {
-                            cardPending++;
-                        } else {
-                            otherPending++;
-                        }
+                        if (isCardPayment) cardPending++;
+                        else otherPending++;
                     }
                 });
                 
-                // Update stats
                 document.getElementById('totalPending').textContent = allTransactions.length;
                 document.getElementById('cardPending').textContent = cardPending;
                 document.getElementById('otherPending').textContent = otherPending;
-                
-                // Display transactions
                 displayTransactions(allTransactions);
-                
-                console.log('Pending transactions loaded:', allTransactions);
                 
             } catch (error) {
                 console.error('Error fetching pending transactions:', error);
-                document.getElementById('tableBody').innerHTML = 
-                    `<tr><td colspan="8" class="loading" style="color: #c68b5e;">Error loading transactions: ${error.message}</td></tr>`;
+                document.getElementById('tableBody').innerHTML = `<tr><td colspan="8" class="loading" style="color: #c68b5e;">Error loading transactions: ${error.message}</td></tr>`;
             }
         }
         
-        // Display transactions in table
         function displayTransactions(transactions) {
             const tableBody = document.getElementById('tableBody');
-            
             if (transactions.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="8" class="no-data">✅ NO PENDING APPROVALS FOUND</td></tr>';
                 return;
             }
-            
             let html = '';
-            
             transactions.forEach(t => {
-                // Determine missing fields
                 const missingFields = [];
                 if (!t.hasPaymentMethod) missingFields.push('Payment Method');
                 if (!t.hasApprovalCode) missingFields.push('Approval Code');
                 if (!t.hasBatchNo) missingFields.push('Batch No');
-                
-                // Format date/time
                 let dateTime = t.dateTime;
                 if (dateTime && dateTime.includes(',')) {
                     const parts = dateTime.split(',');
                     dateTime = parts[0].trim() + ' ' + (parts[1] || '').trim();
                 }
-                
-                html += `
-                    <tr>
-                        <td>${dateTime}</td>
-                        <td><strong>${t.receiptNo}</strong></td>
-                        <td>
-                            ${t.passengerName}<br>
-                            <small style="color: #8b6913;">${t.flightNo} / Seat ${t.seatNo}</small>
-                        </td>
-                        <td>
-                            <span class="payment-badge ${getBadgeClass(t.paymentMethod)}">${t.paymentMethod || 'NOT SET'}</span>
-                        </td>
-                        <td><strong>${t.currency} ${Number(t.amount).toFixed(2)}</strong></td>
-                        <td>
-                            ${missingFields.map(f => `<span class="missing-field">⚠️ MISSING: ${f}</span>`).join('')}
-                            ${missingFields.length === 0 ? '✅ ALL FIELDS OK' : ''}
-                        </td>
-                        <td>
-                            <span class="payment-badge badge-pending">PENDING</span>
-                        </td>
-                        <td>
-                            <button class="action-btn" onclick="editTransaction('${t.id}')">✏️ UPDATE</button>
-                            <button class="action-btn approve" onclick="viewDetails('${t.id}')">👁️ VIEW</button>
-                            <button class="action-btn void" onclick="showVoidModal('${t.id}')">⛔ VOID</button>
-                        </td>
-                    </tr>
-                `;
+                html += `<tr>
+                    <td>${dateTime}</td>
+                    <td><strong>${t.receiptNo}</strong></td>
+                    <td>${t.passengerName}<br><small style="color: #8b6913;">${t.flightNo} / Seat ${t.seatNo}</small></td>
+                    <td><span class="payment-badge ${getBadgeClass(t.paymentMethod)}">${t.paymentMethod || 'NOT SET'}</span></td>
+                    <td><strong>${t.currency} ${Number(t.amount).toFixed(2)}</strong></td>
+                    <td>${missingFields.map(f => `<span class="missing-field">⚠️ MISSING: ${f}</span>`).join('')}${missingFields.length === 0 ? '✅ ALL FIELDS OK' : ''}</td>
+                    <td><span class="payment-badge badge-pending">PENDING</span></td>
+                    <td><button class="action-btn" onclick="editTransaction('${t.id}')">✏️ UPDATE</button>
+                        <button class="action-btn approve" onclick="viewDetails('${t.id}')">👁️ VIEW</button>
+                        <button class="action-btn void" onclick="showVoidModal('${t.id}')">⛔ VOID</button></td>
+                </tr>`;
             });
-            
             tableBody.innerHTML = html;
         }
         
         function getBadgeClass(method) {
             const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
-            if (cardPayments.includes(method)) {
-                return 'badge-card';
-            } else if (method === 'BANK TRANSFER') {
-                return 'badge-transfer';
-            } else {
-                return 'badge-cash';
-            }
+            if (cardPayments.includes(method)) return 'badge-card';
+            if (method === 'BANK TRANSFER') return 'badge-transfer';
+            return 'badge-cash';
         }
         
-        // Edit transaction
         function editTransaction(transactionId) {
             const transaction = allTransactions.find(t => t.id === transactionId);
             if (!transaction) return;
-            
             document.getElementById('transactionId').value = transaction.receiptNo;
             document.getElementById('docId').value = transaction.id;
             document.getElementById('paymentMethod').value = transaction.paymentMethod || '';
             document.getElementById('approvalCode').value = transaction.approvalCode || '';
             document.getElementById('batchNo').value = transaction.batchNo || '';
-            
-            // Update summary
-            document.getElementById('transactionSummary').innerHTML = `
-                <strong>Receipt:</strong> ${transaction.receiptNo}<br>
-                <strong>Passenger:</strong> ${transaction.passengerName}<br>
-                <strong>Amount:</strong> ${transaction.currency} ${Number(transaction.amount).toFixed(2)}
-            `;
-            
+            document.getElementById('transactionSummary').innerHTML = `<strong>Receipt:</strong> ${transaction.receiptNo}<br><strong>Passenger:</strong> ${transaction.passengerName}<br><strong>Amount:</strong> ${transaction.currency} ${Number(transaction.amount).toFixed(2)}`;
             document.getElementById('approvalModal').style.display = 'flex';
         }
         
-        function viewDetails(transactionId) {
-            editTransaction(transactionId);
-        }
+        function viewDetails(transactionId) { editTransaction(transactionId); }
+        function closeModal() { document.getElementById('approvalModal').style.display = 'none'; }
         
-        function closeModal() {
-            document.getElementById('approvalModal').style.display = 'none';
-        }
-        
-        // Handle void reason dropdown change
         document.getElementById('voidReason').addEventListener('change', function() {
             const otherGroup = document.getElementById('otherReasonGroup');
             if (this.value === 'OTHER') {
@@ -927,140 +863,50 @@
             }
         });
         
-        // Handle void form submission
         document.getElementById('voidForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
             const docId = document.getElementById('voidDocId').value;
             let reason = document.getElementById('voidReason').value;
-            
-            if (reason === 'OTHER') {
-                reason = document.getElementById('otherReason').value.trim();
-                if (!reason) {
-                    alert('Please specify the void reason');
-                    return;
-                }
-            }
-            
+            if (reason === 'OTHER') reason = document.getElementById('otherReason').value.trim();
+            if (!reason) { alert('Please specify the void reason'); return; }
             try {
-                const updateData = {
-                    status: 'VOID',
-                    voided: true,
-                    voidReason: reason,
-                    voidedAt: new Date().toISOString(),
-                    voidedBy: currentUser?.username || 'Unknown'
-                };
-                
-                await passengerDb.collection('Kovelipay').doc(docId).update(updateData);
-                
-                // Get the updated transaction data
+                await passengerDb.collection('Kovelipay').doc(docId).update({ status: 'VOID', voided: true, voidReason: reason, voidedAt: new Date().toISOString(), voidedBy: currentUser?.username || 'Unknown' });
                 const updatedDoc = await passengerDb.collection('Kovelipay').doc(docId).get();
                 const updatedData = updatedDoc.data();
-                
-                // Find the original transaction
                 const originalTransaction = allTransactions.find(t => t.id === docId);
-                
-                const voidedTransaction = {
-                    ...originalTransaction,
-                    receiptNo: updatedData.receiptNo || originalTransaction?.receiptNo || 'N/A',
-                    passengerName: updatedData.passengerName || originalTransaction?.passengerName || 'N/A',
-                    paymentMethod: updatedData.paymentMethod || originalTransaction?.paymentMethod || 'VOID',
-                    amount: updatedData.totalAmount || originalTransaction?.amount || 0,
-                    currency: updatedData.currency || originalTransaction?.currency || 'USD',
-                    flightNo: updatedData.flightNo || originalTransaction?.flightNo || 'N/A',
-                    seatNo: updatedData.seatNo || originalTransaction?.seatNo || 'N/A',
-                    adult: updatedData.adult || originalTransaction?.adult || 1,
-                    children: updatedData.children || originalTransaction?.children || 0,
-                    adultPrice: updatedData.adultPrice || originalTransaction?.adultPrice,
-                    childrenPrice: updatedData.childrenPrice || originalTransaction?.childrenPrice,
-                    adultSubtotal: updatedData.adultSubtotal || originalTransaction?.adultSubtotal,
-                    childrenSubtotal: updatedData.childrenSubtotal || originalTransaction?.childrenSubtotal,
-                    subtotal: updatedData.subtotal || originalTransaction?.subtotal,
-                    gstAmount: updatedData.gstAmount || originalTransaction?.gstAmount,
-                    gstRate: updatedData.gstRate || originalTransaction?.gstRate || 8,
-                    expiryTime: updatedData.expiryTime || originalTransaction?.expiryTime,
-                    shiftDate: updatedData.shiftDate || originalTransaction?.shiftDate,
-                    shift: updatedData.shift || originalTransaction?.shift,
-                    cashierName: updatedData.cashierName || originalTransaction?.cashierName,
-                    userRcno: updatedData.userRcno || originalTransaction?.userRcno,
-                    exchangeRate: updatedData.exchangeRate || originalTransaction?.exchangeRate || 15.42,
-                    voidReason: reason,
-                    voidedAt: updateData.voidedAt
-                };
-                
+                const voidedTransaction = { ...originalTransaction, receiptNo: updatedData.receiptNo, passengerName: updatedData.passengerName, amount: updatedData.totalAmount, currency: updatedData.currency, flightNo: updatedData.flightNo, seatNo: updatedData.seatNo, adult: updatedData.adult, children: updatedData.children, adultPrice: updatedData.adultPrice, childrenPrice: updatedData.childrenPrice, adultSubtotal: updatedData.adultSubtotal, childrenSubtotal: updatedData.childrenSubtotal, subtotal: updatedData.subtotal, gstAmount: updatedData.gstAmount, gstRate: updatedData.gstRate, expiryTime: updatedData.expiryTime, shiftDate: updatedData.shiftDate, shift: updatedData.shift, cashierName: updatedData.cashierName, userRcno: updatedData.userRcno, exchangeRate: updatedData.exchangeRate, voidReason: reason, voidedAt: new Date().toISOString() };
                 showStatus('✅ Transaction voided successfully!');
                 closeVoidModal();
-                
-                // Show void print confirmation
                 showVoidPrintConfirmation(voidedTransaction);
-                
-                fetchPendingTransactions(); // Refresh the list
-                
-            } catch (error) {
-                console.error('Error voiding transaction:', error);
-                showStatus('❌ Error voiding transaction: ' + error.message, true);
-            }
+                fetchPendingTransactions();
+            } catch (error) { console.error(error); showStatus('❌ Error voiding transaction: ' + error.message, true); }
         });
         
-        // Save approval details
+        // APPROVAL SUBMIT: captures approvalCode and batchNo then passes to receipt
         document.getElementById('approvalForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
             const docId = document.getElementById('docId').value;
             const paymentMethod = document.getElementById('paymentMethod').value;
             const approvalCode = document.getElementById('approvalCode').value.trim();
             const batchNo = document.getElementById('batchNo').value.trim();
-            
-            // Validation
-            if (!paymentMethod) {
-                alert('Payment Method is required');
-                return;
-            }
-            
-            if (!approvalCode) {
-                alert('Approval Code is required');
-                return;
-            }
-            
-            if (!batchNo) {
-                alert('Batch Number is required');
-                return;
-            }
-            
+            if (!paymentMethod || !approvalCode || !batchNo) { alert('All fields are required (Payment Method, Approval Code, Batch Number)'); return; }
             try {
-                const updateData = {
-                    paymentMethod: paymentMethod,
-                    approvalCode: approvalCode,
-                    batchNo: batchNo,
-                    updatedAt: new Date().toISOString(),
-                    updatedBy: currentUser?.username || 'Unknown',
-                    approvedAt: new Date().toISOString(),
-                    status: 'APPROVED'
-                };
-                
+                const updateData = { paymentMethod, approvalCode, batchNo, updatedAt: new Date().toISOString(), updatedBy: currentUser?.username || 'Unknown', approvedAt: new Date().toISOString(), status: 'APPROVED' };
                 await passengerDb.collection('Kovelipay').doc(docId).update(updateData);
-                
-                // Get the updated transaction data
                 const updatedDoc = await passengerDb.collection('Kovelipay').doc(docId).get();
                 const updatedData = updatedDoc.data();
-                
-                // Find the original transaction to get additional fields
                 const originalTransaction = allTransactions.find(t => t.id === docId);
-                
-                const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
-                const isCardPayment = cardPayments.includes(paymentMethod);
-                
                 const approvedTransaction = {
                     ...originalTransaction,
-                    receiptNo: updatedData.receiptNo || originalTransaction?.receiptNo || 'N/A',
-                    passengerName: updatedData.passengerName || originalTransaction?.passengerName || 'N/A',
+                    receiptNo: updatedData.receiptNo || originalTransaction?.receiptNo,
+                    passengerName: updatedData.passengerName || originalTransaction?.passengerName,
                     paymentMethod: paymentMethod,
-                    amount: updatedData.totalAmount || originalTransaction?.amount || 0,
-                    currency: updatedData.currency || originalTransaction?.currency || 'USD',
-                    flightNo: updatedData.flightNo || originalTransaction?.flightNo || 'N/A',
-                    seatNo: updatedData.seatNo || originalTransaction?.seatNo || 'N/A',
-                    adult: updatedData.adult || originalTransaction?.adult || 1,
-                    children: updatedData.children || originalTransaction?.children || 0,
+                    amount: updatedData.totalAmount || originalTransaction?.amount,
+                    currency: updatedData.currency || originalTransaction?.currency,
+                    flightNo: updatedData.flightNo || originalTransaction?.flightNo,
+                    seatNo: updatedData.seatNo || originalTransaction?.seatNo,
+                    adult: updatedData.adult || originalTransaction?.adult,
+                    children: updatedData.children || originalTransaction?.children,
                     adultPrice: updatedData.adultPrice || originalTransaction?.adultPrice,
                     childrenPrice: updatedData.childrenPrice || originalTransaction?.childrenPrice,
                     adultSubtotal: updatedData.adultSubtotal || originalTransaction?.adultSubtotal,
@@ -1075,54 +921,25 @@
                     userRcno: updatedData.userRcno || originalTransaction?.userRcno,
                     exchangeRate: updatedData.exchangeRate || originalTransaction?.exchangeRate || 15.42,
                     approvalCode: approvalCode,
-                    batchNo: batchNo,
-                    isCardPayment: isCardPayment
+                    batchNo: batchNo
                 };
-                
                 showStatus('✅ Transaction approved successfully!');
                 closeModal();
-                
-                // Show print confirmation dialog
                 lastApprovedTransaction = approvedTransaction;
-                document.getElementById('confirmMessage').innerHTML = 
-                    `Transaction <strong>${approvedTransaction.receiptNo}</strong> approved successfully!<br>Would you like to print the receipt?`;
+                document.getElementById('confirmMessage').innerHTML = `Transaction <strong>${approvedTransaction.receiptNo}</strong> approved successfully!<br>Would you like to print the receipt?`;
                 document.getElementById('printConfirmDialog').style.display = 'block';
-                
-                fetchPendingTransactions(); // Refresh the list
-                
-            } catch (error) {
-                console.error('Error updating transaction:', error);
-                showStatus('❌ Error updating transaction: ' + error.message, true);
-            }
+                fetchPendingTransactions();
+            } catch (error) { console.error(error); showStatus('❌ Error updating transaction: ' + error.message, true); }
         });
         
-        // Confirm dialog buttons for normal approval
         document.getElementById('confirmPrintYes').addEventListener('click', function() {
-            if (lastApprovedTransaction) {
-                redirectToReceiptPage(lastApprovedTransaction, true, false);
-            }
+            if (lastApprovedTransaction) redirectToReceiptPage(lastApprovedTransaction, true, false);
             hidePrintConfirmation();
         });
+        document.getElementById('confirmPrintNo').addEventListener('click', function() { hidePrintConfirmation(); showStatus('✅ Transaction approved (receipt not printed)'); });
+        document.getElementById('voidPrintYes').addEventListener('click', function() { if (lastVoidedTransaction) redirectToReceiptPage(lastVoidedTransaction, true, true); hideVoidPrintConfirmation(); });
+        document.getElementById('voidPrintNo').addEventListener('click', function() { hideVoidPrintConfirmation(); showStatus('✅ Transaction voided (receipt not printed)'); });
         
-        document.getElementById('confirmPrintNo').addEventListener('click', function() {
-            hidePrintConfirmation();
-            showStatus('✅ Transaction approved (receipt not printed)');
-        });
-        
-        // Confirm dialog buttons for void
-        document.getElementById('voidPrintYes').addEventListener('click', function() {
-            if (lastVoidedTransaction) {
-                redirectToReceiptPage(lastVoidedTransaction, true, true);
-            }
-            hideVoidPrintConfirmation();
-        });
-        
-        document.getElementById('voidPrintNo').addEventListener('click', function() {
-            hideVoidPrintConfirmation();
-            showStatus('✅ Transaction voided (receipt not printed)');
-        });
-        
-        // Filter functionality
         document.getElementById('paymentFilter').addEventListener('change', filterTransactions);
         document.getElementById('missingFilter').addEventListener('change', filterTransactions);
         document.getElementById('searchInput').addEventListener('input', filterTransactions);
@@ -1131,72 +948,18 @@
             const paymentFilter = document.getElementById('paymentFilter').value;
             const missingFilter = document.getElementById('missingFilter').value;
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            
             let filtered = [...allTransactions];
-            
-            // Filter by payment method
             if (paymentFilter !== 'ALL') {
-                if (paymentFilter === 'CARD') {
-                    const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
-                    filtered = filtered.filter(t => cardPayments.includes(t.paymentMethod));
-                } else {
-                    filtered = filtered.filter(t => t.paymentMethod === paymentFilter);
-                }
+                const cardPayments = ['VISA', 'MASTERCARD', 'AMEX', 'UNIONPAY', 'WECHATPAY', 'ALIPAY', 'QRPAY'];
+                if (paymentFilter === 'CARD') filtered = filtered.filter(t => cardPayments.includes(t.paymentMethod));
+                else filtered = filtered.filter(t => t.paymentMethod === paymentFilter);
             }
-            
-            // Filter by missing fields
-            if (missingFilter !== 'ALL') {
-                filtered = filtered.filter(t => {
-                    if (missingFilter === 'approval') return !t.hasApprovalCode;
-                    if (missingFilter === 'batch') return !t.hasBatchNo;
-                    if (missingFilter === 'card') return !t.hasPaymentMethod;
-                    return true;
-                });
-            }
-            
-            // Filter by search term
-            if (searchTerm) {
-                filtered = filtered.filter(t => 
-                    t.receiptNo.toLowerCase().includes(searchTerm) ||
-                    t.passengerName.toLowerCase().includes(searchTerm) ||
-                    t.flightNo.toLowerCase().includes(searchTerm)
-                );
-            }
-            
+            if (missingFilter !== 'ALL') filtered = filtered.filter(t => { if (missingFilter === 'approval') return !t.hasApprovalCode; if (missingFilter === 'batch') return !t.hasBatchNo; if (missingFilter === 'card') return !t.hasPaymentMethod; return true; });
+            if (searchTerm) filtered = filtered.filter(t => t.receiptNo.toLowerCase().includes(searchTerm) || t.passengerName.toLowerCase().includes(searchTerm) || t.flightNo.toLowerCase().includes(searchTerm));
             displayTransactions(filtered);
         }
         
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            loadUser();
-            fetchPendingTransactions();
-            
-            document.getElementById('refreshBtn').addEventListener('click', fetchPendingTransactions);
-            
-            // Close modals when clicking outside
-            window.addEventListener('click', function(event) {
-                const approvalModal = document.getElementById('approvalModal');
-                const voidModal = document.getElementById('voidModal');
-                const printDialog = document.getElementById('printConfirmDialog');
-                const voidPrintDialog = document.getElementById('voidPrintConfirmDialog');
-                
-                if (event.target === approvalModal) {
-                    closeModal();
-                }
-                
-                if (event.target === voidModal) {
-                    closeVoidModal();
-                }
-                
-                if (event.target === printDialog) {
-                    hidePrintConfirmation();
-                }
-                
-                if (event.target === voidPrintDialog) {
-                    hideVoidPrintConfirmation();
-                }
-            });
-        });
+        document.addEventListener('DOMContentLoaded', function() { loadUser(); fetchPendingTransactions(); document.getElementById('refreshBtn').addEventListener('click', fetchPendingTransactions); window.addEventListener('click', function(event) { if (event.target === document.getElementById('approvalModal')) closeModal(); if (event.target === document.getElementById('voidModal')) closeVoidModal(); if (event.target === document.getElementById('printConfirmDialog')) hidePrintConfirmation(); if (event.target === document.getElementById('voidPrintConfirmDialog')) hideVoidPrintConfirmation(); }); });
     </script>
 </body>
 </html>
