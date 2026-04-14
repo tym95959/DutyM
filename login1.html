@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Koveli · Device Authorization · One-Time Password</title>
+    <!--
+        ======================================================================
+        KOVELI SECURE AUTHENTICATION
+        REQUIRED EXTERNAL FILE: users.js
+        The file MUST export a 'users' array with objects containing:
+        - username (string)
+        - passwordHash (string, SHA-256 hex)
+        - Level / level (string, e.g., 'admin', 'manager', 'operator')
+        - RCNo / rcno (string, registration number)
+        ======================================================================
+    -->
+    <script src="users.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: radial-gradient(ellipse at 30% 40%, #f9efda, #f2e2bc);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            position: relative;
+        }
+
+        /* ambient lounge pattern */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="rgba(200,165,80,0.1)" stroke-width="0.7"><circle cx="16" cy="16" r="5"/><path d="M16 3 L16 29 M3 16 L29 16"/></svg>');
+            background-repeat: repeat;
+            background-size: 38px;
+            pointer-events: none;
+        }
+
+        /* main card – premium lounge style */
+        .auth-card {
+            width: 100%;
+            max-width: 500px;
+            background: rgba(255, 252, 242, 0.96);
+            backdrop-filter: blur(12px);
+            border-radius: 60px;
+            box-shadow: 0 35px 55px -20px rgba(70, 45, 15, 0.5), inset 0 1px 0 0 #fffef5, 0 0 0 1px #f2dfae;
+            transition: transform 0.2s;
+            overflow: hidden;
+        }
+
+        .gold-stripe {
+            height: 6px;
+            background: linear-gradient(90deg, #eac168, #f5da94, #efcd7c);
+            width: 100%;
+        }
+
+        .card-header {
+            padding: 2rem 2rem 0.5rem 2rem;
+            background: linear-gradient(115deg, #fcf6e8, #fff9ed);
+        }
+
+        .logo-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #f3e7cf;
+            padding: 0.3rem 1rem;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #7b5c2c;
+            letter-spacing: 0.6px;
+            border: 1px solid #f7e5bd;
+            margin-bottom: 1rem;
+        }
+
+        h1 {
+            font-size: 2.1rem;
+            font-weight: 550;
+            background: linear-gradient(135deg, #624a1e, #b38734);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.3px;
+        }
+
+        .sub-line {
+            color: #b48b44;
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid #f0c46c;
+            padding-left: 0.9rem;
+        }
+
+        .device-chip {
+            background: #fff3e2;
+            border-radius: 40px;
+            padding: 0.2rem 0.9rem;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: #a5742e;
+        }
+
+        /* one-time notice banner */
+        .one-time-banner {
+            margin: 1.3rem 2rem 0 2rem;
+            background: #f7efdb;
+            border-radius: 48px;
+            padding: 0.7rem 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: 1px solid #eedbb0;
+            color: #755e2c;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .one-time-banner span:first-child {
+            font-size: 1.4rem;
+        }
+
+        .auth-body {
+            padding: 2rem 2rem 2rem;
+        }
+
+        .input-field {
+            margin-bottom: 1.7rem;
+        }
+
+        .input-field label {
+            display: block;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 1.4px;
+            color: #a47d3f;
+            margin-bottom: 0.5rem;
+        }
+
+        .input-wrapper {
+            display: flex;
+            align-items: center;
+            background: #fffdf7;
+            border: 2px solid #ead3a0;
+            border-radius: 60px;
+            padding: 0.1rem 1.2rem;
+            transition: all 0.2s;
+            box-shadow: inset 0 1px 3px #f7efdf;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: #d6aa4a;
+            box-shadow: 0 0 0 4px rgba(215, 170, 70, 0.25), inset 0 1px 3px #fff1da;
+        }
+
+        .input-icon {
+            font-size: 1.2rem;
+            color: #c79848;
+            margin-right: 0.7rem;
+        }
+
+        .input-wrapper input {
+            width: 100%;
+            border: none;
+            background: transparent;
+            padding: 0.9rem 0;
+            font-size: 1rem;
+            outline: none;
+            color: #2b200b;
+            font-weight: 500;
+        }
+
+        .input-wrapper input::placeholder {
+            color: #cfb97f;
+            font-weight: 400;
+        }
+
+        .toggle-password {
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            cursor: pointer;
+            color: #b68f47;
+            padding: 0 5px;
+            transition: 0.1s;
+        }
+
+        .toggle-password:hover {
+            color: #8f672b;
+        }
+
+        /* primary action button */
+        .auth-button {
+            background: linear-gradient(105deg, #efcf86, #efc876, #f3d183);
+            border: none;
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #3b2c11;
+            border-radius: 60px;
+            margin: 1.3rem 0 1rem;
+            cursor: pointer;
+            box-shadow: 0 12px 20px -12px #a27734, 0 0 0 2px #fffceb, 0 0 0 5px #fef7e8;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .auth-button:hover {
+            background: linear-gradient(105deg, #f7da9a, #f5d48c, #fbdf98);
+            transform: scale(1.01);
+            box-shadow: 0 15px 25px -12px #b18238;
+        }
+
+        .auth-button:active {
+            transform: scale(0.97);
+        }
+
+        .auth-button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* dynamic message card */
+        .message-panel {
+            background: #faf3e2;
+            border-radius: 40px;
+            padding: 0.8rem 1.2rem;
+            margin-top: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-left: 5px solid #eabe6c;
+            color: #5a431c;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .message-panel.error {
+            background: #ffe9e3;
+            border-left-color: #d4513a;
+            color: #8f2f1b;
+        }
+
+        .message-panel.success {
+            background: #eaf7e1;
+            border-left-color: #5e9b3a;
+            color: #295a0c;
+        }
+
+        .message-panel.warning {
+            background: #fff2df;
+            border-left-color: #e6a017;
+        }
+
+        .footer-security {
+            font-size: 0.7rem;
+            text-align: center;
+            padding: 1rem 1.5rem 1.3rem;
+            border-top: 1px solid #eedcae;
+            color: #a88648;
+            background: #fefaf1;
+            display: flex;
+            justify-content: center;
+            gap: 1.2rem;
+            flex-wrap: wrap;
+        }
+
+        .footer-security span {
+            background: #f8efdd;
+            padding: 0.2rem 0.9rem;
+            border-radius: 50px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loader-icon {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-top-color: #5f451c;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        /* disabled inputs style after auth */
+        input:disabled {
+            background: #faf4e8;
+            color: #8f7a51;
+            cursor: default;
+        }
+    </style>
+</head>
+<body>
+
+<div class="auth-card" id="authCard">
+    <div class="gold-stripe"></div>
+    <div class="card-header">
+        <div class="logo-badge">
+            <span>🏛️</span> KOVELI LOUNGE · SECURE TERMINAL
+        </div>
+        <h1>Device Authorization</h1>
+        <div class="sub-line">
+            <span>⚡ one‑time password required</span>
+            <span class="device-chip">🖥️ authorized device only</span>
+        </div>
+    </div>
+
+    <div class="one-time-banner">
+        <span>🔐</span>
+        <span><strong>Single‑use entry</strong> — after successful login, password cannot be re‑entered. Session is bound to this browser tab.</span>
+    </div>
+
+    <div class="auth-body">
+        <form id="authForm">
+            <div class="input-field">
+                <label for="username">USERNAME</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">👤</span>
+                    <input type="text" id="username" name="username" placeholder="staff identifier" autocomplete="off" spellcheck="false">
+                </div>
+            </div>
+
+            <div class="input-field">
+                <label for="password">ONE‑TIME PASSWORD</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">🔒</span>
+                    <input type="password" id="password" name="password" placeholder="········" autocomplete="off">
+                    <button type="button" class="toggle-password" id="togglePwBtn" aria-label="Show password">👁️</button>
+                </div>
+            </div>
+
+            <button type="submit" class="auth-button" id="submitBtn">
+                <span>⛁</span> Authorize Device <span>→</span>
+            </button>
+        </form>
+
+        <div id="statusBlock" class="message-panel">
+            <span>🔔</span>
+            <span id="statusMessage">Awaiting one‑time password — enter credentials once.</span>
+        </div>
+    </div>
+
+    <div class="footer-security">
+        <span>✔️ SHA‑256 hashed credentials</span>
+        <span>🔄 device‑bound session</span>
+        <span>⏱️ one‑time entry enforced</span>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // ==================================================================
+        // KOVELI DEVICE AUTHORIZATION | ONE-TIME PASSWORD MODE
+        // ==================================================================
+        // Features:
+        // - Strict one-time entry: after success, all further submit attempts are blocked.
+        // - Uses WebCrypto SHA-256 to match passwordHash from users.js.
+        // - Stores username, level, rcno in localStorage for dashboard.html.
+        // - Clears any stale session on page load.
+        // - Prevents double-submission and disables inputs after auth.
+        // ==================================================================
+
+        // DOM elements
+        const form = document.getElementById('authForm');
+        const usernameField = document.getElementById('username');
+        const passwordField = document.getElementById('password');
+        const submitButton = document.getElementById('submitBtn');
+        const statusDiv = document.getElementById('statusBlock');
+        const statusMsgSpan = document.getElementById('statusMessage');
+        const toggleBtn = document.getElementById('togglePwBtn');
+
+        // State variables
+        let isAuthorized = false;       // one-time gate: once true, no further login
+        let isProcessing = false;       // prevent concurrent submissions
+
+        // Helper: update status message with style
+        function setStatusMessage(text, type = 'info') {
+            statusMsgSpan.innerText = text;
+            // reset classes
+            statusDiv.className = 'message-panel';
+            if (type === 'error') {
+                statusDiv.classList.add('error');
+            } else if (type === 'success') {
+                statusDiv.classList.add('success');
+            } else if (type === 'warning') {
+                statusDiv.classList.add('warning');
+            }
+        }
+
+        // Clear any existing authentication data on page load (fresh start)
+        function resetLocalSession() {
+            localStorage.removeItem('username');
+            localStorage.removeItem('level');
+            localStorage.removeItem('rcno');
+            localStorage.removeItem('loggedInUser');
+            localStorage.removeItem('device_authorized');
+            sessionStorage.removeItem('auth_once');
+        }
+
+        // Validate that users.js is correctly loaded
+        function isUsersDatabaseReady() {
+            if (typeof users === 'undefined') {
+                setStatusMessage('❌ CRITICAL: users.js not found. Please ensure users.js exists with valid "users" array.', 'error');
+                submitButton.disabled = true;
+                return false;
+            }
+            if (!Array.isArray(users)) {
+                setStatusMessage('❌ Configuration error: "users" is not an array in users.js', 'error');
+                submitButton.disabled = true;
+                return false;
+            }
+            if (users.length === 0) {
+                setStatusMessage('⚠️ Warning: users array is empty. No valid credentials.', 'warning');
+            }
+            return true;
+        }
+
+        // SHA-256 hash using Web Crypto API (exactly as original)
+        async function hashPassword(plainPassword) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(plainPassword);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // Core authentication logic
+        async function authenticateUser(username, plainPassword) {
+            if (!username.trim() || !plainPassword) {
+                setStatusMessage('⚠️ Both username and password are required for device authorization.', 'warning');
+                return false;
+            }
+
+            // case-insensitive lookup
+            const matchedUser = users.find(u => 
+                u.username && u.username.toLowerCase() === username.trim().toLowerCase()
+            );
+
+            if (!matchedUser) {
+                setStatusMessage('❌ Access denied: Invalid username or one‑time password.', 'error');
+                return false;
+            }
+
+            try {
+                const hashedInput = await hashPassword(plainPassword);
+                if (!matchedUser.passwordHash || hashedInput !== matchedUser.passwordHash) {
+                    setStatusMessage('❌ Authorization failed: incorrect one‑time password.', 'error');
+                    return false;
+                }
+
+                // ---- SUCCESS: ONE-TIME GRANT ----
+                // Extract user details exactly as dashboard expects (Level, RCNo)
+                const finalUsername = matchedUser.username;
+                const level = matchedUser.Level || matchedUser.level || 'operator';
+                const rcno = matchedUser.RCNo || matchedUser.rcno || matchedUser.RCno || 'N/A';
+
+                // Store in localStorage for dashboard consumption
+                localStorage.setItem('username', finalUsername);
+                localStorage.setItem('level', level.toString());
+                localStorage.setItem('rcno', rcno.toString());
+                
+                // Also store extended profile (optional but good for logging)
+                const userProfile = {
+                    username: finalUsername,
+                    level: level,
+                    rcno: rcno,
+                    name: matchedUser.name || '',
+                    authorizedAt: new Date().toISOString(),
+                    device: 'web-terminal'
+                };
+                localStorage.setItem('loggedInUser', JSON.stringify(userProfile));
+                localStorage.setItem('device_authorized', 'true');
+                
+                // Mark this session as permanently authorized (one-time complete)
+                isAuthorized = true;
+                
+                setStatusMessage('✅ Device authorized successfully! Redirecting to dashboard...', 'success');
+                
+                // Disable inputs and button to prevent any further password entry
+                usernameField.disabled = true;
+                passwordField.disabled = true;
+                submitButton.disabled = true;
+                
+                // Clear sensitive field for security
+                passwordField.value = '';
+                
+                // Add subtle visual lock effect
+                const card = document.getElementById('authCard');
+                if (card) card.style.transition = '0.2s';
+                
+                // Redirect after success
+                setTimeout(() => {
+                    window.location.href = 'dashboard.html';
+                }, 1300);
+                
+                return true;
+            } catch (cryptoError) {
+                console.error('Crypto hashing error:', cryptoError);
+                setStatusMessage('❌ Internal cryptographic error. Cannot validate credentials.', 'error');
+                return false;
+            }
+        }
+
+        // Form submit handler – enforces ONE-TIME rule strictly
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            // ONE-TIME GATE: if already authorized, absolutely block any further submit
+            if (isAuthorized) {
+                setStatusMessage('🔒 Device already authorized. Session is locked. Redirecting...', 'warning');
+                // Optionally auto-redirect if user tries again
+                setTimeout(() => {
+                    if (localStorage.getItem('username')) {
+                        window.location.href = 'dashboard.html';
+                    }
+                }, 800);
+                return;
+            }
+            
+            // prevent double submission while processing
+            if (isProcessing) {
+                setStatusMessage('⏳ Please wait, verification in progress...', 'info');
+                return;
+            }
+            
+            const username = usernameField.value;
+            const password = passwordField.value;
+            
+            if (!username || !password) {
+                setStatusMessage('📛 Both fields required for one-time device authorization.', 'warning');
+                return;
+            }
+            
+            isProcessing = true;
+            submitButton.disabled = true;
+            // store original button content for restoration (if failure)
+            const originalButtonHTML = submitButton.innerHTML;
+            submitButton.innerHTML = `<span class="loader-icon"></span> Validating credentials...`;
+            
+            try {
+                const authResult = await authenticateUser(username, password);
+                if (!authResult) {
+                    // Authentication failed: re-enable button, clear password field for retry
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalButtonHTML;
+                    passwordField.value = '';   // clear password for security
+                    passwordField.focus();
+                    // Also do NOT disable fields, user can retry until success (but only one eventual success)
+                } else {
+                    // authResult true means isAuthorized = true, fields disabled, redirect pending
+                    // nothing else needed
+                }
+            } catch (err) {
+                console.error('Unexpected auth error:', err);
+                setStatusMessage('⚠️ Unexpected error. Please try again.', 'error');
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalButtonHTML;
+                passwordField.value = '';
+            } finally {
+                isProcessing = false;
+                // if authorization failed, ensure button is enabled (already handled)
+                if (!isAuthorized && submitButton.disabled === true && !isProcessing) {
+                    submitButton.disabled = false;
+                }
+            }
+        });
+        
+        // Toggle password visibility
+        toggleBtn.addEventListener('click', () => {
+            const currentType = passwordField.getAttribute('type');
+            const newType = currentType === 'password' ? 'text' : 'password';
+            passwordField.setAttribute('type', newType);
+            toggleBtn.textContent = newType === 'password' ? '👁️' : '🙈';
+        });
+        
+        // Clear message styles on focus if not yet authorized (user experience)
+        function resetMessageOnUserFocus() {
+            if (isAuthorized) return;
+            if (statusDiv.classList.contains('error') || statusDiv.classList.contains('success')) {
+                setStatusMessage('🔐 Enter one-time password to authorize device.', 'info');
+            }
+        }
+        
+        usernameField.addEventListener('focus', resetMessageOnUserFocus);
+        passwordField.addEventListener('focus', resetMessageOnUserFocus);
+        
+        // Initialization: reset previous session and check users.js
+        resetLocalSession();
+        
+        // small delay to ensure users.js is fully parsed
+        setTimeout(() => {
+            if (!isUsersDatabaseReady()) {
+                // if users missing, we already showed error and disabled button
+                console.warn('users.js validation failed');
+            } else {
+                setStatusMessage('⚡ Ready — one-time password entry. Authorize your device.', 'info');
+                // focus on username for convenience
+                usernameField.focus();
+            }
+        }, 50);
+        
+        // additional security: block autofill tricks (clean)
+        window.addEventListener('load', () => {
+            // ensure password field is cleared on any accidental cache
+            passwordField.value = '';
+            // if by any chance localStorage had leftover from previous session, we cleared it in resetLocalSession
+        });
+        
+        // one-time principle: if user tries to use browser back/forward cache, re-assert.
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted && isAuthorized) {
+                // already authorized, redirect to dashboard if user lands back
+                if (localStorage.getItem('username')) {
+                    window.location.href = 'dashboard.html';
+                }
+            } else if (!isAuthorized) {
+                // ensure form is fresh
+                if (usernameField.disabled === false && submitButton.disabled === false) {
+                    // all good
+                }
+            }
+        });
+        
+        // final note: after authorization, any submit attempt will be blocked by isAuthorized flag
+        console.log('Koveli Secure Gateway · ONE-TIME PASSWORD MODE (device auth)');
+    })();
+</script>
+</body>
+</html>
