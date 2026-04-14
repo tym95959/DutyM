@@ -265,6 +265,65 @@
             z-index: 10;
             backdrop-filter: blur(2px);
         }
+
+        /* NEW: Cash payment panel styles */
+        .cash-payment-panel {
+            background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+            border-radius: 12px;
+            padding: 12px;
+            margin: 12px 0;
+            border: 2px solid #6b8e23;
+            transition: all 0.2s;
+        }
+        .cash-field-group {
+            margin-bottom: 10px;
+        }
+        .cash-field-group label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #2c5234;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 5px;
+        }
+        .cash-input {
+            background: white;
+            border: 2px solid #6b8e23;
+            border-radius: 10px;
+            padding: 10px 12px;
+            width: 100%;
+            font-size: 16px;
+            font-weight: 600;
+            color: #2c5234;
+            text-align: right;
+        }
+        .cash-input:focus {
+            outline: none;
+            border-color: #e6b800;
+            box-shadow: 0 0 0 2px rgba(230,184,0,0.3);
+        }
+        .balance-display {
+            background: #fff9e6;
+            border-radius: 10px;
+            padding: 10px;
+            text-align: center;
+            margin-top: 8px;
+            border: 1px solid #e6b800;
+        }
+        .balance-display .balance-label {
+            font-size: 11px;
+            color: #8b6913;
+            font-weight: 600;
+        }
+        .balance-display .balance-value {
+            font-size: 22px;
+            font-weight: 800;
+            color: #6b8e23;
+        }
+        .balance-display .balance-negative {
+            color: #c68b5e;
+        }
     </style>
 </head>
 <body>
@@ -339,6 +398,19 @@
                         <div class="form-group"><label>RATE TYPE</label><select id="rateType"><option value="A">RATE A</option><option value="B">RATE B</option></select></div>
                         <div class="form-group"><label>PAYMENT</label><select id="paymentMethod"><option value="CASH">CASH</option><option value="CARD">CARD</option><option value="BANK TRANSFER">TRANSFER</option><option value="MOBILE PAYMENT">MOBILE</option><option value="VOUCHER">VOUCHER</option></select></div>
                     </div>
+                    
+                    <!-- NEW: CASH PAYMENT SECTION - appears when payment method is CASH -->
+                    <div id="cashPaymentPanel" class="cash-payment-panel" style="display: none;">
+                        <div class="cash-field-group">
+                            <label>💰 AMOUNT RECEIVED (CASH)</label>
+                            <input type="number" id="cashReceived" class="cash-input" step="0.01" placeholder="Enter amount received" value="0.00">
+                        </div>
+                        <div class="balance-display">
+                            <div class="balance-label">💵 CHANGE TO RETURN</div>
+                            <div class="balance-value" id="changeAmount">0.00</div>
+                        </div>
+                    </div>
+                    
                     <div class="grid-2"><div class="form-group"><label>DATE/TIME</label><input type="text" id="currentDateTime" readonly></div><div class="form-group"><label>GST RATE (%)</label><input type="text" id="gstRate" value="8" readonly></div></div>
                     <div class="grid-2"><div class="form-group"><label>RECEIPT NUMBER</label><input type="text" id="receiptNo" class="receipt-field" readonly placeholder="Auto"></div><div class="form-group"><label>EXPIRY TIME</label><input type="text" id="expiryTime" class="expiry-field" readonly placeholder="HH:MM:SS"></div></div>
                     
@@ -1166,6 +1238,34 @@ function setupNumberInputs() {
     });
 }
 
+// ========== NEW: Cash payment balance calculation ==========
+function updateCashBalance() {
+    const paymentMethod = document.getElementById('paymentMethod').value;
+    const cashPanel = document.getElementById('cashPaymentPanel');
+    const totalAmount = parseFloat(document.getElementById('totalAmount').textContent) || 0;
+    const cashReceived = parseFloat(document.getElementById('cashReceived').value) || 0;
+    const changeAmount = cashReceived - totalAmount;
+    const changeSpan = document.getElementById('changeAmount');
+    
+    if (changeSpan) {
+        changeSpan.textContent = changeAmount.toFixed(2);
+        if (changeAmount < 0) {
+            changeSpan.classList.add('balance-negative');
+        } else {
+            changeSpan.classList.remove('balance-negative');
+        }
+    }
+    
+    // Show/hide cash panel based on payment method
+    if (paymentMethod === 'CASH') {
+        cashPanel.style.display = 'block';
+    } else {
+        cashPanel.style.display = 'none';
+        document.getElementById('cashReceived').value = '0.00';
+        if (changeSpan) changeSpan.textContent = '0.00';
+    }
+}
+
 function calculatePrices() {
     if (typeof rates === 'undefined') { 
         console.error('rates object not found'); 
@@ -1232,6 +1332,9 @@ function calculatePrices() {
     }
     
     rateInfo.textContent = rateInfoText;
+    
+    // Update cash balance when prices change
+    updateCashBalance();
 }
 
 function updateTotalPassengers() {
@@ -1253,6 +1356,7 @@ function clearAllFields() {
     document.getElementById('rateType').value = 'A'; 
     document.getElementById('paymentMethod').value = 'CASH'; 
     document.getElementById('receiptNo').value = '';
+    document.getElementById('cashReceived').value = '0.00';
     
     submissionTime = null; 
     expiryTime = null; 
@@ -1262,6 +1366,7 @@ function clearAllFields() {
     document.getElementById('receiptNoDisplay').textContent = '______';
     
     updateTotalPassengers();
+    updateCashBalance();
     
     const statusMsg = document.getElementById('statusMessage'); 
     if (statusMsg) { 
@@ -1329,7 +1434,7 @@ function redirectToReceiptPage(transactionData, autoPrint = true, isVoid = false
     }
 }
 
-// ========== UPDATED SUBMIT FORM WITH REDIRECT AND CASHIER CHECK ==========
+// ========== UPDATED SUBMIT FORM WITH CASH VALIDATION AND REDIRECT ==========
 async function submitForm() {
     if (!currentUser.username) { 
         alert('Please log in first'); 
@@ -1356,6 +1461,19 @@ async function submitForm() {
     if (currentCashier.status !== 'OPEN') {
         alert('❌ CASHIER IS CLOSED - Cannot process payments. Please open cashier first.');
         return;
+    }
+    
+    // NEW: Validate cash payment if payment method is CASH
+    const paymentMethod = document.getElementById('paymentMethod').value;
+    const totalAmount = parseFloat(document.getElementById('totalAmount').textContent) || 0;
+    
+    if (paymentMethod === 'CASH') {
+        const cashReceived = parseFloat(document.getElementById('cashReceived').value) || 0;
+        if (cashReceived < totalAmount) {
+            alert(`⚠️ INSUFFICIENT CASH RECEIVED\n\nAmount Due: ${totalAmount.toFixed(2)} ${document.getElementById('currency').value}\nAmount Received: ${cashReceived.toFixed(2)} ${document.getElementById('currency').value}\n\nPlease enter the full amount.`);
+            document.getElementById('cashReceived').focus();
+            return;
+        }
     }
     
     const submitBtn = document.getElementById('submitBtn'); 
@@ -1388,7 +1506,7 @@ async function submitForm() {
             totalPassengers: parseInt(document.getElementById('totalPassengers').value) || 0, 
             currency: document.getElementById('currency').value, 
             rateType: document.getElementById('rateType').value, 
-            paymentMethod: document.getElementById('paymentMethod').value, 
+            paymentMethod: paymentMethod, 
             adultPrice: parseFloat(document.getElementById('adultPrice').textContent), 
             childrenPrice: parseFloat(document.getElementById('childrenPrice').textContent), 
             adultSubtotal: parseFloat(document.getElementById('adultSubtotal').textContent), 
@@ -1396,8 +1514,15 @@ async function submitForm() {
             subtotal: parseFloat(document.getElementById('subtotalAmount').textContent), 
             gstAmount: parseFloat(document.getElementById('gstAmount').textContent), 
             gstRate: parseInt(document.getElementById('gstRate').value), 
-            totalAmount: parseFloat(document.getElementById('totalAmount').textContent) 
+            totalAmount: totalAmount 
         };
+        
+        // NEW: Add cash payment details if payment method is CASH
+        if (paymentMethod === 'CASH') {
+            const cashReceived = parseFloat(document.getElementById('cashReceived').value) || 0;
+            paymentData.cashReceived = cashReceived;
+            paymentData.changeAmount = cashReceived - totalAmount;
+        }
         
         submissionTime = new Date(); 
         const expiryResult = calculateExpiryTime();
@@ -1466,7 +1591,7 @@ async function submitForm() {
     }
 }
 
-// ========== UPDATED PRINT RECEIPT FUNCTION WITH CASHIER CHECK ==========
+// ========== UPDATED PRINT RECEIPT FUNCTION WITH CASH DATA ==========
 function printCurrentReceipt() {
     if (!document.getElementById('pName').value) { 
         alert('Please scan a boarding pass first'); 
@@ -1484,6 +1609,11 @@ function printCurrentReceipt() {
     }
     
     // Build transaction data from current form
+    const paymentMethod = document.getElementById('paymentMethod').value;
+    const totalAmount = parseFloat(document.getElementById('totalAmount').textContent) || 0;
+    const cashReceived = parseFloat(document.getElementById('cashReceived').value) || 0;
+    const changeAmount = cashReceived - totalAmount;
+    
     const transactionData = {
         receiptNo: document.getElementById('receiptNo').value,
         passengerName: document.getElementById('pName').value,
@@ -1493,7 +1623,7 @@ function printCurrentReceipt() {
         children: document.getElementById('children').value,
         currency: document.getElementById('currency').value,
         rateType: document.getElementById('rateType').value,
-        paymentMethod: document.getElementById('paymentMethod').value,
+        paymentMethod: paymentMethod,
         adultPrice: document.getElementById('adultPrice').textContent,
         childrenPrice: document.getElementById('childrenPrice').textContent,
         adultSubtotal: document.getElementById('adultSubtotal').textContent,
@@ -1501,7 +1631,7 @@ function printCurrentReceipt() {
         subtotal: document.getElementById('subtotalAmount').textContent,
         gstAmount: document.getElementById('gstAmount').textContent,
         gstRate: document.getElementById('gstRate').value,
-        totalAmount: document.getElementById('totalAmount').textContent,
+        totalAmount: totalAmount,
         submissionDateTime: document.getElementById('currentDateTime').value,
         expiryTime: document.getElementById('expiryTime').value,
         shiftDate: currentShiftData.date,
@@ -1512,6 +1642,12 @@ function printCurrentReceipt() {
         exchangeRate: currentExchangeRate,
         isReprint: false
     };
+    
+    // Add cash payment data if applicable
+    if (paymentMethod === 'CASH') {
+        transactionData.cashReceived = cashReceived;
+        transactionData.changeAmount = changeAmount;
+    }
     
     redirectToReceiptPage(transactionData, true, false);
 }
@@ -1605,6 +1741,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const pNameField = document.getElementById('pName');
     const currencyField = document.getElementById('currency');
     const rateTypeField = document.getElementById('rateType');
+    const paymentMethodField = document.getElementById('paymentMethod');
+    const cashReceivedField = document.getElementById('cashReceived');
     const submitBtn = document.getElementById('submitBtn');
     const printReceiptBtn = document.getElementById('printReceiptBtn');
     const reprintReceiptBtn = document.getElementById('reprintReceiptBtn');
@@ -1652,6 +1790,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (currencyField) currencyField.addEventListener('change', calculatePrices);
     if (rateTypeField) rateTypeField.addEventListener('change', calculatePrices);
     
+    // NEW: Payment method change event to show/hide cash panel
+    if (paymentMethodField) paymentMethodField.addEventListener('change', updateCashBalance);
+    
+    // NEW: Cash received input event for real-time balance calculation
+    if (cashReceivedField) cashReceivedField.addEventListener('input', updateCashBalance);
+    
     // ===== CODE FIELD HANDLING (original) =====
     if (codeField) {
         codeField.addEventListener('keypress', function(e) { 
@@ -1668,12 +1812,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // ===== PASSENGER NAME FIELD HANDLING (allows scanning directly) =====
     if (pNameField) {
-        // Handle blur event
         pNameField.addEventListener('blur', function() {
             handlePassengerNameInput();
         });
         
-        // Handle Enter key press
         pNameField.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -1684,19 +1826,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // Handle paste event for barcode scanners
         pNameField.addEventListener('paste', function(e) {
             setTimeout(() => {
                 handlePassengerNameInput();
             }, 10);
         });
         
-        // Auto-capitalize
         pNameField.addEventListener('input', function() {
             this.value = this.value.toUpperCase();
         });
         
-        // Double-click as alternative trigger
         pNameField.addEventListener('dblclick', function() {
             handlePassengerNameInput();
         });
@@ -1738,6 +1877,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('UPDATED: No cashier status, rcno, level, shiftDateStandardized, loginTime saved');
     console.log('UPDATED: Pending count only shows transactions missing approvalCode or batchNo');
     console.log('UPDATED: Document ID is now the receipt number');
+    console.log('NEW FEATURE: Cash payment with amount received and change calculation added');
 });
 </script>
 </body>
