@@ -26,8 +26,8 @@ const users = [
    { username: "Hassan", name: "Hassan Haneef", passwordHash: "aee651be73c9084e024798b3b10ac19ccbf2a905e70571118dd757fc4c99e54a",  Level: "User", RCNo: "A-3464"},
   { username: "Ruhushath", name: "Ruhushath Ahmed", passwordHash: "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",  Level: "User", RCNo: "A-8089" },
   { username: "Shiara", name: "Shiara Saudulla", passwordHash: "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",  Level: "Supervisor", RCNo: "A-7503" },
-   { username: "Soba", name: "Mohamed Sobah", passwordHash: "601e7aa858d36beadd3cc282de3afd3254397d48ccae8c2bedadcf04a51f0c2f", Level: "Supervisor", RCNo: "T-0160" },
-  { username: "Mushrifa", name: "Musrifa Riyaz", passwordHash: "557808176cfefce664c3694042b720e1be6a41974527178598622edc21dc6d9d", Level: "Supervisor", RCNo: "T-0112" },
+  { username: "Sobah", name: "Mohamed Sobah", passwordHash: "4cc7500fcddea01a62dadb5794b568dfbe2368ea6e634392cff2ab816ef09a66", Level: "Supervisor" },
+    { username: "Musrifa", name: "Musrifa Riyaz", passwordHash: "823f58f7ba0419e9517308d9b64bace8b69634094e6f99efc5516bbefadb206e", Level: "Supervisor" },
   { username: "Sadhina", name: "Sadhina Mohamed", passwordHash: "557808176cfefce664c3694042b720e1be6a41974527178598622edc21dc6d9d", Level: "User", RCNo: "A-10886" },
 
   
