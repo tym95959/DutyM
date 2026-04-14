@@ -10,6 +10,7 @@
         - If device NOT authorized: show device master password prompt
         - If device IS authorized: show normal user login (username + password)
         - No redirects between windows - seamless transition in same window
+        - Device authorization is PERSISTENT across page refreshes (localStorage)
         ==================================================================
         
         Required external files:
@@ -306,6 +307,28 @@
             color: #8f7a51;
             cursor: default;
         }
+        
+        /* Reset button style for advanced users */
+        .reset-link {
+            text-align: center;
+            margin-top: 12px;
+            font-size: 0.7rem;
+        }
+        .reset-link button {
+            background: none;
+            border: none;
+            color: #c49a6c;
+            text-decoration: underline;
+            cursor: pointer;
+            font-size: 0.7rem;
+            padding: 4px 8px;
+            border-radius: 20px;
+            transition: 0.2s;
+        }
+        .reset-link button:hover {
+            background: #f5ebd8;
+            color: #8b5e2c;
+        }
     </style>
 </head>
 <body>
@@ -340,6 +363,9 @@
             <span>🔔</span>
             <span>First-time setup: Enter device master password to register this device.</span>
         </div>
+        <div class="reset-link" id="deviceResetNote" style="display: none;">
+            <!-- placeholder for consistency -->
+        </div>
     </div>
 
     <!-- PANEL 2: User Login (shown when device IS authorized) -->
@@ -366,6 +392,9 @@
             <span>👋</span>
             <span>Device authorized. Please enter your user credentials.</span>
         </div>
+        <div class="reset-link">
+            <button type="button" id="resetDeviceBtn">⟳ Reset device authorization (clear stored key)</button>
+        </div>
     </div>
 
     <div class="footer-security">
@@ -378,19 +407,18 @@
 <script>
     (function() {
         // ==================================================================
-        // KOVELI SINGLE-WINDOW TWO-STEP AUTHENTICATION
+        // KOVELI SINGLE-WINDOW TWO-STEP AUTHENTICATION - PERSISTENT DEVICE AUTH
         // ==================================================================
-        // BEHAVIOR:
-        // - If device NOT authorized → show device password panel
-        // - After device password success → save to localStorage, SWITCH to user panel
-        // - If device IS authorized (on page load) → directly show user panel
-        // - No redirects, no new windows — seamless transition
+        // BEHAVIOR FIX: 
+        // - Device authorization is saved in localStorage with key 'koveli_device_authorized'
+        // - Once entered correctly, it NEVER asks again unless manually reset.
+        // - Page reloads or revisits will show user login panel directly.
+        // - No multiple prompts. Exactly one-time device verification.
         // ==================================================================
 
-        // Storage keys
         const DEVICE_AUTH_KEY = 'koveli_device_authorized';
         
-        // DOM elements - Device Panel
+        // DOM elements
         const devicePanel = document.getElementById('devicePanel');
         const userPanel = document.getElementById('userPanel');
         const devicePasswordInput = document.getElementById('devicePassword');
@@ -398,14 +426,13 @@
         const deviceMessageDiv = document.getElementById('deviceMessage');
         const toggleDevicePw = document.getElementById('toggleDevicePw');
         
-        // DOM elements - User Panel
         const usernameInput = document.getElementById('username');
         const userPasswordInput = document.getElementById('userPassword');
         const userAuthBtn = document.getElementById('userAuthBtn');
         const userMessageDiv = document.getElementById('userMessage');
         const toggleUserPw = document.getElementById('toggleUserPw');
+        const resetDeviceBtn = document.getElementById('resetDeviceBtn');
         
-        // Header elements
         const logoBadge = document.getElementById('logoBadge');
         const mainTitle = document.getElementById('mainTitle');
         const subText = document.getElementById('subText');
@@ -413,27 +440,27 @@
         
         let isProcessing = false;
 
-        // Helper: Set device panel message
+        // Helper: Device panel messages
         function setDeviceMessage(text, type = 'info') {
             const msgSpan = deviceMessageDiv.querySelector('span:last-child');
-            msgSpan.innerText = text;
+            if (msgSpan) msgSpan.innerText = text;
             deviceMessageDiv.className = 'message-panel';
             if (type === 'error') deviceMessageDiv.classList.add('error');
             else if (type === 'success') deviceMessageDiv.classList.add('success');
             else if (type === 'warning') deviceMessageDiv.classList.add('warning');
         }
 
-        // Helper: Set user panel message
+        // Helper: User panel messages
         function setUserMessage(text, type = 'info') {
             const msgSpan = userMessageDiv.querySelector('span:last-child');
-            msgSpan.innerText = text;
+            if (msgSpan) msgSpan.innerText = text;
             userMessageDiv.className = 'message-panel';
             if (type === 'error') userMessageDiv.classList.add('error');
             else if (type === 'success') userMessageDiv.classList.add('success');
             else if (type === 'warning') userMessageDiv.classList.add('warning');
         }
 
-        // Check if device is already authorized
+        // Check if device is already authorized (persistent)
         function isDeviceAuthorized() {
             return localStorage.getItem(DEVICE_AUTH_KEY) === 'true';
         }
@@ -444,38 +471,42 @@
             localStorage.setItem('koveli_device_auth_time', new Date().toISOString());
         }
 
-        // Clear device auth (optional logout function - can be called from console if needed)
-        window.clearDeviceAuth = function() {
+        // Clear device auth (manual reset)
+        function resetDeviceAuthorization() {
             localStorage.removeItem(DEVICE_AUTH_KEY);
             localStorage.removeItem('koveli_device_auth_time');
-            location.reload();
-        };
+            // Also clear any user leftover data for clean state
+            localStorage.removeItem('username');
+            localStorage.removeItem('level');
+            localStorage.removeItem('rcno');
+            localStorage.removeItem('loggedInUser');
+            // Reload page to show device panel again
+            window.location.reload();
+        }
 
-        // Check if deviceauth.js config is loaded
+        // Expose reset globally for debugging if needed
+        window.clearDeviceAuth = resetDeviceAuthorization;
+
+        // Verify deviceauth.js config
         function isDeviceConfigLoaded() {
-            if (typeof window.AUTH_CONFIG === 'undefined') {
-                setDeviceMessage('❌ deviceauth.js not loaded. Please ensure the file exists.', 'error');
-                deviceAuthBtn.disabled = true;
-                return false;
-            }
-            if (!window.AUTH_CONFIG.deviceMasterPassword) {
-                setDeviceMessage('❌ Configuration error: deviceMasterPassword missing in deviceauth.js', 'error');
+            if (typeof window.AUTH_CONFIG === 'undefined' || !window.AUTH_CONFIG.deviceMasterPassword) {
+                setDeviceMessage('❌ deviceauth.js missing or invalid configuration.', 'error');
                 deviceAuthBtn.disabled = true;
                 return false;
             }
             return true;
         }
 
-        // Check if users.js is loaded
+        // Verify users.js loaded
         function isUsersLoaded() {
             if (typeof users === 'undefined' || !Array.isArray(users)) {
-                setUserMessage('❌ users.js not loaded or invalid. Cannot authenticate user.', 'error');
+                setUserMessage('❌ users.js not loaded or invalid. Cannot authenticate.', 'error');
                 return false;
             }
             return true;
         }
 
-        // ==================== DEVICE AUTHORIZATION ====================
+        // ==================== DEVICE AUTHORIZATION (ONLY ONCE) ====================
         function authorizeDevice() {
             const enteredPassword = devicePasswordInput.value;
             
@@ -487,27 +518,27 @@
             const correctPassword = window.AUTH_CONFIG.deviceMasterPassword;
             
             if (enteredPassword !== correctPassword) {
-                setDeviceMessage('❌ Invalid device master password.', 'error');
+                setDeviceMessage('❌ Invalid device master password. Access denied.', 'error');
                 devicePasswordInput.value = '';
                 devicePasswordInput.focus();
                 return false;
             }
 
-            // SUCCESS: Authorize device
+            // SUCCESS: store authorization and switch to user panel permanently
             markDeviceAuthorized();
-            setDeviceMessage('✅ Device authorized successfully! Loading login panel...', 'success');
+            setDeviceMessage('✅ Device authorized successfully! Redirecting to login...', 'success');
             
-            // Switch to user panel after brief delay
+            // Slight delay before switching panels
             setTimeout(() => {
                 switchToUserPanel();
-            }, 800);
+            }, 700);
             
             return true;
         }
 
-        // ==================== SWITCH TO USER PANEL ====================
+        // ==================== SWITCH TO USER PANEL (AUTHORIZED STATE) ====================
         function switchToUserPanel() {
-            // Animate transition
+            // Fade out device panel, show user panel
             devicePanel.style.opacity = '0';
             userPanel.style.opacity = '0';
             
@@ -516,7 +547,7 @@
                 userPanel.classList.remove('hidden-panel');
                 userPanel.classList.add('transition-fade');
                 
-                // Update header UI
+                // Update header visuals to indicate authorized device
                 logoBadge.classList.add('authorized');
                 logoBadge.innerHTML = '<span>✅</span> DEVICE AUTHORIZED';
                 mainTitle.innerHTML = 'Welcome Back';
@@ -526,17 +557,15 @@
                 statusChip.style.color = '#2a5c0c';
                 
                 userPanel.style.opacity = '1';
+                setUserMessage('Device already verified. Please enter your credentials.', 'success');
                 
-                // Focus on username field
                 setTimeout(() => {
                     usernameInput.focus();
-                }, 100);
+                }, 120);
             }, 200);
         }
 
-        // ==================== USER AUTHENTICATION (from users.js) ====================
-        
-        // SHA-256 hash function
+        // ==================== USER AUTHENTICATION (SHA-256) ====================
         async function hashPassword(password) {
             const encoder = new TextEncoder();
             const data = encoder.encode(password);
@@ -545,7 +574,6 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        // Authenticate user
         async function authenticateUser(username, password) {
             if (!username.trim() || !password) {
                 setUserMessage('⚠️ Please enter both username and password.', 'warning');
@@ -554,7 +582,6 @@
             
             if (!isUsersLoaded()) return false;
             
-            // Find user (case-insensitive)
             const matchedUser = users.find(u => 
                 u.username && u.username.toLowerCase() === username.trim().toLowerCase()
             );
@@ -571,7 +598,7 @@
                     return false;
                 }
                 
-                // SUCCESS: Store user data for dashboard
+                // Store user session data
                 const level = matchedUser.Level || matchedUser.level || 'operator';
                 const rcno = matchedUser.RCNo || matchedUser.rcno || matchedUser.RCno || 'N/A';
                 
@@ -589,8 +616,6 @@
                 localStorage.setItem('loggedInUser', JSON.stringify(userProfile));
                 
                 setUserMessage('✅ Login successful! Redirecting to dashboard...', 'success');
-                
-                // Disable inputs during redirect
                 userAuthBtn.disabled = true;
                 usernameInput.disabled = true;
                 userPasswordInput.disabled = true;
@@ -607,9 +632,9 @@
             }
         }
 
-        // ==================== EVENT HANDLERS ====================
+        // ==================== EVENT LISTENERS ====================
         
-        // Device authorization button
+        // Device authorization
         deviceAuthBtn.addEventListener('click', async () => {
             if (isProcessing) return;
             if (!isDeviceConfigLoaded()) return;
@@ -619,18 +644,21 @@
             const originalText = deviceAuthBtn.innerHTML;
             deviceAuthBtn.innerHTML = `<span class="loader-icon"></span> Verifying device...`;
             
+            // slight delay to show loader
             setTimeout(() => {
-                authorizeDevice();
-                if (!isDeviceAuthorized()) {
-                    // Failed
+                const success = authorizeDevice();
+                if (!success) {
                     deviceAuthBtn.disabled = false;
                     deviceAuthBtn.innerHTML = originalText;
+                } else {
+                    // If success, button remains disabled during transition (userPanel will take over)
+                    // but we don't revert.
                 }
                 isProcessing = false;
-            }, 300);
+            }, 200);
         });
-
-        // User login button
+        
+        // User login
         userAuthBtn.addEventListener('click', async () => {
             if (isProcessing) return;
             
@@ -649,8 +677,8 @@
             
             try {
                 await authenticateUser(username, password);
+                // If login fails, re-enable button
                 if (!localStorage.getItem('username')) {
-                    // Login failed
                     userAuthBtn.disabled = false;
                     userAuthBtn.innerHTML = originalText;
                     userPasswordInput.value = '';
@@ -666,7 +694,16 @@
             }
         });
         
-        // Enter key support
+        // Reset device authorization (only shown in user panel)
+        if (resetDeviceBtn) {
+            resetDeviceBtn.addEventListener('click', () => {
+                if (confirm('⚠️ WARNING: This will reset device authorization. You will need to enter the device master password again on next access. Are you sure?')) {
+                    resetDeviceAuthorization();
+                }
+            });
+        }
+        
+        // Enter key handlers
         devicePasswordInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') deviceAuthBtn.click();
         });
@@ -692,12 +729,13 @@
             toggleUserPw.textContent = type === 'password' ? '👁️' : '🙈';
         });
         
-        // ==================== INITIALIZATION ====================
-        // Determine which panel to show based on device authorization status
-        
+        // ==================== INITIALIZATION (CRITICAL: single device check) ====================
         function initialize() {
-            if (isDeviceAuthorized()) {
-                // Device already authorized → show user panel directly
+            // Check device authorization status from localStorage
+            const deviceAuthorized = isDeviceAuthorized();
+            
+            if (deviceAuthorized) {
+                // Device already authorized → directly show user panel, no extra prompts
                 devicePanel.classList.add('hidden-panel');
                 userPanel.classList.remove('hidden-panel');
                 userPanel.classList.add('transition-fade');
@@ -711,26 +749,37 @@
                 statusChip.style.background = '#eaf7e1';
                 statusChip.style.color = '#2a5c0c';
                 
-                setUserMessage('Device already authorized. Please enter your credentials.', 'info');
-                setTimeout(() => usernameInput.focus(), 100);
+                setUserMessage('Device already verified. Please enter your credentials to continue.', 'success');
+                setTimeout(() => {
+                    if (usernameInput) usernameInput.focus();
+                }, 100);
             } else {
-                // Device not authorized → show device panel
+                // No device authorization stored → show device panel (first-time setup)
                 devicePanel.classList.remove('hidden-panel');
                 userPanel.classList.add('hidden-panel');
                 
-                // Check config and focus
+                // Check if config exists, if not display warning
                 setTimeout(() => {
                     if (isDeviceConfigLoaded()) {
                         devicePasswordInput.focus();
+                    } else {
+                        setDeviceMessage('⚠️ Configuration not loaded. Please ensure deviceauth.js defines AUTH_CONFIG.', 'error');
                     }
                 }, 50);
             }
         }
         
-        // Wait for all scripts to load
-        setTimeout(initialize, 50);
+        // Wait for both external scripts (deviceauth.js, users.js) to load.
+        // Use a short delay to ensure they are evaluated.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                setTimeout(initialize, 30);
+            });
+        } else {
+            setTimeout(initialize, 30);
+        }
         
-        console.log('Koveli Secure Access · Device-first then user login (single window)');
+        console.log('Koveli Secure Access: persistent device authorization (single window, one-time master password)');
     })();
 </script>
 </body>
