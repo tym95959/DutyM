@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Koveli Receipt | EPSON TM-T88VII | Printable Area Adjusted</title>
+    <!-- Firebase SDK - compatibility with fireshift.js -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- fireshift.js is expected to initialize passengerDb and Firebase config -->
+    <script src="fireshift.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* EPSON TM-T88VII (Model M371A) - FIX FOR LEFT SIDE CUTOFF
+           Problem: Some text on left edge was outside printer's printable area
+           Solution: Shift entire content right by adding left padding/margin
+           that compensates for printer's mechanical margin (typically 1-2mm)
+        */
+        body {
+            background: #e2e6e9;
+            font-family: 'Courier New', 'Lucida Console', 'Fira Code', monospace;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* WRAPPER - paper width 80mm, with left offset to avoid printer dead zone */
+        .receipt-wrapper {
+            width: 80mm;
+            max-width: 80mm;
+            min-width: 80mm;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            /* CRITICAL FIX: Left padding shifts content right into printable area
+               EPSON TM-T88VII has ~1.5-2mm unprintable left margin
+               Adding 2.5mm ensures all text starts after the mechanical dead zone */
+            padding: 0 0 0 2.5mm;
+            position: relative;
+            page-break-after: avoid;
+            break-inside: avoid;
+        }
+
+        /* ========= ENHANCED VOID WATERMARK - HIGH VISIBILITY ========= */
+        .void-watermark {
+            position: absolute !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) rotate(-42deg) !important;
+            font-size: 48pt !important;
+            font-weight: 900 !important;
+            color: rgba(200, 30, 55, 0.7) !important;
+            white-space: nowrap !important;
+            pointer-events: none !important;
+            z-index: 9999 !important;
+            font-family: 'Arial Black', 'Impact', 'Helvetica Bold', sans-serif !important;
+            text-transform: uppercase !important;
+            border: 4px double rgba(200, 30, 55, 0.8) !important;
+            padding: 8px 28px !important;
+            letter-spacing: 10px !important;
+            background: rgba(255, 248, 235, 0.3) !important;
+            border-radius: 4px;
+            text-shadow: 1px 1px 0 rgba(0,0,0,0.1);
+        }
+
+        /* CRITICAL PRINT OPTIMIZATION - SHIFT CONTENT RIGHT FOR EPSON */
+        @media print {
+            @page {
+                size: 80mm auto;
+                /* Printer's physical margin: typically 1-2mm on left
+                   We set @page margin to 0 but content shift handles it */
+                margin: 0mm !important;
+                padding: 0mm !important;
+            }
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: white !important;
+                width: 80mm !important;
+                min-width: 80mm !important;
+            }
+            body {
+                margin: 0 !important;
+                padding: 0 !important;
+                display: block !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .receipt-wrapper {
+                width: 80mm !important;
+                max-width: 80mm !important;
+                min-width: 80mm !important;
+                margin: 0 !important;
+                /* CRITICAL: Left padding ensures text starts AFTER printer's unprintable zone */
+                padding: 0 0 0 2.5mm !important;
+                box-shadow: none !important;
+                background: white !important;
+                page-break-inside: avoid !important;
+                page-break-after: avoid !important;
+                break-inside: avoid !important;
+            }
+            .receipt {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+            }
+            .void-watermark {
+                color: rgba(180, 20, 45, 0.65) !important;
+                border-color: rgba(180, 20, 45, 0.75) !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .transaction-codes, .validity-block, .reprint-mark {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+
+        /* RECEIPT BASE STYLES - COMPACT, CONTENT ALIGNED PROPERLY */
+        .receipt {
+            font-family: 'Courier New', 'Lucida Console', monospace;
+            font-size: 10pt;
+            line-height: 1.28;
+            color: #000000;
+            width: 100%;
+            position: relative;
+            z-index: 1;
+            /* No left padding here - wrapper handles the shift */
+            padding: 1mm 1.5mm 1mm 0;
+            margin: 0;
+        }
+
+        /* HEADER - TIGHT */
+        .receipt-header {
+            text-align: center;
+            margin-bottom: 1.5mm;
+            border-bottom: 2px solid #000;
+            padding-bottom: 1.2mm;
+        }
+        .company-name {
+            font-size: 14pt;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .company-address {
+            font-size: 7.8pt;
+            line-height: 1.2;
+        }
+        .company-details {
+            font-size: 7.5pt;
+            margin-top: 0.5mm;
+        }
+        .reprint-mark {
+            text-align: center;
+            font-weight: bold;
+            margin: 1.2mm 0;
+            padding: 0.8mm;
+            border: 1.5px solid #000;
+            background: #faf0db;
+            text-transform: uppercase;
+            font-size: 8.5pt;
+            letter-spacing: 1px;
+        }
+        .divider {
+            border-top: 2px solid #000;
+            margin: 1.2mm 0;
+        }
+        .divider-light {
+            border-top: 1px solid #000;
+            margin: 0.8mm 0;
+        }
+        .divider-dash {
+            border-top: 1px dashed #222;
+            margin: 0.8mm 0;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.4mm 0;
+        }
+        .row .label {
+            font-weight: 800;
+        }
+        .passenger-name {
+            text-align: center;
+            font-size: 11pt;
+            font-weight: bold;
+            margin: 1mm 0;
+            padding: 0.8mm;
+            border: 1px solid #000;
+            background: #fef7e0;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .flight-details {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin: 0.8mm 0;
+            padding: 0.5mm 0;
+            border-bottom: 1px solid #000;
+            border-top: 1px solid #000;
+        }
+        .items-table {
+            margin: 0.8mm 0;
+        }
+        .item-header {
+            display: flex;
+            font-weight: 800;
+            border-bottom: 1px solid #000;
+            padding-bottom: 0.4mm;
+            margin-bottom: 0.4mm;
+            font-size: 9.2pt;
+        }
+        .item-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.3mm 0;
+        }
+        .item-desc { flex: 3; }
+        .item-qty { flex: 1; text-align: center; }
+        .item-price { flex: 2; text-align: right; }
+        .item-total { flex: 2; text-align: right; font-weight: bold; }
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 900;
+            font-size: 10.8pt;
+            margin: 0.8mm 0;
+            padding: 0.6mm 0;
+            border-top: 2px solid #000;
+            border-bottom: 1px solid #000;
+        }
+        .subtotal-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.3mm 0;
+        }
+        .payment-info {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.5mm 0;
+            font-weight: bold;
+            padding: 0.2mm 0;
+        }
+        /* TRANSACTION CODES - PROMINENT SECTION */
+        .transaction-codes {
+            margin: 1.2mm 0;
+            padding: 0.8mm 0.5mm;
+            font-size: 9.2pt;
+            border-top: 1.5px solid #000;
+            border-bottom: 1.5px solid #000;
+            background: #fef3da;
+            font-weight: bold;
+        }
+        .code-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.4mm 0;
+            font-weight: 800;
+        }
+        .code-label {
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .code-value {
+            font-family: monospace;
+            letter-spacing: 0.5px;
+            font-weight: bold;
+            background: #fff3db;
+            padding: 0 2px;
+        }
+        .validity-block {
+            text-align: center;
+            border: 1.5px solid #000;
+            padding: 1.2mm;
+            margin: 1.5mm 0;
+            background: #fffef5;
+        }
+        .valid-label {
+            font-size: 8.8pt;
+            font-weight: 800;
+        }
+        .expiry-time {
+            font-size: 20pt;
+            font-weight: 900;
+            line-height: 1.15;
+            margin: 0.5mm 0;
+            font-family: monospace;
+        }
+        .exchange-rate {
+            font-size: 7.8pt;
+            text-align: right;
+            margin: 0.3mm 0;
+            font-weight: 500;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 1.2mm;
+            padding-top: 0.8mm;
+            border-top: 1px dotted #000;
+        }
+        .thank-you {
+            font-size: 10pt;
+            font-weight: bold;
+            margin: 0.5mm 0;
+        }
+        .footer-note {
+            font-size: 7.5pt;
+        }
+        .loading, .error-message {
+            text-align: center;
+            padding: 15px;
+            font-family: monospace;
+        }
+        .error-message {
+            color: #b34e1a;
+            font-weight: bold;
+        }
+        .print-controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .print-btn, .back-btn {
+            background: #1e3c2c;
+            color: white;
+            border: none;
+            padding: 10px 26px;
+            border-radius: 44px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: system-ui, monospace;
+            transition: 0.2s;
+            text-decoration: none;
+            display: inline-block;
+            margin: 0 8px;
+            border: 1px solid #c2a144;
+        }
+        .print-btn:hover, .back-btn:hover {
+            transform: translateY(-1px);
+            background: #2b543b;
+        }
+        .back-btn {
+            background: #7a5d2e;
+        }
+        
+        /* Additional safety: ensure text never gets clipped on left even in extreme cases */
+        .receipt *:first-child {
+            margin-left: 0;
+        }
+    </style>
+</head>
+<body>
+<div class="receipt-wrapper" id="receiptWrapper">
+    <div class="receipt" id="receipt">
+        <div class="loading" id="loadingMessage">
+            <p>⟳ Loading receipt data ...</p>
+        </div>
+        <div class="error-message" id="errorMessage" style="display: none;">
+            <p>⚠️ Unable to load receipt. Please verify transaction.</p>
+        </div>
+        <div class="receipt-data" id="receiptData" style="display: none;"></div>
+    </div>
+</div>
+
+<div class="print-controls no-print">
+    <button class="print-btn" id="printReceiptBtn" onclick="window.print()">🖨️ PRINT RECEIPT</button>
+    <a href="#" class="back-btn" id="backBtn">← BACK</a>
+</div>
+
+<script>
+    // =============== KOVELI RECEIPT - EPSON TM-T88VII LEFT EDGE FIX ===============
+    // Problem: Left side text was outside printer's printable area
+    // Solution: Added 2.5mm left padding to wrapper - shifts entire content right
+    // This compensates for EPSON's mechanical margin (typically 1.5-2mm unprintable zone)
+    
+    (function(){
+        const loadingEl = document.getElementById('loadingMessage');
+        const errorEl = document.getElementById('errorMessage');
+        const receiptDataDiv = document.getElementById('receiptData');
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const receiptDataParam = urlParams.get('data');
+        const receiptNoParam = urlParams.get('receiptNo');
+        const reprintParam = urlParams.get('reprint') === 'true';
+        const voidParam = urlParams.get('void') === 'true';
+        const autoPrintFlag = urlParams.get('autoPrint') === 'true';
+        
+        let receiptMaster = null;
+        
+        function debugLog(msg) { console.log(`[TM88-LEFT-FIX] ${msg}`); }
+        
+        function formatAmount(val) {
+            if (val === undefined || val === null) return '0.00';
+            return parseFloat(val).toFixed(2);
+        }
+        
+        function removeVoidWatermark() {
+            const existing = document.querySelector('.void-watermark');
+            if (existing) existing.remove();
+        }
+        
+        function addVoidWatermark() {
+            removeVoidWatermark();
+            const wrapper = document.getElementById('receiptWrapper');
+            if (!wrapper) return false;
+            const watermarkDiv = document.createElement('div');
+            watermarkDiv.className = 'void-watermark';
+            watermarkDiv.textContent = 'VOID';
+            watermarkDiv.setAttribute('aria-label', 'VOID TRANSACTION');
+            wrapper.style.position = 'relative';
+            wrapper.appendChild(watermarkDiv);
+            debugLog('✅ VOID watermark applied');
+            return true;
+        }
+        
+        function isReceiptVoided(data) {
+            if (!data) return false;
+            if (voidParam === true) return true;
+            if (data.paymentStatus && String(data.paymentStatus).toUpperCase() === 'VOID') return true;
+            const alternativeFlags = [data.status === 'VOID', data.isVoid === true, data.voided === true, data.transactionStatus === 'VOID', data.receiptStatus === 'VOID'];
+            return alternativeFlags.some(v => v === true);
+        }
+        
+        function getBatchCode(data) {
+            return data.batchNo || data.batchNumber || data.batch || data.batchCode || '';
+        }
+        function getApprovalCode(data) {
+            return data.approvalCode || data.authCode || data.authorizationCode || data.approval || data.authNumber || '';
+        }
+        
+        function hasTransactionCodes(data) {
+            const batch = getBatchCode(data);
+            const approval = getApprovalCode(data);
+            return (batch && batch.trim() !== '') || (approval && approval.trim() !== '');
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+        
+        // Generate receipt HTML - all content will be shifted right by wrapper's left padding
+        function generateReceiptHTML(data) {
+            const isReprint = reprintParam || data.isReprint === true;
+            const reprintMarkup = isReprint ? '<div class="reprint-mark">*** REPRINT COPY ***</div>' : '';
+            
+            let rawDateTime = data.submissionDateTime || data.dateTime || data.createdAt || data.transactionDate || data.timestamp || '';
+            let datePart = data.shiftDate || data.date || '';
+            let timePart = '';
+            if (rawDateTime) {
+                if (rawDateTime.includes('T')) {
+                    const isoParts = rawDateTime.split('T');
+                    datePart = isoParts[0];
+                    timePart = isoParts[1]?.substring(0,8) || '';
+                } else if (rawDateTime.includes(' ')) {
+                    const sp = rawDateTime.split(' ');
+                    datePart = sp[0];
+                    timePart = sp[1];
+                } else {
+                    datePart = rawDateTime;
+                }
+            }
+            if (datePart && datePart.includes('-')) {
+                const seg = datePart.split('-');
+                if(seg.length === 3) datePart = `${seg[2]}/${seg[1]}/${seg[0]}`;
+            }
+            
+            const currency = data.currency || 'USD';
+            const adultCount = parseInt(data.adult || 0);
+            const childCount = parseInt(data.children || 0);
+            const adultPrice = formatAmount(data.adultPrice);
+            const childPrice = formatAmount(data.childrenPrice);
+            const adultSub = formatAmount(data.adultSubtotal);
+            const childSub = formatAmount(data.childrenSubtotal);
+            const subtotal = formatAmount(data.subtotal);
+            const gst = formatAmount(data.gstAmount);
+            const totalAmt = formatAmount(data.totalAmount);
+            const gstRate = data.gstRate || 8;
+            
+            const cashierName = data.cashierName || data.user?.cashierName || data.user?.username || data.cashier || 'STAFF';
+            const rcNo = data.userRcno || data.user?.rcno || data.user?.rcNo || data.cashierRcno || 'N/A';
+            
+            const batchNumber = getBatchCode(data);
+            const approvalCodeValue = getApprovalCode(data);
+            
+            let transactionHtml = '';
+            if (hasTransactionCodes(data)) {
+                transactionHtml = `<div class="transaction-codes">
+                    ${batchNumber ? `<div class="code-row"><span class="code-label">BATCH NO:</span><span class="code-value">${escapeHtml(batchNumber)}</span></div>` : ''}
+                    ${approvalCodeValue ? `<div class="code-row"><span class="code-label">APPROVAL CODE:</span><span class="code-value">${escapeHtml(approvalCodeValue)}</span></div>` : ''}
+                </div>`;
+            }
+            
+            const exchangeRateHtml = (currency === 'MVR' && data.exchangeRate) ? 
+                `<div class="exchange-rate">1 USD = ${parseFloat(data.exchangeRate).toFixed(2)} MVR</div>` : '';
+            
+            const expiryDisplay = data.expiryTime || data.expiryDisplay || '--:--:--';
+            const passengerDisplay = data.passengerName ? escapeHtml(data.passengerName) : 'GUEST';
+            
+            return `
+                <div class="receipt-header">
+                    <div class="company-name">KOVELI LOUNGE</div>
+                    <div class="company-address">VELANA INTERNATIONAL AIRPORT - MLE</div>
+                    <div class="company-details">TEL: +960 304 6677</div>
+                </div>
+                ${reprintMarkup}
+                <div class="divider-light"></div>
+                <div class="row"><span class="label">Receipt No:</span><span class="value"><strong>${escapeHtml(data.receiptNo || 'N/A')}</strong></span></div>
+                <div class="row"><span class="label">Date:</span><span class="value">${datePart || 'N/A'} ${timePart ? timePart : ''}</span></div>
+                <div class="row"><span class="label">Shift:</span><span class="value">${escapeHtml(data.shift || data.shiftName || 'MORNING')}</span></div>
+                <div class="row"><span class="label">Cashier:</span><span class="value">${escapeHtml(cashierName)}</span></div>
+                <div class="row"><span class="label">RC No:</span><span class="value">${escapeHtml(rcNo)}</span></div>
+                <div class="divider"></div>
+                <div class="passenger-name">✈️ ${passengerDisplay} ✈️</div>
+                <div class="flight-details"><span>FLIGHT: ${escapeHtml(data.flightNo || '---')}</span><span>SEAT: ${escapeHtml(data.seatNo || '---')}</span></div>
+                <div class="divider-light"></div>
+                <div class="items-table">
+                    <div class="item-header"><span class="item-desc">Description</span><span class="item-qty">Qty</span><span class="item-price">Price</span><span class="item-total">Total</span></div>
+                    <div class="item-row"><span class="item-desc">Adult Lounge Access</span><span class="item-qty">${adultCount}</span><span class="item-price">${currency} ${adultPrice}</span><span class="item-total">${currency} ${adultSub}</span></div>
+                    ${childCount > 0 ? `<div class="item-row"><span class="item-desc">Child Access (2-12y)</span><span class="item-qty">${childCount}</span><span class="item-price">${currency} ${childPrice}</span><span class="item-total">${currency} ${childSub}</span></div>` : ''}
+                </div>
+                <div class="divider-dash"></div>
+                <div class="subtotal-row"><span>Subtotal:</span><span>${currency} ${subtotal}</span></div>
+                <div class="subtotal-row"><span>GST ${gstRate}%:</span><span>${currency} ${gst}</span></div>
+                <div class="total-row"><span>TOTAL (incl. tax):</span><span>${currency} ${totalAmt}</span></div>
+                <div class="payment-info"><span>Payment Method:</span><span>${escapeHtml(data.paymentMethod || 'CASH')}</span></div>
+                ${transactionHtml}
+                ${exchangeRateHtml}
+                <div class="validity-block">
+                    <div class="valid-label">✓ LOUNGE ACCESS VALID UNTIL</div>
+                    <div class="expiry-time">${escapeHtml(expiryDisplay)}</div>
+                    <div class="valid-note" style="font-size:7.5pt;">(3 hours from issuance - boarding pass required)</div>
+                </div>
+                <div class="footer">
+                    <div class="thank-you">✈️ THANK YOU ✈️</div>
+                    <div class="footer-note">Koveli Lounge</div>
+                    <div class="footer-note" style="font-size:6.8pt;">Present this receipt at lounge entrance</div>
+                </div>
+            `;
+        }
+        
+        async function fetchReceiptFromFB(receiptNumber) {
+            if (typeof passengerDb === 'undefined') {
+                debugLog('ERROR: passengerDb not available from fireshift.js');
+                throw new Error('Firestore connection missing');
+            }
+            debugLog(`Querying Kovelipay collection for receiptNo: ${receiptNumber}`);
+            const kpRef = passengerDb.collection('Kovelipay');
+            const snap = await kpRef.where('receiptNo', '==', receiptNumber).limit(1).get();
+            if (!snap.empty) {
+                const doc = snap.docs[0];
+                const record = { id: doc.id, ...doc.data() };
+                debugLog(`Found receipt: ${record.receiptNo}, paymentStatus=${record.paymentStatus}`);
+                return record;
+            }
+            const docById = await kpRef.doc(receiptNumber).get();
+            if (docById.exists) {
+                const record = { id: docById.id, ...docById.data() };
+                debugLog(`Found by doc ID: ${receiptNumber}`);
+                return record;
+            }
+            debugLog(`No receipt found for ${receiptNumber}`);
+            return null;
+        }
+        
+        async function loadReceipt() {
+            try {
+                if (loadingEl) loadingEl.style.display = 'block';
+                if (errorEl) errorEl.style.display = 'none';
+                if (receiptDataDiv) receiptDataDiv.style.display = 'none';
+                
+                let receiptObj = null;
+                
+                if (receiptDataParam) {
+                    try {
+                        const decoded = decodeURIComponent(receiptDataParam);
+                        receiptObj = JSON.parse(decoded);
+                        debugLog(`Receipt loaded via URL param: ${receiptObj.receiptNo}`);
+                    } catch(e) { debugLog(`URL parse error: ${e.message}`); }
+                }
+                
+                if (!receiptObj && receiptNoParam) {
+                    receiptObj = await fetchReceiptFromFB(receiptNoParam);
+                }
+                
+                if (!receiptObj) {
+                    const localRaw = localStorage.getItem('lastReceiptData');
+                    if (localRaw) {
+                        try {
+                            receiptObj = JSON.parse(localRaw);
+                            debugLog('Receipt loaded from localStorage fallback');
+                        } catch(e) {}
+                    }
+                }
+                
+                if (!receiptObj) {
+                    throw new Error('No receipt data available. Please scan again or contact lounge support.');
+                }
+                
+                receiptObj.isReprint = reprintParam;
+                receiptMaster = receiptObj;
+                
+                const receiptHtml = generateReceiptHTML(receiptObj);
+                if (receiptDataDiv) {
+                    receiptDataDiv.innerHTML = receiptHtml;
+                    receiptDataDiv.style.display = 'block';
+                }
+                if (loadingEl) loadingEl.style.display = 'none';
+                
+                const voidActive = isReceiptVoided(receiptObj);
+                debugLog(`VOID status final: ${voidActive}`);
+                if (voidActive) {
+                    setTimeout(() => addVoidWatermark(), 60);
+                } else {
+                    removeVoidWatermark();
+                }
+                
+                if (autoPrintFlag) {
+                    setTimeout(() => { 
+                        debugLog('Auto-print triggered - EPSON TM-T88VII with left edge fix applied');
+                        window.print(); 
+                    }, 500);
+                }
+                
+                localStorage.setItem('lastReceiptData', JSON.stringify(receiptObj));
+                
+            } catch(err) {
+                console.error(err);
+                if (loadingEl) loadingEl.style.display = 'none';
+                if (errorEl) {
+                    errorEl.style.display = 'block';
+                    errorEl.innerHTML = `<p>⚠️ ${escapeHtml(err.message)}</p><p style="font-size:9pt;">Please verify transaction or contact support.</p>`;
+                }
+            }
+        }
+        
+        function setBackNavigation() {
+            const backBtn = document.getElementById('backBtn');
+            if (backBtn) {
+                const returnTo = urlParams.get('returnTo') || 'pay.html';
+                backBtn.href = returnTo;
+            }
+        }
+        
+        // Ensure left padding is applied consistently for EPSON printer
+        function enforceLeftMarginFix() {
+            const wrapper = document.querySelector('.receipt-wrapper');
+            if (wrapper) {
+                // Double-check padding is applied (2.5mm left shift)
+                wrapper.style.paddingLeft = '2.5mm';
+                debugLog('Left padding enforced: 2.5mm to avoid printer dead zone');
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            debugLog('DOM ready - LEFT EDGE FIX ACTIVE: 2.5mm left padding applied');
+            enforceLeftMarginFix();
+            setTimeout(() => {
+                loadReceipt();
+            }, 120);
+            setBackNavigation();
+        });
+        
+        window.addEventListener('load', () => {
+            if (voidParam && !document.querySelector('.void-watermark') && receiptMaster && isReceiptVoided(receiptMaster)) {
+                addVoidWatermark();
+            }
+            enforceLeftMarginFix();
+        });
+        
+        window.addEventListener('beforeprint', () => {
+            debugLog('[PRINT] EPSON TM-T88VII M371A - LEFT EDGE FIX ENABLED');
+            debugLog('[PRINT] Content shifted right by 2.5mm to avoid printer dead zone');
+            const wrapper = document.querySelector('.receipt-wrapper');
+            if (wrapper) {
+                wrapper.style.margin = '0';
+                wrapper.style.paddingLeft = '2.5mm';
+                wrapper.style.paddingRight = '0';
+            }
+            if (receiptMaster && isReceiptVoided(receiptMaster) && !document.querySelector('.void-watermark')) {
+                addVoidWatermark();
+            }
+        });
+        
+        window.addEventListener('afterprint', () => debugLog('[PRINT] Job completed - left edge fix prevented cutoff'));
+        
+    })();
+</script>
+</body>
+</html>
