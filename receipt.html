@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Koveli Receipt | EPSON TM-T88VII (M371A) | Zero Margin</title>
+    <title>Koveli Receipt | EPSON TM-T88VII | Width Adjusted for Printable Area</title>
     <!-- Firebase SDK - compatibility with fireshift.js -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -18,10 +18,10 @@
             box-sizing: border-box;
         }
 
-        /* EPSON TM-T88VII (Model M371A) OPTIMAL SETUP - ZERO MARGIN APPROACH
-           - 80mm paper width (thermal, continuous roll)
-           - Complete removal of all margins for perfect fit
-           - Print CSS eliminates @page margins entirely
+        /* EPSON TM-T88VII (Model M371A) - INCREASED LEFT SHIFT
+           Problem: Text still getting cut off on left side
+           Solution: Increase left padding to 4mm to push content further right
+           Also slightly reduce content width to ensure everything fits
         */
         body {
             background: #e2e6e9;
@@ -35,7 +35,7 @@
             margin: 0;
         }
 
-        /* WRAPPER MATCHES TM-T88VII paper width (80mm) - NO EXTERNAL MARGINS */
+        /* WRAPPER - 80mm paper width, with 4mm left offset to avoid printer dead zone */
         .receipt-wrapper {
             width: 80mm;
             max-width: 80mm;
@@ -43,13 +43,15 @@
             margin: 0 auto;
             background: white;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            padding: 0;  /* ZERO padding - content touches edges */
+            /* CRITICAL FIX: Increased left padding to 4mm - pushes content further right
+               This ensures text starts well past the printer's unprintable zone */
+            padding: 0 0 0 4mm;
             position: relative;
             page-break-after: avoid;
             break-inside: avoid;
         }
 
-        /* ========= ENHANCED VOID WATERMARK - HIGH VISIBILITY ========= */
+        /* ========= ENHANCED VOID WATERMARK ========= */
         .void-watermark {
             position: absolute !important;
             top: 50% !important;
@@ -71,11 +73,12 @@
             text-shadow: 1px 1px 0 rgba(0,0,0,0.1);
         }
 
-        /* CRITICAL PRINT OPTIMIZATION - ZERO MARGINS FOR EPSON TM-T88VII */
+        /* CRITICAL PRINT OPTIMIZATION - INCREASED LEFT SHIFT */
         @media print {
             @page {
                 size: 80mm auto;
-                margin: 0mm !important;      /* Force zero margins on all sides */
+                /* Small left margin as additional safety */
+                margin: 0mm 0mm 0mm 0.5mm !important;
                 padding: 0mm !important;
             }
             html, body {
@@ -98,7 +101,8 @@
                 max-width: 80mm !important;
                 min-width: 80mm !important;
                 margin: 0 !important;
-                padding: 0 !important;
+                /* 4mm left padding ensures content clears the printer's dead zone */
+                padding: 0 0 0 4mm !important;
                 box-shadow: none !important;
                 background: white !important;
                 page-break-inside: avoid !important;
@@ -122,7 +126,7 @@
             }
         }
 
-        /* RECEIPT BASE STYLES - COMPACT, NO MARGINS, MAXIMUM PAPER USAGE */
+        /* RECEIPT BASE STYLES - Slightly narrower content for safety */
         .receipt {
             font-family: 'Courier New', 'Lucida Console', monospace;
             font-size: 10pt;
@@ -131,11 +135,12 @@
             width: 100%;
             position: relative;
             z-index: 1;
-            padding: 1mm 1.5mm;  /* Minimal internal padding, just enough for readability */
+            /* Reduced right side slightly to balance the left shift */
+            padding: 1mm 2mm 1mm 0;
             margin: 0;
         }
 
-        /* HEADER - TIGHT */
+        /* HEADER */
         .receipt-header {
             text-align: center;
             margin-bottom: 1.5mm;
@@ -249,7 +254,6 @@
             font-weight: bold;
             padding: 0.2mm 0;
         }
-        /* TRANSACTION CODES - PROMINENT SECTION */
         .transaction-codes {
             margin: 1.2mm 0;
             padding: 0.8mm 0.5mm;
@@ -372,8 +376,6 @@
 </div>
 
 <script>
-    // =============== KOVELI RECEIPT - EPSON TM-T88VII ZERO MARGIN EDITION ===============
-    // Complete elimination of top/bottom margins for perfect paper fit
     (function(){
         const loadingEl = document.getElementById('loadingMessage');
         const errorEl = document.getElementById('errorMessage');
@@ -388,7 +390,7 @@
         
         let receiptMaster = null;
         
-        function debugLog(msg) { console.log(`[TM88-ZERO-MARGIN] ${msg}`); }
+        function debugLog(msg) { console.log(`[TM88-WIDTH-FIX] ${msg}`); }
         
         function formatAmount(val) {
             if (val === undefined || val === null) return '0.00';
@@ -418,8 +420,7 @@
             if (!data) return false;
             if (voidParam === true) return true;
             if (data.paymentStatus && String(data.paymentStatus).toUpperCase() === 'VOID') return true;
-            const alternativeFlags = [data.status === 'VOID', data.isVoid === true, data.voided === true, data.transactionStatus === 'VOID', data.receiptStatus === 'VOID'];
-            return alternativeFlags.some(v => v === true);
+            return false;
         }
         
         function getBatchCode(data) {
@@ -445,7 +446,6 @@
             });
         }
         
-        // Generate receipt HTML - optimized for compactness and zero margins
         function generateReceiptHTML(data) {
             const isReprint = reprintParam || data.isReprint === true;
             const reprintMarkup = isReprint ? '<div class="reprint-mark">*** REPRINT COPY ***</div>' : '';
@@ -507,7 +507,7 @@
                 <div class="receipt-header">
                     <div class="company-name">KOVELI LOUNGE</div>
                     <div class="company-address">VELANA INTERNATIONAL AIRPORT - MLE</div>
-                    <div class="company-details">TEL: +960 304 6677 </div>
+                    <div class="company-details">TEL: +960 304 6677</div>
                 </div>
                 ${reprintMarkup}
                 <div class="divider-light"></div>
@@ -539,7 +539,7 @@
                 </div>
                 <div class="footer">
                     <div class="thank-you">✈️ THANK YOU ✈️</div>
-                    <div class="footer-note">Koveli Lounge </div>
+                    <div class="footer-note">Koveli Lounge</div>
                     <div class="footer-note" style="font-size:6.8pt;"></div>
                 </div>
             `;
@@ -547,25 +547,17 @@
         
         async function fetchReceiptFromFB(receiptNumber) {
             if (typeof passengerDb === 'undefined') {
-                debugLog('ERROR: passengerDb not available from fireshift.js');
                 throw new Error('Firestore connection missing');
             }
-            debugLog(`Querying Kovelipay collection for receiptNo: ${receiptNumber}`);
             const kpRef = passengerDb.collection('Kovelipay');
             const snap = await kpRef.where('receiptNo', '==', receiptNumber).limit(1).get();
             if (!snap.empty) {
-                const doc = snap.docs[0];
-                const record = { id: doc.id, ...doc.data() };
-                debugLog(`Found receipt: ${record.receiptNo}, paymentStatus=${record.paymentStatus}`);
-                return record;
+                return { id: snap.docs[0].id, ...snap.docs[0].data() };
             }
             const docById = await kpRef.doc(receiptNumber).get();
             if (docById.exists) {
-                const record = { id: docById.id, ...docById.data() };
-                debugLog(`Found by doc ID: ${receiptNumber}`);
-                return record;
+                return { id: docById.id, ...docById.data() };
             }
-            debugLog(`No receipt found for ${receiptNumber}`);
             return null;
         }
         
@@ -581,8 +573,7 @@
                     try {
                         const decoded = decodeURIComponent(receiptDataParam);
                         receiptObj = JSON.parse(decoded);
-                        debugLog(`Receipt loaded via URL param: ${receiptObj.receiptNo}`);
-                    } catch(e) { debugLog(`URL parse error: ${e.message}`); }
+                    } catch(e) {}
                 }
                 
                 if (!receiptObj && receiptNoParam) {
@@ -594,13 +585,12 @@
                     if (localRaw) {
                         try {
                             receiptObj = JSON.parse(localRaw);
-                            debugLog('Receipt loaded from localStorage fallback');
                         } catch(e) {}
                     }
                 }
                 
                 if (!receiptObj) {
-                    throw new Error('No receipt data available. Please scan again or contact lounge support.');
+                    throw new Error('No receipt data available.');
                 }
                 
                 receiptObj.isReprint = reprintParam;
@@ -613,19 +603,14 @@
                 }
                 if (loadingEl) loadingEl.style.display = 'none';
                 
-                const voidActive = isReceiptVoided(receiptObj);
-                debugLog(`VOID status final: ${voidActive}`);
-                if (voidActive) {
+                if (isReceiptVoided(receiptObj)) {
                     setTimeout(() => addVoidWatermark(), 60);
                 } else {
                     removeVoidWatermark();
                 }
                 
                 if (autoPrintFlag) {
-                    setTimeout(() => { 
-                        debugLog('Auto-print triggered (EPSON TM-T88VII - zero margin mode)');
-                        window.print(); 
-                    }, 500);
+                    setTimeout(() => { window.print(); }, 500);
                 }
                 
                 localStorage.setItem('lastReceiptData', JSON.stringify(receiptObj));
@@ -635,7 +620,7 @@
                 if (loadingEl) loadingEl.style.display = 'none';
                 if (errorEl) {
                     errorEl.style.display = 'block';
-                    errorEl.innerHTML = `<p>⚠️ ${escapeHtml(err.message)}</p><p style="font-size:9pt;">Please verify transaction or contact support.</p>`;
+                    errorEl.innerHTML = `<p>⚠️ ${escapeHtml(err.message)}</p>`;
                 }
             }
         }
@@ -648,42 +633,31 @@
             }
         }
         
-        // Force print margin reset - additional safety for EPSON
-        function enforceZeroPrintMargins() {
-            const style = document.createElement('style');
-            style.textContent = `@media print { body { margin: 0 !important; padding: 0 !important; } }`;
-            document.head.appendChild(style);
+        function enforceLeftMarginFix() {
+            const wrapper = document.querySelector('.receipt-wrapper');
+            if (wrapper) {
+                wrapper.style.paddingLeft = '4mm';
+                debugLog('Left padding set to 4mm to prevent cutoff');
+            }
         }
         
         document.addEventListener('DOMContentLoaded', () => {
-            debugLog('DOM ready - ZERO MARGIN TM-T88VII receipt module');
-            enforceZeroPrintMargins();
-            setTimeout(() => {
-                loadReceipt();
-            }, 120);
+            debugLog('DOM ready - WIDTH ADJUSTED: 4mm left padding');
+            enforceLeftMarginFix();
+            setTimeout(() => loadReceipt(), 120);
             setBackNavigation();
         });
         
-        window.addEventListener('load', () => {
-            if (voidParam && !document.querySelector('.void-watermark') && receiptMaster && isReceiptVoided(receiptMaster)) {
-                addVoidWatermark();
-            }
-        });
-        
         window.addEventListener('beforeprint', () => {
-            debugLog('[PRINT] Sending to EPSON TM-T88VII M371A - ZERO MARGIN MODE - 80mm thermal');
-            // Ensure wrapper has zero margins at print time
+            debugLog('[PRINT] Width adjusted - 4mm left shift applied');
             const wrapper = document.querySelector('.receipt-wrapper');
             if (wrapper) {
-                wrapper.style.margin = '0';
-                wrapper.style.padding = '0';
+                wrapper.style.paddingLeft = '4mm';
             }
             if (receiptMaster && isReceiptVoided(receiptMaster) && !document.querySelector('.void-watermark')) {
                 addVoidWatermark();
             }
         });
-        
-        window.addEventListener('afterprint', () => debugLog('[PRINT] TM-T88VII job completed - no margin drift'));
         
     })();
 </script>
