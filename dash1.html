@@ -694,8 +694,8 @@
             background: #fff2d7;
         }
 
-        /* Receipt Print Drawer (Floating Action Button) */
-        .print-drawer-btn {
+        /* DRAWER OPEN BUTTON - FLOATING ACTION BUTTON */
+        .drawer-btn {
             position: fixed;
             bottom: 30px;
             right: 30px;
@@ -714,27 +714,28 @@
             transition: all 0.3s ease;
             z-index: 1000;
         }
-        .print-drawer-btn:hover {
+        .drawer-btn:hover {
             transform: scale(1.08);
             background: linear-gradient(135deg, #e6b800, #b89400);
             color: #2c3e50;
             box-shadow: 0 6px 20px rgba(230,184,0,0.4);
         }
         
-        /* ========== ULTRA COMPACT RECEIPT PRINT - 1CM HEIGHT, SINGLE PAGE ========== */
-        .receipt-print-area {
+        /* ========== ULTRA COMPACT DRAWER PRINT - EXACTLY 1 PAGE, TINY HEIGHT ========== */
+        /* Hidden print area - only visible during print */
+        .drawer-print-area {
             display: none;
         }
         
         @media print {
-            /* Hide everything except receipt container */
+            /* Hide everything except the drawer print area */
             body * {
                 visibility: hidden;
             }
-            .receipt-print-area, .receipt-print-area * {
+            .drawer-print-area, .drawer-print-area * {
                 visibility: visible;
             }
-            .receipt-print-area {
+            .drawer-print-area {
                 display: block;
                 position: fixed;
                 top: 0;
@@ -745,37 +746,40 @@
                 padding: 0;
                 background: white;
                 z-index: 99999;
-                /* Force single page break */
+                /* Force single page - no breaks */
                 page-break-after: avoid;
                 page-break-before: avoid;
                 page-break-inside: avoid;
                 break-inside: avoid;
+                break-after: avoid;
             }
-            /* Ultra compact receipt - exactly 1cm height maximum */
-            .compact-receipt {
+            /* Extreme compact receipt - exactly 0.8cm height, single line */
+            .drawer-receipt {
                 font-family: 'Courier New', monospace;
-                font-size: 9px;
+                font-size: 8px;
                 line-height: 1;
                 background: white;
                 color: black;
                 width: 100%;
-                padding: 1px 3px;
+                padding: 1px 2px;
                 margin: 0;
                 border: none;
                 height: auto;
-                max-height: 1cm;
+                max-height: 0.8cm;
+                min-height: 0.5cm;
                 overflow: hidden;
                 white-space: nowrap;
                 box-sizing: border-box;
             }
-            /* Remove any extra spacing */
+            /* Remove all margins from html/body */
             html, body {
                 margin: 0;
                 padding: 0;
                 height: auto;
             }
+            /* Page size: very small thermal width, auto height (fits single line) */
             @page {
-                size: 58mm auto;
+                size: 58mm 10mm;
                 margin: 0mm;
             }
         }
@@ -840,7 +844,7 @@
                 padding-top: 5px;
                 width: 100%;
             }
-            .print-drawer-btn {
+            .drawer-btn {
                 bottom: 20px;
                 right: 20px;
                 width: 48px;
@@ -1046,11 +1050,11 @@
         </div>
     </div>
 
-    <!-- PRINT DRAWER BUTTON: floating action for receipt -->
-    <button class="print-drawer-btn" id="printReceiptBtn" title="Print Receipt (1cm)">🖨️</button>
+    <!-- DRAWER OPEN BUTTON - prints tiny receipt to trigger cash drawer -->
+    <button class="drawer-btn" id="drawerOpenBtn" title="Open Cash Drawer">🧾</button>
     
-    <!-- Hidden container for receipt content (ultra compact - 1cm height, single page) -->
-    <div id="receiptPrintContainer" class="receipt-print-area"></div>
+    <!-- Hidden container for ultra compact drawer print (single page, ~1cm height) -->
+    <div id="drawerPrintContainer" class="drawer-print-area"></div>
 
     <script>
         // ========== GLOBAL VARIABLES (original preserved) ==========
@@ -1237,7 +1241,7 @@
         function closeCashierModal() { document.getElementById('cashierWarningModal').style.display = 'none'; }
         function goToShiftManagement() { closeModal(); navigateTo('shift.html'); }
         function goToCashier() { closeCashierModal(); navigateTo('cashier.html'); }
-        async function loadDashboardStats() { /* original stats function kept, but not altered */ try { if(!checkSession()) return; const today = new Date().toISOString().split('T')[0]; if(typeof db === 'undefined') return; const todaySnapshot = await db.collection('KoveliPass').where('date','==',today).get(); document.getElementById('todayEntries').textContent = `${todaySnapshot.size} entries today`; const reportsSnapshot = await db.collection('FlightReports').where('date','==',today).get(); let uniqueFlights = new Set(), totalPax=0; todaySnapshot.forEach(d=>{ if(d.data().flightNo) uniqueFlights.add(d.data().flightNo); totalPax+= parseInt(d.data().pax)||1; }); let closedFlights=0, openFlights=0; reportsSnapshot.forEach(d=>{ if(d.data().isClosed===true) closedFlights++; else if(d.data().isClosed===false) openFlights++; }); let totalFlights = uniqueFlights.size; if(totalFlights > (openFlights+closedFlights)) openFlights = totalFlights - closedFlights; document.getElementById('totalFlights').textContent = totalFlights; document.getElementById('openFlights').textContent = openFlights; document.getElementById('closedFlights').textContent = closedFlights; document.getElementById('totalPassengers').textContent = totalPax; document.getElementById('flightCount').textContent = `${totalFlights} total flights`; if(currentShift && (currentShift.morning==='open'||currentShift.evening==='open')){ const shiftStart = currentShift.startTime||'08:00'; const now = new Date(); const [hours,minutes]=shiftStart.split(':'); const startTime = new Date(); startTime.setHours(parseInt(hours),parseInt(minutes),0); const diffMs = now-startTime; const diffHrs = Math.floor(diffMs/3600000); const diffMins = Math.floor((diffMs%3600000)/60000); document.getElementById('shiftDuration').textContent = `${diffHrs}h ${diffMins}m`; } else document.getElementById('shiftDuration').textContent = 'No active shift'; document.getElementById('pendingPayments').textContent = `${Math.floor(totalPax*0.15)} pending`; } catch(e){ console.error(e);} }
+        async function loadDashboardStats() { try { if(!checkSession()) return; const today = new Date().toISOString().split('T')[0]; if(typeof db === 'undefined') return; const todaySnapshot = await db.collection('KoveliPass').where('date','==',today).get(); document.getElementById('todayEntries').textContent = `${todaySnapshot.size} entries today`; const reportsSnapshot = await db.collection('FlightReports').where('date','==',today).get(); let uniqueFlights = new Set(), totalPax=0; todaySnapshot.forEach(d=>{ if(d.data().flightNo) uniqueFlights.add(d.data().flightNo); totalPax+= parseInt(d.data().pax)||1; }); let closedFlights=0, openFlights=0; reportsSnapshot.forEach(d=>{ if(d.data().isClosed===true) closedFlights++; else if(d.data().isClosed===false) openFlights++; }); let totalFlights = uniqueFlights.size; if(totalFlights > (openFlights+closedFlights)) openFlights = totalFlights - closedFlights; document.getElementById('totalFlights').textContent = totalFlights; document.getElementById('openFlights').textContent = openFlights; document.getElementById('closedFlights').textContent = closedFlights; document.getElementById('totalPassengers').textContent = totalPax; document.getElementById('flightCount').textContent = `${totalFlights} total flights`; if(currentShift && (currentShift.morning==='open'||currentShift.evening==='open')){ const shiftStart = currentShift.startTime||'08:00'; const now = new Date(); const [hours,minutes]=shiftStart.split(':'); const startTime = new Date(); startTime.setHours(parseInt(hours),parseInt(minutes),0); const diffMs = now-startTime; const diffHrs = Math.floor(diffMs/3600000); const diffMins = Math.floor((diffMs%3600000)/60000); document.getElementById('shiftDuration').textContent = `${diffHrs}h ${diffMins}m`; } else document.getElementById('shiftDuration').textContent = 'No active shift'; document.getElementById('pendingPayments').textContent = `${Math.floor(totalPax*0.15)} pending`; } catch(e){ console.error(e);} }
         async function loadRecentActivity() { try { if(!checkSession()) return; const today = new Date().toISOString().split('T')[0]; const recentSnapshot = await db.collection('KoveliPass').where('date','==',today).orderBy('entryTime','desc').limit(5).get(); const activityList = document.getElementById('recentActivity'); if(recentSnapshot.empty){ activityList.innerHTML='<div class="activity-item"><span class="activity-time">--:--</span><span class="activity-desc">No recent activity</span></div>'; return; } let html=''; recentSnapshot.forEach(doc=>{ const data=doc.data(); html+=`<div class="activity-item"><span class="activity-time">${data.entryTime||'--:--'}</span><span class="activity-desc">${data.pName||'Unknown'} checked in</span><span class="activity-flight">${data.flightNo||'N/A'}</span></div>`; }); activityList.innerHTML=html; } catch(e){ console.error(e);} }
         function navigateTo(page) { if(!checkSession()) return; if(currentShift) localStorage.setItem('currentShift',JSON.stringify(currentShift)); if(cashierStatus) localStorage.setItem('cashierStatus',JSON.stringify(cashierStatus)); window.location.href=page; }
         function viewAllActivity() { if(!checkSession()) return; window.location.href='report.html?view=activity'; }
@@ -1245,34 +1249,32 @@
         function showSettings() { alert('Settings panel would open here'); }
         async function logout() { if(confirm('Are you sure you want to logout?')){ if(refreshInterval) clearInterval(refreshInterval); if(sessionCheckInterval) clearInterval(sessionCheckInterval); localStorage.removeItem('username'); localStorage.removeItem('level'); localStorage.removeItem('rcno'); localStorage.removeItem('loggedInUser'); localStorage.removeItem('currentShift'); localStorage.removeItem('cashierStatus'); sessionStorage.clear(); if(typeof firebase !== 'undefined' && firebase.auth) await firebase.auth().signOut(); window.location.href='login.html'; } }
 
-        // ========== ULTRA COMPACT RECEIPT - 1CM HEIGHT, SINGLE PAGE ONLY ==========
-        function printUltraCompactReceipt() {
+        // ========== DRAWER OPEN FUNCTION - PRINTS TINY SINGLE PAGE RECEIPT ==========
+        function openCashDrawer() {
             if (!checkSession()) return;
             const now = new Date();
             const timestamp = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
             const user = currentUser ? currentUser.username : 'operator';
-            const shiftStatus = isShiftOpen() ? (currentShift && currentShift.morning==='open' ? 'MORNING' : 'EVENING') : 'NO-SHIFT';
-            const cashierStat = cashierStatus.status === 'OPEN' ? 'CASHIER-OPEN' : 'CASHIER-CLOSED';
-            // Ultra compact one-line receipt - minimal characters
-            const receiptLine = `KOVELI|${timestamp}|${user}|${shiftStatus}|${cashierStat}`;
-            const printContainer = document.getElementById('receiptPrintContainer');
-            // Create receipt with extremely small height - max 1cm guaranteed
+            // Extremely short line - just enough to trigger drawer
+            const drawerCode = `DRAWER:${timestamp}|${user}`;
+            const printContainer = document.getElementById('drawerPrintContainer');
+            // Create ultra compact receipt - guaranteed less than 1cm height, single page
             printContainer.innerHTML = `
-                <div class="compact-receipt" style="font-family: 'Courier New', monospace; font-size: 8px; line-height: 1; white-space: nowrap; padding: 1px 2px; margin:0; border:none; max-height:1cm; height:auto; overflow:hidden;">
-                    ${receiptLine}
+                <div class="drawer-receipt" style="font-family: 'Courier New', monospace; font-size: 7px; line-height: 1; white-space: nowrap; padding: 0px 1px; margin:0; border:none; max-height:0.7cm; overflow:hidden;">
+                    ${drawerCode}
                 </div>
             `;
             printContainer.style.display = 'block';
-            // Force print - will only print this 1cm tall single page
+            // Print - this will open the cash drawer (printer will trigger drawer kick)
             window.print();
-            // Clean up after print
+            // Clean up after print completes
             setTimeout(() => {
                 printContainer.style.display = 'none';
                 printContainer.innerHTML = '';
             }, 500);
         }
 
-        // Attach event to floating print button
+        // Attach event to drawer open button
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Dashboard loading...');
             loadUsers();
@@ -1286,8 +1288,8 @@
             window.addEventListener('storage', function(e) { if(e.key === 'username' && e.newValue === null) redirectToLogin('Logged out in another tab'); if(e.key === 'currentShift' || e.key === 'cashierStatus') loadFromLocalStorage(); });
             refreshInterval = setInterval(() => { if(checkSession()) { fetchFromFirebase(); loadDashboardStats(); } }, 30000);
             
-            const printBtn = document.getElementById('printReceiptBtn');
-            if(printBtn) printBtn.addEventListener('click', printUltraCompactReceipt);
+            const drawerBtn = document.getElementById('drawerOpenBtn');
+            if(drawerBtn) drawerBtn.addEventListener('click', openCashDrawer);
         });
 
         window.navigateTo = navigateTo;
