@@ -721,31 +721,35 @@
             box-shadow: 0 6px 20px rgba(230,184,0,0.4);
         }
         
-        /* ========== CRITICAL: EXACTLY 1 PAGE PRINT - TINY RECEIPT FOR DRAWER ========== */
+        /* ========== SINGLE PAGE PRINT - EXACTLY 1 PAGE, NO EXTRA PAGES ========== */
         .drawer-print-area {
             display: none;
         }
         
         @media print {
-            /* Hide EVERYTHING on the page except the print area */
+            /* Hide everything except the print area */
             body * {
                 visibility: hidden !important;
+                display: none !important;
             }
-            .drawer-print-area, .drawer-print-area * {
+            
+            .drawer-print-area, 
+            .drawer-print-area * {
                 visibility: visible !important;
+                display: block !important;
             }
+            
             .drawer-print-area {
                 display: block !important;
-                position: fixed !important;
+                position: absolute !important;
                 top: 0 !important;
                 left: 0 !important;
-                right: 0 !important;
                 width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 background: white !important;
                 z-index: 99999 !important;
-                /* Force single page - no page breaks anywhere */
+                /* CRITICAL: Force everything into ONE page */
                 page-break-after: avoid !important;
                 page-break-before: avoid !important;
                 page-break-inside: avoid !important;
@@ -753,34 +757,34 @@
                 break-after: avoid !important;
                 break-before: avoid !important;
             }
-            /* Ultra compact receipt - absolute minimum height */
+            
+            /* Single line receipt - extremely small */
             .drawer-receipt {
                 font-family: 'Courier New', monospace !important;
-                font-size: 6px !important;
-                line-height: 1 !important;
+                font-size: 10px !important;
+                line-height: 1.2 !important;
                 background: white !important;
                 color: black !important;
-                width: 100% !important;
-                padding: 0px !important;
+                width: auto !important;
+                display: inline-block !important;
+                padding: 2px 4px !important;
                 margin: 0 !important;
                 border: none !important;
-                height: auto !important;
-                max-height: 5mm !important;
-                min-height: 3mm !important;
-                overflow: hidden !important;
                 white-space: nowrap !important;
-                box-sizing: border-box !important;
             }
-            /* Remove all margins from html/body */
+            
+            /* Remove ALL margins and padding from html/body */
             html, body {
                 margin: 0 !important;
                 padding: 0 !important;
                 height: auto !important;
+                width: 100% !important;
             }
-            /* Page size: super small - forces single page */
+            
+            /* Normal page size - let the content determine single page */
             @page {
-                size: 50mm 5mm !important;
-                margin: 0mm !important;
+                size: auto !important;
+                margin: 5mm !important;
             }
         }
 
@@ -1050,10 +1054,10 @@
         </div>
     </div>
 
-    <!-- DRAWER BUTTON - prints ONE tiny page to trigger cash drawer -->
-    <button class="drawer-btn" id="drawerOpenBtn" title="Open Cash Drawer">🧾</button>
+    <!-- DRAWER BUTTON - prints ONE page only to trigger cash drawer -->
+    <button class="drawer-btn" id="drawerOpenBtn" title="Open Cash Drawer (1 page only)">🧾</button>
     
-    <!-- Hidden container for drawer print - will show exactly 1 page -->
+    <!-- Hidden container for drawer print - EXACTLY 1 PAGE -->
     <div id="drawerPrintContainer" class="drawer-print-area"></div>
 
     <script>
@@ -1249,29 +1253,27 @@
         function showSettings() { alert('Settings panel would open here'); }
         async function logout() { if(confirm('Are you sure you want to logout?')){ if(refreshInterval) clearInterval(refreshInterval); if(sessionCheckInterval) clearInterval(sessionCheckInterval); localStorage.removeItem('username'); localStorage.removeItem('level'); localStorage.removeItem('rcno'); localStorage.removeItem('loggedInUser'); localStorage.removeItem('currentShift'); localStorage.removeItem('cashierStatus'); sessionStorage.clear(); if(typeof firebase !== 'undefined' && firebase.auth) await firebase.auth().signOut(); window.location.href='login.html'; } }
 
-        // ========== OPEN CASH DRAWER - PRINTS EXACTLY 1 TINY PAGE ==========
+        // ========== OPEN CASH DRAWER - PRINTS EXACTLY 1 PAGE ==========
         function openCashDrawer() {
             if (!checkSession()) return;
             const now = new Date();
             const timestamp = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
             const user = currentUser ? currentUser.username : 'op';
-            // Minimal data to trigger drawer - single line, very short
-            const drawerData = `DRW:${timestamp}|${user}`;
+            // Single line - extremely short
+            const drawerData = `DRAWER OPEN: ${timestamp} | ${user}`;
             const printContainer = document.getElementById('drawerPrintContainer');
-            // Ultra compact content - guaranteed to fit on ONE page (5mm height)
+            // Simple content - guaranteed single page
             printContainer.innerHTML = `
-                <div class="drawer-receipt">
+                <div class="drawer-receipt" style="white-space: nowrap;">
                     ${drawerData}
                 </div>
             `;
-            printContainer.style.display = 'block';
-            // Print - will only show this tiny receipt (1 page only)
+            // Print - will show exactly 1 page
             window.print();
-            // Clean up after print dialog closes
+            // Clean up
             setTimeout(() => {
-                printContainer.style.display = 'none';
                 printContainer.innerHTML = '';
-            }, 600);
+            }, 500);
         }
 
         // Attach event to drawer button
