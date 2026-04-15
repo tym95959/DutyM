@@ -721,7 +721,7 @@
             box-shadow: 0 6px 20px rgba(230,184,0,0.4);
         }
         
-        /* ========== SINGLE PAGE PRINT - EXACTLY 1 PAGE, NO EXTRA PAGES ========== */
+        /* ========== 2 INCH PRINT AREA - EXACTLY ONE PAGE FOR CASH DRAWER ========== */
         .drawer-print-area {
             display: none;
         }
@@ -749,42 +749,64 @@
                 padding: 0 !important;
                 background: white !important;
                 z-index: 99999 !important;
-                /* CRITICAL: Force everything into ONE page */
+                /* Force single page */
                 page-break-after: avoid !important;
                 page-break-before: avoid !important;
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
-                break-after: avoid !important;
-                break-before: avoid !important;
             }
             
-            /* Single line receipt - extremely small */
+            /* 2 inch height receipt - perfect for drawer kick */
             .drawer-receipt {
                 font-family: 'Courier New', monospace !important;
-                font-size: 10px !important;
-                line-height: 1.2 !important;
+                font-size: 12px !important;
+                line-height: 1.3 !important;
                 background: white !important;
                 color: black !important;
-                width: auto !important;
-                display: inline-block !important;
-                padding: 2px 4px !important;
-                margin: 0 !important;
+                width: 80mm !important;
+                margin: 0 auto !important;
+                padding: 5px 8px !important;
                 border: none !important;
-                white-space: nowrap !important;
+                height: 2in !important;
+                min-height: 2in !important;
+                max-height: 2in !important;
+                box-sizing: border-box !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: center !important;
+                align-items: center !important;
+                text-align: center !important;
             }
             
-            /* Remove ALL margins and padding from html/body */
+            .drawer-receipt .receipt-line {
+                margin: 2px 0;
+                white-space: nowrap;
+            }
+            
+            .drawer-receipt .header {
+                font-weight: bold;
+                font-size: 14px;
+                margin-bottom: 8px;
+                letter-spacing: 2px;
+            }
+            
+            .drawer-receipt .divider {
+                border-top: 1px dashed #000;
+                margin: 6px 0;
+                width: 100%;
+            }
+            
+            /* Remove all margins from html/body */
             html, body {
                 margin: 0 !important;
                 padding: 0 !important;
                 height: auto !important;
-                width: 100% !important;
             }
             
-            /* Normal page size - let the content determine single page */
+            /* Page size exactly 2 inches height */
             @page {
-                size: auto !important;
-                margin: 5mm !important;
+                size: 80mm 2in !important;
+                margin: 0mm !important;
             }
         }
 
@@ -1054,10 +1076,10 @@
         </div>
     </div>
 
-    <!-- DRAWER BUTTON - prints ONE page only to trigger cash drawer -->
-    <button class="drawer-btn" id="drawerOpenBtn" title="Open Cash Drawer (1 page only)">🧾</button>
+    <!-- DRAWER BUTTON - prints 2 inch receipt to trigger cash drawer -->
+    <button class="drawer-btn" id="drawerOpenBtn" title="Open Cash Drawer (2 inch receipt)">🧾</button>
     
-    <!-- Hidden container for drawer print - EXACTLY 1 PAGE -->
+    <!-- Hidden container for 2 inch drawer print -->
     <div id="drawerPrintContainer" class="drawer-print-area"></div>
 
     <script>
@@ -1253,23 +1275,35 @@
         function showSettings() { alert('Settings panel would open here'); }
         async function logout() { if(confirm('Are you sure you want to logout?')){ if(refreshInterval) clearInterval(refreshInterval); if(sessionCheckInterval) clearInterval(sessionCheckInterval); localStorage.removeItem('username'); localStorage.removeItem('level'); localStorage.removeItem('rcno'); localStorage.removeItem('loggedInUser'); localStorage.removeItem('currentShift'); localStorage.removeItem('cashierStatus'); sessionStorage.clear(); if(typeof firebase !== 'undefined' && firebase.auth) await firebase.auth().signOut(); window.location.href='login.html'; } }
 
-        // ========== OPEN CASH DRAWER - PRINTS EXACTLY 1 PAGE ==========
+        // ========== OPEN CASH DRAWER - EXACTLY 2 INCH HEIGHT, 1 PAGE ==========
         function openCashDrawer() {
             if (!checkSession()) return;
             const now = new Date();
-            const timestamp = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-            const user = currentUser ? currentUser.username : 'op';
-            // Single line - extremely short
-            const drawerData = `DRAWER OPEN: ${timestamp} | ${user}`;
-            const printContainer = document.getElementById('drawerPrintContainer');
-            // Simple content - guaranteed single page
-            printContainer.innerHTML = `
-                <div class="drawer-receipt" style="white-space: nowrap;">
-                    ${drawerData}
+            const dateStr = now.toLocaleDateString();
+            const timeStr = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+            const user = currentUser ? currentUser.username : 'operator';
+            const shiftStat = isShiftOpen() ? (currentShift?.morning === 'open' ? 'MORNING' : 'EVENING') : 'NO SHIFT';
+            
+            // Create a nice 2-inch receipt content
+            const receiptHtml = `
+                <div class="drawer-receipt">
+                    <div class="receipt-line header">KOVELI LOUNGE</div>
+                    <div class="receipt-line divider"></div>
+                    <div class="receipt-line">DRAWER OPEN</div>
+                    <div class="receipt-line">${dateStr}  ${timeStr}</div>
+                    <div class="receipt-line">CASHIER: ${user}</div>
+                    <div class="receipt-line">SHIFT: ${shiftStat}</div>
+                    <div class="receipt-line divider"></div>
+                    <div class="receipt-line">*** DRAWER KICK ***</div>
                 </div>
             `;
-            // Print - will show exactly 1 page
+            
+            const printContainer = document.getElementById('drawerPrintContainer');
+            printContainer.innerHTML = receiptHtml;
+            
+            // Print - will be exactly 2 inches tall, 1 page
             window.print();
+            
             // Clean up
             setTimeout(() => {
                 printContainer.innerHTML = '';
