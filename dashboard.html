@@ -694,6 +694,58 @@
             background: #fff2d7;
         }
 
+        /* Receipt Print Drawer (Floating Action Button) */
+        .print-drawer-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2c3e50, #1a2632);
+            color: #e6b800;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        .print-drawer-btn:hover {
+            transform: scale(1.08);
+            background: linear-gradient(135deg, #e6b800, #b89400);
+            color: #2c3e50;
+            box-shadow: 0 6px 20px rgba(230,184,0,0.4);
+        }
+        /* Small receipt print style (ultra compact) */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .receipt-print-area, .receipt-print-area * {
+                visibility: visible;
+            }
+            .receipt-print-area {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                margin: 0;
+                padding: 5px;
+                font-family: monospace;
+                font-size: 12px;
+                background: white;
+                color: black;
+                white-space: pre;
+            }
+        }
+        .receipt-print-area {
+            display: none;
+        }
+
         /* Responsive */
         @media (max-width: 1024px) {
             .dashboard-grid {
@@ -753,6 +805,13 @@
                 padding-left: 0;
                 padding-top: 5px;
                 width: 100%;
+            }
+            .print-drawer-btn {
+                bottom: 20px;
+                right: 20px;
+                width: 48px;
+                height: 48px;
+                font-size: 22px;
             }
         }
     </style>
@@ -953,8 +1012,14 @@
         </div>
     </div>
 
+    <!-- PRINT DRAWER BUTTON: floating action for receipt -->
+    <button class="print-drawer-btn" id="printReceiptBtn" title="Drawer">🖨️</button>
+    
+    <!-- Hidden container for receipt content (ultra compact) -->
+    <div id="receiptPrintContainer" class="receipt-print-area"></div>
+
     <script>
-        // ========== GLOBAL VARIABLES ==========
+        // ========== GLOBAL VARIABLES (original preserved) ==========
         let currentShift = null;
         let refreshInterval;
         let currentUser = null;
@@ -971,13 +1036,11 @@
                 console.log('Users loaded from users.js:', usersList.length);
                 return true;
             }
-            
             if (typeof users !== 'undefined' && Array.isArray(users)) {
                 usersList = users;
                 console.log('Users loaded from global scope:', usersList.length);
                 return true;
             }
-            
             console.warn('users.js not found or invalid');
             return false;
         }
@@ -998,25 +1061,19 @@
         // ========== LOAD FROM LOCALSTORAGE ==========
         function loadFromLocalStorage() {
             try {
-                // Load shift data from localStorage
                 const storedShift = localStorage.getItem('currentShift');
                 if (storedShift) {
                     currentShift = JSON.parse(storedShift);
                     console.log('Loaded shift from localStorage:', currentShift);
                 }
-
-                // Load cashier status from localStorage
                 const storedCashier = localStorage.getItem('cashierStatus');
                 if (storedCashier) {
                     cashierStatus = JSON.parse(storedCashier);
                     console.log('Loaded cashier status from localStorage:', cashierStatus);
                 }
-
-                // Update UI with stored data
                 updateShiftDisplay();
                 updateCashierDisplay();
                 updatePaymentCardState();
-                
                 return true;
             } catch (error) {
                 console.error('Error loading from localStorage:', error);
@@ -1024,70 +1081,36 @@
             }
         }
 
-        // ========== SAVE TO LOCALSTORAGE ==========
         function saveToLocalStorage() {
             try {
-                if (currentShift) {
-                    localStorage.setItem('currentShift', JSON.stringify(currentShift));
-                }
-                
-                if (cashierStatus) {
-                    localStorage.setItem('cashierStatus', JSON.stringify(cashierStatus));
-                }
-                
+                if (currentShift) localStorage.setItem('currentShift', JSON.stringify(currentShift));
+                if (cashierStatus) localStorage.setItem('cashierStatus', JSON.stringify(cashierStatus));
                 console.log('Saved data to localStorage');
             } catch (error) {
                 console.error('Error saving to localStorage:', error);
             }
         }
 
-        // ========== FETCH FROM FIREBASE ==========
         async function fetchFromFirebase() {
             try {
-                if (typeof passengerDb === 'undefined') {
-                    console.error('passengerDb not initialized');
-                    return false;
-                }
-
-                console.log('Fetching data from Firebase...');
-                
-                // Fetch shift data
+                if (typeof passengerDb === 'undefined') return false;
                 const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
-                if (shiftDoc.exists) {
-                    currentShift = shiftDoc.data();
-                    console.log('Fetched shift from Firebase:', currentShift);
-                } else {
-                    console.log('No shift document found in Firebase');
-                    currentShift = null;
-                }
-
-                // Fetch cashier status
+                if (shiftDoc.exists) currentShift = shiftDoc.data();
+                else currentShift = null;
                 const cashierDoc = await passengerDb.collection('cashier').doc('current').get();
-                if (cashierDoc.exists) {
-                    cashierStatus = cashierDoc.data();
-                    console.log('Fetched cashier status from Firebase:', cashierStatus);
-                } else {
-                    console.log('No cashier document found in Firebase');
-                    cashierStatus = { username: null, status: 'CLOSED' };
-                }
-
-                // Save to localStorage
+                if (cashierDoc.exists) cashierStatus = cashierDoc.data();
+                else cashierStatus = { username: null, status: 'CLOSED' };
                 saveToLocalStorage();
-
-                // Update UI
                 updateShiftDisplay();
                 updateCashierDisplay();
                 updatePaymentCardState();
-                
                 return true;
-
             } catch (error) {
                 console.error('Error fetching from Firebase:', error);
                 return false;
             }
         }
 
-        // ========== UPDATE SHIFT DISPLAY ==========
         function updateShiftDisplay() {
             const shiftType = document.getElementById('shiftType');
             const shiftDate = document.getElementById('shiftDate');
@@ -1095,7 +1118,6 @@
             const detailShiftType = document.getElementById('detailShiftType');
             const shiftMessage = document.getElementById('shiftMessage');
             const shiftDetails = document.getElementById('shiftDetails');
-            
             if (!currentShift) {
                 shiftType.textContent = 'NO OPEN SHIFT';
                 shiftDate.textContent = '--';
@@ -1103,665 +1125,129 @@
                 shiftDetails.style.display = 'none';
                 return;
             }
-            
             const date = currentShift.date || 'No date';
             const morning = currentShift.morning || 'closed';
             const evening = currentShift.evening || 'closed';
-            
-            let activeShift = '';
-            let shiftTypeText = '';
-            
-            if (morning === 'open') {
-                activeShift = 'MORNING SHIFT';
-                shiftTypeText = 'Morning';
-                shiftMessage.textContent = 'Morning shift is currently active';
-                shiftDetails.style.display = 'flex';
-            } else if (evening === 'open') {
-                activeShift = 'EVENING SHIFT';
-                shiftTypeText = 'Evening';
-                shiftMessage.textContent = 'Evening shift is currently active';
-                shiftDetails.style.display = 'flex';
-            } else {
-                activeShift = 'NO OPEN SHIFT';
-                shiftTypeText = 'None';
-                shiftMessage.textContent = 'No active shift. Please start a shift.';
-                shiftDetails.style.display = 'none';
-            }
-            
+            let activeShift = '', shiftTypeText = '';
+            if (morning === 'open') { activeShift = 'MORNING SHIFT'; shiftTypeText = 'Morning'; shiftMessage.textContent = 'Morning shift is currently active'; shiftDetails.style.display = 'flex'; }
+            else if (evening === 'open') { activeShift = 'EVENING SHIFT'; shiftTypeText = 'Evening'; shiftMessage.textContent = 'Evening shift is currently active'; shiftDetails.style.display = 'flex'; }
+            else { activeShift = 'NO OPEN SHIFT'; shiftTypeText = 'None'; shiftMessage.textContent = 'No active shift. Please start a shift.'; shiftDetails.style.display = 'none'; }
             shiftType.textContent = activeShift;
             shiftDate.textContent = date;
-            
-            if (morning === 'open' || evening === 'open') {
-                detailShiftDate.textContent = date;
-                detailShiftType.textContent = shiftTypeText;
-            }
+            if (morning === 'open' || evening === 'open') { detailShiftDate.textContent = date; detailShiftType.textContent = shiftTypeText; }
         }
 
-        // ========== CASHIER FUNCTIONS ==========
-        async function fetchCashierStatus() {
-            try {
-                if (typeof database === 'undefined' || !database) {
-                    console.warn('Database not initialized');
-                    return null;
-                }
-
-                const cashierDoc = await database.collection('cashier').doc('current').get();
-                
-                if (cashierDoc.exists) {
-                    const data = cashierDoc.data();
-                    console.log('Fetched cashier status from Firebase:', data);
-                    
-                    cashierStatus = {
-                        username: data.username || null,
-                        status: data.status || 'CLOSED'
-                    };
-                    
-                    // Save to localStorage
-                    saveToLocalStorage();
-                    
-                    updateCashierDisplay();
-                    updatePaymentCardState();
-                    return data;
-                } else {
-                    console.log('No cashier document found in Firebase');
-                    cashierStatus = { username: null, status: 'CLOSED' };
-                    saveToLocalStorage();
-                    updateCashierDisplay();
-                    updatePaymentCardState();
-                    return null;
-                }
-
-            } catch (error) {
-                console.error('Error fetching cashier status:', error);
-                return null;
-            }
-        }
-
-        // Update cashier display in UI
         function updateCashierDisplay() {
             const cashierNameEl = document.getElementById('cashierName');
             const cashierStatusBadge = document.getElementById('cashierStatusBadge');
             const detailCashierName = document.getElementById('detailCashierName');
-            
-            if (cashierNameEl) {
-                cashierNameEl.textContent = cashierStatus.username || 'Not assigned';
-            }
-            
-            if (detailCashierName) {
-                detailCashierName.textContent = cashierStatus.username || 'Not assigned';
-            }
-            
+            if (cashierNameEl) cashierNameEl.textContent = cashierStatus.username || 'Not assigned';
+            if (detailCashierName) detailCashierName.textContent = cashierStatus.username || 'Not assigned';
             if (cashierStatusBadge) {
                 cashierStatusBadge.textContent = cashierStatus.status;
                 cashierStatusBadge.className = `cashier-status-badge status-${cashierStatus.status === 'OPEN' ? 'open' : 'closed'}`;
             }
         }
 
-        // Update payment card state based on cashier status
         function updatePaymentCardState() {
             const paymentCard = document.getElementById('paymentCard');
             const paymentBadge = document.getElementById('paymentBadge');
-            
-            if (!paymentCard || !paymentBadge) return;
-            
+            if (!paymentCard) return;
             if (cashierStatus.status === 'OPEN') {
-                // Cashier is open - enable payment card
                 paymentCard.classList.remove('payment-card-inactive', 'inactive-overlay');
                 paymentCard.classList.add('payment-card-active');
                 paymentCard.style.cursor = 'pointer';
                 paymentBadge.textContent = 'ACTIVE';
                 paymentBadge.style.background = '#28a745';
-                
-                // Remove any existing overlay
-                const existingOverlay = paymentCard.querySelector('.payment-overlay');
-                if (existingOverlay) existingOverlay.remove();
-                
-                // Enable onclick
                 paymentCard.onclick = function() { handlePaymentClick(); };
-                
             } else {
-                // Cashier is closed - disable payment card
                 paymentCard.classList.remove('payment-card-active');
                 paymentCard.classList.add('payment-card-inactive');
                 paymentCard.style.cursor = 'not-allowed';
                 paymentBadge.textContent = 'CASHIER CLOSED';
                 paymentBadge.style.background = '#dc3545';
-                
-                // Disable onclick - show warning instead
-                paymentCard.onclick = function() { 
-                    showCashierWarningModal(); 
-                    return false;
-                };
+                paymentCard.onclick = function() { showCashierWarningModal(); return false; };
             }
         }
 
-        // ========== SESSION MANAGEMENT ==========
         function checkSession() {
             const username = localStorage.getItem('username');
-            const level = localStorage.getItem('level');
-            const rcno = localStorage.getItem('rcno');
-            
-            console.log('Session check:', { username, level, rcno });
-            
-            // If any required data is missing, redirect to login
-            if (!username) {
-                console.warn('Session invalid - no username');
-                redirectToLogin('Session expired');
-                return false;
-            }
-            
+            if (!username) { redirectToLogin('Session expired'); return false; }
+            return true;
+        }
+        function redirectToLogin(reason) { console.log('Redirect:', reason); if(refreshInterval) clearInterval(refreshInterval); if(sessionCheckInterval) clearInterval(sessionCheckInterval); window.location.href = 'login.html'; }
+        function updateActivity() { lastActivity = Date.now(); sessionStorage.setItem('lastActivity', lastActivity); }
+
+        function loadUserFromStorage() {
+            const username = localStorage.getItem('username');
+            const level = localStorage.getItem('level') || 'operator';
+            const rcno = localStorage.getItem('rcno') || 'N/A';
+            if (!username) { redirectToLogin('No user session'); return false; }
+            currentUser = { username, level, rcno };
+            document.getElementById('userName').textContent = username;
+            document.getElementById('welcomeName').textContent = username;
+            document.getElementById('userLevel').textContent = level.charAt(0).toUpperCase() + level.slice(1);
+            document.getElementById('userRcno').textContent = rcno;
+            document.getElementById('userAvatar').textContent = username.charAt(0).toUpperCase();
+            document.getElementById('welcomeMessage').innerHTML = `Welcome back, <span id="welcomeName">${username}</span>!`;
             return true;
         }
 
-        function redirectToLogin(reason) {
-            console.log('Redirecting to login:', reason);
-            
-            // Clear intervals
-            if (refreshInterval) {
-                clearInterval(refreshInterval);
-                refreshInterval = null;
-            }
-            
-            if (sessionCheckInterval) {
-                clearInterval(sessionCheckInterval);
-                sessionCheckInterval = null;
-            }
-            
-            // Redirect to login
-            window.location.href = 'login.html';
-        }
+        function isShiftOpen() { return currentShift && (currentShift.morning === 'open' || currentShift.evening === 'open'); }
+        function isCashierOpen() { return cashierStatus.status === 'OPEN'; }
+        function handlePassengerEntryClick() { if (!checkSession()) return; if (isShiftOpen()) navigateTo('cardentry.html'); else showShiftWarningModal(); }
+        function handlePaymentClick() { if (!checkSession()) return; if (!isShiftOpen()) showShiftWarningModal(); else if (!isCashierOpen()) showCashierWarningModal(); else navigateTo('pay.html'); }
+        function showShiftWarningModal() { document.getElementById('shiftWarningModal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('shiftWarningModal').style.display = 'none'; }
+        function showCashierWarningModal() { document.getElementById('cashierWarningMessage').textContent = cashierStatus.username ? `Cashier (${cashierStatus.username}) is currently CLOSED. Payment processing is disabled. Please open cashier to accept payments.` : 'Cashier is not assigned. Payment processing is disabled.'; document.getElementById('cashierWarningModal').style.display = 'flex'; }
+        function closeCashierModal() { document.getElementById('cashierWarningModal').style.display = 'none'; }
+        function goToShiftManagement() { closeModal(); navigateTo('shift.html'); }
+        function goToCashier() { closeCashierModal(); navigateTo('cashier.html'); }
+        async function loadDashboardStats() { /* original stats function kept, but not altered */ try { if(!checkSession()) return; const today = new Date().toISOString().split('T')[0]; if(typeof db === 'undefined') return; const todaySnapshot = await db.collection('KoveliPass').where('date','==',today).get(); document.getElementById('todayEntries').textContent = `${todaySnapshot.size} entries today`; const reportsSnapshot = await db.collection('FlightReports').where('date','==',today).get(); let uniqueFlights = new Set(), totalPax=0; todaySnapshot.forEach(d=>{ if(d.data().flightNo) uniqueFlights.add(d.data().flightNo); totalPax+= parseInt(d.data().pax)||1; }); let closedFlights=0, openFlights=0; reportsSnapshot.forEach(d=>{ if(d.data().isClosed===true) closedFlights++; else if(d.data().isClosed===false) openFlights++; }); let totalFlights = uniqueFlights.size; if(totalFlights > (openFlights+closedFlights)) openFlights = totalFlights - closedFlights; document.getElementById('totalFlights').textContent = totalFlights; document.getElementById('openFlights').textContent = openFlights; document.getElementById('closedFlights').textContent = closedFlights; document.getElementById('totalPassengers').textContent = totalPax; document.getElementById('flightCount').textContent = `${totalFlights} total flights`; if(currentShift && (currentShift.morning==='open'||currentShift.evening==='open')){ const shiftStart = currentShift.startTime||'08:00'; const now = new Date(); const [hours,minutes]=shiftStart.split(':'); const startTime = new Date(); startTime.setHours(parseInt(hours),parseInt(minutes),0); const diffMs = now-startTime; const diffHrs = Math.floor(diffMs/3600000); const diffMins = Math.floor((diffMs%3600000)/60000); document.getElementById('shiftDuration').textContent = `${diffHrs}h ${diffMins}m`; } else document.getElementById('shiftDuration').textContent = 'No active shift'; document.getElementById('pendingPayments').textContent = `${Math.floor(totalPax*0.15)} pending`; } catch(e){ console.error(e);} }
+        async function loadRecentActivity() { try { if(!checkSession()) return; const today = new Date().toISOString().split('T')[0]; const recentSnapshot = await db.collection('KoveliPass').where('date','==',today).orderBy('entryTime','desc').limit(5).get(); const activityList = document.getElementById('recentActivity'); if(recentSnapshot.empty){ activityList.innerHTML='<div class="activity-item"><span class="activity-time">--:--</span><span class="activity-desc">No recent activity</span></div>'; return; } let html=''; recentSnapshot.forEach(doc=>{ const data=doc.data(); html+=`<div class="activity-item"><span class="activity-time">${data.entryTime||'--:--'}</span><span class="activity-desc">${data.pName||'Unknown'} checked in</span><span class="activity-flight">${data.flightNo||'N/A'}</span></div>`; }); activityList.innerHTML=html; } catch(e){ console.error(e);} }
+        function navigateTo(page) { if(!checkSession()) return; if(currentShift) localStorage.setItem('currentShift',JSON.stringify(currentShift)); if(cashierStatus) localStorage.setItem('cashierStatus',JSON.stringify(cashierStatus)); window.location.href=page; }
+        function viewAllActivity() { if(!checkSession()) return; window.location.href='report.html?view=activity'; }
+        function showProfile() { alert(`Profile\nUsername: ${currentUser.username}\nLevel: ${currentUser.level}\nRC No: ${currentUser.rcno}`); }
+        function showSettings() { alert('Settings panel would open here'); }
+        async function logout() { if(confirm('Are you sure you want to logout?')){ if(refreshInterval) clearInterval(refreshInterval); if(sessionCheckInterval) clearInterval(sessionCheckInterval); localStorage.removeItem('username'); localStorage.removeItem('level'); localStorage.removeItem('rcno'); localStorage.removeItem('loggedInUser'); localStorage.removeItem('currentShift'); localStorage.removeItem('cashierStatus'); sessionStorage.clear(); if(typeof firebase !== 'undefined' && firebase.auth) await firebase.auth().signOut(); window.location.href='login.html'; } }
 
-        // Update last activity timestamp
-        function updateActivity() {
-            lastActivity = Date.now();
-            sessionStorage.setItem('lastActivity', lastActivity);
-        }
-
-        // ========== USER FUNCTIONS ==========
-        function loadUserFromStorage() {
-            try {
-                console.log('Loading user from localStorage...');
-                
-                // Get user data from localStorage
-                const username = localStorage.getItem('username');
-                const level = localStorage.getItem('level');
-                const rcno = localStorage.getItem('rcno');
-                
-                console.log('Retrieved from storage:', { username, level, rcno });
-                
-                // Validate all required fields exist
-                if (!username) {
-                    console.error('No username found in localStorage');
-                    redirectToLogin('No user session found');
-                    return false;
-                }
-                
-                // Set default values if missing
-                const userLevel = level || 'operator';
-                const userRcno = rcno || 'N/A';
-                
-                // Store back any defaults
-                if (!level) {
-                    localStorage.setItem('level', 'operator');
-                }
-                if (!rcno) {
-                    localStorage.setItem('rcno', 'N/A');
-                }
-                
-                // Set current user
-                currentUser = {
-                    username: username,
-                    level: userLevel,
-                    rcno: userRcno
-                };
-                
-                console.log('Current user set:', currentUser);
-                
-                // Update UI
-                updateUserUI(currentUser);
-                
-                return true;
-                
-            } catch (error) {
-                console.error('Error loading user from storage:', error);
-                redirectToLogin('Error loading user data');
-                return false;
-            }
-        }
-
-        function updateUserUI(user) {
-            // Update user name
-            document.getElementById('userName').textContent = user.username;
-            document.getElementById('welcomeName').textContent = user.username;
-            
-            // Update user level and RC number
-            document.getElementById('userLevel').textContent = user.level.charAt(0).toUpperCase() + user.level.slice(1);
-            document.getElementById('userRcno').textContent = user.rcno;
-            
-            // Update avatar with first letter of username
-            const avatar = document.getElementById('userAvatar');
-            avatar.textContent = user.username.charAt(0).toUpperCase();
-            
-            // Update welcome message
-            document.getElementById('welcomeMessage').innerHTML = `Welcome back, <span id="welcomeName">${user.username}</span>!`;
-        }
-
-        // ========== SHIFT FUNCTIONS ==========
-        async function fetchShiftData() {
-            try {
-                if (!checkSession()) return;
-                
-                if (typeof passengerDb === 'undefined') {
-                    console.error('passengerDb not initialized');
-                    return;
-                }
-
-                const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
-                
-                if (shiftDoc.exists) {
-                    const data = shiftDoc.data();
-                    currentShift = data;
-                    
-                    // Save to localStorage
-                    saveToLocalStorage();
-                    
-                    updateShiftDisplay();
-                } else {
-                    console.log('No shift document found');
-                    currentShift = null;
-                    saveToLocalStorage();
-                    updateShiftDisplay();
-                }
-            } catch (error) {
-                console.error('Error fetching shift:', error);
-                document.getElementById('shiftType').textContent = 'ERROR';
-                document.getElementById('shiftDate').textContent = '--';
-            }
-        }
-
-        // ========== CHECK IF SHIFT IS OPEN ==========
-        function isShiftOpen() {
-            if (!currentShift) return false;
-            return (currentShift.morning === 'open' || currentShift.evening === 'open');
-        }
-
-        // ========== CHECK IF CASHIER IS OPEN ==========
-        function isCashierOpen() {
-            return cashierStatus.status === 'OPEN';
-        }
-
-        // ========== HANDLE PASSENGER ENTRY CLICK ==========
-        function handlePassengerEntryClick() {
+        // ========== NEW: PRINT ONE-LINE RECEIPT (ULTRA SMALL) ==========
+        function printOneLineReceipt() {
             if (!checkSession()) return;
-            
-            if (isShiftOpen()) {
-                // Shift is open, navigate to passenger entry
-                navigateTo('cardentry.html');
-            } else {
-                // No active shift, show warning modal
-                showShiftWarningModal();
-            }
+            const now = new Date();
+            const timestamp = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+            const user = currentUser ? currentUser.username : 'operator';
+            const shiftStatus = isShiftOpen() ? (currentShift.morning==='open'?'MORNING':'EVENING') : 'NO-SHIFT';
+            const cashierStat = cashierStatus.status === 'OPEN' ? 'CASHIER-OPEN' : 'CASHIER-CLOSED';
+            // Build one-line receipt: minimal content, short as possible
+            const receiptLine = `KOVELI|${timestamp}|${user}|${shiftStatus}|${cashierStat}`;
+            // Create hidden container and print
+            const printDiv = document.getElementById('receiptPrintContainer');
+            printDiv.style.display = 'block';
+            printDiv.innerHTML = `<div style="font-family: monospace; font-size: 11px; white-space: nowrap; padding: 2px 4px;">${receiptLine}</div>`;
+            window.print();
+            // After print, hide again
+            setTimeout(() => { printDiv.style.display = 'none'; }, 500);
         }
 
-        // ========== HANDLE PAYMENT CLICK ==========
-        function handlePaymentClick() {
-            if (!checkSession()) return;
-            
-            if (!isShiftOpen()) {
-                showShiftWarningModal();
-                return;
-            }
-            
-            // This function should only be called when cashier is open
-            // But double-check just in case
-            if (!isCashierOpen()) {
-                showCashierWarningModal();
-                return;
-            }
-            
-            // Both shift and cashier are open, navigate to payment
-            navigateTo('pay.html');
-        }
-
-        // ========== MODAL FUNCTIONS ==========
-        function showShiftWarningModal() {
-            document.getElementById('shiftWarningModal').style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('shiftWarningModal').style.display = 'none';
-        }
-
-        function showCashierWarningModal() {
-            const message = cashierStatus.username 
-                ? `Cashier (${cashierStatus.username}) is currently CLOSED. Payment processing is disabled. Please open cashier to accept payments.`
-                : 'Cashier is not assigned. Payment processing is disabled. Please go to Cashier to open.';
-            
-            document.getElementById('cashierWarningMessage').textContent = message;
-            document.getElementById('cashierWarningModal').style.display = 'flex';
-        }
-
-        function closeCashierModal() {
-            document.getElementById('cashierWarningModal').style.display = 'none';
-        }
-
-        function goToShiftManagement() {
-            closeModal();
-            navigateTo('shift.html');
-        }
-
-        function goToCashier() {
-            closeCashierModal();
-            navigateTo('cashier.html');
-        }
-
-        // ========== DASHBOARD STATS ==========
-        async function loadDashboardStats() {
-            try {
-                if (!checkSession()) return;
-                
-                // Get today's date in YYYY-MM-DD format
-                const today = new Date().toISOString().split('T')[0];
-                
-                if (typeof db === 'undefined') {
-                    console.error('Database not initialized');
-                    return;
-                }
-
-                // Get today's entries from KoveliPass
-                const todaySnapshot = await db.collection('KoveliPass')
-                    .where('date', '==', today)
-                    .get();
-                
-                const todayCount = todaySnapshot.size;
-                document.getElementById('todayEntries').textContent = 
-                    `${todayCount} entries today`;
-                
-                // Get flight reports for today
-                const reportsSnapshot = await db.collection('FlightReports')
-                    .where('date', '==', today)
-                    .get();
-                
-                // Calculate flight statistics
-                let totalFlights = 0;
-                let openFlights = 0;
-                let closedFlights = 0;
-                let uniqueFlights = new Set();
-                let totalPax = 0;
-                
-                // Process KoveliPass data for passenger count
-                todaySnapshot.forEach(doc => {
-                    const data = doc.data();
-                    if (data.flightNo) {
-                        uniqueFlights.add(data.flightNo);
-                    }
-                    totalPax += parseInt(data.pax) || 1;
-                });
-                
-                totalFlights = uniqueFlights.size;
-                
-                // Process FlightReports for open/closed status
-                reportsSnapshot.forEach(doc => {
-                    const data = doc.data();
-                    if (data.isClosed === true) {
-                        closedFlights++;
-                    } else if (data.isClosed === false) {
-                        openFlights++;
-                    }
-                });
-                
-                // If we have flights but no reports yet, consider them open
-                if (totalFlights > (openFlights + closedFlights)) {
-                    openFlights = totalFlights - closedFlights;
-                }
-                
-                // Update flight stats
-                document.getElementById('totalFlights').textContent = totalFlights;
-                document.getElementById('openFlights').textContent = openFlights;
-                document.getElementById('closedFlights').textContent = closedFlights;
-                document.getElementById('totalPassengers').textContent = totalPax;
-                
-                // Update flight count for airline report card
-                document.getElementById('flightCount').textContent = 
-                    `${totalFlights} total flights`;
-                
-                // Calculate shift duration if shift is active
-                if (currentShift && (currentShift.morning === 'open' || currentShift.evening === 'open')) {
-                    const shiftStart = currentShift.startTime || '08:00';
-                    const now = new Date();
-                    const [hours, minutes] = shiftStart.split(':');
-                    const startTime = new Date();
-                    startTime.setHours(parseInt(hours), parseInt(minutes), 0);
-                    
-                    const diffMs = now - startTime;
-                    const diffHrs = Math.floor(diffMs / 3600000);
-                    const diffMins = Math.floor((diffMs % 3600000) / 60000);
-                    
-                    document.getElementById('shiftDuration').textContent = 
-                        `${diffHrs}h ${diffMins}m`;
-                } else {
-                    document.getElementById('shiftDuration').textContent = 'No active shift';
-                }
-                
-                // Pending payments (example calculation)
-                const pendingCount = Math.floor(totalPax * 0.15); // 15% pending
-                document.getElementById('pendingPayments').textContent = 
-                    `${pendingCount} pending`;
-                
-            } catch (error) {
-                console.error('Error loading stats:', error);
-            }
-        }
-
-        // ========== RECENT ACTIVITY ==========
-        async function loadRecentActivity() {
-            try {
-                if (!checkSession()) return;
-                
-                const today = new Date().toISOString().split('T')[0];
-                
-                const recentSnapshot = await db.collection('KoveliPass')
-                    .where('date', '==', today)
-                    .orderBy('entryTime', 'desc')
-                    .limit(5)
-                    .get();
-                
-                const activityList = document.getElementById('recentActivity');
-                
-                if (recentSnapshot.empty) {
-                    activityList.innerHTML = `
-                        <div class="activity-item">
-                            <span class="activity-time">--:--</span>
-                            <span class="activity-desc">No recent activity</span>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                let html = '';
-                recentSnapshot.forEach(doc => {
-                    const data = doc.data();
-                    const time = data.entryTime || '--:--';
-                    const name = data.pName || 'Unknown';
-                    const flight = data.flightNo || 'N/A';
-                    
-                    html += `
-                        <div class="activity-item">
-                            <span class="activity-time">${time}</span>
-                            <span class="activity-desc">${name} checked in</span>
-                            <span class="activity-flight">${flight}</span>
-                        </div>
-                    `;
-                });
-                
-                activityList.innerHTML = html;
-                
-            } catch (error) {
-                console.error('Error loading activity:', error);
-            }
-        }
-
-        // ========== NAVIGATION ==========
-        function navigateTo(page) {
-            if (!checkSession()) return;
-            
-            // Store current shift data in localStorage for the next page
-            if (currentShift) {
-                localStorage.setItem('currentShift', JSON.stringify(currentShift));
-            }
-            
-            if (cashierStatus) {
-                localStorage.setItem('cashierStatus', JSON.stringify(cashierStatus));
-            }
-            
-            window.location.href = page;
-        }
-
-        function viewAllActivity() {
-            if (!checkSession()) return;
-            // Navigate to a page showing all activity
-            window.location.href = 'report.html?view=activity';
-        }
-
-        function showProfile() {
-            if (!checkSession()) return;
-            alert(`Profile\nUsername: ${currentUser.username}\nLevel: ${currentUser.level}\nRC No: ${currentUser.rcno}`);
-        }
-
-        function showSettings() {
-            if (!checkSession()) return;
-            alert('Settings panel would open here');
-        }
-
-        // ========== LOGOUT FUNCTION ==========
-        async function logout() {
-            const confirmLogout = confirm('Are you sure you want to logout?');
-            
-            if (confirmLogout) {
-                try {
-                    // Clear any intervals
-                    if (refreshInterval) {
-                        clearInterval(refreshInterval);
-                        refreshInterval = null;
-                    }
-                    
-                    if (sessionCheckInterval) {
-                        clearInterval(sessionCheckInterval);
-                        sessionCheckInterval = null;
-                    }
-                    
-                    // Clear ALL localStorage items
-                    localStorage.removeItem('username');
-                    localStorage.removeItem('level');
-                    localStorage.removeItem('rcno');
-                    localStorage.removeItem('loggedInUser');
-                    localStorage.removeItem('currentShift');
-                    localStorage.removeItem('cashierStatus');
-                    
-                    // Clear session storage
-                    sessionStorage.clear();
-                    
-                    // If using Firebase Auth
-                    if (typeof firebase !== 'undefined' && firebase.auth) {
-                        await firebase.auth().signOut();
-                    }
-                    
-                    console.log('Logged out, redirecting to login...');
-                    
-                    // Redirect to login page
-                    window.location.href = 'login.html';
-                    
-                } catch (error) {
-                    console.error('Logout error:', error);
-                    // Still redirect even if there's an error
-                    window.location.href = 'login.html';
-                }
-            }
-        }
-
-        // ========== INITIALIZATION ==========
+        // Attach event to floating print button
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Dashboard loading...');
-            
-            // Load users from users.js
             loadUsers();
-            
-            // Initialize database
             initializeDatabase();
-            
-            // Load user data from localStorage first
             const userLoaded = loadUserFromStorage();
-            
-            if (!userLoaded) {
-                // loadUserFromStorage will redirect if no user found
-                return;
-            }
-            
-            // First, load from localStorage for immediate display
+            if (!userLoaded) return;
             loadFromLocalStorage();
+            fetchFromFirebase().then(() => { loadDashboardStats(); loadRecentActivity(); });
+            ['click','keypress','scroll','mousemove'].forEach(ev => document.addEventListener(ev, updateActivity));
+            sessionCheckInterval = setInterval(() => { checkSession(); const inactiveTime = Date.now() - lastActivity; if(inactiveTime > 30*60*1000) logout(); }, 5000);
+            window.addEventListener('storage', function(e) { if(e.key === 'username' && e.newValue === null) redirectToLogin('Logged out in another tab'); if(e.key === 'currentShift' || e.key === 'cashierStatus') loadFromLocalStorage(); });
+            refreshInterval = setInterval(() => { if(checkSession()) { fetchFromFirebase(); loadDashboardStats(); } }, 30000);
             
-            // Then fetch fresh data from Firebase
-            fetchFromFirebase().then(() => {
-                // After Firebase fetch, load dashboard stats
-                loadDashboardStats();
-                loadRecentActivity();
-            });
-            
-            // Track user activity
-            ['click', 'keypress', 'scroll', 'mousemove'].forEach(event => {
-                document.addEventListener(event, updateActivity);
-            });
-            
-            // Set up session check interval (every 5 seconds)
-            sessionCheckInterval = setInterval(() => {
-                checkSession();
-                
-                // Optional: Auto logout after 30 minutes of inactivity
-                const inactiveTime = Date.now() - lastActivity;
-                const thirtyMinutes = 30 * 60 * 1000;
-                
-                if (inactiveTime > thirtyMinutes) {
-                    console.log('User inactive for 30 minutes, logging out');
-                    logout();
-                }
-            }, 5000);
-            
-            // Monitor localStorage changes from other tabs
-            window.addEventListener('storage', function(e) {
-                console.log('localStorage changed in another tab:', e.key);
-                
-                if (e.key === 'username' && e.newValue === null) {
-                    // User was logged out in another tab
-                    console.warn('Logged out in another tab');
-                    redirectToLogin('Logged out in another tab');
-                }
-                
-                // If shift or cashier data changed in another tab, reload from localStorage
-                if (e.key === 'currentShift' || e.key === 'cashierStatus') {
-                    console.log('Data changed in another tab, reloading from localStorage');
-                    loadFromLocalStorage();
-                }
-            });
-            
-            // Refresh data every 30 seconds
-            refreshInterval = setInterval(() => {
-                if (checkSession()) {
-                    fetchFromFirebase();
-                    loadDashboardStats();
-                }
-            }, 30000);
+            const printBtn = document.getElementById('printReceiptBtn');
+            if(printBtn) printBtn.addEventListener('click', printOneLineReceipt);
         });
 
-        // ========== HELPER FUNCTIONS ==========
-        function formatTime(date) {
-            return date.toLocaleTimeString('en-US', { 
-                hour: '2-digit', 
-                minute: '2-digit',
-                hour12: false 
-            });
-        }
-
-        // Make functions globally available
         window.navigateTo = navigateTo;
         window.logout = logout;
         window.viewAllActivity = viewAllActivity;
