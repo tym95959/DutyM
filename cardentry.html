@@ -3458,10 +3458,10 @@ function makeEditable(cell, entryId, field, isSaved = false) {
     
     input.addEventListener('blur', function(e) {
         setTimeout(() => {
-            if (editingCell && editingCell.input === this) {
+            if (editingCell && editingCell.input === this && document.activeElement !== this) {
                 saveInlineEdit(this);
             }
-        }, 100);
+        }, 200);
     });
     
     if (field === 'seatNo') {
@@ -5096,10 +5096,36 @@ function parseAndAddToList() {
                             shouldProcess = true;
                         }
                         // MH Airlines
-                        else if (flightNoPrefix === 'MH' && thirdLastWord && thirdLastWord.length === 2) {
-                            fqtvNumber = thirdLastWord + '-' + secondLastWord;
-                            shouldProcess = true;
+                       else if (flightNoPrefix === 'MH' && thirdLastWord && thirdLastWord.length === 2) {
+                        const trimmedThird = thirdLastWord.trim();
+                        const trimmedSecond = secondLastWord.trim();
+                        fqtvNumber = trimmedThird + '-' + trimmedSecond;
+                        shouldProcess = true;
+                        
+                        // Process suffix mapping for fqtvNumber (for non-UL, non-QR airlines)
+                        if (shouldProcess && !fqtvValue) {
+                            const trimmedLastWord = lastWord.trim();
+                            if (validSuffixes.includes(trimmedLastWord)) {
+                                const suffixMap = {
+                                    'Y1': 'P',
+                                    'Y2': 'G'
+                                };
+                                let suffix = suffixMap[trimmedLastWord];
+                                
+                                const alliance = getAirlineAlliance(iataCode);
+                                const fqtvFirstChar = fqtvNumber.split('-')[0].charAt(0);
+                                
+                                if (alliance === 'ONE WORLD' && fqtvFirstChar !== iataCode.charAt(0)) {
+                                    if (suffix === 'G') suffix = 'EMER';
+                                    else if (suffix === 'S') suffix = 'SAPP';
+                                }
+                                
+                                fqtvValue = `${fqtvNumber}/${suffix}`;
+                            } else {
+                                fqtvValue = fqtvNumber;
+                            }
                         }
+                    }
                         // WK Airlines
                         else if (flightNoPrefix === 'WK' && thirdLastWord && thirdLastWord.length === 2) {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
@@ -5166,32 +5192,12 @@ function parseAndAddToList() {
                             fqtvNumber = thirdLastWord + '-' + secondLastWord;
                             shouldProcess = true;
                         }
-                       
-                       // UL Airlines (SriLankan) - Extract 5th and 4th last word with suffix from 3rd last word
+                        // UL Airlines (SriLankan) - Extract 4th and 3rd last word
                         else if (flightNoPrefix === 'UL') {
-                            // Check if 5th last word length is 2 (like 'QF', 'QR', 'EK', etc.)
-                            if (fifthLastWord && fifthLastWord.length === 2 && fourthLastWord) {
-                                // Trim both words to remove any spaces
-                                let airlineCode = fifthLastWord.trim();
-                                let number = fourthLastWord.trim();
-                                let baseFqtv = `${airlineCode}-${number}`;
-                                
-                                // Extract suffix from 3rd last word (e.g., "2SAPH1535JKOVELI" -> "SAPH")
-                                if (thirdLastWord) {
-                                    let thirdWord = thirdLastWord.trim();
-                                    const suffixMatch = thirdWord.match(/[A-Z]+/);
-                                    if (suffixMatch) {
-                                        let suffix = suffixMatch[0];
-                                        // Remove leading numbers if any (like "2" from "2SAPH")
-                                        suffix = suffix.replace(/^\d+/, '');
-                                        fqtvValue = `${baseFqtv}/${suffix}`;
-                                    } else {
-                                        fqtvValue = baseFqtv;
-                                    }
-                                } else {
-                                    fqtvValue = baseFqtv;
-                                }
-                            }
+                            // Check if 4th last word length is 2 (like 'QR', 'EK', etc.)
+                            if (fourthLastWord && fourthLastWord.length === 2 && thirdLastWord) {
+                            fqtvValue = `${fourthLastWord} ${thirdLastWord}`;
+                        }
                         }
                         // 3K Airlines
                         else if (flightNoPrefix === '3K' && thirdLastWord && thirdLastWord.length === 2) {
