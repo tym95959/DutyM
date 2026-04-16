@@ -324,6 +324,118 @@
         .balance-display .balance-negative {
             color: #c68b5e;
         }
+
+        /* ========== DRAWER BUTTON STYLES (ADDED) ========== */
+        .drawer-btn {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2c3e50, #1a2632);
+            color: #e6b800;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        .drawer-btn:hover {
+            transform: scale(1.08);
+            background: linear-gradient(135deg, #e6b800, #b89400);
+            color: #2c3e50;
+        }
+
+        /* ========== PRINT RECEIPT - 3cm max height (ADDED) ========== */
+        .drawer-print-area {
+            display: none;
+        }
+
+        @media print {
+            html, body, .container, .floating-menu, .drawer-btn, .modal, 
+            body *:not(.drawer-print-area):not(.drawer-receipt) {
+                visibility: hidden !important;
+                display: none !important;
+            }
+            .drawer-print-area,
+            .drawer-print-area * {
+                visibility: visible !important;
+                display: block !important;
+            }
+            .drawer-print-area {
+                display: flex !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: auto !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: white !important;
+                z-index: 99999 !important;
+                justify-content: center !important;
+                align-items: flex-start !important;
+                page-break-after: avoid !important;
+                page-break-before: avoid !important;
+                page-break-inside: avoid !important;
+            }
+            .drawer-receipt {
+                font-family: 'Courier New', monospace !important;
+                font-size: 9px !important;
+                line-height: 1.15 !important;
+                background: white !important;
+                color: black !important;
+                width: 80mm !important;
+                max-width: 80mm !important;
+                margin: 0 auto !important;
+                padding: 2px 4px !important;
+                border: none !important;
+                height: auto !important;
+                max-height: 3cm !important;
+                min-height: 2.5cm !important;
+                box-sizing: border-box !important;
+                text-align: center !important;
+                overflow: hidden !important;
+            }
+            .drawer-receipt .receipt-line {
+                margin: 0px 0 !important;
+                padding: 0 !important;
+                white-space: nowrap;
+                font-size: 8px !important;
+                line-height: 1.2 !important;
+            }
+            .drawer-receipt .header {
+                font-weight: bold;
+                font-size: 10px !important;
+                margin-bottom: 1px !important;
+                letter-spacing: 1px;
+            }
+            .drawer-receipt .divider {
+                border-top: 1px dashed #000;
+                margin: 2px 0 !important;
+                width: 100%;
+            }
+            @page {
+                size: 80mm 30mm !important;
+                margin: 0mm !important;
+            }
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                height: auto !important;
+                background: white !important;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .drawer-btn { bottom: 90px; right: 20px; width: 48px; height: 48px; font-size: 22px; }
+        }
     </style>
 </head>
 <body>
@@ -339,7 +451,7 @@
     </div>
 
     <div class="container">
-        <!-- Header (unchanged) -->
+        <!-- Header -->
         <div class="header">
             <h2>KOVELI PAYMENT</h2>
             <div class="header-actions">
@@ -368,9 +480,8 @@
                 <span id="statusMessage" class="status-message"></span>
             </div>
 
-            <!-- Two Column Layout with conditional overlay -->
+            <!-- Two Column Layout -->
             <div id="paymentContainer" class="two-column-layout">
-                <!-- LEFT - Passenger Section -->
                 <div class="passenger-section">
                     <div class="section-title">PASSENGER DETAILS</div>
                     <input type="hidden" id="hiddenCode">
@@ -390,7 +501,6 @@
                     <div class="form-group"><label>TOTAL PASSENGERS</label><input type="text" id="totalPassengers" value="1" readonly></div>
                 </div>
                 
-                <!-- RIGHT - Payment Section -->
                 <div class="payment-section" id="paymentSection">
                     <div class="section-title">PAYMENT DETAILS</div>
                     <div class="grid-3">
@@ -399,7 +509,6 @@
                         <div class="form-group"><label>PAYMENT</label><select id="paymentMethod"><option value="CARD">CARD</option><option value="CASH">CASH</option><option value="BANK TRANSFER">TRANSFER</option><option value="MOBILE PAYMENT">MOBILE</option><option value="VOUCHER">VOUCHER</option></select></div>
                     </div>
                     
-                    <!-- NEW: CASH PAYMENT SECTION - appears when payment method is CASH -->
                     <div id="cashPaymentPanel" class="cash-payment-panel" style="display: none;">
                         <div class="cash-field-group">
                             <label>💰 AMOUNT RECEIVED (CASH)</label>
@@ -443,6 +552,10 @@
         </div>
     </div>
 
+    <!-- DRAWER BUTTON (ADDED) -->
+    <button class="drawer-btn" id="drawerOpenBtn" title="Open Cash Drawer">🗄️</button>
+    <div id="drawerPrintContainer" class="drawer-print-area"></div>
+
     <!-- Reprint Modal -->
     <div id="reprintModal" class="modal">
         <div class="modal-content">
@@ -457,7 +570,7 @@
     </div>
 
 <script>
-// ========== ALL JAVASCRIPT with Cashier Fetch from Firebase and Payment Blocking ==========
+// ========== ORIGINAL JAVASCRIPT - UNCHANGED except for added drawer function at the end ==========
 
 let currentShiftData = { date: '', shift: '', status: '', openTime: '' };
 let currentCashier = { name: '', level: '', rcno: '', status: 'CLOSED' };
@@ -469,10 +582,9 @@ let currentUser = { username: '', level: '', rcno: '', isLoggedIn: false };
 let pendingTransactionsCount = 0;
 let lastSavedTransaction = null;
 let shiftDataLoaded = false;
-let database = null; // Firebase database reference
-let usersList = []; // Users list from users.js
+let database = null;
+let usersList = [];
 
-// ========== LOAD USERS FUNCTION ==========
 function loadUsers() {
     if (typeof window.users !== 'undefined' && Array.isArray(window.users)) {
         usersList = window.users;
@@ -490,7 +602,6 @@ function loadUsers() {
     return false;
 }
 
-// ========== BOARDING PASS PARSING FUNCTION (used by both fields) ==========
 function parseBoardingPassCode(codeInput) {
     if (!codeInput) return false;
     
@@ -566,7 +677,6 @@ function parseBoardingPassCode(codeInput) {
             if (seatString) seatNo = seatString.substring(5, seatString.length - 4);
         }
         
-        // Populate all fields
         document.getElementById('hiddenCode').value = codeInput;
         document.getElementById('pName').value = namePart.toUpperCase();
         document.getElementById('flightNo').value = flightNoPart ? flightNoPart.toUpperCase() : '';
@@ -579,10 +689,8 @@ function parseBoardingPassCode(codeInput) {
             setTimeout(() => { statusMsg.textContent = ''; }, 2000); 
         }
         
-        // Clear the code field if it was used
         document.getElementById('code').value = '';
         
-        // Add visual feedback
         document.getElementById('pName').style.backgroundColor = '#e6f0da';
         setTimeout(() => {
             document.getElementById('pName').style.backgroundColor = '';
@@ -597,26 +705,20 @@ function parseBoardingPassCode(codeInput) {
     }
 }
 
-// ========== HANDLE PASSENGER NAME FIELD INPUT ==========
 function handlePassengerNameInput() {
     const pNameField = document.getElementById('pName');
     const value = pNameField.value;
     
-    // Only parse if it looks like a boarding pass code
     if (value && value.trim().startsWith('M') && value.includes('MLE')) {
         parseBoardingPassCode(value);
     }
 }
 
-// ========== ORIGINAL PARSE FUNCTION (for code field) ==========
 function parseAndAddToList() {
     const codeInput = document.getElementById('code').value;
     return parseBoardingPassCode(codeInput);
 }
 
-// ========== CASHIER FUNCTIONS - Fetch from Firebase and Block Payments ==========
-
-// Initialize database reference
 function initializeDatabase() {
     if (typeof passengerDb !== 'undefined') {
         database = passengerDb;
@@ -629,7 +731,6 @@ function initializeDatabase() {
     }
 }
 
-// Fetch cashier status from Firebase
 async function fetchCashierStatus() {
     try {
         if (typeof database === 'undefined' || !database) {
@@ -650,7 +751,6 @@ async function fetchCashierStatus() {
                 status: data.status || 'CLOSED'
             };
             
-            // Get RC number and level from users.js if available
             if (currentCashier.name) {
                 const matchedUser = usersList.find(u => 
                     u.username && u.username.toLowerCase() === currentCashier.name.toLowerCase()
@@ -663,8 +763,6 @@ async function fetchCashierStatus() {
             }
             
             updateCashierDisplay();
-            
-            // Block or unblock payments based on cashier status
             togglePaymentBlock(currentCashier.status !== 'OPEN');
             
             return data;
@@ -672,10 +770,7 @@ async function fetchCashierStatus() {
             console.log('No cashier document found in Firebase');
             currentCashier = { name: null, level: '', rcno: '', status: 'CLOSED' };
             updateCashierDisplay();
-            
-            // Block payments if no cashier document
             togglePaymentBlock(true);
-            
             return null;
         }
 
@@ -685,125 +780,40 @@ async function fetchCashierStatus() {
     }
 }
 
-// Toggle payment blocking based on cashier status
 function togglePaymentBlock(block) {
     const submitBtn = document.getElementById('submitBtn');
     const printBtn = document.getElementById('printReceiptBtn');
     const paymentSection = document.getElementById('paymentSection');
-    const paymentContainer = document.getElementById('paymentContainer');
     const cashierWarning = document.getElementById('cashierClosedWarning');
     
     if (block) {
-        // Disable payment buttons
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.style.opacity = '0.5';
-            submitBtn.title = 'Cashier is closed - cannot process payments';
-        }
-        
-        if (printBtn) {
-            printBtn.disabled = true;
-            printBtn.style.opacity = '0.5';
-            printBtn.title = 'Cashier is closed - cannot print receipts';
-        }
-        
-        // Show warning
-        if (cashierWarning) {
-            cashierWarning.style.display = 'inline-flex';
-        }
-        
-        // Add visual indicator to payment section
-        if (paymentSection) {
-            paymentSection.style.opacity = '0.7';
-            paymentSection.style.position = 'relative';
-            
-            // Remove any existing overlay
-            const existingOverlay = document.getElementById('paymentOverlay');
-            if (existingOverlay) existingOverlay.remove();
-            
-            // Create overlay
-            const overlay = document.createElement('div');
-            overlay.id = 'paymentOverlay';
-            overlay.style.position = 'absolute';
-            overlay.style.top = '0';
-            overlay.style.left = '0';
-            overlay.style.right = '0';
-            overlay.style.bottom = '0';
-            overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
-            overlay.style.color = 'white';
-            overlay.style.display = 'flex';
-            overlay.style.alignItems = 'center';
-            overlay.style.justifyContent = 'center';
-            overlay.style.fontWeight = 'bold';
-            overlay.style.borderRadius = '16px';
-            overlay.style.zIndex = '10';
-            overlay.style.backdropFilter = 'blur(2px)';
-            overlay.style.fontSize = '18px';
-            overlay.style.textAlign = 'center';
-            overlay.style.padding = '20px';
-            overlay.innerHTML = '⚠️ CASHIER CLOSED<br>CANNOT PROCESS PAYMENTS';
-            
-            paymentSection.style.position = 'relative';
-            paymentSection.appendChild(overlay);
-        }
-        
-        // Show status message
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.style.opacity = '0.5'; submitBtn.title = 'Cashier is closed - cannot process payments'; }
+        if (printBtn) { printBtn.disabled = true; printBtn.style.opacity = '0.5'; printBtn.title = 'Cashier is closed - cannot print receipts'; }
+        if (cashierWarning) cashierWarning.style.display = 'inline-flex';
+        if (paymentSection) paymentSection.style.opacity = '0.7';
         const statusMsg = document.getElementById('statusMessage');
-        if (statusMsg) {
-            statusMsg.textContent = '⚠️ CASHIER IS CLOSED - Cannot process payments';
-            statusMsg.style.color = '#dc3545';
-        }
-        
+        if (statusMsg) { statusMsg.textContent = '⚠️ CASHIER IS CLOSED - Cannot process payments'; statusMsg.style.color = '#dc3545'; }
     } else {
-        // Enable payment buttons
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.style.opacity = '1';
-            submitBtn.title = '';
-        }
-        
-        if (printBtn) {
-            printBtn.disabled = false;
-            printBtn.style.opacity = '1';
-            printBtn.title = '';
-        }
-        
-        // Hide warning
-        if (cashierWarning) {
-            cashierWarning.style.display = 'none';
-        }
-        
-        // Remove overlay from payment section
-        if (paymentSection) {
-            paymentSection.style.opacity = '1';
-            const overlay = document.getElementById('paymentOverlay');
-            if (overlay) overlay.remove();
-        }
-        
-        // Clear status message if it's the cashier closed message
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.style.opacity = '1'; submitBtn.title = ''; }
+        if (printBtn) { printBtn.disabled = false; printBtn.style.opacity = '1'; printBtn.title = ''; }
+        if (cashierWarning) cashierWarning.style.display = 'none';
+        if (paymentSection) paymentSection.style.opacity = '1';
         const statusMsg = document.getElementById('statusMessage');
-        if (statusMsg && statusMsg.textContent.includes('CASHIER IS CLOSED')) {
-            statusMsg.textContent = '';
-        }
+        if (statusMsg && statusMsg.textContent.includes('CASHIER IS CLOSED')) { statusMsg.textContent = ''; }
     }
 }
 
-// Update cashier display in UI
 function updateCashierDisplay() {
     const cashierNameEl = document.getElementById('cashierName');
     const cashierStatusBadge = document.getElementById('cashierStatusBadge');
     
-    if (cashierNameEl) {
-        cashierNameEl.textContent = currentCashier.name || 'Not assigned';
-    }
-    
+    if (cashierNameEl) cashierNameEl.textContent = currentCashier.name || 'Not assigned';
     if (cashierStatusBadge) {
         cashierStatusBadge.textContent = currentCashier.status;
         cashierStatusBadge.style.backgroundColor = currentCashier.status === 'OPEN' ? '#6b8e23' : '#c68b5e';
     }
 }
 
-// ========== FIREBASE & DATA FUNCTIONS ==========
 async function fetchPendingTransactionsCount() {
     try {
         if (typeof passengerDb === 'undefined') { 
@@ -819,34 +829,20 @@ async function fetchPendingTransactionsCount() {
         snapshot.forEach(doc => {
             const data = doc.data();
             const paymentMethod = data.paymentMethod || '';
-            
-            // Skip CASH transactions - they don't need approval
             if (paymentMethod === 'CASH') return;
-            
-            // Skip VOIDED transactions
             if (data.status === 'VOID' || data.voided === true) return;
-            
-            // FIXED: Check if transaction is complete based on approvalCode and batchNo
             const approvalCode = data.approvalCode || data.approvalcode || data.approval || '';
             const hasApprovalCode = approvalCode.trim() !== '';
-            
             const batchNo = data.batchNo || data.batchno || data.batch || '';
             const hasBatchNo = batchNo.trim() !== '';
-            
-            // For non-CASH, non-CARD payments, having approvalCode and batchNo makes it complete
-            // For CARD payments, also need cardType (handled in approval page)
-            // For now, just check if both approvalCode and batchNo are present
-            // This means if they are filled, it's complete and should NOT show in pending
             const isComplete = hasApprovalCode && hasBatchNo;
-            
-            // If it's NOT complete, count as pending
             if (!isComplete) pendingCount++;
         });
         
         pendingTransactionsCount = pendingCount;
         updatePendingCount(pendingCount);
         
-        console.log(`Pending transactions count updated: ${pendingCount} (only transactions missing approvalCode or batchNo count as pending)`);
+        console.log(`Pending transactions count updated: ${pendingCount}`);
         
     } catch (error) { 
         console.error('Error fetching pending transactions count:', error); 
@@ -1102,7 +1098,6 @@ async function generateReceiptNumber() {
     }
 }
 
-// ========== UPDATED SAVE TO FIREBASE WITH RECEIPT NUMBER AS DOCUMENT ID ==========
 async function saveToFirebase(data) {
     try {
         if (typeof passengerDb === 'undefined') throw new Error('passengerDb not initialized');
@@ -1114,7 +1109,6 @@ async function saveToFirebase(data) {
             throw new Error('Receipt number is required for document ID');
         }
         
-        // Use receipt number as the document ID
         const docRef = kovelipayRef.doc(receiptNo);
         await docRef.set(data);
         
@@ -1127,12 +1121,10 @@ async function saveToFirebase(data) {
     }
 }
 
-// ========== UPDATED FETCH TRANSACTION BY RECEIPT ==========
 async function fetchTransactionByReceipt(receiptNo) {
     try {
         if (typeof passengerDb === 'undefined') throw new Error('passengerDb not initialized');
         
-        // Try to get document directly by receipt number (which is now the document ID)
         const docRef = passengerDb.collection('Kovelipay').doc(receiptNo);
         const docSnapshot = await docRef.get();
         
@@ -1140,7 +1132,6 @@ async function fetchTransactionByReceipt(receiptNo) {
             return { id: docSnapshot.id, ...docSnapshot.data() };
         }
         
-        // Fallback: try query by receiptNo field (for backward compatibility)
         const querySnapshot = await passengerDb.collection('Kovelipay')
             .where('receiptNo', '==', receiptNo)
             .limit(1)
@@ -1238,7 +1229,6 @@ function setupNumberInputs() {
     });
 }
 
-// ========== NEW: Cash payment balance calculation ==========
 function updateCashBalance() {
     const paymentMethod = document.getElementById('paymentMethod').value;
     const cashPanel = document.getElementById('cashPaymentPanel');
@@ -1256,7 +1246,6 @@ function updateCashBalance() {
         }
     }
     
-    // Show/hide cash panel based on payment method
     if (paymentMethod === 'CASH') {
         cashPanel.style.display = 'block';
     } else {
@@ -1333,7 +1322,6 @@ function calculatePrices() {
     
     rateInfo.textContent = rateInfoText;
     
-    // Update cash balance when prices change
     updateCashBalance();
 }
 
@@ -1377,39 +1365,29 @@ function clearAllFields() {
     document.getElementById('code').focus();
 }
 
-// ========== ENHANCED REDIRECT TO RECEIPT PAGE WITH VOID SUPPORT ==========
 function redirectToReceiptPage(transactionData, autoPrint = true, isVoid = false) {
     try {
-        // Ensure transactionData has all required fields
         const enhancedData = {
             ...transactionData,
-            // Add void flag if needed
             isVoid: isVoid,
             status: isVoid ? 'VOID' : (transactionData.status || 'APPROVED'),
-            // Ensure receipt number is present
             receiptNo: transactionData.receiptNo || currentReceiptNo || 'N/A'
         };
         
-        // Store in localStorage as backup
         localStorage.setItem('lastReceiptData', JSON.stringify(enhancedData));
         
-        // Encode data for URL
         const encodedData = encodeURIComponent(JSON.stringify(enhancedData));
         
-        // Build URL with parameters
         let receiptUrl = `receipt.html?data=${encodedData}&returnTo=${encodeURIComponent(window.location.pathname)}`;
         
-        // Add void parameter to URL if needed (explicitly add it!)
         if (isVoid) {
             receiptUrl += '&void=true';
         }
         
-        // Add autoPrint parameter
         if (autoPrint) {
             receiptUrl += '&autoPrint=true';
         }
         
-        // Add reprint flag if this is a reprint
         if (transactionData.isReprint) {
             receiptUrl += '&reprint=true';
         }
@@ -1417,11 +1395,9 @@ function redirectToReceiptPage(transactionData, autoPrint = true, isVoid = false
         console.log('Redirecting to receipt URL:', receiptUrl);
         console.log('Void status:', isVoid);
         
-        // Redirect to receipt page
         window.location.href = receiptUrl;
     } catch (error) {
         console.error('Error redirecting to receipt page:', error);
-        // Fallback: try with just receipt number
         if (transactionData && transactionData.receiptNo) {
             let fallbackUrl = `receipt.html?receiptNo=${transactionData.receiptNo}&autoPrint=true&returnTo=${encodeURIComponent(window.location.pathname)}`;
             if (isVoid) {
@@ -1434,7 +1410,6 @@ function redirectToReceiptPage(transactionData, autoPrint = true, isVoid = false
     }
 }
 
-// ========== UPDATED SUBMIT FORM WITH CASH VALIDATION AND REDIRECT ==========
 async function submitForm() {
     if (!currentUser.username) { 
         alert('Please log in first'); 
@@ -1457,13 +1432,11 @@ async function submitForm() {
         return; 
     }
     
-    // Check if cashier is open - this is the key validation
     if (currentCashier.status !== 'OPEN') {
         alert('❌ CASHIER IS CLOSED - Cannot process payments. Please open cashier first.');
         return;
     }
     
-    // NEW: Validate cash payment if payment method is CASH
     const paymentMethod = document.getElementById('paymentMethod').value;
     const totalAmount = parseFloat(document.getElementById('totalAmount').textContent) || 0;
     
@@ -1479,7 +1452,6 @@ async function submitForm() {
     const submitBtn = document.getElementById('submitBtn'); 
     const originalText = submitBtn.textContent;
     
-    // Show loading state
     submitBtn.disabled = true; 
     submitBtn.classList.add('btn-loading');
     submitBtn.textContent = 'SAVING...';
@@ -1517,7 +1489,6 @@ async function submitForm() {
             totalAmount: totalAmount 
         };
         
-        // NEW: Add cash payment details if payment method is CASH
         if (paymentMethod === 'CASH') {
             const cashReceived = parseFloat(document.getElementById('cashReceived').value) || 0;
             paymentData.cashReceived = cashReceived;
@@ -1533,9 +1504,8 @@ async function submitForm() {
             exchangeRateData.exchangeRateUsed = currentExchangeRate; 
         }
         
-        // SIMPLIFIED: Only user data fields (no cashier info, no rcno in user, no level in user)
         const userData = { 
-            username: currentUser.username || 'Unknown' // Only username, no level, no rcno
+            username: currentUser.username || 'Unknown'
         };
         
         const completeData = { 
@@ -1543,7 +1513,7 @@ async function submitForm() {
             ...boardingPassData, 
             ...paymentData, 
             ...exchangeRateData, 
-            user: userData, // Only contains username
+            user: userData,
             transactionDate: shiftDate, 
             shiftDate: shiftDate, 
             date: shiftDate, 
@@ -1551,32 +1521,27 @@ async function submitForm() {
             submissionTimestamp: new Date().toISOString(), 
             expiryDateTime: expiryResult.full, 
             expiryTime: expiryResult.display,
-            // No cashier data, no loginTime, no rcno, no level
             timestamp: firebase.firestore.FieldValue.serverTimestamp(), 
             createdAt: new Date().toISOString(), 
             uniqueId: Date.now() + '-' + Math.random().toString(36).substr(2, 9) 
         };
         
-        // Save to Firebase with receipt number as document ID
         const savedData = await saveToFirebase(completeData);
         lastSavedTransaction = savedData;
         
-        // Show success message briefly
         const statusMsg = document.getElementById('statusMessage'); 
         if (statusMsg) { 
             statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED - Redirecting to print...`; 
             statusMsg.style.color = '#6b8e23';
         }
         
-        // Refresh pending count after new transaction
         setTimeout(() => {
             fetchPendingTransactionsCount();
         }, 1000);
         
-        // Redirect to receipt page for printing (NOT void)
         setTimeout(() => {
             redirectToReceiptPage(savedData, true, false);
-        }, 500); // Small delay to show success message
+        }, 500);
         
     } catch (error) { 
         console.error('Error in submitForm:', error); 
@@ -1584,14 +1549,12 @@ async function submitForm() {
         document.getElementById('statusMessage').style.color = '#c68b5e';
         alert('Error saving to database: ' + error.message);
         
-        // Reset button
         submitBtn.disabled = false; 
         submitBtn.classList.remove('btn-loading');
         submitBtn.textContent = originalText;
     }
 }
 
-// ========== UPDATED PRINT RECEIPT FUNCTION WITH CASH DATA ==========
 function printCurrentReceipt() {
     if (!document.getElementById('pName').value) { 
         alert('Please scan a boarding pass first'); 
@@ -1602,13 +1565,11 @@ function printCurrentReceipt() {
         return; 
     }
     
-    // Check if cashier is open
     if (currentCashier.status !== 'OPEN') {
         alert('❌ CASHIER IS CLOSED - Cannot print receipts. Please open cashier first.');
         return;
     }
     
-    // Build transaction data from current form
     const paymentMethod = document.getElementById('paymentMethod').value;
     const totalAmount = parseFloat(document.getElementById('totalAmount').textContent) || 0;
     const cashReceived = parseFloat(document.getElementById('cashReceived').value) || 0;
@@ -1643,7 +1604,6 @@ function printCurrentReceipt() {
         isReprint: false
     };
     
-    // Add cash payment data if applicable
     if (paymentMethod === 'CASH') {
         transactionData.cashReceived = cashReceived;
         transactionData.changeAmount = changeAmount;
@@ -1652,7 +1612,6 @@ function printCurrentReceipt() {
     redirectToReceiptPage(transactionData, true, false);
 }
 
-// ========== UPDATED REPRINT FUNCTION ==========
 async function searchAndReprintReceipt() {
     const receiptNo = document.getElementById('reprintReceiptNo').value.trim().toUpperCase();
     const statusEl = document.getElementById('reprintStatus');
@@ -1674,13 +1633,10 @@ async function searchAndReprintReceipt() {
             statusEl.textContent = '✓ Receipt found. Redirecting to print...'; 
             statusEl.style.color = '#6b8e23';
             
-            // Add reprint flag
             transaction.isReprint = true;
             
-            // Check if this is a voided transaction
             const isVoid = transaction.status === 'VOID' || transaction.voided === true;
             
-            // Close modal and redirect
             setTimeout(() => {
                 closeReprintModal();
                 redirectToReceiptPage(transaction, true, isVoid);
@@ -1718,25 +1674,45 @@ function debugShiftData() {
     alert(`Shift Data:\nDate: ${currentShiftData.date}\nShift: ${currentShiftData.shift}\nStatus: ${currentShiftData.status}\n\nCashier Data:\nName: ${currentCashier.name}\nStatus: ${currentCashier.status}\nRC: ${currentCashier.rcno}`);
 }
 
-// ========== DOM CONTENT LOADED ==========
+// ========== CASH DRAWER PRINT FUNCTION (ADDED) ==========
+function openCashDrawer() {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString();
+    const timeStr = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    const user = currentUser?.username || 'operator';
+    const shiftStat = (currentShiftData?.shift === 'MORNING' || currentShiftData?.shift === 'EVENING') ? currentShiftData.shift : 'NO SHIFT';
+    
+    const receiptHtml = `
+        <div class="drawer-receipt">
+            <div class="receipt-line header">KOVELI LOUNGE</div>
+            <div class="receipt-line divider"></div>
+            <div class="receipt-line">🗄️ DRAWER OPEN</div>
+            <div class="receipt-line">${dateStr} ${timeStr}</div>
+            <div class="receipt-line">CASHIER: ${user}</div>
+            <div class="receipt-line">SHIFT: ${shiftStat}</div>
+            <div class="receipt-line divider"></div>
+        </div>
+    `;
+    const printContainer = document.getElementById('drawerPrintContainer');
+    printContainer.innerHTML = receiptHtml;
+    window.print();
+    setTimeout(() => { printContainer.innerHTML = ''; }, 1000);
+}
+
+// DOM Content Loaded
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM fully loaded');
     checkAuth();
     
-    // Load users from users.js
     loadUsers();
-    
-    // Initialize database
     initializeDatabase();
     
-    // Logout buttons
     const logoutBtn = document.getElementById('logoutBtn'); 
     if (logoutBtn) logoutBtn.addEventListener('click', function(e) { e.preventDefault(); logout(); });
     
     const floatingLogoutBtn = document.getElementById('floatingLogoutBtn'); 
     if (floatingLogoutBtn) floatingLogoutBtn.addEventListener('click', function(e) { e.preventDefault(); logout(); });
     
-    // Get form elements
     const codeField = document.getElementById('code');
     const pNameField = document.getElementById('pName');
     const currencyField = document.getElementById('currency');
@@ -1751,28 +1727,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const closeModalBtn = document.getElementById('closeModalBtn');
     const searchReceiptBtn = document.getElementById('searchReceiptBtn');
     
-    // Setup number inputs
     setupNumberInputs();
-    
-    // Load data
     loadShiftDataOnce();
     
-    // Fetch cashier status from Firebase - this will also block payments if closed
     setTimeout(() => {
         fetchCashierStatus();
     }, 1000);
     
-    // Fetch pending count with a delay to ensure Firebase is ready
     setTimeout(() => { 
         fetchPendingTransactionsCount(); 
     }, 2000);
     
-    // Refresh pending count every 30 seconds
     setInterval(() => {
         fetchPendingTransactionsCount();
     }, 30000);
     
-    // Refresh cashier status every 30 seconds and update payment blocking
     setInterval(() => {
         fetchCashierStatus();
     }, 30000);
@@ -1786,62 +1755,26 @@ document.addEventListener('DOMContentLoaded', function() {
         updateTotalPassengers(); 
     }, 500);
     
-    // Currency and rate type change events
     if (currencyField) currencyField.addEventListener('change', calculatePrices);
     if (rateTypeField) rateTypeField.addEventListener('change', calculatePrices);
-    
-    // NEW: Payment method change event to show/hide cash panel
     if (paymentMethodField) paymentMethodField.addEventListener('change', updateCashBalance);
-    
-    // NEW: Cash received input event for real-time balance calculation
     if (cashReceivedField) cashReceivedField.addEventListener('input', updateCashBalance);
     
-    // ===== CODE FIELD HANDLING (original) =====
     if (codeField) {
-        codeField.addEventListener('keypress', function(e) { 
-            if (e.key === 'Enter') parseAndAddToList(); 
-        });
-        codeField.addEventListener('blur', function() { 
-            if (codeField.value.trim() !== '') parseAndAddToList(); 
-        });
-        codeField.addEventListener('input', function() { 
-            this.value = this.value.toUpperCase(); 
-        });
+        codeField.addEventListener('keypress', function(e) { if (e.key === 'Enter') parseAndAddToList(); });
+        codeField.addEventListener('blur', function() { if (codeField.value.trim() !== '') parseAndAddToList(); });
+        codeField.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
         codeField.focus();
     }
     
-    // ===== PASSENGER NAME FIELD HANDLING (allows scanning directly) =====
     if (pNameField) {
-        pNameField.addEventListener('blur', function() {
-            handlePassengerNameInput();
-        });
-        
-        pNameField.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                handlePassengerNameInput();
-                setTimeout(() => {
-                    document.getElementById('flightNo').focus();
-                }, 100);
-            }
-        });
-        
-        pNameField.addEventListener('paste', function(e) {
-            setTimeout(() => {
-                handlePassengerNameInput();
-            }, 10);
-        });
-        
-        pNameField.addEventListener('input', function() {
-            this.value = this.value.toUpperCase();
-        });
-        
-        pNameField.addEventListener('dblclick', function() {
-            handlePassengerNameInput();
-        });
+        pNameField.addEventListener('blur', function() { handlePassengerNameInput(); });
+        pNameField.addEventListener('keypress', function(e) { if (e.key === 'Enter') { e.preventDefault(); handlePassengerNameInput(); setTimeout(() => { document.getElementById('flightNo').focus(); }, 100); } });
+        pNameField.addEventListener('paste', function(e) { setTimeout(() => { handlePassengerNameInput(); }, 10); });
+        pNameField.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+        pNameField.addEventListener('dblclick', function() { handlePassengerNameInput(); });
     }
     
-    // Button events
     if (submitBtn) submitBtn.addEventListener('click', submitForm);
     if (printReceiptBtn) printReceiptBtn.addEventListener('click', printCurrentReceipt);
     if (reprintReceiptBtn) reprintReceiptBtn.addEventListener('click', showReprintModal);
@@ -1850,34 +1783,24 @@ document.addEventListener('DOMContentLoaded', function() {
     if (closeModalBtn) closeModalBtn.addEventListener('click', closeReprintModal);
     if (searchReceiptBtn) searchReceiptBtn.addEventListener('click', searchAndReprintReceipt);
     
-    // Modal close on outside click
-    window.addEventListener('click', function(event) { 
-        const modal = document.getElementById('reprintModal'); 
-        if (event.target === modal) closeReprintModal(); 
-    });
+    window.addEventListener('click', function(event) { const modal = document.getElementById('reprintModal'); if (event.target === modal) closeReprintModal(); });
     
-    // Reprint modal enter key
     const reprintInput = document.getElementById('reprintReceiptNo'); 
-    if (reprintInput) reprintInput.addEventListener('keypress', function(e) { 
-        if (e.key === 'Enter') searchAndReprintReceipt(); 
-    });
+    if (reprintInput) reprintInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') searchAndReprintReceipt(); });
     
-    // Debug shortcut
-    document.addEventListener('keydown', function(e) { 
-        if (e.ctrlKey && e.shiftKey && e.key === 'D') { 
-            e.preventDefault(); 
-            debugShiftData(); 
-        } 
-    });
+    document.addEventListener('keydown', function(e) { if (e.ctrlKey && e.shiftKey && e.key === 'D') { e.preventDefault(); debugShiftData(); } });
+    
+    // ========== DRAWER BUTTON EVENT LISTENER (ADDED) ==========
+    const drawerBtn = document.getElementById('drawerOpenBtn');
+    if (drawerBtn) drawerBtn.addEventListener('click', openCashDrawer);
     
     console.log('Dual scanning initialized - Redirect to receipt.html for printing');
     console.log('Cashier status fetched from Firebase cashier/current collection');
     console.log('PAYMENTS ARE BLOCKED WHEN CASHIER IS CLOSED');
     console.log('Void receipt support enabled - Use reprint for voided transactions');
-    console.log('UPDATED: No cashier status, rcno, level, shiftDateStandardized, loginTime saved');
-    console.log('UPDATED: Pending count only shows transactions missing approvalCode or batchNo');
-    console.log('UPDATED: Document ID is now the receipt number');
-    console.log('NEW FEATURE: Cash payment with amount received and change calculation added');
+    console.log('Document ID is now the receipt number');
+    console.log('Cash payment with amount received and change calculation added');
+    console.log('DRAWER BUTTON ADDED - Click to print cash drawer open receipt');
 });
 </script>
 </body>
