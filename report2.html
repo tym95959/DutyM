@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Airline Reports – Closed Flights (Admin Prefixes)</title>
+    <title>Airline Reports – Closed Flights Viewer (Admin Prefixes)</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -63,6 +63,10 @@
             font-weight: 600;
             font-size: 0.85rem;
             transition: 0.2s;
+        }
+        
+        .back-link:hover {
+            background: #ffcd33;
         }
         
         /* admin panel */
@@ -180,6 +184,12 @@
             background: white;
             font-size: 0.85rem;
             cursor: pointer;
+            min-width: 180px;
+        }
+        
+        .filter-group select:focus, .filter-group input:focus {
+            border-color: #e6b800;
+            outline: none;
         }
         
         .refresh-btn {
@@ -190,6 +200,10 @@
             font-weight: 600;
             cursor: pointer;
             font-size: 0.8rem;
+        }
+        
+        .refresh-btn:hover {
+            background: #d4a500;
         }
         
         .stats-row {
@@ -209,7 +223,7 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.05);
         }
         
-        /* report card - same style as original print layout */
+        /* report card - matching original print layout */
         .report-card {
             background: white;
             border-radius: 20px;
@@ -422,10 +436,12 @@
             </select>
         </div>
         <div class="filter-group">
-            <label>🔍 Specific Flight No (optional)</label>
-            <input type="text" id="flightNoInput" placeholder="e.g., EK652, FZ1234">
+            <label>🔍 Specific Flight No (dropdown)</label>
+            <select id="flightNoSelectFilter" disabled>
+                <option value="">-- Select date & airline first --</option>
+            </select>
         </div>
-        <button class="refresh-btn" id="applyFilterBtn">📋 Load Reports</button>
+        <button class="refresh-btn" id="applyFilterBtn">📋 Load Report</button>
         <button class="refresh-btn" id="printVisibleBtn" style="background:#4a6fa5; color:white;">🖨️ Print</button>
     </div>
     
@@ -435,7 +451,7 @@
     </div>
     
     <div id="reportsContainer">
-        <div class="empty-message">Select filters and click "Load Reports". Only CLOSED flights appear.</div>
+        <div class="empty-message">Select date and airline, then choose a flight from the dropdown to view report.</div>
     </div>
     <div class="footer-note">
         ⚠️ READ-ONLY • Only flights closed from main page are shown • No edits/deletions
@@ -444,7 +460,7 @@
 
 <script>
     // ========== ADMIN PREFIX MANAGEMENT (LocalStorage) ==========
-    const STORAGE_KEY = 'admin_airline_prefixes_v2';
+    const STORAGE_KEY = 'admin_airline_prefixes_v3';
     const DEFAULT_PREFIXES = ['EK', 'FZ', 'BA', 'QR', 'SQ'];
     let airlinePrefixes = [...DEFAULT_PREFIXES];
     
@@ -467,6 +483,8 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(airlinePrefixes));
         renderPrefixTags();
         updateAirlineDropdown();
+        // also refresh flight dropdown if needed
+        populateFlightDropdown();
     }
     
     function addPrefix(prefix) {
@@ -520,7 +538,7 @@
         select.innerHTML = options;
     }
     
-    // ========== FIREBASE HELPERS (same as original) ==========
+    // ========== FIREBASE HELPERS ==========
     function getAllDatabases() {
         const dbs = [];
         if (window.baDb) dbs.push({ name: 'BA Database', ref: window.baDb, prefix: 'BA' });
@@ -554,7 +572,8 @@
     }
     
     let availableDates = [];
-    let currentReports = [];
+    let allClosedFlights = []; // array of flight metadata objects
+    let currentDisplayedFlight = null;
     let isLoading = false;
     
     // scan only closed flights from FlightReports collection
@@ -605,11 +624,11 @@
             flightsList.push(flight);
         }
         availableDates = Array.from(datesSet).sort().reverse();
-        currentReports = flightsList;
+        allClosedFlights = flightsList;
         
         populateDateDropdown();
         dateSelect.disabled = false;
-        return { dates: availableDates, flights: currentReports };
+        return { dates: availableDates, flights: allClosedFlights };
     }
     
     function populateDateDropdown() {
@@ -621,6 +640,80 @@
         let options = '<option value="">📅 Any date (all)</option>';
         availableDates.forEach(d => { options += `<option value="${d}">${d}</option>`; });
         dateSelect.innerHTML = options;
+    }
+    
+    // Populate flight dropdown based on selected date and airline
+    function populateFlightDropdown() {
+        const selectedDate = document.getElementById('dateSelectFilter').value;
+        const airlineFilter = document.getElementById('airlineSelectFilter').value;
+        const flightSelect = document.getElementById('flightNoSelectFilter');
+        
+        let filteredFlights = [...allClosedFlights];
+        
+        if (selectedDate) {
+            filteredFlights = filteredFlights.filter(f => f.date === selectedDate);
+        }
+        if (airlineFilter) {
+            filteredFlights = filteredFlights.filter(f => matchesAirline(f.flightNo, airlineFilter));
+        }
+        
+        // Sort flights by flight number
+        filteredFlights.sort((a, b) => a.flightNo.localeCompare(b.flightNo));
+        
+        if (filteredFlights.length === 0) {
+            flightSelect.innerHTML = '<option value="">-- No flights available --</option>';
+            flightSelect.disabled = true;
+            return;
+        }
+        
+        let options = '<option value="">-- Select a flight --</option>';
+        filteredFlights.forEach(flight => {
+            options += `<option value="${flight.flightNo}|${flight.date}|${flight.shift}|${flight.database}">${flight.flightNo} (${flight.shift}) - ${flight.totalPax} pax</option>`;
+        });
+        flightSelect.innerHTML = options;
+        flightSelect.disabled = false;
+    }
+    
+    async function loadSelectedFlight() {
+        const flightSelect = document.getElementById('flightNoSelectFilter');
+        const selectedValue = flightSelect.value;
+        
+        if (!selectedValue) {
+            document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Please select a flight from the dropdown.</div>';
+            document.getElementById('statsRow').style.display = 'none';
+            currentDisplayedFlight = null;
+            return;
+        }
+        
+        const [flightNo, flightDate, shift, dbName] = selectedValue.split('|');
+        
+        // Find the flight metadata
+        const flightMeta = allClosedFlights.find(f => 
+            f.flightNo === flightNo && f.date === flightDate && f.shift === shift && f.database === dbName
+        );
+        
+        if (!flightMeta) {
+            document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Flight data not found.</div>';
+            return;
+        }
+        
+        currentDisplayedFlight = flightMeta;
+        
+        // Show loading
+        const container = document.getElementById('reportsContainer');
+        container.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading flight report...</p></div>';
+        
+        // Fetch passengers
+        const passengers = await fetchPassengersForFlight(flightMeta);
+        
+        // Update stats
+        document.getElementById('statsRow').style.display = 'flex';
+        document.getElementById('totalFlightsStat').innerHTML = `Selected: ${flightMeta.flightNo}`;
+        const totalPax = flightMeta.totalPax || 0;
+        document.getElementById('totalPaxStat').innerHTML = `Total passengers: ${totalPax}`;
+        
+        // Build report display
+        displayFlightReport(flightMeta, passengers);
     }
     
     async function fetchPassengersForFlight(flightMeta) {
@@ -655,7 +748,7 @@
                     });
                 });
                 if (passengers.length > 0) break;
-            } catch(e) {}
+            } catch(e) { console.warn(e); }
         }
         const regular = passengers.filter(p => !p.isDelayCharge).sort((a,b)=> (a.entryTime||'').localeCompare(b.entryTime||''));
         const delay = passengers.filter(p => p.isDelayCharge).sort((a,b)=> (a.entryTime||'').localeCompare(b.entryTime||''));
@@ -682,42 +775,41 @@
         });
     }
     
-    async function applyFiltersAndDisplay() {
-        if (isLoading) return;
-        isLoading = true;
+    function displayFlightReport(flight, passengers) {
         const container = document.getElementById('reportsContainer');
-        container.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading closed flights...</p></div>';
+        const prefix = getFlightPrefix(flight.flightNo);
+        const airlineDisplay = flight.airline || (prefix ? `${prefix} Airlines` : '—');
         
-        if (availableDates.length === 0) await scanClosedFlightsOnly();
+        let rowsHtml = '';
+        passengers.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            const rowClass = p.isDelayCharge ? 'delay-row' : '';
+            let nameDisplay = escapeHtml(p.pName) || '-';
+            let extraBadge = '';
+            if (flight.flightNo.toUpperCase().startsWith('FZ') && p.hiddenCode && !p.isDelayCharge) {
+                const pnr = extractPNR(p.hiddenCode);
+                if (pnr) extraBadge = `<span style="background:#4a6fa5; color:white; font-size:9px; padding:2px 8px; border-radius:12px; margin-left:6px;">PNR:${pnr}</span>`;
+            }
+            if (p.isDelayCharge) extraBadge = '<span class="delay-badge">DELAY CHARGE</span>';
+            
+            rowsHtml += `<tr class="${rowClass}">
+                <td>${serial}</td>
+                <td>${nameDisplay} ${extraBadge}</td>
+                <td>${escapeHtml(p.seatNo) || '-'}</td>
+                <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td>
+                <td>${escapeHtml(p.FQTV) || '-'}</td>
+                <td>${escapeHtml(p.serialNo) || '—'}</td>
+                <td>${p.entryTime || '-'}</td>
+                <td>${escapeHtml(p.remarks) || '-'}</td>
+            </tr>`;
+        });
         
-        const selectedDate = document.getElementById('dateSelectFilter').value;
-        const airlineFilter = document.getElementById('airlineSelectFilter').value;
-        const flightNoFilter = document.getElementById('flightNoInput').value.trim().toUpperCase();
+        const tableHeader = flight.flightNo.startsWith('FZ') ? 
+            '<th>#</th><th>Name / PNR</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th>' :
+            `<th>#</th><th>${flight.flightNo.startsWith('SQ') ? 'Voucher No.' : 'Name'}</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th>`;
         
-        let filtered = [...currentReports];
-        if (selectedDate) filtered = filtered.filter(f => f.date === selectedDate);
-        if (airlineFilter) filtered = filtered.filter(f => matchesAirline(f.flightNo, airlineFilter));
-        if (flightNoFilter) filtered = filtered.filter(f => f.flightNo.toUpperCase() === flightNoFilter || f.flightNo.toUpperCase().includes(flightNoFilter));
-        
-        if (filtered.length === 0) {
-            container.innerHTML = '<div class="empty-message">✈ No closed flights match the selected criteria.</div>';
-            document.getElementById('statsRow').style.display = 'none';
-            isLoading = false;
-            return;
-        }
-        
-        document.getElementById('statsRow').style.display = 'flex';
-        document.getElementById('totalFlightsStat').innerText = `Closed flights: ${filtered.length}`;
-        let totalPaxSum = filtered.reduce((sum, f) => sum + (f.totalPax || 0), 0);
-        document.getElementById('totalPaxStat').innerText = `Total passengers: ${totalPaxSum}`;
-        
-        container.innerHTML = '';
-        for (const flight of filtered) {
-            const flightCard = document.createElement('div');
-            flightCard.className = 'report-card';
-            const prefix = getFlightPrefix(flight.flightNo);
-            const airlineDisplay = flight.airline || (prefix ? `${prefix} Airlines` : '—');
-            flightCard.innerHTML = `
+        container.innerHTML = `
+            <div class="report-card">
                 <div class="flight-header">
                     <div>
                         <h3 style="color:#5a4a1a;">✈ ${flight.flightNo} <span class="airline-tag">${airlineDisplay}</span> <span class="status-closed-badge">🔒 CLOSED</span></h3>
@@ -735,81 +827,60 @@
                 </div>
                 <div class="table-wrapper">
                     <table>
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>${flight.flightNo.startsWith('FZ') ? 'Name / PNR' : (flight.flightNo.startsWith('SQ') ? 'Voucher No.' : 'Name')}</th>
-                                <th>Seat</th>
-                                <th>Pax</th>
-                                <th>FQTV</th>
-                                <th>Serial No</th>
-                                <th>Time</th>
-                                <th>Remarks</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tbody-${escapeHtml(flight.flightNo)}-${escapeHtml(flight.shift)}">
-                            <tr><td colspan="8" style="text-align:center;"><div class="spinner" style="width:16px;height:16px;"></div> Loading...</td></tr>
-                        </tbody>
+                        <thead><tr>${tableHeader}</tr></thead>
+                        <tbody>${rowsHtml || '<tr><td colspan="8" class="empty-message">No passengers found for this flight</td></tr>'}</tbody>
                     </table>
                 </div>
-            `;
-            container.appendChild(flightCard);
-            
-            // load passengers
-            (async (flightMeta, tbodyId) => {
-                const passengers = await fetchPassengersForFlight(flightMeta);
-                const tbody = document.getElementById(tbodyId);
-                if (!tbody) return;
-                if (!passengers.length) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="empty-message">No passenger records found for this closed flight</td></tr>';
-                    return;
-                }
-                let rows = '';
-                passengers.forEach((p, idx) => {
-                    const serial = String(idx+1).padStart(3,'0');
-                    const rowClass = p.isDelayCharge ? 'delay-row' : '';
-                    let nameDisplay = escapeHtml(p.pName) || '-';
-                    let extraBadge = '';
-                    if (flightMeta.flightNo.toUpperCase().startsWith('FZ') && p.hiddenCode && !p.isDelayCharge) {
-                        const pnr = extractPNR(p.hiddenCode);
-                        if (pnr) extraBadge = `<span style="background:#4a6fa5; color:white; font-size:9px; padding:2px 8px; border-radius:12px; margin-left:6px;">PNR:${pnr}</span>`;
-                    }
-                    if (p.isDelayCharge) extraBadge = '<span class="delay-badge">DELAY CHARGE</span>';
-                    rows += `<tr class="${rowClass}">
-                        <td>${serial}</td>
-                        <td>${nameDisplay} ${extraBadge}</td>
-                        <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td>
-                        <td>${escapeHtml(p.FQTV) || '-'}</td>
-                        <td>${escapeHtml(p.serialNo) || '—'}</td>
-                        <td>${p.entryTime || '-'}</td>
-                        <td>${escapeHtml(p.remarks) || '-'}</td>
-                    </tr>`;
-                });
-                tbody.innerHTML = rows;
-            })(flight, `tbody-${escapeHtml(flight.flightNo)}-${escapeHtml(flight.shift)}`);
-        }
-        isLoading = false;
+            </div>
+        `;
     }
     
     function printReports() {
         window.print();
     }
     
+    // Event handlers
+    function onFilterChange() {
+        populateFlightDropdown();
+        // Clear current display
+        document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Select a flight from the dropdown to view report.</div>';
+        document.getElementById('statsRow').style.display = 'none';
+        currentDisplayedFlight = null;
+    }
+    
     // ========== INIT ==========
     document.addEventListener('DOMContentLoaded', async () => {
         loadPrefixes();
         await scanClosedFlightsOnly();
-        document.getElementById('applyFilterBtn').addEventListener('click', applyFiltersAndDisplay);
+        
+        const dateSelect = document.getElementById('dateSelectFilter');
+        const airlineSelect = document.getElementById('airlineSelectFilter');
+        const flightSelect = document.getElementById('flightNoSelectFilter');
+        
+        dateSelect.addEventListener('change', onFilterChange);
+        airlineSelect.addEventListener('change', onFilterChange);
+        flightSelect.addEventListener('change', loadSelectedFlight);
+        
+        document.getElementById('applyFilterBtn').addEventListener('click', () => {
+            // Just refresh dropdown and load if flight selected
+            populateFlightDropdown();
+            if (flightSelect.value) {
+                loadSelectedFlight();
+            } else {
+                document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Please select a flight from the dropdown.</div>';
+            }
+        });
         document.getElementById('printVisibleBtn').addEventListener('click', printReports);
         document.getElementById('addPrefixBtn').addEventListener('click', () => {
             const input = document.getElementById('newPrefixInput');
-            if (input.value) { addPrefix(input.value); input.value = ''; }
+            if (input.value) { addPrefix(input.value); input.value = ''; onFilterChange(); }
         });
-        document.getElementById('resetDefaultsBtn').addEventListener('click', resetDefaults);
+        document.getElementById('resetDefaultsBtn').addEventListener('click', () => { resetDefaults(); onFilterChange(); });
         
-        if (availableDates.length === 0) {
+        if (allClosedFlights.length === 0) {
             document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">📭 No closed flights found. Please close a flight from the main page first.</div>';
+        } else {
+            populateFlightDropdown();
         }
     });
 </script>
