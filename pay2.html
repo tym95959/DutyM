@@ -2,1189 +2,805 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Koveli Payment · clean receipt 80mm</title>
-    <!-- Firebase SDK -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Airline Flight Reports – Closed Flights with Drawer</title>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    
-    <!-- Your external files -->
     <script src="fireshift.js"></script>
-    <script src="iata.js"></script>
-    <script src="rate.js"></script>
     <script src="Co.js"></script>
     
     <style>
-        /* ------- RETAINED ORIGINAL STYLES (unchanged) ------- */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(120deg, #faf3e0, #fff5e6);
-            min-height: 100vh; padding: 15px; display: flex; align-items: center; justify-content: center;
-            position: relative;
+            background: linear-gradient(135deg, #f5f0e1, #fff5e6);
+            padding: 20px;
+            transition: margin-right 0.3s ease;
         }
-        .container {
-            max-width: 1200px; width: 100%; margin: 0 auto; background-color: rgba(255, 255, 255, 0.95);
-            border-radius: 16px; box-shadow: 0 5px 20px rgba(230, 184, 0, 0.15);
-            border: 1px solid rgba(230, 184, 0, 0.2); overflow: hidden;
+        /* Drawer open state – shift content */
+        body.drawer-open {
+            margin-right: 320px;
         }
-        .header {
-            display: flex; justify-content: space-between; align-items: center; padding: 12px 20px;
-            background: linear-gradient(90deg, #fff9e6, #ffffff); border-bottom: 2px solid rgba(230, 184, 0, 0.3);
+        .container { max-width: 1400px; margin: 0 auto; }
+        
+        /* ========= DRAWER BUTTON & DRAWER STYLES (exact copy from source) ========= */
+        .drawer-toggle {
+            position: fixed;
+            right: 20px;
+            bottom: 30px;
+            background: #2c3e50;
+            color: white;
+            width: 56px;
+            height: 56px;
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 1000;
+            transition: all 0.2s ease;
+            border: none;
+            font-size: 24px;
         }
-        .header h2 { color: #8b6913; font-size: 22px; font-weight: 600; letter-spacing: 0.5px; }
-        .header-actions { display: flex; align-items: center; gap: 15px; }
-        .shift-info {
-            display: flex; gap: 20px; align-items: center; background: linear-gradient(135deg, #fff2d7, #fff9e6);
-            padding: 6px 20px; border-radius: 40px; border: 1px solid rgba(230, 184, 0, 0.3); font-size: 14px;
+        .drawer-toggle:hover {
+            background: #e6b800;
+            color: #2c3e50;
+            transform: scale(1.03);
         }
-        .shift-info .date {
-            color: #8b6913; padding-left: 22px;
-            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%238b6913" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>') left center no-repeat;
-            background-size: 14px;
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: -320px;
+            width: 320px;
+            height: 100%;
+            background: white;
+            box-shadow: -2px 0 12px rgba(0,0,0,0.15);
+            transition: right 0.3s ease;
+            z-index: 1100;
+            display: flex;
+            flex-direction: column;
+            border-left: 3px solid #e6b800;
+            font-family: 'Segoe UI', sans-serif;
         }
-        .shift-info .shift {
-            color: #6b8e23; padding-left: 22px;
-            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%236b8e23" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>') left center no-repeat;
-            background-size: 14px;
+        .drawer.open {
+            right: 0;
         }
-        .status-badge { background-color: #6b8e23; color: white; padding: 2px 10px; border-radius: 30px; font-size: 11px; font-weight: 600; }
+        .drawer-header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .drawer-header h3 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        .close-drawer {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .drawer-content {
+            flex: 1;
+            padding: 20px 16px;
+            overflow-y: auto;
+        }
+        .drawer-section {
+            margin-bottom: 28px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 16px;
+        }
+        .drawer-section h4 {
+            color: #e6b800;
+            margin-bottom: 12px;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .drawer-stats {
+            background: #f9f5e8;
+            border-radius: 16px;
+            padding: 12px;
+            margin: 8px 0;
+        }
+        .drawer-stats p {
+            margin: 8px 0;
+            font-size: 0.85rem;
+        }
+        .drawer-action-btn {
+            background: #e6b800;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.75rem;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 12px;
+            transition: 0.2s;
+        }
+        .drawer-action-btn.secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.3);
+            z-index: 1050;
+            display: none;
+        }
+        .overlay.show {
+            display: block;
+        }
+        /* end drawer styles */
+        
+        .header-bar {
+            background: #2c3e50;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .back-link {
+            background: #e6b800;
+            color: #2c3e50;
+            text-decoration: none;
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+        }
+        
+        .admin-panel {
+            background: #fff9e6;
+            border-radius: 20px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            border: 2px solid #e6b800;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .prefix-list { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .prefix-tag {
+            background: white;
+            border: 2px solid #e6b800;
+            border-radius: 30px;
+            padding: 4px 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .remove-prefix {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            width: 18px;
+            height: 18px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .add-prefix-form { display: flex; gap: 8px; }
+        .add-prefix-form input {
+            padding: 5px 10px;
+            border-radius: 30px;
+            border: 1px solid #e6b800;
+            width: 70px;
+            text-transform: uppercase;
+        }
+        .add-prefix-form button, .reset-defaults {
+            background: #6b8e23;
+            border: none;
+            padding: 5px 12px;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.7rem;
+        }
+        .reset-defaults { background: #7f8c8d; }
+        
+        .filter-card {
+            background: white;
+            border-radius: 24px;
+            padding: 18px 24px;
+            margin-bottom: 24px;
+            border: 2px solid #e6b800;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: flex-end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .filter-group label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: #8b6913;
+        }
+        .filter-group select {
+            padding: 10px 14px;
+            border-radius: 40px;
+            border: 2px solid #e2dccf;
+            background: white;
+            font-size: 0.85rem;
+            min-width: 180px;
+        }
         .refresh-btn {
-            background: #f0f0f0; border: 1px solid #e6b800; color: #8b6913; width: 28px; height: 28px; border-radius: 50%;
-            cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+            background: #e6b800;
+            border: none;
+            padding: 10px 22px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
         }
-        .refresh-btn:hover { background: #e6b800; color: white; transform: rotate(180deg); }
-        .approval-btn {
-            position: relative; background: linear-gradient(135deg, #6b8e23, #8b6913); color: white; border: none;
-            padding: 8px 16px 8px 40px; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;
-            transition: all 0.3s ease; text-decoration: none; display: inline-flex; align-items: center;
-            box-shadow: 0 2px 10px rgba(107, 142, 35, 0.3);
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
         }
-        .approval-btn::before { content: "⏳"; position: absolute; left: 12px; font-size: 16px; }
-        .approval-btn:hover {
-            transform: translateY(-2px); box-shadow: 0 4px 15px rgba(230, 184, 0, 0.4);
-            background: linear-gradient(135deg, #8b6913, #6b8e23);
+        .stat-badge {
+            background: white;
+            border-radius: 60px;
+            padding: 8px 20px;
+            border-left: 5px solid #e6b800;
         }
-        .notification-badge {
-            position: absolute; top: -8px; right: -8px; background-color: #c68b5e; color: white; border-radius: 50%;
-            min-width: 22px; height: 22px; font-size: 12px; font-weight: bold; display: flex; align-items: center;
-            justify-content: center; padding: 0 5px; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            animation: pulse 2s infinite;
+        .report-card {
+            background: white;
+            border-radius: 20px;
+            border: 2px solid #e6b800;
+            overflow: hidden;
+            margin-bottom: 28px;
         }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-        .main-content { padding: 20px; }
-        .user-info-bar {
-            background: linear-gradient(115deg, #f3d48f20, #eec97a20, #f5cf8620); padding: 10px 18px; border-radius: 40px;
-            margin-bottom: 15px; display: flex; gap: 25px; font-size: 14px; border: 2px solid #ead09d;
-            box-shadow: inset 0 2px 5px #ffefcb; backdrop-filter: blur(5px);
+        .flight-header {
+            background: #fff9ef;
+            padding: 16px 22px;
+            border-bottom: 2px solid #e6b800;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
         }
-        .user-info-bar span { color: #5e4a1a; }
-        .user-info-bar strong { color: #8b6913; margin-right: 6px; font-weight: 600; }
-        .logout-link { margin-left: auto; color: #b6903f; text-decoration: none; font-size: 13px; padding: 0 10px; border-left: 2px solid #e5cb93; cursor: pointer; }
-        .logout-link:hover { color: #5f4c25; text-decoration: underline; }
-        .input-section { margin-bottom: 15px; }
-        .input-section input {
-            width: 100%; padding: 12px 20px; border: 2px solid rgba(230, 184, 0, 0.3); border-radius: 40px;
-            font-size: 16px; text-transform: uppercase; background: white;
+        .flight-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            font-size: 0.8rem;
+            margin-top: 8px;
         }
-        .input-section input:focus { outline: none; border-color: #e6b800; }
-        .input-section input::placeholder { color: #c9a65c; font-size: 14px; }
-        .status-message { display: block; color: #6b8e23; font-size: 14px; font-weight: 500; margin-top: 8px; text-align: center; min-height: 20px; }
-        .two-column-layout { display: grid; grid-template-columns: 1fr 1.5fr; gap: 15px; margin-bottom: 15px; }
-        .passenger-section {
-            background: linear-gradient(145deg, #fff9e6, #fff2d7); border: 2px solid #e6b800; border-radius: 16px; padding: 15px;
+        .flight-meta span {
+            background: #f0ede5;
+            padding: 4px 14px;
+            border-radius: 30px;
         }
-        .payment-section {
-            background: linear-gradient(145deg, #fff9e6, #fff2d7); border: 2px solid #e6b800; border-radius: 16px; padding: 15px;
+        .status-closed-badge {
+            background: #c68b5e;
+            color: white;
+            padding: 4px 18px;
+            border-radius: 40px;
+            font-size: 0.75rem;
+            font-weight: bold;
         }
-        .section-title { color: #8b6913; margin-bottom: 12px; font-size: 16px; font-weight: 600; text-align: center; padding-bottom: 6px; border-bottom: 2px solid rgba(230, 184, 0, 0.3); }
-        .form-group { margin-bottom: 8px; }
-        .form-group label { color: #8b6913; font-size: 11px; font-weight: 600; margin-bottom: 2px; margin-left: 3px; display: block; }
-        .form-group input, .form-group select {
-            width: 100%; padding: 8px 10px; border: 2px solid rgba(230, 184, 0, 0.3); border-radius: 8px; font-size: 13px; background: white;
+        .table-wrapper { overflow-x: auto; max-height: 500px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th {
+            background: #e6b800;
+            color: white;
+            padding: 12px 10px;
+            text-align: left;
+            position: sticky;
+            top: 0;
         }
-        .form-group input:focus, .form-group select:focus { outline: none; border-color: #e6b800; }
-        .form-group input[readonly] { background-color: #f5f5f5; color: #8b6913; font-weight: 500; }
-        .receipt-field { background-color: #e6f0da !important; color: #2c5234 !important; font-weight: 700; border-color: #6b8e23 !important; }
-        .expiry-field { background-color: #fff2d7 !important; color: #c68b5e !important; font-weight: 600; border-color: #c68b5e !important; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-        .number-input {
-            display: flex; align-items: center; border: 2px solid rgba(230, 184, 0, 0.3); border-radius: 8px; overflow: hidden; background: white;
-        }
-        .number-input button {
-            background: linear-gradient(135deg, #e6b800, #d4a900); color: white; border: none; width: 30px; height: 32px;
-            font-size: 16px; font-weight: bold; cursor: pointer;
-        }
-        .number-input button:hover { background: linear-gradient(135deg, #d4a900, #c29800); }
-        .number-input input { border: none !important; border-radius: 0 !important; text-align: center; font-weight: bold; padding: 8px 3px !important; width: 50px; -moz-appearance: textfield; font-size: 13px; }
-        .price-breakdown { background: rgba(230, 184, 0, 0.05); padding: 10px; border-radius: 8px; margin: 10px 0; font-size: 12px; }
-        .price-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-        .calculation-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 10px 0; padding-top: 10px; border-top: 2px solid rgba(230, 184, 0, 0.3); }
-        .amount-display { background: white; border-radius: 8px; padding: 8px; text-align: center; border: 2px solid #e6b800; }
-        .amount-display .label { color: #8b6913; font-size: 11px; font-weight: 600; }
-        .amount-display .value { color: #6b8e23; font-size: 18px; font-weight: 700; }
-        .amount-display .currency { color: #8b6913; font-size: 12px; }
-        .entry-actions { display: flex; gap: 10px; justify-content: center; margin-top: 15px; flex-wrap: wrap; }
-        .clear-btn, .submit-btn, .print-btn, .reprint-btn { border: none; padding: 10px 25px; border-radius: 40px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; }
-        .clear-btn { background: #c68b5e; color: white; }
-        .submit-btn { background: #6b8e23; color: white; }
-        .print-btn { background: #8b6913; color: white; }
-        .reprint-btn { background: #4a6fa5; color: white; }
-        .clear-btn:hover, .submit-btn:hover, .print-btn:hover, .reprint-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .validity-note { text-align: center; margin-top: 8px; padding: 6px; background: rgba(198, 139, 94, 0.1); border-radius: 30px; color: #c68b5e; font-size: 12px; border: 1px dashed #c68b5e; }
-        .rate-info { font-size: 11px; color: #8b6913; margin-top: 5px; text-align: right; }
-        .exchange-rate-note { font-size: 10px; color: #c68b5e; margin-top: 3px; text-align: right; }
-        .footer-note { text-align: center; margin-top: 10px; color: #8b6913; font-size: 12px; }
-        #hiddenCode { display: none; }
-        .floating-menu { position: fixed; bottom: 30px; right: 30px; z-index: 1000; display: flex; flex-direction: column; align-items: flex-end; }
-        .floating-menu-items { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; opacity: 0; visibility: hidden; transform: translateY(20px); transition: all 0.3s ease; }
-        .floating-menu:hover .floating-menu-items { opacity: 1; visibility: visible; transform: translateY(0); }
-        .floating-btn {
-            width: 50px; height: 50px; border-radius: 50%; background: #8b6913; color: white; border: 2px solid #e6b800;
-            box-shadow: 0 4px 15px rgba(230, 184, 0, 0.3); cursor: pointer; font-size: 24px; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease;
-        }
-        .floating-btn:hover { transform: scale(1.1); background: #6b8e23; box-shadow: 0 6px 20px rgba(107, 142, 35, 0.4); }
-        .floating-menu-item {
-            width: 45px; height: 45px; border-radius: 50%; background: white; border: 2px solid #e6b800; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            cursor: pointer; font-size: 14px; font-weight: 600; color: #8b6913; display: flex; align-items: center; justify-content: center;
-            transition: all 0.3s ease; text-decoration: none; position: relative;
-        }
-        .floating-menu-item:hover { transform: scale(1.1); background: #e6b800; color: white; border-color: #8b6913; }
-        .floating-menu-item:hover::after {
-            content: attr(data-tooltip); position: absolute; right: 55px; background: #8b6913; color: white;
-            padding: 5px 10px; border-radius: 20px; font-size: 12px; white-space: nowrap; border: 1px solid #e6b800;
-        }
-        .floating-menu-item.dashboard { background: #6b8e23; color: white; border-color: #e6b800; }
-        .floating-menu-item.edit { background: #c68b5e; color: white; border-color: #e6b800; }
-        .floating-menu-item.report { background: #8b6913; color: white; border-color: #e6b800; }
-        .floating-menu-item.logout { background: #b63e3e; color: white; border-color: #e6b800; }
-        .floating-menu-item i { font-style: normal; }
-        @media (max-width: 768px) { .floating-menu { bottom: 20px; right: 20px; } }
-        .modal {
-            display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%;
-            background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center;
-        }
-        .modal-content {
-            background: linear-gradient(145deg, #fff9e6, #fff2d7); border: 3px solid #e6b800; border-radius: 16px;
-            padding: 25px; width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-        .modal-content h3 { color: #8b6913; margin-bottom: 15px; text-align: center; font-size: 18px; border-bottom: 2px solid rgba(230, 184, 0, 0.3); padding-bottom: 10px; }
-        .modal-content input {
-            width: 100%; padding: 12px 15px; border: 2px solid rgba(230, 184, 0, 0.3); border-radius: 40px;
-            font-size: 16px; margin-bottom: 15px;
-        }
-        .modal-content input:focus { outline: none; border-color: #e6b800; }
-        .modal-buttons { display: flex; gap: 10px; justify-content: center; }
-        .modal-btn { border: none; padding: 10px 25px; border-radius: 40px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; }
-        .modal-btn.search { background: #6b8e23; color: white; }
-        .modal-btn.close { background: #c68b5e; color: white; }
-        .modal-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        #reprintStatus { text-align: center; margin-top: 10px; font-size: 13px; min-height: 20px; }
-
-        /* Highlight for scan-able fields */
-        .scan-highlight {
-            border-color: #6b8e23 !important;
-            box-shadow: 0 0 0 2px rgba(107, 142, 35, 0.2);
-        }
-        
-        .scan-instruction {
-            font-size: 9px;
-            color: #6b8e23;
-            margin-top: 2px;
-            font-style: italic;
-        }
-        
-        /* Loading spinner for submit button */
-        .btn-loading {
-            position: relative;
-            color: transparent !important;
-        }
-        .btn-loading::after {
-            content: '';
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            top: 50%;
-            left: 50%;
-            margin-left: -8px;
-            margin-top: -8px;
-            border: 2px solid white;
+        td { padding: 10px; border-bottom: 1px solid rgba(230, 184, 0, 0.2); }
+        .empty-message { text-align: center; padding: 40px; color: #8b6913; }
+        .loading-spinner { text-align: center; padding: 40px; }
+        .spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid #e6b80030;
             border-radius: 50%;
-            border-top-color: transparent;
-            animation: spinner 0.6s linear infinite;
+            border-top-color: #e6b800;
+            animation: spin 1s infinite;
         }
-        @keyframes spinner {
-            to { transform: rotate(360deg); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .airline-tag { background: #e6b800; padding: 2px 8px; border-radius: 30px; font-size: 0.7rem; margin-left: 8px; }
+        .delay-row { background-color: rgba(220, 53, 69, 0.05); }
+        .delay-badge { background: #dc3545; color: white; font-size: 9px; padding: 2px 8px; border-radius: 20px; margin-left: 8px; }
+        .footer-note { text-align: center; font-size: 0.7rem; color: #8b7a5c; margin-top: 25px; padding-top: 15px; border-top: 1px solid #e6b80040; }
+        
+        @media print {
+            body { background: white; padding: 0; margin: 0.5in; margin-right: 0 !important; }
+            .header-bar, .admin-panel, .filter-card, .stats-row, .back-link, .refresh-btn, .footer-note, .drawer-toggle, .drawer, .overlay { display: none !important; }
+            .report-card { border: 1px solid #000; box-shadow: none; break-inside: avoid; }
+            .flight-header { background: #f5f0e1; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            th { background: #e6b800 !important; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .table-wrapper { overflow: visible; max-height: none; }
+            tr, td, th { page-break-inside: avoid; }
+            thead { display: table-header-group; }
         }
     </style>
 </head>
 <body>
-    <!-- Floating Menu (unchanged) -->
-    <div class="floating-menu">
-        <div class="floating-menu-items">
-            <a href="dashboard.html" class="floating-menu-item dashboard" data-tooltip="Dashboard"><i>📊</i></a>
-            <a href="payedit.html" class="floating-menu-item edit" data-tooltip="Edit Payment"><i>✏️</i></a>
-            <a href="cashreport.html" class="floating-menu-item report" data-tooltip="Cash Report"><i>📋</i></a>
-            <a href="#" class="floating-menu-item logout" id="floatingLogoutBtn" data-tooltip="Logout"><i>🚪</i></a>
+<div class="container">
+    <div class="header-bar">
+        <div class="title-section">
+            <h1>✈ Airline Flight Reports</h1>
+            <p>Closed flights only • Read-only</p>
         </div>
-        <div class="floating-btn"><span>⚡</span></div>
+        <a href="javascript:history.back()" class="back-link">← Back to Main</a>
     </div>
-
-    <div class="container">
-        <!-- Header (unchanged) -->
-        <div class="header">
-            <h2>KOVELI PAYMENT</h2>
-            <div class="header-actions">
-                <a href="approval.html" class="approval-btn" id="approvalBtn">PENDING APPROVALS <span class="notification-badge" id="pendingCount">0</span></a>
-                <div class="shift-info" id="shiftInfo">
-                    <div class="date">DATE: <span id="currentDate">Loading...</span></div>
-                    <div class="shift">SHIFT: <span id="currentShift">Loading...</span> <span id="shiftStatus" class="status-badge"></span></div>
-                    <button id="refreshShiftBtn" class="refresh-btn" style="display: none;">↻</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="main-content">
-            <div class="user-info-bar" id="userInfoBar">
-                <span><strong>USER:</strong> <span id="userName">Loading...</span></span>
-                <span><strong>LEVEL:</strong> <span id="userLevel">Loading...</span></span>
-                <span><strong>RC NO:</strong> <span id="userRcNo">Loading...</span></span>
-                <span><strong>CASHIER:</strong> <span id="cashierName">Loading...</span></span>
-                <a class="logout-link" id="logoutBtn">← LOGOUT</a>
-            </div>
-            
-            <div class="input-section">
-                <input type="text" id="code" placeholder="📷 SCAN BARCODE HERE OR USE FIELD BELOW" autofocus>
-                <span id="statusMessage" class="status-message"></span>
-            </div>
-
-            <!-- Two Column Layout -->
-            <div class="two-column-layout">
-                <!-- LEFT - Passenger Section -->
-                <div class="passenger-section">
-                    <div class="section-title">PASSENGER DETAILS</div>
-                    <input type="hidden" id="hiddenCode">
-                    <div class="form-group">
-                        <label>📷 PASSENGER NAME </label>
-                        <input type="text" id="pName" placeholder="ENTER NAME" class="scan-highlight">
-                        <div class="scan-instruction">← You can scan barcode directly into this field</div>
-                    </div>
-                    <div class="grid-2">
-                        <div class="form-group"><label>FLIGHT NUMBER</label><input type="text" id="flightNo" placeholder="FLIGHT"></div>
-                        <div class="form-group"><label>SEAT NUMBER</label><input type="text" id="seatNo" placeholder="SEAT"></div>
-                    </div>
-                    <div class="grid-2" style="margin-top:5px">
-                        <div class="form-group"><label>ADULT</label><div class="number-input"><button type="button" id="adultDecrease">−</button><input type="number" id="adult" min="0" value="1" readonly><button type="button" id="adultIncrease">+</button></div></div>
-                        <div class="form-group"><label>CHILDREN</label><div class="number-input"><button type="button" id="childrenDecrease">−</button><input type="number" id="children" min="0" value="0" readonly><button type="button" id="childrenIncrease">+</button></div></div>
-                    </div>
-                    <div class="form-group"><label>TOTAL PASSENGERS</label><input type="text" id="totalPassengers" value="1" readonly></div>
-                </div>
-                
-                <!-- RIGHT - Payment Section -->
-                <div class="payment-section">
-                    <div class="section-title">PAYMENT DETAILS</div>
-                    <div class="grid-3">
-                        <div class="form-group"><label>CURRENCY</label><select id="currency"><option value="USD">USD</option><option value="MVR">MVR</option></select></div>
-                        <div class="form-group"><label>RATE TYPE</label><select id="rateType"><option value="A">RATE A</option><option value="B">RATE B</option></select></div>
-                        <div class="form-group"><label>PAYMENT</label><select id="paymentMethod"><option value="CASH">CASH</option><option value="CARD">CARD</option><option value="BANK TRANSFER">TRANSFER</option><option value="MOBILE PAYMENT">MOBILE</option><option value="VOUCHER">VOUCHER</option></select></div>
-                    </div>
-                    <div class="grid-2"><div class="form-group"><label>DATE/TIME</label><input type="text" id="currentDateTime" readonly></div><div class="form-group"><label>GST RATE (%)</label><input type="text" id="gstRate" value="8" readonly></div></div>
-                    <div class="grid-2"><div class="form-group"><label>RECEIPT NUMBER</label><input type="text" id="receiptNo" class="receipt-field" readonly placeholder="Auto"></div><div class="form-group"><label>EXPIRY TIME</label><input type="text" id="expiryTime" class="expiry-field" readonly placeholder="HH:MM:SS"></div></div>
-                    
-                    <div class="price-breakdown">
-                        <div class="price-row"><span>Adult Price:</span><span><span id="adultPrice">55.00</span> <span id="adultCurrency">USD</span></span></div>
-                        <div class="price-row"><span>Children Price:</span><span><span id="childrenPrice">55.00</span> <span id="childrenCurrency">USD</span></span></div>
-                        <div class="price-row" style="margin-top:5px; padding-top:5px; border-top:1px dashed #e6b800;"><span>Adult Subtotal:</span><span><span id="adultSubtotal">55.00</span> <span id="adultSubtotalCurrency">USD</span></span></div>
-                        <div class="price-row"><span>Children Subtotal:</span><span><span id="childrenSubtotal">0.00</span> <span id="childrenSubtotalCurrency">USD</span></span></div>
-                    </div>
-                    
-                    <div class="calculation-row">
-                        <div class="amount-display"><div class="label">SUBTOTAL</div><div class="value" id="subtotalAmount">55.00</div><div class="currency" id="subtotalCurrency">USD</div></div>
-                        <div class="amount-display"><div class="label">GST (8%)</div><div class="value" id="gstAmount">4.40</div><div class="currency" id="gstCurrency">USD</div></div>
-                        <div class="amount-display" style="background:#e6b800;"><div class="label" style="color:white;">TOTAL</div><div class="value" id="totalAmount" style="color:white;">59.40</div><div class="currency" id="totalCurrency" style="color:white;">USD</div></div>
-                    </div>
-                    
-                    <div class="rate-info" id="rateInfo">Rate: Adult A USD - 55.00 | Kids A USD - 55.00</div>
-                    <div class="exchange-rate-note" id="exchangeRateInfo"></div>
-                    <div class="validity-note" id="validityNote">Receipt #<span id="receiptNoDisplay">______</span> valid until <span id="expiryTimeDisplay">--:--:--</span></div>
-                </div>
-            </div>
-
-            <div class="entry-actions">
-                <button id="submitBtn" class="submit-btn">SUBMIT & SAVE</button>
-                <button id="printReceiptBtn" class="print-btn">PRINT RECEIPT</button>
-                <button id="reprintReceiptBtn" class="reprint-btn">REPRINT RECEIPT</button>
-                <button id="clearAllBtn" class="clear-btn">CLEAR ALL</button>
-            </div>
-            <div class="footer-note">📷 Scan boarding pass in EITHER field above - both accept barcode scans</div>
+    
+    <div class="admin-panel">
+        <div class="admin-title">⚙️ Airline Prefixes (Admin)</div>
+        <div class="prefix-list" id="prefixListContainer"></div>
+        <div class="add-prefix-form">
+            <input type="text" id="newPrefixInput" placeholder="EK" maxlength="2">
+            <button id="addPrefixBtn">+ Add</button>
+            <button id="resetDefaultsBtn" class="reset-defaults">Reset</button>
         </div>
     </div>
+    
+    <div class="filter-card">
+        <div class="filter-group">
+            <label>📅 Date</label>
+            <select id="dateSelect"></select>
+        </div>
+        <div class="filter-group">
+            <label>✈ Airline</label>
+            <select id="airlineSelect"></select>
+        </div>
+        <div class="filter-group">
+            <label>🔍 Flight No</label>
+            <select id="flightSelect" disabled></select>
+        </div>
+        <button class="refresh-btn" id="loadBtn">📋 Load Report</button>
+        <button class="refresh-btn" id="printBtn" style="background:#4a6fa5; color:white;">🖨️ PRINT</button>
+        <button class="refresh-btn" id="refreshBtn" style="background:#6c757d;">🔄 Refresh</button>
+    </div>
+    
+    <div class="stats-row" id="statsRow" style="display: none;">
+        <div class="stat-badge" id="flightStat">Flight: --</div>
+        <div class="stat-badge" id="paxStat">Passengers: 0</div>
+    </div>
+    
+    <div id="reportsContainer">
+        <div class="empty-message">Click "Refresh" to load closed flights from your database.</div>
+    </div>
+    <div class="footer-note">⚠️ Only flights closed from the main page are shown • No edits allowed</div>
+</div>
 
-    <!-- Reprint Modal -->
-    <div id="reprintModal" class="modal">
-        <div class="modal-content">
-            <h3>REPRINT RECEIPT</h3>
-            <input type="text" id="reprintReceiptNo" placeholder="ENTER RECEIPT NUMBER" autocomplete="off">
-            <div class="modal-buttons">
-                <button id="searchReceiptBtn" class="modal-btn search">SEARCH & PRINT</button>
-                <button id="closeModalBtn" class="modal-btn close">CLOSE</button>
+<!-- DRAWER BUTTON (exact copy of drawer button from source) -->
+<button class="drawer-toggle" id="drawerToggleBtn" aria-label="Open info drawer">📋</button>
+
+<!-- DRAWER PANEL -->
+<div class="drawer" id="infoDrawer">
+    <div class="drawer-header">
+        <h3>📌 Flight Summary</h3>
+        <button class="close-drawer" id="closeDrawerBtn">×</button>
+    </div>
+    <div class="drawer-content" id="drawerContent">
+        <div class="drawer-section">
+            <h4>✈ Current Flight</h4>
+            <div id="drawerFlightInfo" class="drawer-stats">
+                <p>No flight loaded</p>
             </div>
-            <div id="reprintStatus" class="status-message"></div>
+        </div>
+        <div class="drawer-section">
+            <h4>👥 Passenger Stats</h4>
+            <div id="drawerPassStats" class="drawer-stats">
+                <p>Total Pax: --</p>
+                <p>Regular: --</p>
+                <p>Delay Charge: --</p>
+            </div>
+        </div>
+        <div class="drawer-section">
+            <h4>⚡ Quick Actions</h4>
+            <button id="drawerPrintBtn" class="drawer-action-btn">🖨️ Print Report</button>
+            <button id="drawerRefreshBtn" class="drawer-action-btn secondary">🔄 Refresh Data</button>
+        </div>
+        <div class="drawer-section">
+            <h4>ℹ️ Info</h4>
+            <p style="font-size:12px; color:#666;">Closed flights only. Prefixes managed above. Drawer shows real-time flight details after loading a report.</p>
         </div>
     </div>
+</div>
+<div class="overlay" id="drawerOverlay"></div>
 
 <script>
-// ========== ALL JAVASCRIPT with Dual Scanning Support and Receipt Redirect ==========
-
-let currentShiftData = { date: '', shift: '', status: '', openTime: '' };
-let currentCashier = { name: '', level: '', rcno: '' };
-let submissionTime = null;
-let expiryTime = null;
-let currentReceiptNo = '';
-let currentExchangeRate = 15.42;
-let currentUser = { username: '', level: '', rcno: '', isLoggedIn: false };
-let pendingTransactionsCount = 0;
-let lastSavedTransaction = null;
-let shiftDataLoaded = false;
-
-// ========== BOARDING PASS PARSING FUNCTION (used by both fields) ==========
-function parseBoardingPassCode(codeInput) {
-    if (!codeInput) return false;
+    // ========== PREFIX MANAGEMENT (unchanged) ==========
+    const PREFIX_KEY = 'airline_prefixes_report';
+    let airlinePrefixes = ['EK', 'FZ', 'BA', 'QR', 'SQ'];
     
-    codeInput = codeInput.toUpperCase().trim();
-    
-    if (!codeInput.startsWith('M')) { 
-        alert('PLEASE READ A CORRECT BOARDING PASS (MUST START WITH M, M1, OR M2)'); 
-        return false; 
-    }
-    
-    if (!codeInput.includes('MLE')) { 
-        alert('PLEASE READ A CORRECT BOARDING PASS (MUST CONTAIN MLE)'); 
-        return false; 
-    }
-    
-    try {
-        const mlePosition = codeInput.indexOf('MLE');
-        const isM1orM2 = codeInput.startsWith('M1') || codeInput.startsWith('M2');
-        let namePart = '';
-        
-        if (isM1orM2) {
-            namePart = codeInput.substring(2, mlePosition + 3);
-            const withoutSpaces = namePart.replace(/\s/g, '');
-            if (withoutSpaces.length > 7) {
-                let charCount = 0, cutPosition = namePart.length;
-                for (let i = namePart.length - 1; i >= 0; i--) {
-                    if (namePart[i] !== ' ') { 
-                        charCount++; 
-                        if (charCount === 10) { 
-                            cutPosition = i; 
-                            break; 
-                        }
-                    }
-                }
-                namePart = namePart.substring(0, cutPosition);
-            }
-        } else { 
-            namePart = codeInput.substring(1, mlePosition); 
-        }
-        
-        namePart = namePart.trim();
-        
-        let flightNoPart = '';
-        if (codeInput.length > mlePosition + 3) {
-            flightNoPart = codeInput.substring(mlePosition + 3, mlePosition + 3 + 10);
-            flightNoPart = flightNoPart.substring(3).replace(/\s/g, '');
-        }
-        
-        let seatNo = '';
-        if (isM1orM2 && codeInput.length > mlePosition + 3) {
-            const afterMLE = codeInput.substring(mlePosition + 3);
-            const parts = afterMLE.split(' ').filter(p => p.trim() !== '');
-            let seatString = '';
-            
-            for (let i = 0; i < parts.length; i++) {
-                const part = parts[i];
-                if (/^\d{3}[A-Z]\d{3}[A-Z]\d{4}$/.test(part)) { 
-                    seatString = part; 
-                    break; 
-                }
-            }
-            
-            if (!seatString) {
-                for (let i = 0; i < parts.length; i++) {
-                    const part = parts[i];
-                    if (part.length >= 13 && /[A-Z]/.test(part) && /\d/.test(part)) { 
-                        seatString = part; 
-                        break; 
-                    }
-                }
-            }
-            
-            if (seatString) seatNo = seatString.substring(5, seatString.length - 4);
-        }
-        
-        // Populate all fields
-        document.getElementById('hiddenCode').value = codeInput;
-        document.getElementById('pName').value = namePart.toUpperCase();
-        document.getElementById('flightNo').value = flightNoPart ? flightNoPart.toUpperCase() : '';
-        document.getElementById('seatNo').value = seatNo ? seatNo.toUpperCase() : '';
-        
-        const statusMsg = document.getElementById('statusMessage'); 
-        if (statusMsg) { 
-            statusMsg.textContent = '✓ BOARDING PASS PARSED'; 
-            statusMsg.style.color = '#6b8e23';
-            setTimeout(() => { statusMsg.textContent = ''; }, 2000); 
-        }
-        
-        // Clear the code field if it was used
-        document.getElementById('code').value = '';
-        
-        // Add visual feedback
-        document.getElementById('pName').style.backgroundColor = '#e6f0da';
-        setTimeout(() => {
-            document.getElementById('pName').style.backgroundColor = '';
-        }, 500);
-        
-        return true;
-        
-    } catch (error) { 
-        console.error('Error parsing boarding pass:', error); 
-        alert('ERROR PARSING BOARDING PASS'); 
-        return false; 
-    }
-}
-
-// ========== HANDLE PASSENGER NAME FIELD INPUT ==========
-function handlePassengerNameInput() {
-    const pNameField = document.getElementById('pName');
-    const value = pNameField.value;
-    
-    // Only parse if it looks like a boarding pass code
-    if (value && value.trim().startsWith('M') && value.includes('MLE')) {
-        parseBoardingPassCode(value);
-    }
-}
-
-// ========== ORIGINAL PARSE FUNCTION (for code field) ==========
-function parseAndAddToList() {
-    const codeInput = document.getElementById('code').value;
-    return parseBoardingPassCode(codeInput);
-}
-
-// ========== FIREBASE & DATA FUNCTIONS ==========
-async function fetchPendingTransactionsCount() {
-    try {
-        if (typeof passengerDb === 'undefined') { console.warn('passengerDb not initialized'); updatePendingCount(0); return; }
-        const kovelipayRef = passengerDb.collection('Kovelipay');
-        const snapshot = await kovelipayRef.get();
-        let pendingCount = 0;
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            const paymentMethod = data.paymentMethod || '';
-            if (paymentMethod === 'CASH') return;
-            const hasApprovalCode = data.approvalCode && data.appvalCode?.trim() !== '';
-            const hasBatchNo = data.batchNo && data.batchNo.trim() !== '';
-            let isComplete = false;
-            const cardPayments = ['AMEX','VISA','MASTER','UNIONPAY','WECHATPAY','QRPAY','ALIPAY','CARD'];
-            if (cardPayments.includes(paymentMethod)) {
-                const hasCardType = data.cardType && data.cardType.trim() !== '';
-                isComplete = hasApprovalCode && hasBatchNo && hasCardType;
-            } else { isComplete = hasApprovalCode && hasBatchNo; }
-            if (!isComplete) pendingCount++;
-        });
-        pendingTransactionsCount = pendingCount;
-        updatePendingCount(pendingCount);
-    } catch (error) { console.error('Error fetching pending transactions count:', error); updatePendingCount(0); }
-}
-
-function updatePendingCount(count) {
-    const pendingBadge = document.getElementById('pendingCount');
-    if (pendingBadge) {
-        pendingBadge.textContent = count;
-        if (count > 0) { pendingBadge.style.backgroundColor = '#c68b5e'; pendingBadge.style.animation = 'pulse 2s infinite'; }
-        else { pendingBadge.style.backgroundColor = '#6b8e23'; pendingBadge.style.animation = 'none'; }
-    }
-    const approvalBtn = document.getElementById('approvalBtn');
-    if (approvalBtn) approvalBtn.title = `${count} pending approval${count !== 1 ? 's' : ''}`;
-}
-
-function loadUserFromLocalStorage() {
-    try {
-        currentUser = { username: '', level: '', rcno: '', isLoggedIn: false };
-        const username = localStorage.getItem('username');
-        const level = localStorage.getItem('level');
-        const rcno = localStorage.getItem('rcno');
-        const loggedInUserStr = localStorage.getItem('loggedInUser');
-        if (username) { currentUser.username = username; currentUser.isLoggedIn = true; }
-        else if (loggedInUserStr) { try { const loggedInUser = JSON.parse(loggedInUserStr); if (loggedInUser.username) { currentUser.username = loggedInUser.username; currentUser.isLoggedIn = true; } } catch (e) {} }
-        if (level) currentUser.level = level;
-        else if (loggedInUserStr) { try { const loggedInUser = JSON.parse(loggedInUserStr); if (loggedInUser.level) currentUser.level = loggedInUser.level; } catch (e) {} }
-        if (rcno) currentUser.rcno = rcno;
-        else { const rcNo = localStorage.getItem('rcNo'); if (rcNo) currentUser.rcno = rcNo; else { const RCno = localStorage.getItem('RCno'); if (RCno) currentUser.rcno = RCno; } }
-        if (!currentUser.rcno && loggedInUserStr) { try { const loggedInUser = JSON.parse(loggedInUserStr); if (loggedInUser.rcno) currentUser.rcno = loggedInUser.rcno; else if (loggedInUser.rcNo) currentUser.rcno = loggedInUser.rcNo; else if (loggedInUser.RCno) currentUser.rcno = loggedInUser.RCno; } catch (e) {} }
-        if (!currentUser.username) {
-            const statusMsg = document.getElementById('statusMessage');
-            if (statusMsg) { statusMsg.textContent = '⚠️ NOT LOGGED IN - Please log in first'; statusMsg.style.color = '#c68b5e'; }
-        }
-        updateUserDisplay();
-    } catch (error) { console.error('Error loading user from localStorage:', error); }
-}
-
-function updateUserDisplay() {
-    const userNameEl = document.getElementById('userName');
-    const userLevelEl = document.getElementById('userLevel');
-    const userRcNoEl = document.getElementById('userRcNo');
-    const cashierNameEl = document.getElementById('cashierName');
-    if (userNameEl) userNameEl.textContent = currentUser.username || 'Not logged in';
-    if (userLevelEl) userLevelEl.textContent = currentUser.level || 'N/A';
-    if (userRcNoEl) userRcNoEl.textContent = currentUser.rcno || 'N/A';
-    if (cashierNameEl) cashierNameEl.textContent = currentUser.username || 'Not logged in';
-    currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno };
-}
-
-function logout() {
-    localStorage.removeItem('username'); localStorage.removeItem('level'); localStorage.removeItem('rcno'); localStorage.removeItem('rcNo'); localStorage.removeItem('RCno'); localStorage.removeItem('loggedInUser'); localStorage.removeItem('shiftData'); localStorage.removeItem('cashierData');
-    window.location.href = 'login.html';
-}
-
-function checkAuth() { loadUserFromLocalStorage(); }
-
-async function loadShiftDataOnce() {
-    try {
-        const storedShiftData = localStorage.getItem('shiftData');
-        if (storedShiftData) {
-            try { const parsedData = JSON.parse(storedShiftData); const timestamp = parsedData._timestamp; const now = Date.now(); if (timestamp && (now - timestamp) < 60 * 60 * 1000) { currentShiftData = parsedData; updateShiftDisplay(); shiftDataLoaded = true; loadCashierData(); return; } } catch (e) { console.error('Error parsing stored shift data:', e); }
-        }
-        await fetchAndStoreShiftData();
-    } catch (error) { console.error('Error in loadShiftDataOnce:', error); }
-}
-
-async function fetchAndStoreShiftData() {
-    try {
-        const shiftInfo = document.getElementById('shiftInfo');
-        const dateElement = document.getElementById('currentDate');
-        const shiftElement = document.getElementById('currentShift');
-        const statusBadge = document.getElementById('shiftStatus');
-        if (!shiftInfo || !dateElement || !shiftElement || !statusBadge) return;
-        dateElement.textContent = 'Loading...'; shiftElement.textContent = 'Loading...'; shiftInfo.classList.add('loading');
-        if (typeof passengerDb === 'undefined') { dateElement.textContent = 'DB ERROR'; shiftElement.textContent = 'NOT INITIALIZED'; shiftInfo.classList.remove('loading'); shiftInfo.classList.add('error'); return; }
-        let shiftDoc = null;
-        try { shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get(); } catch (e) {}
-        if (!shiftDoc || !shiftDoc.exists) { try { shiftDoc = await passengerDb.collection('shifts').doc('currentShift').get(); } catch (e) {} }
-        if (!shiftDoc || !shiftDoc.exists) { try { shiftDoc = await passengerDb.collection('shifts').doc('CurrentShift').get(); } catch (e) {} }
-        if (shiftDoc && shiftDoc.exists) {
-            const data = shiftDoc.data();
-            currentShiftData = { date: data.date || '', shift: '', status: '', openTime: data.updated || data.openTime || '', _timestamp: Date.now() };
-            if (data.morning === 'open') { currentShiftData.shift = 'MORNING'; currentShiftData.status = 'OPEN'; }
-            else if (data.evening === 'open') { currentShiftData.shift = 'EVENING'; currentShiftData.status = 'OPEN'; }
-            else { currentShiftData.shift = 'NO OPEN SHIFT'; currentShiftData.status = 'CLOSED'; }
-            localStorage.setItem('shiftData', JSON.stringify(currentShiftData));
-            shiftDataLoaded = true;
-            await fetchAndStoreCashierData();
-        } else {
-            currentShiftData = { date: '', shift: 'NO SHIFT DATA', status: 'NOT FOUND', openTime: '', _timestamp: Date.now() };
-        }
-        updateShiftDisplay();
-    } catch (error) { console.error('Error fetching shift data:', error); }
-}
-
-async function fetchAndStoreCashierData() {
-    try {
-        const storedCashierData = localStorage.getItem('cashierData');
-        if (storedCashierData) {
-            try { const parsedData = JSON.parse(storedCashierData); const timestamp = parsedData._timestamp; const now = Date.now(); if (timestamp && (now - timestamp) < 60 * 60 * 1000) { currentCashier = parsedData; updateCashierDisplay(); return; } } catch (e) { console.error('Error parsing stored cashier data:', e); }
-        }
-        if (currentUser.username) {
-            currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() };
-            localStorage.setItem('cashierData', JSON.stringify(currentCashier));
-            updateCashierDisplay();
-        }
-    } catch (error) { console.error('Error fetching cashier data:', error); }
-}
-
-function loadCashierData() {
-    const storedCashierData = localStorage.getItem('cashierData');
-    if (storedCashierData) {
-        try { const parsedData = JSON.parse(storedCashierData); const timestamp = parsedData._timestamp; const now = Date.now(); if (timestamp && (now - timestamp) < 60 * 60 * 1000) { currentCashier = parsedData; } else { currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() }; localStorage.setItem('cashierData', JSON.stringify(currentCashier)); } } catch (e) { console.error('Error parsing stored cashier data:', e); currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() }; localStorage.setItem('cashierData', JSON.stringify(currentCashier)); }
-    } else { currentCashier = { name: currentUser.username, level: currentUser.level, rcno: currentUser.rcno, _timestamp: Date.now() }; localStorage.setItem('cashierData', JSON.stringify(currentCashier)); }
-    updateCashierDisplay();
-}
-
-function updateCashierDisplay() {
-    const cashierNameEl = document.getElementById('cashierName');
-    if (cashierNameEl && currentCashier.name) cashierNameEl.textContent = currentCashier.name;
-}
-
-function refreshShiftData() { shiftDataLoaded = false; localStorage.removeItem('shiftData'); localStorage.removeItem('cashierData'); fetchAndStoreShiftData(); }
-
-function updateShiftDisplay() {
-    const dateElement = document.getElementById('currentDate');
-    const shiftElement = document.getElementById('currentShift');
-    const statusBadge = document.getElementById('shiftStatus');
-    const shiftInfo = document.getElementById('shiftInfo');
-    if (!dateElement || !shiftElement || !statusBadge) return;
-    dateElement.textContent = currentShiftData.date || 'NO DATE';
-    if (currentShiftData.shift === 'MORNING' || currentShiftData.shift === 'EVENING') {
-        shiftElement.textContent = currentShiftData.shift;
-        statusBadge.textContent = currentShiftData.status;
-        statusBadge.style.backgroundColor = '#6b8e23';
-    } else {
-        shiftElement.textContent = currentShiftData.shift;
-        statusBadge.textContent = currentShiftData.status;
-        statusBadge.style.backgroundColor = '#c68b5e';
-    }
-    shiftInfo.classList.remove('loading', 'error');
-}
-
-async function generateReceiptNumber() {
-    try {
-        if (typeof passengerDb === 'undefined') { const timestamp = Date.now(); const randomPart = Math.floor(Math.random() * 1000); return 'R-' + timestamp.toString().slice(-5) + randomPart; }
-        const kovelipayRef = passengerDb.collection('Kovelipay');
-        const snapshot = await kovelipayRef.get();
-        let maxNumber = 3059;
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            const receiptNo = data.receiptNo || '';
-            let numPart = 0;
-            if (receiptNo.startsWith('R-')) numPart = parseInt(receiptNo.substring(2).replace(/^0+/, ''));
-            else if (receiptNo.startsWith('R')) numPart = parseInt(receiptNo.substring(1));
-            else numPart = parseInt(receiptNo);
-            if (!isNaN(numPart) && numPart > maxNumber) maxNumber = numPart;
-        });
-        const nextNumber = maxNumber + 1;
-        const nextReceiptNo = 'R-' + nextNumber.toString().padStart(5, '0');
-        return nextReceiptNo;
-    } catch (error) { console.error('Error generating receipt number:', error); const timestamp = Date.now(); return 'R-' + timestamp.toString().slice(-5); }
-}
-
-async function saveToFirebase(data) {
-    try {
-        if (typeof passengerDb === 'undefined') throw new Error('passengerDb not initialized');
-        const kovelipayRef = passengerDb.collection('Kovelipay');
-        const docRef = await kovelipayRef.add(data);
-        return { id: docRef.id, ...data };
-    } catch (error) { console.error('Error saving to Firebase:', error); throw error; }
-}
-
-async function fetchTransactionByReceipt(receiptNo) {
-    try {
-        if (typeof passengerDb === 'undefined') throw new Error('passengerDb not initialized');
-        const kovelipayRef = passengerDb.collection('Kovelipay');
-        const snapshot = await kovelipayRef.where('receiptNo', '==', receiptNo).limit(1).get();
-        if (!snapshot.empty) { const doc = snapshot.docs[0]; return { id: doc.id, ...doc.data() }; }
-        const docById = await kovelipayRef.doc(receiptNo).get();
-        if (docById.exists) return { id: docById.id, ...docById.data() };
-        return null;
-    } catch (error) { console.error('Error fetching transaction:', error); throw error; }
-}
-
-function updateDateTime() {
-    const now = new Date();
-    const dateTimeString = now.toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-    document.getElementById('currentDateTime').value = dateTimeString;
-}
-
-function calculateExpiryTime() {
-    if (!submissionTime) submissionTime = new Date();
-    expiryTime = new Date(submissionTime.getTime() + (3 * 60 * 60 * 1000));
-    const hours = expiryTime.getHours().toString().padStart(2,'0');
-    const minutes = expiryTime.getMinutes().toString().padStart(2,'0');
-    const seconds = expiryTime.getSeconds().toString().padStart(2,'0');
-    const timeOnlyString = `${hours}:${minutes}:${seconds}`;
-    const fullExpiryString = expiryTime.toLocaleString('en-US', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
-    document.getElementById('expiryTime').value = timeOnlyString;
-    document.getElementById('expiryTimeDisplay').textContent = timeOnlyString;
-    return { display: timeOnlyString, full: fullExpiryString, timestamp: expiryTime };
-}
-
-setInterval(updateDateTime, 1000);
-
-function getAirlineName(iataCode) {
-    if (!iataCode) return '';
-    const airline = window.airlineData?.airlines_flying_to_maldives.find(a => a.iata === iataCode);
-    return airline ? airline.airline.toUpperCase() : iataCode.toUpperCase();
-}
-
-function setupNumberInputs() {
-    const adultInput = document.getElementById('adult');
-    const childrenInput = document.getElementById('children');
-    document.getElementById('adultIncrease').addEventListener('click', function() { let currentValue = parseInt(adultInput.value) || 0; adultInput.value = currentValue + 1; updateTotalPassengers(); });
-    document.getElementById('adultDecrease').addEventListener('click', function() { let currentValue = parseInt(adultInput.value) || 0; if (currentValue > 0) { adultInput.value = currentValue - 1; updateTotalPassengers(); } });
-    document.getElementById('childrenIncrease').addEventListener('click', function() { let currentValue = parseInt(childrenInput.value) || 0; childrenInput.value = currentValue + 1; updateTotalPassengers(); });
-    document.getElementById('childrenDecrease').addEventListener('click', function() { let currentValue = parseInt(childrenInput.value) || 0; if (currentValue > 0) { childrenInput.value = currentValue - 1; updateTotalPassengers(); } });
-}
-
-function calculatePrices() {
-    if (typeof rates === 'undefined') { console.error('rates object not found'); return; }
-    const adult = parseInt(document.getElementById('adult').value) || 0;
-    const children = parseInt(document.getElementById('children').value) || 0;
-    const currency = document.getElementById('currency').value;
-    const rateType = document.getElementById('rateType').value;
-    if (rates.exchangeRate && rates.exchangeRate.MVRtoUSD) currentExchangeRate = rates.exchangeRate.MVRtoUSD;
-    const adultRateKey = `Adult${rateType}${currency}`;
-    const childrenRateKey = `Kids${rateType}${currency}`;
-    let adultRate = rates[adultRateKey] || { price: 0, GST: 8 };
-    let childrenRate = rates[childrenRateKey] || { price: 0, GST: 8 };
-    if (currency === 'MVR' && (adultRate.price === 0 || childrenRate.price === 0)) {
-        const adultUSDRateKey = `Adult${rateType}USD`;
-        const childrenUSDRateKey = `Kids${rateType}USD`;
-        const adultUSDRate = rates[adultUSDRateKey] || { price: 0, GST: 8 };
-        const childrenUSDRate = rates[childrenUSDRateKey] || { price: 0, GST: 8 };
-        if (adultUSDRate.price > 0) adultRate = { price: adultUSDRate.price * currentExchangeRate, GST: adultUSDRate.GST || 8 };
-        if (childrenUSDRate.price > 0) childrenRate = { price: childrenUSDRate.price * currentExchangeRate, GST: childrenUSDRate.GST || 8 };
-    }
-    const gstRate = adultRate.GST || 8;
-    document.getElementById('gstRate').value = gstRate;
-    const adultSubtotal = adult * adultRate.price;
-    const childrenSubtotal = children * childrenRate.price;
-    const subtotal = adultSubtotal + childrenSubtotal;
-    const gstAmount = subtotal * (gstRate / 100);
-    const totalAmount = subtotal + gstAmount;
-    document.getElementById('adultPrice').textContent = adultRate.price.toFixed(2);
-    document.getElementById('childrenPrice').textContent = childrenRate.price.toFixed(2);
-    document.getElementById('adultCurrency').textContent = currency; document.getElementById('childrenCurrency').textContent = currency;
-    document.getElementById('adultSubtotal').textContent = adultSubtotal.toFixed(2);
-    document.getElementById('childrenSubtotal').textContent = childrenSubtotal.toFixed(2);
-    document.getElementById('adultSubtotalCurrency').textContent = currency; document.getElementById('childrenSubtotalCurrency').textContent = currency;
-    document.getElementById('subtotalAmount').textContent = subtotal.toFixed(2);
-    document.getElementById('gstAmount').textContent = gstAmount.toFixed(2);
-    document.getElementById('totalAmount').textContent = totalAmount.toFixed(2);
-    document.getElementById('subtotalCurrency').textContent = currency;
-    document.getElementById('gstCurrency').textContent = currency;
-    document.getElementById('totalCurrency').textContent = currency;
-    let rateInfo = document.getElementById('rateInfo');
-    let rateInfoText = `Rate: Adult ${rateType} ${currency} - ${adultRate.price.toFixed(2)} | Kids ${rateType} ${currency} - ${childrenRate.price.toFixed(2)} (GST: ${gstRate}%)`;
-    if (currency === 'MVR' && rates.exchangeRate) {
-        const adultUSDPrice = adultRate.price / currentExchangeRate;
-        const childrenUSDPrice = childrenRate.price / currentExchangeRate;
-        rateInfoText += ` (USD: $${adultUSDPrice.toFixed(2)} / $${childrenUSDPrice.toFixed(2)})`;
-        document.getElementById('exchangeRateInfo').textContent = `1 USD = ${currentExchangeRate.toFixed(2)} MVR`;
-    } else { document.getElementById('exchangeRateInfo').textContent = ''; }
-    rateInfo.textContent = rateInfoText;
-}
-
-function updateTotalPassengers() {
-    const adult = parseInt(document.getElementById('adult').value) || 0;
-    const children = parseInt(document.getElementById('children').value) || 0;
-    const total = adult + children;
-    document.getElementById('totalPassengers').value = total;
-    calculatePrices();
-}
-
-function clearAllFields() {
-    document.getElementById('hiddenCode').value = ''; document.getElementById('pName').value = ''; document.getElementById('flightNo').value = ''; document.getElementById('seatNo').value = '';
-    document.getElementById('adult').value = '1'; document.getElementById('children').value = '0'; document.getElementById('currency').value = 'USD'; document.getElementById('rateType').value = 'A'; document.getElementById('paymentMethod').value = 'CASH'; document.getElementById('receiptNo').value = '';
-    submissionTime = null; expiryTime = null; currentReceiptNo = ''; document.getElementById('expiryTime').value = ''; document.getElementById('expiryTimeDisplay').textContent = '--:--:--'; document.getElementById('receiptNoDisplay').textContent = '______';
-    updateTotalPassengers();
-    const statusMsg = document.getElementById('statusMessage'); if (statusMsg) { statusMsg.textContent = '✓ ALL FIELDS CLEARED'; setTimeout(() => { statusMsg.textContent = ''; }, 2000); }
-    document.getElementById('code').focus();
-}
-
-// ========== REDIRECT TO RECEIPT PAGE FUNCTION ==========
-function redirectToReceiptPage(transactionData, autoPrint = true) {
-    try {
-        // Store in localStorage as backup
-        localStorage.setItem('lastReceiptData', JSON.stringify(transactionData));
-        
-        // Encode data for URL (limited size, but should be fine)
-        const encodedData = encodeURIComponent(JSON.stringify(transactionData));
-        
-        // Build URL with parameters
-        let receiptUrl = `receipt.html?data=${encodedData}&returnTo=${encodeURIComponent(window.location.pathname)}`;
-        
-        // Add autoPrint parameter
-        if (autoPrint) {
-            receiptUrl += '&autoPrint=true';
-        }
-        
-        // Add reprint flag if this is a reprint
-        if (transactionData.isReprint) {
-            receiptUrl += '&reprint=true';
-        }
-        
-        // Redirect to receipt page
-        window.location.href = receiptUrl;
-    } catch (error) {
-        console.error('Error redirecting to receipt page:', error);
-        // Fallback: try with just receipt number
-        if (transactionData && transactionData.receiptNo) {
-            window.location.href = `receipt.html?receiptNo=${transactionData.receiptNo}&autoPrint=true&returnTo=${encodeURIComponent(window.location.pathname)}`;
-        } else {
-            alert('Error printing receipt. Please use REPRINT function.');
-        }
-    }
-}
-
-// ========== UPDATED SUBMIT FORM WITH REDIRECT ==========
-async function submitForm() {
-    if (!currentUser.username) { alert('Please log in first'); window.location.href = 'index.html'; return; }
-    if (!document.getElementById('pName').value) { alert('Please scan a boarding pass first'); return; }
-    if (currentShiftData.status !== 'OPEN') { alert('No open shift found. Please open a shift first.'); return; }
-    if (!currentShiftData.date) { alert('Shift date is missing. Please refresh shift data.'); return; }
-    
-    const submitBtn = document.getElementById('submitBtn'); 
-    const originalText = submitBtn.textContent;
-    
-    // Show loading state
-    submitBtn.disabled = true; 
-    submitBtn.classList.add('btn-loading');
-    submitBtn.textContent = 'SAVING...';
-    
-    try {
-        const receiptNo = await generateReceiptNumber(); 
-        currentReceiptNo = receiptNo;
-        document.getElementById('receiptNo').value = receiptNo; 
-        document.getElementById('receiptNoDisplay').textContent = receiptNo;
-        
-        const shiftDate = currentShiftData.date;
-        let standardizedDate = shiftDate;
-        if (shiftDate.includes('/')) { const parts = shiftDate.split('/'); if (parts.length === 3) standardizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`; }
-        
-        const boardingPassData = { 
-            passengerName: document.getElementById('pName').value, 
-            flightNo: document.getElementById('flightNo').value, 
-            seatNo: document.getElementById('seatNo').value, 
-            date: shiftDate, 
-            shift: currentShiftData.shift, 
-            shiftOpenTime: currentShiftData.openTime 
-        };
-        
-        const paymentData = { 
-            adult: parseInt(document.getElementById('adult').value) || 0, 
-            children: parseInt(document.getElementById('children').value) || 0, 
-            totalPassengers: parseInt(document.getElementById('totalPassengers').value) || 0, 
-            currency: document.getElementById('currency').value, 
-            rateType: document.getElementById('rateType').value, 
-            paymentMethod: document.getElementById('paymentMethod').value, 
-            adultPrice: parseFloat(document.getElementById('adultPrice').textContent), 
-            childrenPrice: parseFloat(document.getElementById('childrenPrice').textContent), 
-            adultSubtotal: parseFloat(document.getElementById('adultSubtotal').textContent), 
-            childrenSubtotal: parseFloat(document.getElementById('childrenSubtotal').textContent), 
-            subtotal: parseFloat(document.getElementById('subtotalAmount').textContent), 
-            gstAmount: parseFloat(document.getElementById('gstAmount').textContent), 
-            gstRate: parseInt(document.getElementById('gstRate').value), 
-            totalAmount: parseFloat(document.getElementById('totalAmount').textContent) 
-        };
-        
-        submissionTime = new Date(); 
-        const expiryResult = calculateExpiryTime();
-        
-        const companyInfoData = typeof companyInfo !== 'undefined' ? companyInfo : { 
-            name: 'Koveli Lounge', 
-            address: 'Velana International Airport', 
-            phone: '+960 304 6677' 
-        };
-        
-        const exchangeRateData = {}; 
-        if (typeof rates !== 'undefined' && rates.exchangeRate) { 
-            exchangeRateData.exchangeRate = rates.exchangeRate; 
-            exchangeRateData.exchangeRateUsed = currentExchangeRate; 
-        }
-        
-        const userData = { 
-            username: currentUser.username || 'Unknown', 
-            level: currentUser.level || 'N/A', 
-            rcno: currentUser.rcno || 'N/A', 
-            cashierName: currentCashier.name || currentUser.username || 'Unknown', 
-            loginTime: new Date().toISOString() 
-        };
-        
-        const completeData = { 
-            receiptNo: receiptNo, 
-            ...boardingPassData, 
-            ...paymentData, 
-            ...exchangeRateData, 
-            user: userData, 
-            transactionDate: shiftDate, 
-            shiftDate: shiftDate, 
-            date: shiftDate, 
-            shiftDateStandardized: standardizedDate, 
-            submissionDateTime: document.getElementById('currentDateTime').value, 
-            submissionTimestamp: new Date().toISOString(), 
-            expiryDateTime: expiryResult.full, 
-            expiryTime: expiryResult.display, 
-            shiftName: currentShiftData.shift, 
-            shiftStatus: currentShiftData.status, 
-            shiftOpenTimestamp: currentShiftData.openTime, 
-            cashier: { 
-                name: currentCashier.name || currentUser.username, 
-                level: currentCashier.level || currentUser.level, 
-                rcno: currentCashier.rcno || currentUser.rcno 
-            }, 
-            companyInfo: companyInfoData, 
-            timestamp: firebase.firestore.FieldValue.serverTimestamp(), 
-            createdAt: new Date().toISOString(), 
-            shiftMetadata: { 
-                date: shiftDate, 
-                shift: currentShiftData.shift, 
-                openTime: currentShiftData.openTime, 
-                status: currentShiftData.status, 
-                usedForTransaction: true 
-            }, 
-            uniqueId: Date.now() + '-' + Math.random().toString(36).substr(2, 9) 
-        };
-        
-        // Save to Firebase
-        const savedData = await saveToFirebase(completeData);
-        lastSavedTransaction = savedData;
-        
-        // Show success message briefly
-        const statusMsg = document.getElementById('statusMessage'); 
-        if (statusMsg) { 
-            statusMsg.textContent = `✓ RECEIPT #${receiptNo} SAVED - Redirecting to print...`; 
-            statusMsg.style.color = '#6b8e23';
-        }
-        
-        // Redirect to receipt page for printing
-        setTimeout(() => {
-            redirectToReceiptPage(savedData, true);
-        }, 500); // Small delay to show success message
-        
-    } catch (error) { 
-        console.error('Error in submitForm:', error); 
-        document.getElementById('statusMessage').textContent = '✗ ERROR SAVING TO DATABASE'; 
-        document.getElementById('statusMessage').style.color = '#c68b5e';
-        alert('Error saving to database: ' + error.message);
-        
-        // Reset button
-        submitBtn.disabled = false; 
-        submitBtn.classList.remove('btn-loading');
-        submitBtn.textContent = originalText;
-    }
-}
-
-// ========== UPDATED PRINT RECEIPT FUNCTION ==========
-function printCurrentReceipt() {
-    if (!document.getElementById('pName').value) { 
-        alert('Please scan a boarding pass first'); 
-        return; 
-    }
-    if (!document.getElementById('receiptNo').value) { 
-        alert('Please submit the form first'); 
-        return; 
-    }
-    
-    // Build transaction data from current form
-    const transactionData = {
-        receiptNo: document.getElementById('receiptNo').value,
-        passengerName: document.getElementById('pName').value,
-        flightNo: document.getElementById('flightNo').value,
-        seatNo: document.getElementById('seatNo').value,
-        adult: document.getElementById('adult').value,
-        children: document.getElementById('children').value,
-        currency: document.getElementById('currency').value,
-        rateType: document.getElementById('rateType').value,
-        paymentMethod: document.getElementById('paymentMethod').value,
-        adultPrice: document.getElementById('adultPrice').textContent,
-        childrenPrice: document.getElementById('childrenPrice').textContent,
-        adultSubtotal: document.getElementById('adultSubtotal').textContent,
-        childrenSubtotal: document.getElementById('childrenSubtotal').textContent,
-        subtotal: document.getElementById('subtotalAmount').textContent,
-        gstAmount: document.getElementById('gstAmount').textContent,
-        gstRate: document.getElementById('gstRate').value,
-        totalAmount: document.getElementById('totalAmount').textContent,
-        submissionDateTime: document.getElementById('currentDateTime').value,
-        expiryTime: document.getElementById('expiryTime').value,
-        shiftDate: currentShiftData.date,
-        shift: currentShiftData.shift,
-        cashierName: currentCashier.name || currentUser.username,
-        userRcno: currentUser.rcno,
-        exchangeRate: currentExchangeRate,
-        isReprint: false
+    const companyInfo = { 
+        name: 'MACL', 
+        address: '123 Aviation Road', 
+        phone: '+123 456 7890'
     };
     
-    redirectToReceiptPage(transactionData, true);
-}
-
-// ========== UPDATED REPRINT FUNCTION ==========
-async function searchAndReprintReceipt() {
-    const receiptNo = document.getElementById('reprintReceiptNo').value.trim().toUpperCase();
-    const statusEl = document.getElementById('reprintStatus');
-    const searchBtn = document.getElementById('searchReceiptBtn');
-    
-    if (!receiptNo) { 
-        statusEl.textContent = 'Please enter a receipt number'; 
-        statusEl.style.color = '#c68b5e'; 
-        return; 
+    function loadPrefixes() {
+        try {
+            const stored = localStorage.getItem(PREFIX_KEY);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) airlinePrefixes = parsed;
+            }
+        } catch(e) {}
+        renderPrefixes();
+        updateAirlineSelect();
     }
     
-    statusEl.textContent = 'Searching...'; 
-    statusEl.style.color = '#6b8e23';
-    searchBtn.disabled = true;
+    function savePrefixes() {
+        localStorage.setItem(PREFIX_KEY, JSON.stringify(airlinePrefixes));
+        renderPrefixes();
+        updateAirlineSelect();
+        filterFlights();
+    }
     
-    try {
-        const transaction = await fetchTransactionByReceipt(receiptNo);
-        if (transaction) {
-            statusEl.textContent = '✓ Receipt found. Redirecting to print...'; 
-            statusEl.style.color = '#6b8e23';
-            
-            // Add reprint flag
-            transaction.isReprint = true;
-            
-            // Close modal and redirect
-            setTimeout(() => {
-                closeReprintModal();
-                redirectToReceiptPage(transaction, true);
-            }, 500);
-            
-        } else { 
-            statusEl.textContent = '✗ Receipt not found'; 
-            statusEl.style.color = '#c68b5e';
-            searchBtn.disabled = false;
+    function renderPrefixes() {
+        const container = document.getElementById('prefixListContainer');
+        container.innerHTML = airlinePrefixes.map(p => `
+            <div class="prefix-tag">
+                ${p}
+                <button class="remove-prefix" data-prefix="${p}">✕</button>
+            </div>
+        `).join('');
+        document.querySelectorAll('.remove-prefix').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (airlinePrefixes.length > 1) {
+                    airlinePrefixes = airlinePrefixes.filter(p => p !== btn.dataset.prefix);
+                    savePrefixes();
+                } else {
+                    alert('At least one prefix required');
+                }
+            });
+        });
+    }
+    
+    function updateAirlineSelect() {
+        const select = document.getElementById('airlineSelect');
+        select.innerHTML = '<option value="">All Airlines</option>' + 
+            airlinePrefixes.map(p => `<option value="${p}">${p}</option>`).join('');
+    }
+    
+    // ========== DATA LOADING (original logic) ==========
+    let allReports = [];
+    let currentReport = null;
+    let currentPassengers = [];
+    
+    function getAllDatabases() {
+        const dbs = [];
+        if (window.baDb) dbs.push({ name: 'BA', ref: window.baDb });
+        if (window.ekDb) dbs.push({ name: 'EK', ref: window.ekDb });
+        if (window.qrDb) dbs.push({ name: 'QR', ref: window.qrDb });
+        if (window.sqDb) dbs.push({ name: 'SQ', ref: window.sqDb });
+        if (window.defaultCardDb) dbs.push({ name: 'Default', ref: window.defaultCardDb });
+        if (window.db && dbs.length === 0) dbs.push({ name: 'Main', ref: window.db });
+        return dbs;
+    }
+    
+    function normalizeDate(dateStr) {
+        if (!dateStr) return '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+        let parts = dateStr.split(/[/-]/);
+        if (parts.length === 3) {
+            if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+            else return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
         }
-    } catch (error) { 
-        console.error('Error searching for receipt:', error); 
-        statusEl.textContent = '✗ Error searching for receipt'; 
-        statusEl.style.color = '#c68b5e';
-        searchBtn.disabled = false;
-    }
-}
-
-function showReprintModal() {
-    const modal = document.getElementById('reprintModal');
-    modal.style.display = 'flex';
-    document.getElementById('reprintReceiptNo').value = '';
-    document.getElementById('reprintReceiptNo').focus();
-    document.getElementById('reprintStatus').textContent = '';
-}
-
-function closeReprintModal() { 
-    document.getElementById('reprintModal').style.display = 'none';
-    document.getElementById('searchReceiptBtn').disabled = false;
-}
-
-function debugShiftData() {
-    console.log('=== CURRENT SHIFT DATA DEBUG ===', currentShiftData);
-    alert(`Shift Data:\nDate: ${currentShiftData.date}\nShift: ${currentShiftData.shift}\nStatus: ${currentShiftData.status}\nCashier: ${currentCashier.name}`);
-}
-
-// ========== DOM CONTENT LOADED ==========
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM fully loaded');
-    checkAuth();
-    
-    // Logout buttons
-    const logoutBtn = document.getElementById('logoutBtn'); 
-    if (logoutBtn) logoutBtn.addEventListener('click', function(e) { e.preventDefault(); logout(); });
-    
-    const floatingLogoutBtn = document.getElementById('floatingLogoutBtn'); 
-    if (floatingLogoutBtn) floatingLogoutBtn.addEventListener('click', function(e) { e.preventDefault(); logout(); });
-    
-    // Get form elements
-    const codeField = document.getElementById('code');
-    const pNameField = document.getElementById('pName');
-    const currencyField = document.getElementById('currency');
-    const rateTypeField = document.getElementById('rateType');
-    const submitBtn = document.getElementById('submitBtn');
-    const printReceiptBtn = document.getElementById('printReceiptBtn');
-    const reprintReceiptBtn = document.getElementById('reprintReceiptBtn');
-    const clearAllBtn = document.getElementById('clearAllBtn');
-    const refreshShiftBtn = document.getElementById('refreshShiftBtn');
-    const closeModalBtn = document.getElementById('closeModalBtn');
-    const searchReceiptBtn = document.getElementById('searchReceiptBtn');
-    
-    // Setup number inputs
-    setupNumberInputs();
-    
-    // Load data
-    loadShiftDataOnce();
-    setTimeout(() => { fetchPendingTransactionsCount(); }, 2000);
-    updateDateTime();
-    setTimeout(() => { 
-        if (typeof rates !== 'undefined') { 
-            if (rates.exchangeRate) currentExchangeRate = rates.exchangeRate.MVRtoUSD || 15.42; 
-        } 
-        updateTotalPassengers(); 
-    }, 500);
-    
-    // Currency and rate type change events
-    if (currencyField) currencyField.addEventListener('change', calculatePrices);
-    if (rateTypeField) rateTypeField.addEventListener('change', calculatePrices);
-    
-    // ===== CODE FIELD HANDLING (original) =====
-    if (codeField) {
-        codeField.addEventListener('keypress', function(e) { 
-            if (e.key === 'Enter') parseAndAddToList(); 
-        });
-        codeField.addEventListener('blur', function() { 
-            if (codeField.value.trim() !== '') parseAndAddToList(); 
-        });
-        codeField.addEventListener('input', function() { 
-            this.value = this.value.toUpperCase(); 
-        });
-        codeField.focus();
+        return dateStr;
     }
     
-    // ===== PASSENGER NAME FIELD HANDLING (allows scanning directly) =====
-    if (pNameField) {
-        // Handle blur event
-        pNameField.addEventListener('blur', function() {
-            handlePassengerNameInput();
-        });
+    function getFlightPrefix(flightNo) {
+        if (!flightNo) return '';
+        return flightNo.substring(0, 2).toUpperCase();
+    }
+    
+    async function loadClosedFlights() {
+        const container = document.getElementById('reportsContainer');
+        container.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading closed flights from all databases...</p></div>';
         
-        // Handle Enter key press
-        pNameField.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                handlePassengerNameInput();
-                setTimeout(() => {
-                    document.getElementById('flightNo').focus();
-                }, 100);
+        const databases = getAllDatabases();
+        const reportsMap = new Map();
+        
+        for (const db of databases) {
+            try {
+                const snapshot = await db.ref.collection('FlightReports').where('isClosed', '==', true).get();
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const flightNo = data.flightNo;
+                    const dateRaw = data.date;
+                    const shift = data.shift || 'UNKNOWN';
+                    if (!flightNo || !dateRaw) return;
+                    const date = normalizeDate(dateRaw);
+                    const key = `${date}|${flightNo}|${shift}`;
+                    if (!reportsMap.has(key)) {
+                        reportsMap.set(key, {
+                            flightNo: flightNo,
+                            date: date,
+                            shift: shift,
+                            airline: data.airline || '',
+                            std: data.std || '',
+                            firstPax: data.firstPax || '',
+                            lastPax: data.lastPax || '',
+                            totalPax: data.totalPax || 0,
+                            dbRef: db.ref,
+                            dbName: db.name
+                        });
+                    }
+                });
+            } catch(err) { console.warn(`Error in ${db.name}:`, err); }
+        }
+        
+        allReports = Array.from(reportsMap.values());
+        allReports.sort((a, b) => b.date.localeCompare(a.date) || a.flightNo.localeCompare(b.flightNo));
+        
+        const dates = [...new Set(allReports.map(r => r.date))].sort().reverse();
+        const dateSelect = document.getElementById('dateSelect');
+        
+        if (dates.length === 0) {
+            dateSelect.innerHTML = '<option value="">-- No closed flights --</option>';
+            container.innerHTML = '<div class="empty-message">No closed flights found. Please close a flight from the main page first.</div>';
+        } else {
+            let options = '<option value="">All Dates</option>';
+            dates.forEach(d => options += `<option value="${d}">${d}</option>`);
+            dateSelect.innerHTML = options;
+        }
+        filterFlights();
+    }
+    
+    function filterFlights() {
+        const selectedDate = document.getElementById('dateSelect').value;
+        const selectedAirline = document.getElementById('airlineSelect').value;
+        const flightSelect = document.getElementById('flightSelect');
+        let filtered = [...allReports];
+        if (selectedDate) filtered = filtered.filter(f => f.date === selectedDate);
+        if (selectedAirline) filtered = filtered.filter(f => getFlightPrefix(f.flightNo) === selectedAirline);
+        filtered.sort((a, b) => a.flightNo.localeCompare(b.flightNo));
+        if (filtered.length === 0) {
+            flightSelect.innerHTML = '<option value="">-- No flights --</option>';
+            flightSelect.disabled = true;
+            return;
+        }
+        let options = '<option value="">-- Select Flight --</option>';
+        filtered.forEach(f => {
+            options += `<option value="${f.flightNo}|${f.date}|${f.shift}">${f.flightNo} (${f.shift}) - ${f.totalPax || 0} pax</option>`;
+        });
+        flightSelect.innerHTML = options;
+        flightSelect.disabled = false;
+    }
+    
+    async function loadPassengers(flightNo, date, shift, dbRef) {
+        const passengers = [];
+        const possibleDates = [date];
+        if (date.includes('-')) {
+            const parts = date.split('-');
+            const altDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+            possibleDates.push(altDate);
+        }
+        for (let tryDate of possibleDates) {
+            try {
+                const snapshot = await dbRef.collection('KoveliPass')
+                    .where('date', '==', tryDate)
+                    .where('flightNo', '==', flightNo)
+                    .where('shift', '==', shift)
+                    .get();
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    passengers.push({
+                        pName: data.pName || data.name || '',
+                        seatNo: data.seatNo || data.seat || '',
+                        pax: data.pax || (data.delayCharge ? 0 : 1),
+                        FQTV: data.FQTV || '',
+                        serialNo: data.serialNo || '',
+                        entryTime: data.entryTime || data.time || '',
+                        remarks: data.remarks || '',
+                        isDelayCharge: data.delayCharge === true,
+                        hiddenCode: data.hiddenCode || ''
+                    });
+                });
+                if (passengers.length > 0) break;
+            } catch(e) {}
+        }
+        const regular = passengers.filter(p => !p.isDelayCharge).sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const delay = passengers.filter(p => p.isDelayCharge).sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        return [...regular, ...delay];
+    }
+    
+    function extractPNR(hiddenCode) {
+        if (!hiddenCode) return '';
+        const lower = hiddenCode.toLowerCase();
+        let match = lower.match(/([a-z0-9]{6,7})\s+mle/);
+        if (match) return match[1].toUpperCase().slice(0,6);
+        match = lower.match(/([a-z0-9]{6,7})mle/);
+        if (match) return match[1].toUpperCase().slice(0,6);
+        return '';
+    }
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : (m === '<' ? '&lt;' : '&gt;'));
+    }
+    
+    async function loadReport() {
+        const flightSelect = document.getElementById('flightSelect');
+        const selected = flightSelect.value;
+        if (!selected) { alert('Please select a flight'); return; }
+        const [flightNo, date, shift] = selected.split('|');
+        currentReport = allReports.find(r => r.flightNo === flightNo && r.date === date && r.shift === shift);
+        if (!currentReport) { alert('Flight not found'); return; }
+        const container = document.getElementById('reportsContainer');
+        container.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading passengers...</p></div>';
+        currentPassengers = await loadPassengers(flightNo, date, shift, currentReport.dbRef);
+        const totalPax = currentPassengers.filter(p => !p.isDelayCharge).reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        document.getElementById('statsRow').style.display = 'flex';
+        document.getElementById('flightStat').innerHTML = `Flight: ${flightNo}`;
+        document.getElementById('paxStat').innerHTML = `Passengers: ${totalPax}`;
+        displayReport();
+        updateDrawerContent();   // 👈 update drawer after loading flight
+    }
+    
+    function displayReport() {
+        if (!currentReport) return;
+        const flight = currentReport;
+        const passengers = currentPassengers;
+        const isFZ = flight.flightNo.toUpperCase().startsWith('FZ');
+        const isSQ = flight.flightNo.toUpperCase().startsWith('SQ');
+        const dateParts = flight.date.split('-');
+        const displayDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : flight.date;
+        let tableHeaders = '';
+        if (isFZ) {
+            tableHeaders = `<tr><th>#</th><th>Name</th><th>PNR</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial</th><th>Time</th><th>Remarks</th></tr>`;
+        } else {
+            tableHeaders = `<tr><th>#</th><th>${isSQ ? 'Voucher No.' : 'Name'}</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial</th><th>Time</th><th>Remarks</th></tr>`;
+        }
+        let rows = '';
+        passengers.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            const rowClass = p.isDelayCharge ? 'delay-row' : '';
+            const badge = p.isDelayCharge ? '<span class="delay-badge">DELAY</span>' : '';
+            if (isFZ) {
+                const pnr = extractPNR(p.hiddenCode);
+                rows += `<tr class="${rowClass}"><td>${serial}</td><td>${escapeHtml(p.pName) || '-'} ${badge}</td><td>${pnr || '-'}</td><td>${escapeHtml(p.seatNo) || '-'}</td><td>${p.isDelayCharge ? '0' : (p.pax || '0')}</td><td>${escapeHtml(p.FQTV) || '-'}</td><td>${escapeHtml(p.serialNo) || '—'}</td><td>${p.entryTime || '-'}</td><td>${escapeHtml(p.remarks) || '-'}</td></tr>`;
+            } else {
+                rows += `<tr class="${rowClass}"><td>${serial}</td><td>${escapeHtml(p.pName) || '-'} ${badge}</td><td>${escapeHtml(p.seatNo) || '-'}</td><td>${p.isDelayCharge ? '0' : (p.pax || '0')}</td><td>${escapeHtml(p.FQTV) || '-'}</td><td>${escapeHtml(p.serialNo) || '—'}</td><td>${p.entryTime || '-'}</td><td>${escapeHtml(p.remarks) || '-'}</td></tr>`;
             }
         });
-        
-        // Handle paste event for barcode scanners
-        pNameField.addEventListener('paste', function(e) {
-            setTimeout(() => {
-                handlePassengerNameInput();
-            }, 10);
-        });
-        
-        // Auto-capitalize
-        pNameField.addEventListener('input', function() {
-            this.value = this.value.toUpperCase();
-        });
-        
-        // Double-click as alternative trigger
-        pNameField.addEventListener('dblclick', function() {
-            handlePassengerNameInput();
-        });
+        const totalRegular = passengers.filter(p => !p.isDelayCharge).reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        const container = document.getElementById('reportsContainer');
+        container.innerHTML = `<div class="report-card"><div class="flight-header"><div><h3>✈ ${flight.flightNo} <span class="airline-tag">${flight.airline || getFlightPrefix(flight.flightNo)}</span> <span class="status-closed-badge">CLOSED</span></h3><div class="flight-meta"><span>📅 ${displayDate}</span><span>⏱️ Shift: ${flight.shift}</span><span>⏰ STD: ${flight.std || '—'}</span><span>🕒 First: ${flight.firstPax || '—'}</span><span>🕒 Last: ${flight.lastPax || '—'}</span><span>👥 Total: ${totalRegular}</span></div></div><div class="status-closed-badge">READ ONLY</div></div><div class="table-wrapper"><table><thead>${tableHeaders}</thead><tbody>${rows || '<tr><td colspan="9" class="empty-message">No passengers</td></tr>'}</tbody></table></div></div>`;
     }
     
-    // Button events
-    if (submitBtn) submitBtn.addEventListener('click', submitForm);
-    if (printReceiptBtn) printReceiptBtn.addEventListener('click', printCurrentReceipt);
-    if (reprintReceiptBtn) reprintReceiptBtn.addEventListener('click', showReprintModal);
-    if (clearAllBtn) clearAllBtn.addEventListener('click', clearAllFields);
-    if (refreshShiftBtn) refreshShiftBtn.addEventListener('click', function() { refreshShiftData(); alert('Shift data refreshed from Firebase'); });
-    if (closeModalBtn) closeModalBtn.addEventListener('click', closeReprintModal);
-    if (searchReceiptBtn) searchReceiptBtn.addEventListener('click', searchAndReprintReceipt);
+    // DRAWER UPDATE FUNCTION (reflects current loaded flight)
+    function updateDrawerContent() {
+        const drawerFlightDiv = document.getElementById('drawerFlightInfo');
+        const drawerPassDiv = document.getElementById('drawerPassStats');
+        if (!currentReport) {
+            drawerFlightDiv.innerHTML = '<p>No flight loaded</p>';
+            drawerPassDiv.innerHTML = '<p>Total Pax: --</p><p>Regular: --</p><p>Delay Charge: --</p>';
+            return;
+        }
+        const regularCount = currentPassengers.filter(p => !p.isDelayCharge).reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        const delayCount = currentPassengers.filter(p => p.isDelayCharge).length;
+        const dateParts = currentReport.date.split('-');
+        const displayDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : currentReport.date;
+        drawerFlightDiv.innerHTML = `
+            <p><strong>✈ Flight:</strong> ${currentReport.flightNo}</p>
+            <p><strong>📅 Date:</strong> ${displayDate}</p>
+            <p><strong>⏱️ Shift:</strong> ${currentReport.shift}</p>
+            <p><strong>⏰ STD:</strong> ${currentReport.std || '—'}</p>
+            <p><strong>🕒 First/Late:</strong> ${currentReport.firstPax || '—'} / ${currentReport.lastPax || '—'}</p>
+        `;
+        drawerPassDiv.innerHTML = `
+            <p>👥 Total Passengers: ${regularCount}</p>
+            <p>✅ Regular: ${regularCount}</p>
+            <p>⚠️ Delay Charges: ${delayCount}</p>
+        `;
+    }
     
-    // Modal close on outside click
-    window.addEventListener('click', function(event) { 
-        const modal = document.getElementById('reprintModal'); 
-        if (event.target === modal) closeReprintModal(); 
+    // print function (original, untouched)
+    function printReport() {
+        if (!currentReport || !currentPassengers) { alert('Please load a flight report first'); return; }
+        const flight = currentReport;
+        const passengers = currentPassengers;
+        const isSQ = flight.flightNo.toUpperCase().startsWith('SQ');
+        const isFZ = flight.flightNo.toUpperCase().startsWith('FZ');
+        const dateStr = flight.date;
+        const dateParts = dateStr.split('-');
+        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+        const airline = flight.airline || getFlightPrefix(flight.flightNo) || '—';
+        const flightNo = flight.flightNo;
+        const std = flight.std || '—';
+        const firstPax = flight.firstPax || '—';
+        const lastPax = flight.lastPax || '—';
+        const shift = flight.shift || '—';
+        const regularPassengers = passengers.filter(p => !p.isDelayCharge);
+        const delayPassengers = passengers.filter(p => p.isDelayCharge);
+        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const sortedDelay = [...delayPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const sortedPassengers = [...sortedRegular, ...sortedDelay];
+        const totalPaxSum = regularPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        const printWindow = window.open('', '_blank');
+        let tableHeaders = '';
+        if (isFZ) { tableHeaders = `<tr><th>No.</th><th>Name</th><th>PNR</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th></tr>`; }
+        else { tableHeaders = `<tr><th>No.</th><th>${isSQ ? 'Voucher No.' : 'Name'}</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th></tr>`; }
+        printWindow.document.write(`<!DOCTYPE html><html><head><title>Flight Report - ${flightNo} - ${formattedDate}</title><style>body{font-family:'Segoe UI',Arial,sans-serif;margin:0.5in;color:#333;}.header{display:flex;justify-content:space-between;margin-bottom:30px;padding-bottom:20px;border-bottom:2px solid #e6b800;}.left-section{display:flex;flex-direction:column;gap:15px;}.logo-section{display:flex;flex-direction:column;}.logo{width:100px;height:auto;margin-bottom:10px;}.company-address{font-size:11px;color:#666;line-height:1.4;}.flight-details{margin-top:5px;}.flight-detail-item{font-size:13px;margin-bottom:3px;}.flight-detail-label{font-weight:600;color:#8b6913;display:inline-block;width:60px;}.right-section{display:flex;flex-direction:column;justify-content:flex-start;padding-top:95px;}.info-item{display:flex;gap:15px;margin-bottom:8px;justify-content:flex-end;}.label{font-weight:600;color:#8b6913;min-width:80px;text-align:right;}.value{color:#333;min-width:60px;text-align:left;}.total-pax{margin:15px 0;text-align:right;font-size:14px;font-weight:600;}.total-pax span{background:#e6b800;color:white;padding:5px 15px;border-radius:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;font-size:12px;}th{background:#e6b800;color:white;padding:10px;text-align:left;}td{padding:8px 10px;border-bottom:1px solid #ddd;}.delay-charge-row{background-color:rgba(220,53,69,0.05);font-style:italic;}.signature-section{margin-top:50px;display:flex;justify-content:space-between;padding:0 20px;}.signature-box{text-align:center;width:200px;}.signature-line{margin-top:40px;border-bottom:1px solid #333;width:100%;}.signature-label{font-size:12px;color:#8b6913;font-weight:600;margin-top:5px;}.date-info{margin-top:20px;text-align:right;font-size:11px;color:#666;}.footer{margin-top:30px;text-align:center;font-size:11px;color:#666;border-top:1px solid #ddd;padding-top:20px;}@media print{body{margin:0.25in;}}</style></head><body><div class="header"><div class="left-section"><div class="logo-section"><div class="logo"><img src="macl.png" alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size:32px;font-weight:bold;color:#e6b800;\'>MACL</div>'"></div><div class="company-address"><strong>${companyInfo.name}</strong><br>${companyInfo.address}<br>${companyInfo.phone}</div></div><div class="flight-details"><div class="flight-detail-item"><span class="flight-detail-label">Airline:</span> ${escapeHtml(airline)}</div><div class="flight-detail-item"><span class="flight-detail-label">Flight No:</span> ${escapeHtml(flightNo)}</div><div class="flight-detail-item"><span class="flight-detail-label">Date:</span> ${escapeHtml(formattedDate)}</div></div></div><div class="right-section"><div class="info-item"><span class="label">STD:</span><span class="value">${escapeHtml(std)}</span></div><div class="info-item"><span class="label">First Pax:</span><span class="value">${escapeHtml(firstPax)}</span></div><div class="info-item"><span class="label">Last Pax:</span><span class="value">${escapeHtml(lastPax)}</span></div><div class="info-item"><span class="label">Shift:</span><span class="value">${escapeHtml(shift)}</span></div></div></div><div class="total-pax"><span>TOTAL PAX: ${totalPaxSum}</span></div><table><thead>${tableHeaders}</thead><tbody>`);
+        sortedPassengers.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            const rowClass = p.isDelayCharge ? 'delay-charge-row' : '';
+            if (isFZ) {
+                const pnr = extractPNR(p.hiddenCode);
+                printWindow.document.write(`<tr class="${rowClass}"><td>${serial}</td><td>${escapeHtml(p.pName) || '-'}${p.isDelayCharge ? ' (DELAY CHARGE)' : ''}</td><td>${pnr || '-'}</td><td>${escapeHtml(p.seatNo) || '-'}</td><td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td><td>${escapeHtml(p.FQTV) || '-'}</td><td>${escapeHtml(p.serialNo) || '-'}</td><td>${p.entryTime || '-'}</td><td>${escapeHtml(p.remarks) || '-'}</td></tr>`);
+            } else {
+                printWindow.document.write(`<tr class="${rowClass}"><td>${serial}</td><td>${escapeHtml(p.pName) || '-'}${p.isDelayCharge ? ' (DELAY CHARGE)' : ''}</td><td>${escapeHtml(p.seatNo) || '-'}</td><td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td><td>${escapeHtml(p.FQTV) || '-'}</td><td>${escapeHtml(p.serialNo) || '-'}</td><td>${p.entryTime || '-'}</td><td>${escapeHtml(p.remarks) || '-'}</td></tr>`);
+            }
+        });
+        printWindow.document.write(`</tbody></table><div class="signature-section"><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Prepared by:</div></div><div class="signature-box"><div class="signature-line"></div><div class="signature-label">Checked by:</div></div></div><div class="date-info">Date: ____________________</div><div class="footer"><p>This is a computer generated report. Valid without signature.</p><p>© ${new Date().getFullYear()} MACL. All rights reserved.</p></div><script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }<\/script></body></html>`);
+        printWindow.document.close();
+    }
+    
+    // DRAWER CONTROLS (exact button behavior)
+    function openDrawer() {
+        document.getElementById('infoDrawer').classList.add('open');
+        document.getElementById('drawerOverlay').classList.add('show');
+        document.body.classList.add('drawer-open');
+    }
+    function closeDrawer() {
+        document.getElementById('infoDrawer').classList.remove('open');
+        document.getElementById('drawerOverlay').classList.remove('show');
+        document.body.classList.remove('drawer-open');
+    }
+    
+    // ========== EVENT LISTENERS (original + drawer) ==========
+    document.getElementById('dateSelect').addEventListener('change', filterFlights);
+    document.getElementById('airlineSelect').addEventListener('change', filterFlights);
+    document.getElementById('loadBtn').addEventListener('click', loadReport);
+    document.getElementById('printBtn').addEventListener('click', printReport);
+    document.getElementById('refreshBtn').addEventListener('click', () => loadClosedFlights());
+    document.getElementById('addPrefixBtn').addEventListener('click', () => {
+        const input = document.getElementById('newPrefixInput');
+        const newPrefix = input.value.trim().toUpperCase();
+        if (newPrefix && /^[A-Z]{2}$/.test(newPrefix) && !airlinePrefixes.includes(newPrefix)) {
+            airlinePrefixes.push(newPrefix);
+            savePrefixes();
+            input.value = '';
+        } else if (!/^[A-Z]{2}$/.test(newPrefix)) alert('Enter 2 letters (e.g., EK, FZ)');
+        else if (airlinePrefixes.includes(newPrefix)) alert('Already exists');
+    });
+    document.getElementById('resetDefaultsBtn').addEventListener('click', () => {
+        airlinePrefixes = ['EK', 'FZ', 'BA', 'QR', 'SQ'];
+        savePrefixes();
     });
     
-    // Reprint modal enter key
-    const reprintInput = document.getElementById('reprintReceiptNo'); 
-    if (reprintInput) reprintInput.addEventListener('keypress', function(e) { 
-        if (e.key === 'Enter') searchAndReprintReceipt(); 
-    });
+    // Drawer button & close events
+    document.getElementById('drawerToggleBtn').addEventListener('click', openDrawer);
+    document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
+    document.getElementById('drawerOverlay').addEventListener('click', closeDrawer);
+    document.getElementById('drawerPrintBtn').addEventListener('click', () => { printReport(); closeDrawer(); });
+    document.getElementById('drawerRefreshBtn').addEventListener('click', () => { loadClosedFlights(); closeDrawer(); });
     
-    // Debug shortcut
-    document.addEventListener('keydown', function(e) { 
-        if (e.ctrlKey && e.shiftKey && e.key === 'D') { 
-            e.preventDefault(); 
-            debugShiftData(); 
-        } 
-    });
-    
-    console.log('Dual scanning initialized - Redirect to receipt.html for printing');
-});
+    // Initialize
+    loadPrefixes();
+    loadClosedFlights();
 </script>
 </body>
 </html>
