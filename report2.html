@@ -17,6 +17,7 @@
             padding: 20px;
         }
         .container { max-width: 1400px; margin: 0 auto; }
+        
         .header-bar {
             background: #2c3e50;
             color: white;
@@ -35,6 +36,7 @@
             border-radius: 40px;
             font-weight: 600;
         }
+        
         .admin-panel {
             background: #fff9e6;
             border-radius: 20px;
@@ -86,6 +88,8 @@
             cursor: pointer;
             font-size: 0.7rem;
         }
+        .reset-defaults { background: #7f8c8d; }
+        
         .filter-card {
             background: white;
             border-radius: 24px;
@@ -198,11 +202,16 @@
         .delay-badge { background: #dc3545; color: white; font-size: 9px; padding: 2px 8px; border-radius: 20px; margin-left: 8px; }
         .footer-note { text-align: center; font-size: 0.7rem; color: #8b7a5c; margin-top: 25px; padding-top: 15px; border-top: 1px solid #e6b80040; }
         
+        /* EXACT PRINT STYLES FROM ORIGINAL CODE */
         @media print {
-            body { background: white; margin: 0.5in; }
+            body { background: white; padding: 0; margin: 0.5in; }
             .header-bar, .admin-panel, .filter-card, .stats-row, .back-link, .refresh-btn, .footer-note { display: none !important; }
-            .report-card { border: 1px solid #000; break-inside: avoid; }
-            th { background: #e6b800 !important; -webkit-print-color-adjust: exact; }
+            .report-card { border: 1px solid #000; box-shadow: none; break-inside: avoid; }
+            .flight-header { background: #f5f0e1; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            th { background: #e6b800 !important; color: black; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .table-wrapper { overflow: visible; max-height: none; }
+            tr, td, th { page-break-inside: avoid; }
+            thead { display: table-header-group; }
         }
     </style>
 </head>
@@ -240,7 +249,7 @@
             <select id="flightSelect" disabled></select>
         </div>
         <button class="refresh-btn" id="loadBtn">📋 Load Report</button>
-        <button class="refresh-btn" id="printBtn" style="background:#4a6fa5; color:white;">🖨️ Print</button>
+        <button class="refresh-btn" id="printBtn" style="background:#4a6fa5; color:white;">🖨️ PRINT</button>
         <button class="refresh-btn" id="refreshBtn" style="background:#6c757d;">🔄 Refresh</button>
     </div>
     
@@ -257,8 +266,15 @@
 
 <script>
     // ========== PREFIX MANAGEMENT ==========
-    const PREFIX_KEY = 'airline_prefixes';
+    const PREFIX_KEY = 'airline_prefixes_report';
     let airlinePrefixes = ['EK', 'FZ', 'BA', 'QR', 'SQ'];
+    
+    // Company info for print (matches original)
+    const companyInfo = { 
+        name: 'MACL', 
+        address: '123 Aviation Road', 
+        phone: '+123 456 7890'
+    };
     
     function loadPrefixes() {
         try {
@@ -306,7 +322,7 @@
     }
     
     // ========== DATA LOADING ==========
-    let allReports = [];      // { flightNo, date, shift, airline, std, firstPax, lastPax, totalPax, dbRef }
+    let allReports = [];
     let currentReport = null;
     let currentPassengers = [];
     
@@ -332,6 +348,11 @@
         return dateStr;
     }
     
+    function getFlightPrefix(flightNo) {
+        if (!flightNo) return '';
+        return flightNo.substring(0, 2).toUpperCase();
+    }
+    
     async function loadClosedFlights() {
         const container = document.getElementById('reportsContainer');
         container.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading closed flights from all databases...</p></div>';
@@ -341,7 +362,6 @@
         
         for (const db of databases) {
             try {
-                // Query FlightReports for closed flights
                 const snapshot = await db.ref.collection('FlightReports').where('isClosed', '==', true).get();
                 
                 snapshot.forEach(doc => {
@@ -378,7 +398,6 @@
         allReports = Array.from(reportsMap.values());
         allReports.sort((a, b) => b.date.localeCompare(a.date) || a.flightNo.localeCompare(b.flightNo));
         
-        // Populate date dropdown
         const dates = [...new Set(allReports.map(r => r.date))].sort().reverse();
         const dateSelect = document.getElementById('dateSelect');
         
@@ -392,11 +411,6 @@
         }
         
         filterFlights();
-    }
-    
-    function getFlightPrefix(flightNo) {
-        if (!flightNo) return '';
-        return flightNo.substring(0, 2).toUpperCase();
     }
     
     function filterFlights() {
@@ -433,7 +447,6 @@
         const passengers = [];
         const possibleDates = [date];
         
-        // Try alternative date format
         if (date.includes('-')) {
             const parts = date.split('-');
             const altDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
@@ -598,12 +611,344 @@
         `;
     }
     
+    // ========== EXACT PRINT FUNCTION FROM ORIGINAL CODE ==========
     function printReport() {
-        if (!currentReport) {
-            alert('Please load a flight first');
+        if (!currentReport || !currentPassengers) {
+            alert('Please load a flight report first');
             return;
         }
-        window.print();
+        
+        const flight = currentReport;
+        const passengers = currentPassengers;
+        const isSQ = flight.flightNo.toUpperCase().startsWith('SQ');
+        const isFZ = flight.flightNo.toUpperCase().startsWith('FZ');
+        
+        const dateStr = flight.date;
+        const dateParts = dateStr.split('-');
+        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+        
+        const airline = flight.airline || getFlightPrefix(flight.flightNo) || '—';
+        const flightNo = flight.flightNo;
+        const std = flight.std || '—';
+        const firstPax = flight.firstPax || '—';
+        const lastPax = flight.lastPax || '—';
+        const shift = flight.shift || '—';
+        
+        const regularPassengers = passengers.filter(p => !p.isDelayCharge);
+        const delayPassengers = passengers.filter(p => p.isDelayCharge);
+        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const sortedDelay = [...delayPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const sortedPassengers = [...sortedRegular, ...sortedDelay];
+        const totalPaxSum = regularPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        
+        const printWindow = window.open('', '_blank');
+        
+        let tableHeaders = '';
+        if (isFZ) {
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>Name</th>
+                    <th>PNR</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
+        } else {
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
+        }
+        
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Flight Report - ${flightNo} - ${formattedDate}</title>
+                <style>
+                    body {
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                        margin: 0.5in;
+                        color: #333;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-bottom: 30px;
+                        padding-bottom: 20px;
+                        border-bottom: 2px solid #e6b800;
+                    }
+                    .left-section {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 15px;
+                    }
+                    .logo-section {
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    .logo {
+                        width: 100px;
+                        height: auto;
+                        margin-bottom: 10px;
+                    }
+                    .logo img {
+                        max-width: 100%;
+                        max-height: 80px;
+                    }
+                    .company-address {
+                        font-size: 11px;
+                        color: #666;
+                        line-height: 1.4;
+                    }
+                    .flight-details {
+                        margin-top: 5px;
+                    }
+                    .flight-detail-item {
+                        font-size: 13px;
+                        margin-bottom: 3px;
+                    }
+                    .flight-detail-label {
+                        font-weight: 600;
+                        color: #8b6913;
+                        display: inline-block;
+                        width: 60px;
+                    }
+                    .right-section {
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: flex-start;
+                        padding-top: 95px;
+                    }
+                    .info-item {
+                        display: flex;
+                        gap: 15px;
+                        margin-bottom: 8px;
+                        justify-content: flex-end;
+                    }
+                    .label {
+                        font-weight: 600;
+                        color: #8b6913;
+                        min-width: 80px;
+                        text-align: right;
+                    }
+                    .value {
+                        color: #333;
+                        min-width: 60px;
+                        text-align: left;
+                    }
+                    .total-pax {
+                        margin: 15px 0;
+                        text-align: right;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+                    .total-pax span {
+                        background: #e6b800;
+                        color: white;
+                        padding: 5px 15px;
+                        border-radius: 20px;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 20px;
+                        font-size: 12px;
+                    }
+                    th {
+                        background: #e6b800;
+                        color: white;
+                        padding: 10px;
+                        text-align: left;
+                        font-size: 12px;
+                    }
+                    td {
+                        padding: 8px 10px;
+                        border-bottom: 1px solid #ddd;
+                    }
+                    tr:nth-child(even) {
+                        background: #f9f9f9;
+                    }
+                    .delay-charge-row {
+                        background-color: rgba(220, 53, 69, 0.05);
+                        font-style: italic;
+                    }
+                    .signature-section {
+                        margin-top: 50px;
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 0 20px;
+                    }
+                    .signature-box {
+                        text-align: center;
+                        width: 200px;
+                    }
+                    .signature-line {
+                        margin-top: 40px;
+                        border-bottom: 1px solid #333;
+                        width: 100%;
+                    }
+                    .signature-label {
+                        font-size: 12px;
+                        color: #8b6913;
+                        font-weight: 600;
+                        margin-top: 5px;
+                    }
+                    .date-info {
+                        margin-top: 20px;
+                        text-align: right;
+                        font-size: 11px;
+                        color: #666;
+                    }
+                    .footer {
+                        margin-top: 30px;
+                        text-align: center;
+                        font-size: 11px;
+                        color: #666;
+                        border-top: 1px solid #ddd;
+                        padding-top: 20px;
+                    }
+                    @media print {
+                        body { margin: 0.25in; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="left-section">
+                        <div class="logo-section">
+                            <div class="logo">
+                                <img src="macl.png" alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
+                            </div>
+                            <div class="company-address">
+                                <strong>${companyInfo.name}</strong><br>
+                                ${companyInfo.address}<br>
+                                ${companyInfo.phone}
+                            </div>
+                        </div>
+                        <div class="flight-details">
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Airline:</span> ${escapeHtml(airline)}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Flight No:</span> ${escapeHtml(flightNo)}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Date:</span> ${escapeHtml(formattedDate)}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="right-section">
+                        <div class="info-item">
+                            <span class="label">STD:</span>
+                            <span class="value">${escapeHtml(std)}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">First Pax:</span>
+                            <span class="value">${escapeHtml(firstPax)}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Last Pax:</span>
+                            <span class="value">${escapeHtml(lastPax)}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Shift:</span>
+                            <span class="value">${escapeHtml(shift)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="total-pax">
+                    <span>TOTAL PAX: ${totalPaxSum}</span>
+                </div>
+                
+                <table>
+                    <thead>
+                        ${tableHeaders}
+                    </thead>
+                    <tbody>
+        `);
+        
+        sortedPassengers.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            const rowClass = p.isDelayCharge ? 'delay-charge-row' : '';
+            
+            if (isFZ) {
+                const pnr = extractPNR(p.hiddenCode);
+                printWindow.document.write(`
+                    <tr class="${rowClass}">
+                        <td>${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'}${p.isDelayCharge ? ' (DELAY CHARGE)' : ''}</td>
+                        <td>${pnr || '-'}</td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td>${escapeHtml(p.serialNo) || '-'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                    </tr>
+                `);
+            } else {
+                printWindow.document.write(`
+                    <tr class="${rowClass}">
+                        <td>${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'}${p.isDelayCharge ? ' (DELAY CHARGE)' : ''}</td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td>${escapeHtml(p.serialNo) || '-'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                    </tr>
+                `);
+            }
+        });
+        
+        printWindow.document.write(`
+                    </tbody>
+                </table>
+                
+                <div class="signature-section">
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Prepared by:</div>
+                    </div>
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Checked by:</div>
+                    </div>
+                </div>
+                
+                <div class="date-info">
+                    Date: ____________________
+                </div>
+                
+                <div class="footer">
+                    <p>This is a computer generated report. Valid without signature.</p>
+                    <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
+                </div>
+                
+                <script>
+                    window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
+                <\/script>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
     }
     
     // ========== EVENT LISTENERS ==========
