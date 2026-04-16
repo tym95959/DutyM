@@ -1851,8 +1851,7 @@ function dismissDuplicateWarning() {
                     serialNo: data.serialNo || data.serial || data.Serial || '',
                     hiddenCode: hiddenCode,
                     isDelayCharge: isDelayCharge,
-                    isGuest: data.isGuest || false,  // Include guest flag from Firebase
-                    createdAt: data.createdAt || data.timestamp || null  // ← ADDED for save order sorting
+                    isGuest: data.isGuest || false  // Include guest flag from Firebase
                 };
                 
                 passengers.push(passenger);
@@ -1872,25 +1871,6 @@ function dismissDuplicateWarning() {
                     }
                 }
             });
-            
-            // ========== KEY CHANGE: SORT BY SAVE ORDER ==========
-            // Sort passengers by createdAt timestamp (Firestore server timestamp)
-            // For entries saved at the exact same millisecond, use entryTime as tie-breaker
-            passengers.sort((a, b) => {
-                // Get timestamps (supports Firestore Timestamp objects or raw values)
-                let timeA = a.createdAt ? (a.createdAt.seconds || a.createdAt) : 0;
-                let timeB = b.createdAt ? (b.createdAt.seconds || b.createdAt) : 0;
-                
-                // If timestamps are different, sort by timestamp (oldest first)
-                if (timeA && timeB && timeA !== timeB) {
-                    return timeA - timeB;
-                }
-                
-                // Fallback: if same timestamp or missing, sort by entryTime
-                // This ensures consistent order for transactions saved at the exact same moment
-                return (a.entryTime || '').localeCompare(b.entryTime || '');
-            });
-            // ========== END OF SORTING CHANGE ==========
             
             // Create full flight data object with passengers
             currentFlightData = {
@@ -1952,13 +1932,13 @@ function dismissDuplicateWarning() {
         document.getElementById('databaseBadge').textContent = flightInfo.database;
         document.getElementById('databaseBadge').style.display = 'inline-block';
         
-        document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
+        document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax ? currentFlightData.firstPax.substring(0,5) : '-';
         document.getElementById('stdInput').value = currentFlightData.std || '';
         document.getElementById('lastPaxInput').value = currentFlightData.lastPax || '';
         
         document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax || 0;
-        document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
-        document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
+        document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax ? currentFlightData.firstPax.substring(0,5) : '--:--';
+        document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax ? currentFlightData.lastPax.substring(0,5) : '--:--';
         
         const regularCount = countRegularPassengers(currentFlightData.passengers);
         document.getElementById('passengerCount').textContent = regularCount + ' PAX';
@@ -2100,7 +2080,7 @@ function dismissDuplicateWarning() {
         if (!passengers || passengers.length === 0) {
             if (isFZ) {
                 tableHeader.innerHTML = `
-                    <tr>
+                    <table>
                         <th>No.</th>
                         <th>Name</th>
                         <th>PNR</th>
@@ -2115,7 +2095,7 @@ function dismissDuplicateWarning() {
                 `;
             } else {
                 tableHeader.innerHTML = `
-                    <table>
+                    <tr>
                         <th>No.</th>
                         <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
                         <th>Seat</th>
@@ -2125,10 +2105,10 @@ function dismissDuplicateWarning() {
                         <th>Time</th>
                         <th>Remarks</th>
                         <th>Actions</th>
-                    </table>
+                    </tr>
                 `;
             }
-            tbody.innerHTML = '<td><td colspan="10" class="no-data">No passengers found for this flight</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" class="no-data">No passengers found for this flight</td></tr>';
             document.getElementById('tableContainer').style.display = 'block';
             return;
         }
@@ -2150,7 +2130,7 @@ function dismissDuplicateWarning() {
             `;
         } else {
             tableHeader.innerHTML = `
-                <table>
+                <tr>
                     <th>No.</th>
                     <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
                     <th>Seat</th>
@@ -2229,7 +2209,7 @@ function dismissDuplicateWarning() {
                             <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
                             <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
                         </td>
-                    </tr>`;
+                    <tr>`;
                 } else {
                     html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
                         <td class="serial-no">${serial}</td>
@@ -2269,7 +2249,7 @@ function dismissDuplicateWarning() {
                         <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
-                        <td>${p.entryTime || '-'}</td>
+                        <td>${p.entryTime ? p.entryTime.substring(0,5) : '-'}</td>
                         <td>${escapeHtml(p.remarks) || '-'}</td>
                         <td class="action-cell">
                             ${!isFlightClosed ? `
@@ -2288,7 +2268,7 @@ function dismissDuplicateWarning() {
                         <td style="text-align:center;">${p.pax || '0'}</td>
                         <td>${escapeHtml(p.FQTV) || '-'}</td>
                         <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
-                        <td>${p.entryTime || '-'}</td>
+                        <td>${p.entryTime ? p.entryTime.substring(0,5) : '-'}</td>
                         <td>${escapeHtml(p.remarks) || '-'}</td>
                         <td class="action-cell">
                             ${!isFlightClosed ? `
@@ -2358,9 +2338,9 @@ function dismissDuplicateWarning() {
             if (times.length > 0) {
                 currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
                 currentFlightData.lastPax = times.reduce((a, b) => a > b ? a : b);
-                document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
-                document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
-                document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
+                document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax ? currentFlightData.firstPax.substring(0,5) : '-';
+                document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax ? currentFlightData.firstPax.substring(0,5) : '--:--';
+                document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax ? currentFlightData.lastPax.substring(0,5) : '--:--';
             }
             
             // Update total pax sum
@@ -2372,14 +2352,6 @@ function dismissDuplicateWarning() {
             document.getElementById('passengerCount').textContent = regularCount + ' PAX';
             
             editingRowId = null;
-            
-            // Re-sort passengers after update to maintain save order
-            currentFlightData.passengers.sort((a, b) => {
-                let timeA = a.createdAt ? (a.createdAt.seconds || a.createdAt) : 0;
-                let timeB = b.createdAt ? (b.createdAt.seconds || b.createdAt) : 0;
-                if (timeA && timeB && timeA !== timeB) return timeA - timeB;
-                return (a.entryTime || '').localeCompare(b.entryTime || '');
-            });
             
             // Check for duplicates
             const duplicates = detectDuplicates(currentFlightData.passengers);
@@ -2580,14 +2552,7 @@ function dismissDuplicateWarning() {
         const regularPassengers = currentFlightData.passengers.filter(p => !p.isDelayCharge);
         const delayPassengers = currentFlightData.passengers.filter(p => p.isDelayCharge);
         
-        // Sort regular passengers by createdAt (save order) for print
-        const sortedRegular = [...regularPassengers].sort((a, b) => {
-            let timeA = a.createdAt ? (a.createdAt.seconds || a.createdAt) : 0;
-            let timeB = b.createdAt ? (b.createdAt.seconds || b.createdAt) : 0;
-            if (timeA && timeB && timeA !== timeB) return timeA - timeB;
-            return (a.entryTime || '').localeCompare(b.entryTime || '');
-        });
-        
+        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
         const sortedDelay = [...delayPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
         
         const sortedPassengers = [...sortedRegular, ...sortedDelay];
