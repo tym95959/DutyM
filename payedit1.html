@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Koveli Lounge - Edit Receipts (Supervisor Access)</title>
+    <title>Koveli Lounge - Edit Receipts (Supervisor Only)</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     
     <!-- Your combined firebase config file -->
     <script src="fireshift.js"></script>
@@ -17,9 +16,6 @@
     
     <!-- External Co.js file with company header -->
     <script src="Co.js"></script>
-    
-    <!-- Users data file - contains username, level, rcno, password -->
-    <script src="users.js"></script>
     
     <style>
         * {
@@ -32,19 +28,103 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(120deg, #faf3e0, #fff5e6);
             min-height: 100vh;
-            padding: 30px;
+            padding: 80px 30px 30px 30px;
+            position: relative;
+        }
+        
+        /* Supervisor Access Banner */
+        .access-badge {
+            position: fixed;
+            top: 10px;
+            left: 20px;
+            background: linear-gradient(135deg, #c68b5e, #8b6913);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .access-badge i {
+            font-size: 14px;
+        }
+        
+        /* Floating Action Buttons (User Info & Logout) */
+        .fab-container {
+            position: fixed;
+            top: 10px;
+            right: 15px;
+            z-index: 1000;
+            display: flex;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 6px 15px;
+            border-radius: 40px;
+            box-shadow: 0 4px 15px rgba(230, 184, 0, 0.3);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .user-info-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-right: 12px;
+            border-right: 1px solid #e6b800;
+        }
+        
+        .user-name {
+            color: #6b8e23;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .user-level {
+            color: #c68b5e;
+            font-weight: 700;
+            font-size: 12px;
+            background: #fff2d7;
+            padding: 2px 8px;
+            border-radius: 20px;
+        }
+        
+        .fab-button {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #e6b800, #d4a900);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            color: white;
+            font-size: 16px;
+        }
+        
+        .fab-button:hover {
+            transform: scale(1.1);
+        }
+        
+        .logout-btn {
+            background: linear-gradient(135deg, #c68b5e, #a67244);
         }
         
         .container {
             max-width: 1400px;
             width: 100%;
             margin: 0 auto;
-            background-color: rgba(255, 255, 255, 0.9);
+            background-color: rgba(255, 255, 255, 0.95);
             border-radius: 20px;
             box-shadow: 0 5px 20px rgba(230, 184, 0, 0.15);
             border: 1px solid rgba(230, 184, 0, 0.2);
             overflow: hidden;
-            backdrop-filter: blur(5px);
         }
         
         .header {
@@ -54,8 +134,6 @@
             padding: 20px 30px;
             background: linear-gradient(90deg, #fff9e6, #ffffff);
             border-bottom: 2px solid rgba(230, 184, 0, 0.3);
-            flex-wrap: wrap;
-            gap: 15px;
         }
         
         .header h2 {
@@ -67,7 +145,6 @@
         .nav-menu {
             display: flex;
             gap: 15px;
-            flex-wrap: wrap;
         }
         
         .nav-btn {
@@ -95,157 +172,8 @@
             background: linear-gradient(135deg, #6b8e23, #556b2f);
         }
         
-        .nav-btn.logout {
-            background: linear-gradient(135deg, #8b6913, #6b4f0f);
-        }
-        
-        /* Access Banner */
-        .access-banner {
-            background: linear-gradient(135deg, #2c3e50, #1a2632);
-            color: #f1c40f;
-            padding: 10px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 14px;
-            border-bottom: 2px solid #f1c40f;
-        }
-        
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            flex-wrap: wrap;
-        }
-        
-        .user-role {
-            background: #f1c40f;
-            color: #2c3e50;
-            padding: 4px 12px;
-            border-radius: 30px;
-            font-weight: bold;
-            font-size: 12px;
-        }
-        
-        .user-level {
-            background: #6b8e23;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 30px;
-            font-weight: bold;
-            font-size: 12px;
-        }
-        
-        .user-rcno {
-            background: #e6b800;
-            color: #5e4a1a;
-            padding: 4px 12px;
-            border-radius: 30px;
-            font-weight: bold;
-            font-size: 12px;
-        }
-        
-        .restricted-note {
-            background: rgba(241, 196, 15, 0.2);
-            padding: 4px 12px;
-            border-radius: 30px;
-            font-size: 12px;
-        }
-        
-        /* Login Overlay */
-        .login-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.85);
-            backdrop-filter: blur(8px);
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s;
-        }
-        
-        .login-card {
-            background: linear-gradient(145deg, #fff9e6, #fff2d7);
-            border-radius: 30px;
-            padding: 40px;
-            width: 90%;
-            max-width: 450px;
-            border: 3px solid #e6b800;
-            box-shadow: 0 25px 50px rgba(0,0,0,0.3);
-            text-align: center;
-            animation: slideUp 0.4s ease;
-        }
-        
-        @keyframes slideUp {
-            from { transform: translateY(50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-        
-        .login-card h2 {
-            color: #8b6913;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
-        
-        .login-card p {
-            color: #6b4f0f;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-        
-        .login-input {
-            width: 100%;
-            padding: 14px 18px;
-            margin: 12px 0;
-            border: 2px solid rgba(230, 184, 0, 0.3);
-            border-radius: 16px;
-            font-size: 16px;
-            background: white;
-            transition: all 0.2s;
-        }
-        
-        .login-input:focus {
-            outline: none;
-            border-color: #e6b800;
-            box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.2);
-        }
-        
-        .login-btn {
-            background: linear-gradient(135deg, #6b8e23, #556b2f);
-            color: white;
-            border: none;
-            padding: 14px;
-            width: 100%;
-            border-radius: 40px;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 20px;
-            transition: all 0.3s;
-        }
-        
-        .login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(107, 142, 35, 0.4);
-        }
-        
-        .login-error {
-            color: #c68b5e;
-            background: #fff0e6;
-            padding: 12px;
-            border-radius: 12px;
-            margin-top: 15px;
-            font-size: 13px;
-            display: none;
-        }
-        
         .main-content {
             padding: 30px;
-            transition: opacity 0.3s;
         }
         
         .date-filter-section {
@@ -295,6 +223,12 @@
             transition: all 0.3s;
         }
         
+        .date-filter-group input:focus {
+            outline: none;
+            border-color: #e6b800;
+            box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.1);
+        }
+        
         .load-btn {
             background: linear-gradient(135deg, #6b8e23, #556b2f);
             color: white;
@@ -311,6 +245,17 @@
             gap: 10px;
             height: 100%;
             min-width: 150px;
+        }
+        
+        .load-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(107, 142, 35, 0.3);
+        }
+        
+        .load-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
         }
         
         .filter-section {
@@ -336,6 +281,9 @@
             padding: 12px 15px 12px 45px;
             border: 2px solid rgba(230, 184, 0, 0.3);
             border-radius: 12px;
+            font-size: 14px;
+            background: white;
+            transition: all 0.3s;
         }
         
         .search-box i {
@@ -353,8 +301,14 @@
             padding: 12px 15px;
             border: 2px solid rgba(230, 184, 0, 0.3);
             border-radius: 12px;
+            font-size: 14px;
             background: white;
             cursor: pointer;
+        }
+        
+        .filter-select:focus {
+            outline: none;
+            border-color: #e6b800;
         }
         
         .refresh-btn {
@@ -372,6 +326,12 @@
             transition: all 0.2s;
         }
         
+        .refresh-btn:hover {
+            background: #e6b800;
+            color: white;
+            transform: rotate(180deg);
+        }
+        
         .table-container {
             overflow-x: auto;
             overflow-y: auto;
@@ -379,6 +339,7 @@
             border-radius: 16px;
             background: white;
             box-shadow: 0 2px 10px rgba(230, 184, 0, 0.1);
+            border: 1px solid rgba(230, 184, 0, 0.2);
         }
         
         table {
@@ -407,6 +368,10 @@
             font-size: 13px;
         }
         
+        tr:hover td {
+            background: rgba(230, 184, 0, 0.05);
+        }
+        
         tr.void-row td {
             background: rgba(198, 139, 94, 0.1);
             text-decoration: line-through;
@@ -420,33 +385,133 @@
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
-            margin: 2px;
             transition: all 0.2s;
+            margin: 2px;
         }
         
-        .edit-btn { background: #e6b800; color: white; }
-        .view-btn { background: #8b6913; color: white; }
-        .void-btn { background: #c68b5e; color: white; }
+        .edit-btn {
+            background: #e6b800;
+            color: white;
+        }
         
-        .status-badge, .payment-badge {
+        .edit-btn:hover {
+            background: #d4a900;
+            transform: translateY(-2px);
+        }
+        
+        .view-btn {
+            background: #8b6913;
+            color: white;
+        }
+        
+        .view-btn:hover {
+            background: #6b4f0f;
+        }
+        
+        .void-btn {
+            background: #c68b5e;
+            color: white;
+        }
+        
+        .void-btn:hover {
+            background: #a67244;
+            transform: translateY(-2px);
+        }
+        
+        .status-badge {
             padding: 4px 8px;
             border-radius: 30px;
             font-size: 11px;
             font-weight: 600;
             display: inline-block;
         }
-        .status-completed { background: #6b8e23; color: white; }
-        .status-pending { background: #c68b5e; color: white; }
-        .status-void { background: #8b6913; color: white; }
-        .payment-cash { background: #28a745; color: white; }
-        .payment-card { background: #007bff; color: white; }
+        
+        .status-pending {
+            background: #c68b5e;
+            color: white;
+        }
+        
+        .status-completed {
+            background: #6b8e23;
+            color: white;
+        }
+        
+        .status-void {
+            background: #8b6913;
+            color: white;
+        }
+        
+        .payment-badge {
+            padding: 4px 8px;
+            border-radius: 30px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .payment-cash {
+            background: #28a745;
+            color: white;
+        }
+        
+        .payment-card {
+            background: #007bff;
+            color: white;
+        }
+        
+        .payment-bank {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .payment-mobile {
+            background: #6f42c1;
+            color: white;
+        }
+        
+        .payment-other {
+            background: #6c757d;
+            color: white;
+        }
         
         .info-message {
             text-align: center;
             padding: 60px 20px;
             color: #8b6913;
+            font-size: 16px;
+            background: rgba(230, 184, 0, 0.05);
+            border-radius: 12px;
         }
         
+        .info-message i {
+            font-size: 64px;
+            display: block;
+            margin-bottom: 20px;
+            color: #e6b800;
+        }
+        
+        .info-message .small {
+            font-size: 14px;
+            margin-top: 15px;
+            opacity: 0.7;
+        }
+        
+        .loading {
+            color: #e6b800;
+            font-style: italic;
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .footer-note {
+            text-align: center;
+            margin-top: 20px;
+            color: #8b6913;
+            font-size: 14px;
+            opacity: 0.7;
+        }
+        
+        /* Modal Styles */
         .modal {
             display: none;
             position: fixed;
@@ -467,11 +532,15 @@
             border-radius: 20px;
             width: 90%;
             max-width: 1000px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
             position: relative;
             animation: slideDown 0.3s ease;
         }
         
-        .modal-content.small { max-width: 500px; text-align: center; }
+        .modal-content.small {
+            max-width: 500px;
+            text-align: center;
+        }
         
         @keyframes slideDown {
             from { transform: translateY(-50px); opacity: 0; }
@@ -486,6 +555,27 @@
             font-weight: bold;
             color: #8b6913;
             cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .close-modal:hover {
+            color: #c68b5e;
+            transform: scale(1.2);
+        }
+        
+        /* Edit Modal Form Styles */
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e6b800;
+        }
+        
+        .modal-header h3 {
+            color: #8b6913;
+            font-size: 20px;
         }
         
         .modal-grid {
@@ -511,7 +601,22 @@
             padding: 10px;
             border: 2px solid rgba(230, 184, 0, 0.3);
             border-radius: 8px;
+            font-size: 14px;
             background: white;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #e6b800;
+        }
+        
+        .price-display {
+            background: rgba(230, 184, 0, 0.1);
+            padding: 8px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            color: #8b6913;
         }
         
         .totals-box {
@@ -542,6 +647,7 @@
             padding: 10px;
             margin: 15px 0;
             color: #856404;
+            font-size: 13px;
             display: none;
         }
         
@@ -558,475 +664,1153 @@
             border-radius: 30px;
             font-weight: 600;
             cursor: pointer;
+            transition: all 0.2s;
         }
         
-        .save-btn { background: #6b8e23; color: white; }
-        .cancel-btn { background: #8b6913; color: white; }
-        .print-btn { background: #e6b800; color: white; }
-        .void-action-btn { background: #c68b5e; color: white; width: 100%; padding: 12px; border: none; border-radius: 30px; margin-top: 15px; cursor: pointer; }
+        .save-btn {
+            background: #6b8e23;
+            color: white;
+        }
         
-        .void-reason { width: 100%; padding: 12px; border: 2px solid #c68b5e; border-radius: 8px; margin: 15px 0; }
-        .confirm-checkbox { margin: 15px 0; }
-        .void-confirm-btn { background: #c68b5e; color: white; padding: 12px; border: none; border-radius: 30px; width: 100%; cursor: pointer; }
+        .save-btn:hover {
+            background: #556b2f;
+            transform: translateY(-2px);
+        }
         
-        .footer-note { text-align: center; margin-top: 20px; color: #8b6913; font-size: 14px; opacity: 0.7; }
+        .cancel-btn {
+            background: #8b6913;
+            color: white;
+        }
         
-        @media (max-width: 768px) {
-            .date-filter-grid { grid-template-columns: 1fr; }
-            .modal-grid { grid-template-columns: 1fr; }
-            body { padding: 15px; }
+        .cancel-btn:hover {
+            background: #6b4f0f;
+            transform: translateY(-2px);
+        }
+        
+        .print-btn {
+            background: #e6b800;
+            color: white;
+        }
+        
+        .print-btn:hover {
+            background: #d4a900;
+            transform: translateY(-2px);
+        }
+        
+        .void-action-btn {
+            background: #c68b5e;
+            color: white;
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 30px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        
+        .void-action-btn:hover {
+            background: #a67244;
+        }
+        
+        /* Void Modal */
+        .void-reason {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #c68b5e;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: inherit;
+        }
+        
+        .confirm-checkbox {
+            margin: 15px 0;
+        }
+        
+        .confirm-checkbox label {
+            margin-left: 8px;
+            color: #5e4a1a;
+        }
+        
+        .void-confirm-btn {
+            background: #c68b5e;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 30px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+        
+        .void-confirm-btn:hover {
+            background: #a67244;
         }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-
-<div id="loginOverlay" class="login-overlay">
-    <div class="login-card">
-        <h2>🔐 SUPERVISOR ACCESS</h2>
-        <p>This area is restricted to supervisor level only</p>
-        <input type="text" id="loginUsername" class="login-input" placeholder="Username" autocomplete="off">
-        <input type="password" id="loginPassword" class="login-input" placeholder="Password">
-        <button class="login-btn" id="loginBtn">VERIFY & ACCESS</button>
-        <div id="loginError" class="login-error"></div>
-        <p style="margin-top: 20px; font-size: 12px;">⚠️ Only users with SUPERVISOR level can access</p>
+    <!-- Supervisor Access Badge -->
+    <div class="access-badge">
+        <i class="fas fa-shield-alt"></i> SUPERVISOR ACCESS ONLY
     </div>
-</div>
-
-<div id="appContainer" style="display: none;">
-    <div class="container">
-        <div class="access-banner">
-            <div class="user-info">
-                <span>👑</span>
-                <span id="userNameDisplay">Loading...</span>
-                <span class="user-role" id="userRoleBadge">SUPERVISOR</span>
-                <span class="user-level" id="userLevelDisplay">LEVEL: --</span>
-                <span class="user-rcno" id="userRcnoDisplay">RC: --</span>
-            </div>
-            <div class="restricted-note">✏️ Full Edit & Void Permissions Active</div>
+    
+    <!-- Floating User Info & Logout -->
+    <div class="fab-container">
+        <div class="user-info-card">
+            <span class="user-name" id="headerUserName">Loading...</span>
+            <span class="user-level" id="headerUserLevel">-</span>
         </div>
-        
+        <button class="fab-button logout-btn" onclick="handleLogout()">
+            <i class="fas fa-sign-out-alt"></i>
+        </button>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
         <div class="header">
-            <h2>KOVELI LOUNGE - EDIT RECEIPTS</h2>
+            <h2>KOVELI LOUNGE - EDIT RECEIPTS (SUPERVISOR)</h2>
             <div class="nav-menu">
                 <a href="pay.html" class="nav-btn primary">← BACK TO PAYMENT</a>
                 <a href="approval.html" class="nav-btn">⏳ PENDING APPROVALS</a>
-                <button id="logoutBtn" class="nav-btn logout">🚪 LOGOUT</button>
             </div>
         </div>
 
+        <!-- Main Content -->
         <div class="main-content">
+            <!-- Date Filter Section -->
             <div class="date-filter-section">
-                <h3><span>📅</span> SELECT DATE RANGE</h3>
+                <h3>
+                    <span>📅</span> 
+                    SELECT DATE RANGE
+                </h3>
+                
                 <div class="date-filter-grid">
-                    <div class="date-filter-group"><label>FROM DATE</label><input type="date" id="fromDate"></div>
-                    <div class="date-filter-group"><label>TO DATE</label><input type="date" id="toDate"></div>
-                    <div><button class="load-btn" id="loadReceiptsBtn"><span>📋</span> LOAD RECEIPTS</button></div>
+                    <div class="date-filter-group">
+                        <label>FROM DATE</label>
+                        <input type="date" id="fromDate">
+                    </div>
+                    
+                    <div class="date-filter-group">
+                        <label>TO DATE</label>
+                        <input type="date" id="toDate">
+                    </div>
+                    
+                    <div class="date-filter-group">
+                        <button class="load-btn" id="loadReceiptsBtn">
+                            <span>📋</span> LOAD RECEIPTS
+                        </button>
+                    </div>
                 </div>
             </div>
 
+            <!-- Filter Section -->
             <div class="filter-section">
-                <div class="search-box"><i>🔍</i><input type="text" id="searchInput" placeholder="Search by Passenger, Flight, Seat..."></div>
-                <select class="filter-select" id="paymentFilter"><option value="ALL">💰 ALL PAYMENTS</option><option value="CASH">💵 CASH</option><option value="CARD">💳 CARD</option></select>
-                <select class="filter-select" id="statusFilter"><option value="ALL">📊 ALL STATUS</option><option value="COMPLETED">✅ COMPLETED</option><option value="PENDING_APPROVAL">⏳ PENDING APPROVAL</option><option value="VOID">🚫 VOID</option></select>
-                <button class="refresh-btn" id="refreshBtn">↻</button>
+                <div class="search-box">
+                    <i>🔍</i>
+                    <input type="text" id="searchInput" placeholder="Search by Passenger, Flight, Seat...">
+                </div>
+                
+                <select class="filter-select" id="paymentFilter">
+                    <option value="ALL">💰 ALL PAYMENTS</option>
+                    <option value="CASH">💵 CASH</option>
+                    <option value="CARD">💳 CARD</option>
+                </select>
+                
+                <select class="filter-select" id="statusFilter">
+                    <option value="ALL">📊 ALL STATUS</option>
+                    <option value="COMPLETED">✅ COMPLETED</option>
+                    <option value="PENDING_APPROVAL">⏳ PENDING APPROVAL</option>
+                    <option value="VOID">🚫 VOID</option>
+                </select>
+                
+                <button class="refresh-btn" id="refreshBtn" title="Refresh current view">↻</button>
             </div>
 
+            <!-- Receipts Table -->
             <div class="table-container">
                 <table>
                     <thead>
-                        <tr><th>Receipt No</th><th>Date/Time</th><th>Shift</th><th>Passenger</th><th>Flight</th><th>Seat</th><th>Payment Method</th><th>Amount</th><th>Status</th><th>Actions</th></tr>
+                        <tr>
+                            <th>Receipt No</th>
+                            <th>Date/Time</th>
+                            <th>Shift</th>
+                            <th>Passenger</th>
+                            <th>Flight</th>
+                            <th>Seat</th>
+                            <th>Payment Method</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
                     </thead>
                     <tbody id="tableBody">
-                        <tr><td colspan="10" class="info-message"><i>🔐</i><div>Supervisor access granted. Select date range to load receipts.</div></td></tr>
+                        <tr>
+                            <td colspan="10" class="info-message">
+                                <i>📅</i>
+                                <div>Select a date range and click LOAD RECEIPTS</div>
+                                <div class="small">Use the date selector above to fetch receipts</div>
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
-            <div class="footer-note">Supervisor: Edit any receipt - all calculations update automatically</div>
+
+            <div class="footer-note">
+                🔒 Supervisor Access Only - Click Edit to modify any receipt - all calculations will update automatically
+            </div>
         </div>
     </div>
 
-    <!-- Edit Modal -->
-    <div id="editModal" class="modal"><div class="modal-content"><span class="close-modal" onclick="closeEditModal()">&times;</span><div class="modal-header"><h3>✏️ EDIT RECEIPT: <span id="modalReceiptNo"></span></h3><button class="modal-btn print-btn" onclick="printEditedReceipt()">🖨️ PRINT</button></div>
-    <input type="hidden" id="editDocumentId"><input type="hidden" id="editReceiptNo"><input type="hidden" id="editOriginalPaymentMethod">
-    <div class="modal-grid"><div><div class="form-group"><label>PASSENGER NAME</label><input type="text" id="editPName"></div><div class="form-group"><label>FLIGHT NUMBER</label><input type="text" id="editFlightNo"></div><div class="form-group"><label>SEAT NUMBER</label><input type="text" id="editSeatNo"></div><div class="form-group"><label>ADULT COUNT</label><input type="number" id="editAdult" min="0" value="1"></div><div class="form-group"><label>CHILDREN COUNT</label><input type="number" id="editChildren" min="0" value="0"></div></div>
-    <div><div class="form-group"><label>CURRENCY</label><select id="editCurrency"><option value="USD">USD</option><option value="MVR">MVR</option></select></div><div class="form-group"><label>RATE TYPE</label><select id="editRateType"><option value="A">Type A</option><option value="B">Type B</option></select></div><div class="form-group"><label>PAYMENT METHOD</label><select id="editPaymentMethod"><option value="CASH">CASH</option><option value="CARD">CARD</option><option value="AMEX">AMEX</option><option value="VISA">VISA</option><option value="MASTER">MASTER</option><option value="UNION PAY">UNION PAY</option><option value="QR PAY">QR PAY</option><option value="WECHATPAY">WECHATPAY</option></select></div><div class="form-group"><label>APPROVAL CODE</label><input type="text" id="editApprovalCode"></div><div class="form-group"><label>BATCH NO</label><input type="text" id="editBatchNo"></div></div></div>
-    <div style="display:flex; gap:20px; margin:15px 0; background:rgba(230,184,0,0.1); padding:15px; border-radius:12px;"><div style="flex:1; text-align:center;"><div>Adult Price</div><div style="font-size:20px; font-weight:bold;" id="editAdultPrice">0.00</div><div id="editAdultCurrency">USD</div></div><div style="flex:1; text-align:center;"><div>Children Price</div><div style="font-size:20px; font-weight:bold;" id="editChildrenPrice">0.00</div><div id="editChildrenCurrency">USD</div></div></div>
-    <div style="display:flex; gap:20px; margin:10px 0;"><div style="flex:1; background:white; padding:10px; border-radius:8px;"><div>Adult Subtotal</div><div style="font-size:18px; font-weight:bold;" id="editAdultSubtotal">0.00</div></div><div style="flex:1; background:white; padding:10px; border-radius:8px;"><div>Children Subtotal</div><div style="font-size:18px; font-weight:bold;" id="editChildrenSubtotal">0.00</div></div></div>
-    <div class="totals-box"><div class="totals-row"><span>Subtotal:</span><span><span id="editSubtotalCurrency">USD</span> <span id="editSubtotal">0.00</span></span></div><div class="totals-row"><span>GST (8%):</span><span><span id="editGstCurrency">USD</span> <span id="editGst">0.00</span></span></div><div class="totals-row total"><span>TOTAL:</span><span><span id="editTotalCurrency">USD</span> <span id="editTotal">0.00</span></span></div></div>
-    <div class="form-group"><label>EXPIRY DATE/TIME</label><input type="text" id="editExpiryTime"></div>
-    <div class="warning-message" id="editPaymentWarning">⚠️ Changing payment method may affect approval status</div>
-    <div class="modal-actions"><button class="modal-btn cancel-btn" onclick="closeEditModal()">CANCEL</button><button class="modal-btn save-btn" onclick="saveEdit()">💾 SAVE CHANGES</button></div>
-    <button class="void-action-btn" onclick="openVoidModalFromEdit()">🚫 VOID THIS RECEIPT</button>
-    </div></div>
+    <!-- EDIT MODAL -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeEditModal()">&times;</span>
+            
+            <div class="modal-header">
+                <h3>✏️ EDIT RECEIPT: <span id="modalReceiptNo"></span></h3>
+                <button class="modal-btn print-btn" onclick="printEditedReceipt()">🖨️ PRINT</button>
+            </div>
+            
+            <input type="hidden" id="editDocumentId">
+            <input type="hidden" id="editReceiptNo">
+            <input type="hidden" id="editOriginalPaymentMethod">
+            
+            <div class="modal-grid">
+                <!-- Left Column -->
+                <div>
+                    <div class="form-group">
+                        <label>PASSENGER NAME</label>
+                        <input type="text" id="editPName" placeholder="Enter passenger name">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>FLIGHT NUMBER</label>
+                        <input type="text" id="editFlightNo" placeholder="Enter flight number">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>SEAT NUMBER</label>
+                        <input type="text" id="editSeatNo" placeholder="Enter seat number">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>ADULT COUNT</label>
+                        <input type="number" id="editAdult" min="0" value="1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>CHILDREN COUNT</label>
+                        <input type="number" id="editChildren" min="0" value="0">
+                    </div>
+                </div>
+                
+                <!-- Right Column -->
+                <div>
+                    <div class="form-group">
+                        <label>CURRENCY</label>
+                        <select id="editCurrency">
+                            <option value="USD">USD</option>
+                            <option value="MVR">MVR</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>RATE TYPE</label>
+                        <select id="editRateType">
+                            <option value="A">Type A</option>
+                            <option value="B">Type B</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>PAYMENT METHOD</label>
+                        <select id="editPaymentMethod" onchange="handleEditPaymentMethodChange()">
+                            <option value="CASH">CASH</option>
+                            <option value="CARD">CARD</option>
+                            <option value="AMEX">AMEX</option>
+                            <option value="VISA">VISA</option>
+                            <option value="MASTER">MASTER</option>
+                            <option value="UNION PAY">UNION PAY</option>
+                            <option value="QR PAY">QR PAY</option>
+                            <option value="WECHATPAY">WECHATPAY</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>APPROVAL CODE</label>
+                        <input type="text" id="editApprovalCode" placeholder="Enter approval code">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>BATCH NO</label>
+                        <input type="text" id="editBatchNo" placeholder="Enter batch no">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Price Display -->
+            <div style="display: flex; gap: 20px; margin: 15px 0; background: rgba(230, 184, 0, 0.1); padding: 15px; border-radius: 12px;">
+                <div style="flex: 1; text-align: center;">
+                    <div>Adult Price</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="editAdultPrice">0.00</div>
+                    <div style="font-size: 12px;" id="editAdultCurrency">USD</div>
+                </div>
+                <div style="flex: 1; text-align: center;">
+                    <div>Children Price</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="editChildrenPrice">0.00</div>
+                    <div style="font-size: 12px;" id="editChildrenCurrency">USD</div>
+                </div>
+            </div>
+            
+            <!-- Subtotals -->
+            <div style="display: flex; gap: 20px; margin: 10px 0;">
+                <div style="flex: 1; background: white; padding: 10px; border-radius: 8px;">
+                    <div>Adult Subtotal</div>
+                    <div style="font-size: 18px; font-weight: bold;" id="editAdultSubtotal">0.00</div>
+                    <div style="font-size: 12px;" id="editAdultSubtotalCurrency">USD</div>
+                </div>
+                <div style="flex: 1; background: white; padding: 10px; border-radius: 8px;">
+                    <div>Children Subtotal</div>
+                    <div style="font-size: 18px; font-weight: bold;" id="editChildrenSubtotal">0.00</div>
+                    <div style="font-size: 12px;" id="editChildrenSubtotalCurrency">USD</div>
+                </div>
+            </div>
+            
+            <!-- Totals Box -->
+            <div class="totals-box">
+                <div class="totals-row">
+                    <span>Subtotal:</span>
+                    <span><span id="editSubtotalCurrency">USD</span> <span id="editSubtotal">0.00</span></span>
+                </div>
+                <div class="totals-row">
+                    <span>GST (8%):</span>
+                    <span><span id="editGstCurrency">USD</span> <span id="editGst">0.00</span></span>
+                </div>
+                <div class="totals-row total">
+                    <span>TOTAL:</span>
+                    <span><span id="editTotalCurrency">USD</span> <span id="editTotal">0.00</span></span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>EXPIRY DATE/TIME (Optional)</label>
+                <input type="text" id="editExpiryTime" placeholder="e.g., 15:30 or 20/03/25 15:30">
+            </div>
+            
+            <!-- Payment Warning -->
+            <div class="warning-message" id="editPaymentWarning">
+                ⚠️ Changing payment method may affect approval status
+            </div>
+            
+            <div class="modal-actions">
+                <button class="modal-btn cancel-btn" onclick="closeEditModal()">CANCEL</button>
+                <button class="modal-btn save-btn" onclick="saveEdit()">💾 SAVE CHANGES</button>
+            </div>
+            
+            <button class="void-action-btn" onclick="openVoidModalFromEdit()">🚫 VOID THIS RECEIPT</button>
+        </div>
+    </div>
 
-    <!-- Void Modal -->
-    <div id="voidModal" class="modal"><div class="modal-content small"><span class="close-modal" onclick="closeVoidModal()">&times;</span><h3 style="color:#c68b5e;">🚫 VOID RECEIPT</h3><p>Void receipt <strong id="voidReceiptNo"></strong>?</p><textarea id="voidReason" class="void-reason" rows="3" placeholder="Enter reason for voiding"></textarea><div class="confirm-checkbox"><input type="checkbox" id="voidConfirmCheckbox"><label>I confirm this receipt should be voided</label></div><button class="void-confirm-btn" onclick="confirmVoid()">🚫 CONFIRM VOID</button><button class="modal-btn cancel-btn" onclick="closeVoidModal()" style="margin-top:10px; width:100%;">CANCEL</button></div></div>
-</div>
+    <!-- VOID MODAL -->
+    <div id="voidModal" class="modal">
+        <div class="modal-content small">
+            <span class="close-modal" onclick="closeVoidModal()">&times;</span>
+            
+            <h3 style="color: #c68b5e; margin-bottom: 20px;">🚫 VOID RECEIPT</h3>
+            
+            <p style="margin-bottom: 15px;">Are you sure you want to void receipt <strong id="voidReceiptNo"></strong>?</p>
+            
+            <textarea id="voidReason" class="void-reason" rows="3" placeholder="Enter reason for voiding (required)"></textarea>
+            
+            <div class="confirm-checkbox">
+                <input type="checkbox" id="voidConfirmCheckbox">
+                <label for="voidConfirmCheckbox">I confirm this receipt should be voided</label>
+            </div>
+            
+            <button class="void-confirm-btn" onclick="confirmVoid()">🚫 CONFIRM VOID</button>
+            <button class="modal-btn cancel-btn" onclick="closeVoidModal()" style="margin-top: 10px; width: 100%;">CANCEL</button>
+        </div>
+    </div>
 
-<script>
-// ========== SUPERVISOR ACCESS CONTROL using users.js ==========
-let currentUser = null;
-let isSupervisor = false;
-let usersDatabase = [];
+    <script>
+        // ======================= SUPERVISOR ACCESS CONTROL =======================
+        let currentUser = { name: '', level: '', rcno: '', username: '' };
+        let allReceipts = [];
+        let filteredReceipts = [];
+        let currentEditReceipt = null;
+        let receiptToVoid = null;
 
-// Load users from users.js (global variable 'users' from the external file)
-function loadUsersFromFile() {
-    // Check if users array exists from users.js
-    if (typeof users !== 'undefined' && Array.isArray(users)) {
-        usersDatabase = users;
-        console.log('Users loaded from users.js:', usersDatabase.length);
-        return true;
-    }
-    
-    // Alternative: check window.users
-    if (window.users && Array.isArray(window.users)) {
-        usersDatabase = window.users;
-        console.log('Users loaded from window.users:', usersDatabase.length);
-        return true;
-    }
-    
-    console.warn('users.js not loaded or users array not found');
-    return false;
-}
-
-// Authenticate user against users.js data
-function authenticateUser(username, password) {
-    if (!usersDatabase.length) {
-        loadUsersFromFile();
-    }
-    
-    // Find user by username (case insensitive)
-    const user = usersDatabase.find(u => 
-        u.username && u.username.toLowerCase() === username.toLowerCase()
-    );
-    
-    if (!user) {
-        return { success: false, message: 'Username not found' };
-    }
-    
-    // Check password (plain text comparison as per users.js structure)
-    if (user.password !== password) {
-        return { success: false, message: 'Incorrect password' };
-    }
-    
-    // Check if user has SUPERVISOR level
-    const userLevel = (user.level || '').toUpperCase();
-    if (userLevel !== 'SUPERVISOR') {
-        return { success: false, message: 'Access denied. Supervisor level required.' };
-    }
-    
-    // Authentication successful
-    return {
-        success: true,
-        user: {
-            username: user.username,
-            level: user.level,
-            rcno: user.rcno || user.rcNo || user.RCno || 'N/A',
-            fullName: user.fullName || user.username
+        // Check if user has supervisor-level access
+        function checkSupervisorAccess() {
+            try {
+                // Try to load user data from localStorage (matching the reference code)
+                const username = localStorage.getItem('username');
+                const level = localStorage.getItem('level');
+                const rcno = localStorage.getItem('rcno');
+                const loggedInUser = localStorage.getItem('loggedInUser');
+                const currentUserData = localStorage.getItem('currentUser');
+                
+                if (currentUserData) {
+                    try {
+                        const parsed = JSON.parse(currentUserData);
+                        currentUser = { ...currentUser, ...parsed };
+                    } catch(e) {}
+                }
+                
+                if (username) currentUser.username = username;
+                if (level) currentUser.level = level;
+                if (rcno) currentUser.rcno = rcno;
+                
+                if (loggedInUser) {
+                    try {
+                        const parsed = JSON.parse(loggedInUser);
+                        currentUser.username = parsed.username || currentUser.username;
+                        currentUser.level = parsed.level || currentUser.level;
+                        currentUser.name = parsed.name || parsed.username || currentUser.name;
+                    } catch(e) {}
+                }
+                
+                if (!currentUser.name) currentUser.name = currentUser.username || 'OPERATOR';
+                if (!currentUser.level) currentUser.level = 'OPERATOR';
+                
+                const userLevel = (currentUser.level || '').toUpperCase();
+                
+                // SUPERVISOR, ADMIN, MANAGER levels allowed
+                if (userLevel !== 'SUPERVISOR' && userLevel !== 'ADMIN' && userLevel !== 'MANAGER') {
+                    alert("⛔ ACCESS DENIED\n\nThis page is restricted to SUPERVISOR level users only.\nYour level: " + (userLevel || 'NONE') + "\n\nYou will be redirected to Dashboard.");
+                    window.location.href = 'dashboard.html';
+                    return false;
+                }
+                
+                // Update header display
+                document.getElementById('headerUserName').innerText = currentUser.name || currentUser.username;
+                document.getElementById('headerUserLevel').innerText = currentUser.level || 'SUPERVISOR';
+                return true;
+                
+            } catch (error) {
+                console.error('Error checking access:', error);
+                alert("Access verification failed. Redirecting to login.");
+                window.location.href = 'login.html';
+                return false;
+            }
         }
-    };
-}
 
-function showLoginOverlay() {
-    const overlay = document.getElementById('loginOverlay');
-    if (overlay) overlay.style.display = 'flex';
-    const appContainer = document.getElementById('appContainer');
-    if (appContainer) appContainer.style.display = 'none';
-}
+        function handleLogout() {
+            // Clear all localStorage items (matching reference code)
+            localStorage.removeItem('username');
+            localStorage.removeItem('level');
+            localStorage.removeItem('rcno');
+            localStorage.removeItem('name');
+            localStorage.removeItem('loggedInUser');
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('currentShiftData');
+            window.location.href = 'login.html';
+        }
 
-function hideLoginOverlayAndInit() {
-    document.getElementById('loginOverlay').style.display = 'none';
-    document.getElementById('appContainer').style.display = 'block';
-    initializeAppAfterAuth();
-}
+        // ========== SET DEFAULT DATES (Last 30 days) ==========
+        function setDefaultDates() {
+            const today = new Date();
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(today.getDate() - 30);
+            
+            const formatDate = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+            
+            const fromDateInput = document.getElementById('fromDate');
+            const toDateInput = document.getElementById('toDate');
+            
+            if (fromDateInput) fromDateInput.value = formatDate(thirtyDaysAgo);
+            if (toDateInput) toDateInput.value = formatDate(today);
+        }
 
-function handleLogin() {
-    const username = document.getElementById('loginUsername').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    const errorDiv = document.getElementById('loginError');
-    
-    if (!username || !password) {
-        errorDiv.style.display = 'block';
-        errorDiv.textContent = '❌ Please enter username and password';
-        return;
-    }
-    
-    // Load users if not already loaded
-    if (!usersDatabase.length) {
-        loadUsersFromFile();
-    }
-    
-    const authResult = authenticateUser(username, password);
-    
-    if (authResult.success) {
-        currentUser = authResult.user;
-        isSupervisor = true;
-        errorDiv.style.display = 'none';
-        
-        // Update UI with user info
-        document.getElementById('userNameDisplay').textContent = currentUser.username;
-        document.getElementById('userLevelDisplay').textContent = `LEVEL: ${currentUser.level || 'SUPERVISOR'}`;
-        document.getElementById('userRcnoDisplay').textContent = `RC: ${currentUser.rcno || 'N/A'}`;
-        document.getElementById('userRoleBadge').textContent = 'SUPERVISOR';
-        
-        // Store in localStorage for session persistence
-        localStorage.setItem('supervisorSession', JSON.stringify({
-            username: currentUser.username,
-            level: currentUser.level,
-            rcno: currentUser.rcno,
-            timestamp: Date.now()
-        }));
-        
-        hideLoginOverlayAndInit();
-    } else {
-        errorDiv.style.display = 'block';
-        errorDiv.textContent = `⛔ ${authResult.message}`;
-        document.getElementById('loginPassword').value = '';
-    }
-}
-
-function logout() {
-    currentUser = null;
-    isSupervisor = false;
-    localStorage.removeItem('supervisorSession');
-    showLoginOverlay();
-    // Clear any loaded data
-    if (typeof allReceipts !== 'undefined') allReceipts = [];
-    const tbody = document.getElementById('tableBody');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="info-message"><i>🔐</i><div>Please login as supervisor to continue</div></td></tr>';
-}
-
-// Check for existing session
-function checkExistingSession() {
-    const savedSession = localStorage.getItem('supervisorSession');
-    if (savedSession) {
-        try {
-            const session = JSON.parse(savedSession);
-            // Check if session is less than 8 hours old
-            if (session.timestamp && (Date.now() - session.timestamp) < 8 * 60 * 60 * 1000) {
-                // Re-authenticate with stored username (verify supervisor level still exists)
-                if (session.username) {
-                    const user = usersDatabase.find(u => u.username && u.username.toLowerCase() === session.username.toLowerCase());
-                    if (user && (user.level || '').toUpperCase() === 'SUPERVISOR') {
-                        currentUser = {
-                            username: user.username,
-                            level: user.level,
-                            rcno: user.rcno || user.rcNo || 'N/A'
-                        };
-                        isSupervisor = true;
-                        
-                        // Update UI
-                        document.getElementById('userNameDisplay').textContent = currentUser.username;
-                        document.getElementById('userLevelDisplay').textContent = `LEVEL: ${currentUser.level || 'SUPERVISOR'}`;
-                        document.getElementById('userRcnoDisplay').textContent = `RC: ${currentUser.rcno || 'N/A'}`;
-                        document.getElementById('userRoleBadge').textContent = 'SUPERVISOR';
-                        
-                        hideLoginOverlayAndInit();
-                        return true;
+        // ========== LOAD RECEIPTS WITH DATE FILTER ==========
+        async function loadReceipts() {
+            if (!checkSupervisorAccess()) return;
+            
+            const loadBtn = document.getElementById('loadReceiptsBtn');
+            const originalText = loadBtn ? loadBtn.innerHTML : 'LOAD RECEIPTS';
+            
+            try {
+                if (loadBtn) {
+                    loadBtn.innerHTML = '<span>⏳</span> LOADING...';
+                    loadBtn.disabled = true;
+                }
+                
+                const tbody = document.getElementById('tableBody');
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="10" class="loading">Loading receipts...</td></tr>';
+                }
+                
+                if (typeof passengerDb === 'undefined') {
+                    throw new Error('passengerDb not initialized - check fireshift.js');
+                }
+                
+                const fromDate = document.getElementById('fromDate')?.value;
+                const toDate = document.getElementById('toDate')?.value;
+                
+                if (!fromDate || !toDate) {
+                    alert('Please select both From Date and To Date');
+                    if (tbody) {
+                        tbody.innerHTML = '<tr><td colspan="10" class="info-message"><i>📅</i><div>Please select date range</div></td></tr>';
                     }
+                    return;
+                }
+                
+                const startDate = new Date(fromDate);
+                startDate.setHours(0, 0, 0, 0);
+                
+                const endDate = new Date(toDate);
+                endDate.setHours(23, 59, 59, 999);
+                
+                const kovelipayRef = passengerDb.collection('Kovelipay');
+                const snapshot = await kovelipayRef.get();
+                
+                allReceipts = [];
+                
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    let receiptDate = null;
+                    
+                    if (data.submissionDateTime) {
+                        receiptDate = new Date(data.submissionDateTime);
+                        if (isNaN(receiptDate.getTime())) {
+                            const parts = data.submissionDateTime.split(/[\/\-\s:]/);
+                            if (parts.length >= 3) {
+                                receiptDate = new Date(
+                                    parseInt(parts[2]),
+                                    parseInt(parts[1]) - 1,
+                                    parseInt(parts[0]),
+                                    parseInt(parts[3] || 0),
+                                    parseInt(parts[4] || 0)
+                                );
+                            }
+                        }
+                    }
+                    
+                    if (receiptDate && !isNaN(receiptDate.getTime())) {
+                        if (receiptDate >= startDate && receiptDate <= endDate) {
+                            allReceipts.push({
+                                docId: doc.id,
+                                ...data,
+                                _parsedDate: receiptDate
+                            });
+                        }
+                    } else if (data.date) {
+                        const dateParts = data.date.split('-');
+                        if (dateParts.length === 3) {
+                            const receiptDateOnly = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+                            if (receiptDateOnly >= startDate && receiptDateOnly <= endDate) {
+                                allReceipts.push({
+                                    docId: doc.id,
+                                    ...data
+                                });
+                            }
+                        }
+                    }
+                });
+                
+                console.log(`Found ${allReceipts.length} receipts in date range`);
+                
+                if (allReceipts.length === 0) {
+                    if (tbody) {
+                        tbody.innerHTML = '<tr><td colspan="10" class="info-message"><i>📭</i><div>No receipts found for selected date range</div><div class="small">Try expanding your date range</div></td></tr>';
+                    }
+                } else {
+                    allReceipts.sort((a, b) => {
+                        const dateA = new Date(a.submissionDateTime || a.date || 0);
+                        const dateB = new Date(b.submissionDateTime || b.date || 0);
+                        return dateB - dateA;
+                    });
+                    
+                    applyFilters();
+                }
+                
+            } catch (error) {
+                console.error('Error loading receipts:', error);
+                const tbody = document.getElementById('tableBody');
+                if (tbody) {
+                    tbody.innerHTML = `<tr><td colspan="10" class="loading" style="color:#c68b5e;">Error: ${error.message}</td></tr>`;
+                }
+            } finally {
+                if (loadBtn) {
+                    loadBtn.innerHTML = originalText;
+                    loadBtn.disabled = false;
                 }
             }
-        } catch(e) {
-            console.error('Error parsing saved session:', e);
         }
-    }
-    return false;
-}
 
-// Attach login event
-document.getElementById('loginBtn').addEventListener('click', handleLogin);
-document.getElementById('loginPassword').addEventListener('keypress', (e) => { if(e.key === 'Enter') handleLogin(); });
-document.getElementById('logoutBtn')?.addEventListener('click', logout);
+        // ========== FILTER FUNCTIONS ==========
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput')?.value.toLowerCase().trim() || '';
+            const paymentFilter = document.getElementById('paymentFilter')?.value || 'ALL';
+            const statusFilter = document.getElementById('statusFilter')?.value || 'ALL';
+            
+            filteredReceipts = allReceipts.filter(receipt => {
+                const matchesSearch = searchTerm === '' || 
+                    (receipt.passengerName && receipt.passengerName.toLowerCase().includes(searchTerm)) ||
+                    (receipt.flightNo && receipt.flightNo.toLowerCase().includes(searchTerm)) ||
+                    (receipt.seatNo && receipt.seatNo.toLowerCase().includes(searchTerm)) ||
+                    (receipt.receiptNo && receipt.receiptNo.toLowerCase().includes(searchTerm));
+                
+                const matchesPayment = paymentFilter === 'ALL' || receipt.paymentMethod === paymentFilter;
+                const matchesStatus = statusFilter === 'ALL' || receipt.paymentStatus === statusFilter;
+                
+                return matchesSearch && matchesPayment && matchesStatus;
+            });
+            
+            renderTable();
+        }
 
-// ========== APPLICATION LOGIC (only runs after supervisor auth) ==========
-let allReceipts = [];
-let filteredReceipts = [];
-let currentEditReceipt = null;
-let receiptToVoid = null;
-
-function setDefaultDates() {
-    const today = new Date();
-    const formatDate = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-    document.getElementById('fromDate').value = formatDate(today);
-    document.getElementById('toDate').value = formatDate(today);
-}
-
-async function loadReceipts() {
-    if (!isSupervisor) { alert("Access denied"); return; }
-    const loadBtn = document.getElementById('loadReceiptsBtn');
-    try {
-        if(loadBtn) { loadBtn.innerHTML = '<span>⏳</span> LOADING...'; loadBtn.disabled = true; }
-        const fromDate = document.getElementById('fromDate').value;
-        const toDate = document.getElementById('toDate').value;
-        if (!fromDate || !toDate) { alert('Select date range'); return; }
-        
-        const startDate = new Date(fromDate); startDate.setHours(0,0,0,0);
-        const endDate = new Date(toDate); endDate.setHours(23,59,59,999);
-        
-        const snapshot = await passengerDb.collection('Kovelipay').get();
-        allReceipts = [];
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            let receiptDate = data.submissionDateTime ? new Date(data.submissionDateTime) : null;
-            if (receiptDate && !isNaN(receiptDate) && receiptDate >= startDate && receiptDate <= endDate) {
-                allReceipts.push({ docId: doc.id, ...data, _parsedDate: receiptDate });
+        function getPaymentBadgeClass(paymentMethod) {
+            switch(paymentMethod) {
+                case 'CASH': return 'payment-cash';
+                case 'CARD': return 'payment-card';
+                case 'BANK TRANSFER': return 'payment-bank';
+                case 'MOBILE PAYMENT': return 'payment-mobile';
+                default: return 'payment-other';
             }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            
+            if (!tbody) return;
+            
+            if (filteredReceipts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="info-message"><i>🔍</i><div>No receipts match your filters</div><div class="small">Try adjusting your search criteria</div></td></tr>';
+                return;
+            }
+            
+            let html = '';
+            filteredReceipts.forEach(receipt => {
+                let statusClass = 'status-completed';
+                let statusText = 'COMPLETED';
+                
+                if (receipt.paymentStatus === 'PENDING_APPROVAL') {
+                    statusClass = 'status-pending';
+                    statusText = 'PENDING';
+                } else if (receipt.paymentStatus === 'VOID') {
+                    statusClass = 'status-void';
+                    statusText = 'VOID';
+                }
+                
+                const paymentClass = getPaymentBadgeClass(receipt.paymentMethod);
+                const rowClass = receipt.paymentStatus === 'VOID' ? 'void-row' : '';
+                const editDisabled = receipt.paymentStatus === 'VOID' ? 'disabled' : '';
+                
+                const amount = receipt.totalAmount ? receipt.totalAmount.toFixed(2) : '0.00';
+                const currency = receipt.currency || 'USD';
+                
+                html += `
+                    <tr class="${rowClass}">
+                        <td><strong>${receipt.receiptNo || 'N/A'}</strong></td>
+                        <td>${receipt.submissionDateTime || receipt.date || 'N/A'}</td>
+                        <td>${receipt.shift || 'N/A'}</td>
+                        <td>${receipt.passengerName || 'N/A'}</td>
+                        <td>${receipt.flightNo || 'N/A'}</td>
+                        <td>${receipt.seatNo || 'N/A'}</td>
+                        <td><span class="status-badge ${paymentClass}">${receipt.paymentMethod || 'N/A'}</span></td>
+                        <td><strong>${currency} ${amount}</strong></td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>
+                            <button class="action-btn edit-btn" onclick="openEditModal('${receipt.receiptNo}')" ${editDisabled}>✏️ EDIT</button>
+                            <button class="action-btn view-btn" onclick="printReceipt('${receipt.receiptNo}')">🖨️ PRINT</button>
+                            ${receipt.paymentStatus !== 'VOID' ? `<button class="action-btn void-btn" onclick="openVoidModal('${receipt.receiptNo}')">🚫 VOID</button>` : ''}
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tbody.innerHTML = html;
+        }
+
+        // ========== EDIT MODAL FUNCTIONS ==========
+        function openEditModal(receiptNo) {
+            const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
+            if (!receipt) return;
+            
+            if (receipt.paymentStatus === 'VOID') {
+                alert('Cannot edit a voided receipt');
+                return;
+            }
+            
+            currentEditReceipt = receipt;
+            
+            document.getElementById('modalReceiptNo').textContent = receiptNo;
+            document.getElementById('editReceiptNo').value = receiptNo;
+            document.getElementById('editDocumentId').value = receipt.docId || '';
+            document.getElementById('editOriginalPaymentMethod').value = receipt.paymentMethod || '';
+            document.getElementById('editPName').value = receipt.passengerName || '';
+            document.getElementById('editFlightNo').value = receipt.flightNo || '';
+            document.getElementById('editSeatNo').value = receipt.seatNo || '';
+            document.getElementById('editAdult').value = receipt.adult || 1;
+            document.getElementById('editChildren').value = receipt.children || 0;
+            document.getElementById('editCurrency').value = receipt.currency || 'USD';
+            document.getElementById('editRateType').value = receipt.rateType || 'B';
+            document.getElementById('editPaymentMethod').value = receipt.paymentMethod || 'CASH';
+            document.getElementById('editApprovalCode').value = receipt.approvalCode || '';
+            document.getElementById('editBatchNo').value = receipt.batchNo || '';
+            document.getElementById('editExpiryTime').value = receipt.expiryDateTime || '';
+            
+            calculateEditPrices();
+            handleEditPaymentMethodChange();
+            
+            document.getElementById('editModal').style.display = 'block';
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+            currentEditReceipt = null;
+        }
+
+        function handleEditPaymentMethodChange() {
+            const paymentMethod = document.getElementById('editPaymentMethod');
+            const originalMethod = document.getElementById('editOriginalPaymentMethod');
+            const warning = document.getElementById('editPaymentWarning');
+            const approvalCode = document.getElementById('editApprovalCode');
+            const batchNo = document.getElementById('editBatchNo');
+            
+            if (!paymentMethod || !originalMethod || !warning || !approvalCode || !batchNo) return;
+            
+            if (paymentMethod.value !== originalMethod.value) {
+                warning.style.display = 'block';
+            } else {
+                warning.style.display = 'none';
+            }
+            
+            if (paymentMethod.value === 'CASH') {
+                approvalCode.disabled = true;
+                batchNo.disabled = true;
+                approvalCode.value = '';
+                batchNo.value = '';
+                approvalCode.placeholder = 'Not required for cash';
+                batchNo.placeholder = 'Not required for cash';
+            } else {
+                approvalCode.disabled = false;
+                batchNo.disabled = false;
+                approvalCode.placeholder = 'Enter approval code';
+                batchNo.placeholder = 'Enter batch no';
+            }
+        }
+
+        // ========== CALCULATION FUNCTIONS ==========
+        function calculateEditPrices() {
+            const adult = parseInt(document.getElementById('editAdult').value) || 0;
+            const children = parseInt(document.getElementById('editChildren').value) || 0;
+            const currency = document.getElementById('editCurrency').value;
+            const rateType = document.getElementById('editRateType').value;
+            
+            // Default rates if rate.js not loaded
+            const defaultRates = {
+                AdultAUSD: { price: 45.00, GST: 8 },
+                KidsAUSD: { price: 25.00, GST: 8 },
+                AdultAMVR: { price: 675.00, GST: 8 },
+                KidsAMVR: { price: 375.00, GST: 8 },
+                AdultBUSD: { price: 55.00, GST: 8 },
+                KidsBUSD: { price: 30.00, GST: 8 },
+                AdultBMVR: { price: 825.00, GST: 8 },
+                KidsBMVR: { price: 450.00, GST: 8 }
+            };
+            
+            const rateSource = typeof rates !== 'undefined' ? rates : defaultRates;
+            
+            const adultRateKey = `Adult${rateType}${currency}`;
+            const childrenRateKey = `Kids${rateType}${currency}`;
+            
+            const adultRate = rateSource[adultRateKey] || { price: 0, GST: 8 };
+            const childrenRate = rateSource[childrenRateKey] || { price: 0, GST: 8 };
+            
+            const adultSubtotal = adult * (adultRate.price || 0);
+            const childrenSubtotal = children * (childrenRate.price || 0);
+            const subtotal = adultSubtotal + childrenSubtotal;
+            const gstRate = adultRate.GST || 8;
+            const gstAmount = subtotal * (gstRate / 100);
+            const totalAmount = subtotal + gstAmount;
+            
+            document.getElementById('editAdultPrice').textContent = (adultRate.price || 0).toFixed(2);
+            document.getElementById('editChildrenPrice').textContent = (childrenRate.price || 0).toFixed(2);
+            document.getElementById('editAdultCurrency').textContent = currency;
+            document.getElementById('editChildrenCurrency').textContent = currency;
+            document.getElementById('editAdultSubtotal').textContent = adultSubtotal.toFixed(2);
+            document.getElementById('editChildrenSubtotal').textContent = childrenSubtotal.toFixed(2);
+            document.getElementById('editAdultSubtotalCurrency').textContent = currency;
+            document.getElementById('editChildrenSubtotalCurrency').textContent = currency;
+            document.getElementById('editSubtotal').textContent = subtotal.toFixed(2);
+            document.getElementById('editGst').textContent = gstAmount.toFixed(2);
+            document.getElementById('editTotal').textContent = totalAmount.toFixed(2);
+            document.getElementById('editSubtotalCurrency').textContent = currency;
+            document.getElementById('editGstCurrency').textContent = currency;
+            document.getElementById('editTotalCurrency').textContent = currency;
+        }
+
+        // ========== SAVE EDIT ==========
+        async function saveEdit() {
+            const passengerName = document.getElementById('editPName')?.value.trim();
+            const flightNo = document.getElementById('editFlightNo')?.value.trim();
+            const seatNo = document.getElementById('editSeatNo')?.value.trim();
+            
+            if (!passengerName || !flightNo || !seatNo) {
+                alert('Please fill in Passenger Name, Flight Number, and Seat Number');
+                return;
+            }
+            
+            const documentId = document.getElementById('editDocumentId')?.value;
+            const paymentMethod = document.getElementById('editPaymentMethod')?.value;
+            const isCash = paymentMethod === 'CASH';
+            
+            if (!isCash) {
+                const approvalCode = document.getElementById('editApprovalCode')?.value.trim();
+                const batchNo = document.getElementById('editBatchNo')?.value.trim();
+                
+                if (!approvalCode || !batchNo) {
+                    alert('Please enter both Approval Code and Batch No for non-cash payments');
+                    return;
+                }
+            }
+            
+            if (!confirm('Update receipt with new values? This action will be logged.')) {
+                return;
+            }
+            
+            try {
+                const saveBtn = document.querySelector('.save-btn');
+                if (saveBtn) {
+                    saveBtn.disabled = true;
+                    saveBtn.textContent = 'SAVING...';
+                }
+                
+                const adult = parseInt(document.getElementById('editAdult')?.value) || 0;
+                const children = parseInt(document.getElementById('editChildren')?.value) || 0;
+                const currency = document.getElementById('editCurrency')?.value || 'USD';
+                const rateType = document.getElementById('editRateType')?.value || 'B';
+                
+                const defaultRates = {
+                    AdultAUSD: { price: 45.00, GST: 8 },
+                    KidsAUSD: { price: 25.00, GST: 8 },
+                    AdultAMVR: { price: 675.00, GST: 8 },
+                    KidsAMVR: { price: 375.00, GST: 8 },
+                    AdultBUSD: { price: 55.00, GST: 8 },
+                    KidsBUSD: { price: 30.00, GST: 8 },
+                    AdultBMVR: { price: 825.00, GST: 8 },
+                    KidsBMVR: { price: 450.00, GST: 8 }
+                };
+                
+                const rateSource = typeof rates !== 'undefined' ? rates : defaultRates;
+                
+                const adultRateKey = `Adult${rateType}${currency}`;
+                const childrenRateKey = `Kids${rateType}${currency}`;
+                
+                const adultRate = rateSource[adultRateKey] || { price: 0, GST: 8 };
+                const childrenRate = rateSource[childrenRateKey] || { price: 0, GST: 8 };
+                
+                const adultSubtotal = adult * adultRate.price;
+                const childrenSubtotal = children * childrenRate.price;
+                const subtotal = adultSubtotal + childrenSubtotal;
+                const gstAmount = subtotal * (adultRate.GST / 100);
+                const totalAmount = subtotal + gstAmount;
+                
+                let paymentStatus = 'COMPLETED';
+                if (!isCash) {
+                    const approvalCode = document.getElementById('editApprovalCode')?.value.trim() || '';
+                    const batchNo = document.getElementById('editBatchNo')?.value.trim() || '';
+                    paymentStatus = (approvalCode && batchNo) ? 'COMPLETED' : 'PENDING_APPROVAL';
+                }
+                
+                const updateData = {
+                    passengerName: passengerName,
+                    flightNo: flightNo,
+                    seatNo: seatNo,
+                    adult: adult,
+                    children: children,
+                    currency: currency,
+                    rateType: rateType,
+                    paymentMethod: paymentMethod,
+                    adultPrice: adultRate.price,
+                    childrenPrice: childrenRate.price,
+                    adultSubtotal: adultSubtotal,
+                    childrenSubtotal: childrenSubtotal,
+                    subtotal: subtotal,
+                    gstAmount: gstAmount,
+                    gstRate: adultRate.GST,
+                    totalAmount: totalAmount,
+                    approvalCode: document.getElementById('editApprovalCode')?.value.trim() || '',
+                    batchNo: document.getElementById('editBatchNo')?.value.trim() || '',
+                    paymentStatus: paymentStatus,
+                    expiryDateTime: document.getElementById('editExpiryTime')?.value.trim() || '',
+                    editedAt: new Date().toISOString(),
+                    editedBy: currentUser.username || currentUser.name || 'supervisor'
+                };
+                
+                const kovelipayRef = passengerDb.collection('Kovelipay').doc(documentId);
+                await kovelipayRef.update(updateData);
+                
+                alert('Receipt updated successfully!');
+                await loadReceipts();
+                closeEditModal();
+                
+            } catch (error) {
+                console.error('Error saving edit:', error);
+                alert('Error saving: ' + error.message);
+            } finally {
+                const saveBtn = document.querySelector('.save-btn');
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = '💾 SAVE CHANGES';
+                }
+            }
+        }
+
+        // ========== PRINT FUNCTIONS ==========
+        function printReceipt(receiptNo) {
+            const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
+            if (!receipt) return;
+            
+            const encodedData = encodeURIComponent(JSON.stringify(receipt));
+            window.open(`receipt.html?data=${encodedData}&receiptNo=${receiptNo}&reprint=true&autoPrint=false`, '_blank');
+        }
+
+        function printEditedReceipt() {
+            if (!currentEditReceipt) {
+                alert('No receipt selected');
+                return;
+            }
+            
+            const adult = parseInt(document.getElementById('editAdult')?.value) || 0;
+            const children = parseInt(document.getElementById('editChildren')?.value) || 0;
+            const currency = document.getElementById('editCurrency')?.value || 'USD';
+            const rateType = document.getElementById('editRateType')?.value || 'B';
+            
+            const defaultRates = {
+                AdultAUSD: { price: 45.00, GST: 8 },
+                KidsAUSD: { price: 25.00, GST: 8 },
+                AdultAMVR: { price: 675.00, GST: 8 },
+                KidsAMVR: { price: 375.00, GST: 8 },
+                AdultBUSD: { price: 55.00, GST: 8 },
+                KidsBUSD: { price: 30.00, GST: 8 },
+                AdultBMVR: { price: 825.00, GST: 8 },
+                KidsBMVR: { price: 450.00, GST: 8 }
+            };
+            
+            const rateSource = typeof rates !== 'undefined' ? rates : defaultRates;
+            
+            const adultRateKey = `Adult${rateType}${currency}`;
+            const childrenRateKey = `Kids${rateType}${currency}`;
+            
+            const adultRate = rateSource[adultRateKey] || { price: 0, GST: 8 };
+            const childrenRate = rateSource[childrenRateKey] || { price: 0, GST: 8 };
+            
+            const adultSubtotal = adult * adultRate.price;
+            const childrenSubtotal = children * childrenRate.price;
+            const subtotal = adultSubtotal + childrenSubtotal;
+            const gstAmount = subtotal * (adultRate.GST / 100);
+            const totalAmount = subtotal + gstAmount;
+            
+            const updatedReceipt = {
+                ...currentEditReceipt,
+                passengerName: document.getElementById('editPName')?.value || currentEditReceipt.passengerName,
+                flightNo: document.getElementById('editFlightNo')?.value || currentEditReceipt.flightNo,
+                seatNo: document.getElementById('editSeatNo')?.value || currentEditReceipt.seatNo,
+                adult: adult,
+                children: children,
+                currency: currency,
+                rateType: rateType,
+                paymentMethod: document.getElementById('editPaymentMethod')?.value || currentEditReceipt.paymentMethod,
+                adultPrice: adultRate.price,
+                childrenPrice: childrenRate.price,
+                adultSubtotal: adultSubtotal,
+                childrenSubtotal: childrenSubtotal,
+                subtotal: subtotal,
+                gstAmount: gstAmount,
+                gstRate: adultRate.GST,
+                totalAmount: totalAmount,
+                approvalCode: document.getElementById('editApprovalCode')?.value || '',
+                batchNo: document.getElementById('editBatchNo')?.value || '',
+                expiryDateTime: document.getElementById('editExpiryTime')?.value || currentEditReceipt.expiryDateTime,
+                editedAt: new Date().toISOString()
+            };
+            
+            const encodedData = encodeURIComponent(JSON.stringify(updatedReceipt));
+            window.open(`receipt.html?data=${encodedData}&receiptNo=${updatedReceipt.receiptNo}&reprint=true&autoPrint=false`, '_blank');
+        }
+
+        // ========== VOID FUNCTIONS ==========
+        function openVoidModal(receiptNo) {
+            const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
+            if (!receipt) {
+                alert('Receipt not found');
+                return;
+            }
+            
+            if (receipt.paymentStatus === 'VOID') {
+                alert('This receipt is already voided');
+                return;
+            }
+            
+            receiptToVoid = receipt;
+            document.getElementById('voidReceiptNo').textContent = receiptNo;
+            document.getElementById('voidReason').value = '';
+            document.getElementById('voidConfirmCheckbox').checked = false;
+            document.getElementById('voidModal').style.display = 'block';
+        }
+
+        function openVoidModalFromEdit() {
+            if (!currentEditReceipt) {
+                alert('No receipt selected');
+                return;
+            }
+            
+            receiptToVoid = currentEditReceipt;
+            closeEditModal();
+            
+            setTimeout(() => {
+                document.getElementById('voidReceiptNo').textContent = currentEditReceipt.receiptNo;
+                document.getElementById('voidReason').value = '';
+                document.getElementById('voidConfirmCheckbox').checked = false;
+                document.getElementById('voidModal').style.display = 'block';
+            }, 200);
+        }
+
+        function closeVoidModal() {
+            document.getElementById('voidModal').style.display = 'none';
+            receiptToVoid = null;
+        }
+
+        async function confirmVoid() {
+            const reason = document.getElementById('voidReason')?.value.trim();
+            const confirmed = document.getElementById('voidConfirmCheckbox')?.checked;
+            
+            if (!reason) {
+                alert('Please enter a reason for voiding');
+                return;
+            }
+            
+            if (!confirmed) {
+                alert('Please confirm that you want to void this receipt');
+                return;
+            }
+            
+            if (!receiptToVoid) {
+                alert('No receipt selected');
+                closeVoidModal();
+                return;
+            }
+            
+            try {
+                const voidBtn = document.querySelector('.void-confirm-btn');
+                if (voidBtn) {
+                    voidBtn.disabled = true;
+                    voidBtn.textContent = 'VOIDING...';
+                }
+                
+                const documentId = receiptToVoid.docId;
+                
+                if (!documentId) {
+                    throw new Error('Document ID not found');
+                }
+                
+                const voidData = {
+                    paymentStatus: 'VOID',
+                    voidReason: reason,
+                    voidedAt: new Date().toISOString(),
+                    voidedBy: currentUser.username || currentUser.name || 'supervisor',
+                    originalAmount: receiptToVoid.totalAmount,
+                    originalCurrency: receiptToVoid.currency
+                };
+                
+                const kovelipayRef = passengerDb.collection('Kovelipay').doc(documentId);
+                await kovelipayRef.update(voidData);
+                
+                alert(`Receipt ${receiptToVoid.receiptNo} has been voided`);
+                
+                // Print void receipt
+                const voidedReceipt = { ...receiptToVoid, ...voidData };
+                const encodedData = encodeURIComponent(JSON.stringify(voidedReceipt));
+                window.open(`receipt.html?data=${encodedData}&receiptNo=${voidedReceipt.receiptNo}&reprint=true&autoPrint=false`, '_blank');
+                
+                await loadReceipts();
+                
+                receiptToVoid = null;
+                closeVoidModal();
+                
+            } catch (error) {
+                console.error('Error voiding receipt:', error);
+                alert('Error voiding receipt: ' + error.message);
+            } finally {
+                const voidBtn = document.querySelector('.void-confirm-btn');
+                if (voidBtn) {
+                    voidBtn.disabled = false;
+                    voidBtn.textContent = '🚫 CONFIRM VOID';
+                }
+            }
+        }
+
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded - checking supervisor access...');
+            
+            // First check if user has supervisor access
+            if (!checkSupervisorAccess()) {
+                return;
+            }
+            
+            setDefaultDates();
+            
+            // Event listeners for real-time calculation
+            const editAdult = document.getElementById('editAdult');
+            const editChildren = document.getElementById('editChildren');
+            const editCurrency = document.getElementById('editCurrency');
+            const editRateType = document.getElementById('editRateType');
+            
+            if (editAdult) editAdult.addEventListener('input', calculateEditPrices);
+            if (editChildren) editChildren.addEventListener('input', calculateEditPrices);
+            if (editCurrency) editCurrency.addEventListener('change', calculateEditPrices);
+            if (editRateType) editRateType.addEventListener('change', calculateEditPrices);
+            
+            // Load button click
+            const loadBtn = document.getElementById('loadReceiptsBtn');
+            if (loadBtn) loadBtn.addEventListener('click', loadReceipts);
+            
+            // Client-side filter events
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.addEventListener('input', applyFilters);
+            
+            const paymentFilter = document.getElementById('paymentFilter');
+            if (paymentFilter) paymentFilter.addEventListener('change', applyFilters);
+            
+            const statusFilter = document.getElementById('statusFilter');
+            if (statusFilter) statusFilter.addEventListener('change', applyFilters);
+            
+            // Refresh button
+            const refreshBtn = document.getElementById('refreshBtn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function() {
+                    if (allReceipts.length > 0) {
+                        applyFilters();
+                    } else {
+                        loadReceipts();
+                    }
+                });
+            }
+            
+            // Close modal when clicking outside
+            window.onclick = function(event) {
+                const editModal = document.getElementById('editModal');
+                const voidModal = document.getElementById('voidModal');
+                if (event.target === editModal) {
+                    closeEditModal();
+                }
+                if (event.target === voidModal) {
+                    closeVoidModal();
+                }
+            };
+            
+            console.log('Supervisor Edit Page Ready - waiting for user to select dates and click Load');
         });
-        allReceipts.sort((a,b) => new Date(b.submissionDateTime||0) - new Date(a.submissionDateTime||0));
-        applyFilters();
-    } catch(e) { console.error(e); alert("Error loading"); }
-    finally { if(loadBtn) { loadBtn.innerHTML = '<span>📋</span> LOAD RECEIPTS'; loadBtn.disabled = false; } }
-}
-
-function applyFilters() {
-    const search = document.getElementById('searchInput').value.toLowerCase();
-    const payment = document.getElementById('paymentFilter').value;
-    const status = document.getElementById('statusFilter').value;
-    filteredReceipts = allReceipts.filter(r => 
-        (search === '' || (r.passengerName||'').toLowerCase().includes(search) || (r.flightNo||'').toLowerCase().includes(search) || (r.seatNo||'').toLowerCase().includes(search)) &&
-        (payment === 'ALL' || r.paymentMethod === payment) &&
-        (status === 'ALL' || r.paymentStatus === status)
-    );
-    renderTable();
-}
-
-function renderTable() {
-    const tbody = document.getElementById('tableBody');
-    if(!filteredReceipts.length) { tbody.innerHTML = '<tr><td colspan="10" class="info-message"><i>📭</i><div>No receipts found</div></td></tr>'; return; }
-    let html = '';
-    filteredReceipts.forEach(r => {
-        const statusClass = r.paymentStatus === 'COMPLETED' ? 'status-completed' : (r.paymentStatus === 'PENDING_APPROVAL' ? 'status-pending' : 'status-void');
-        const statusText = r.paymentStatus || 'COMPLETED';
-        const paymentClass = r.paymentMethod === 'CASH' ? 'payment-cash' : 'payment-card';
-        const rowClass = r.paymentStatus === 'VOID' ? 'void-row' : '';
-        html += `<tr class="${rowClass}"><td><strong>${r.receiptNo||'N/A'}</strong></td><td>${r.submissionDateTime||r.date||'N/A'}</td><td>${r.shift||'N/A'}</td><td>${r.passengerName||'N/A'}</td><td>${r.flightNo||'N/A'}</td><td>${r.seatNo||'N/A'}</td><td><span class="status-badge ${paymentClass}">${r.paymentMethod||'N/A'}</span></td><td><strong>${r.currency||'USD'} ${(r.totalAmount||0).toFixed(2)}</strong></td><td><span class="status-badge ${statusClass}">${statusText}</span></td><td><button class="action-btn edit-btn" onclick="openEditModal('${r.receiptNo}')" ${r.paymentStatus === 'VOID' ? 'disabled' : ''}>✏️ EDIT</button><button class="action-btn view-btn" onclick="printReceipt('${r.receiptNo}')">🖨️ PRINT</button>${r.paymentStatus !== 'VOID' ? `<button class="action-btn void-btn" onclick="openVoidModal('${r.receiptNo}')">🚫 VOID</button>` : ''}${r.paymentStatus === 'VOID' ? '<span style="font-size:11px;"> VOIDED</span>' : ''}</td></tr>`;
-    });
-    tbody.innerHTML = html;
-}
-
-function openEditModal(receiptNo) {
-    const receipt = allReceipts.find(r => r.receiptNo === receiptNo);
-    if(!receipt || receipt.paymentStatus === 'VOID') { alert("Cannot edit voided receipt"); return; }
-    currentEditReceipt = receipt;
-    document.getElementById('modalReceiptNo').innerText = receiptNo;
-    document.getElementById('editDocumentId').value = receipt.docId;
-    document.getElementById('editOriginalPaymentMethod').value = receipt.paymentMethod || '';
-    document.getElementById('editPName').value = receipt.passengerName || '';
-    document.getElementById('editFlightNo').value = receipt.flightNo || '';
-    document.getElementById('editSeatNo').value = receipt.seatNo || '';
-    document.getElementById('editAdult').value = receipt.adult || 1;
-    document.getElementById('editChildren').value = receipt.children || 0;
-    document.getElementById('editCurrency').value = receipt.currency || 'USD';
-    document.getElementById('editRateType').value = receipt.rateType || 'B';
-    document.getElementById('editPaymentMethod').value = receipt.paymentMethod || 'CASH';
-    document.getElementById('editApprovalCode').value = receipt.approvalCode || '';
-    document.getElementById('editBatchNo').value = receipt.batchNo || '';
-    document.getElementById('editExpiryTime').value = receipt.expiryDateTime || '';
-    calculateEditPrices();
-    handleEditPaymentMethodChange();
-    document.getElementById('editModal').style.display = 'block';
-}
-function closeEditModal() { document.getElementById('editModal').style.display = 'none'; currentEditReceipt = null; }
-function handleEditPaymentMethodChange() { 
-    const pm = document.getElementById('editPaymentMethod').value;
-    const orig = document.getElementById('editOriginalPaymentMethod').value;
-    document.getElementById('editPaymentWarning').style.display = (pm !== orig) ? 'block' : 'none';
-    const isCash = pm === 'CASH';
-    document.getElementById('editApprovalCode').disabled = isCash;
-    document.getElementById('editBatchNo').disabled = isCash;
-}
-function calculateEditPrices() {
-    const adult = parseInt(document.getElementById('editAdult').value)||0;
-    const children = parseInt(document.getElementById('editChildren').value)||0;
-    const currency = document.getElementById('editCurrency').value;
-    const rateType = document.getElementById('editRateType').value;
-    const defaultRates = { AdultAUSD:45, KidsAUSD:25, AdultAMVR:675, KidsAMVR:375, AdultBUSD:55, KidsBUSD:30, AdultBMVR:825, KidsBMVR:450 };
-    const ratesSrc = typeof rates !== 'undefined' ? rates : defaultRates;
-    const adultPrice = ratesSrc[`Adult${rateType}${currency}`]?.price || ratesSrc[`Adult${rateType}${currency}`] || 0;
-    const childrenPrice = ratesSrc[`Kids${rateType}${currency}`]?.price || ratesSrc[`Kids${rateType}${currency}`] || 0;
-    const adultSub = adult * adultPrice;
-    const childSub = children * childrenPrice;
-    const subtotal = adultSub + childSub;
-    const gst = subtotal * 0.08;
-    const total = subtotal + gst;
-    document.getElementById('editAdultPrice').innerText = adultPrice.toFixed(2);
-    document.getElementById('editChildrenPrice').innerText = childrenPrice.toFixed(2);
-    document.getElementById('editAdultSubtotal').innerText = adultSub.toFixed(2);
-    document.getElementById('editChildrenSubtotal').innerText = childSub.toFixed(2);
-    document.getElementById('editSubtotal').innerText = subtotal.toFixed(2);
-    document.getElementById('editGst').innerText = gst.toFixed(2);
-    document.getElementById('editTotal').innerText = total.toFixed(2);
-    ['editSubtotalCurrency','editGstCurrency','editTotalCurrency'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).innerText = currency; });
-}
-async function saveEdit() {
-    if(!confirm("Update receipt?")) return;
-    try {
-        const docId = document.getElementById('editDocumentId').value;
-        const adult = parseInt(document.getElementById('editAdult').value)||0;
-        const children = parseInt(document.getElementById('editChildren').value)||0;
-        const currency = document.getElementById('editCurrency').value;
-        const rateType = document.getElementById('editRateType').value;
-        const defaultRates = { AdultAUSD:45, KidsAUSD:25, AdultAMVR:675, KidsAMVR:375, AdultBUSD:55, KidsBUSD:30, AdultBMVR:825, KidsBMVR:450 };
-        const ratesSrc = typeof rates !== 'undefined' ? rates : defaultRates;
-        const adultPrice = ratesSrc[`Adult${rateType}${currency}`]?.price || ratesSrc[`Adult${rateType}${currency}`] || 0;
-        const childrenPrice = ratesSrc[`Kids${rateType}${currency}`]?.price || ratesSrc[`Kids${rateType}${currency}`] || 0;
-        const adultSub = adult * adultPrice;
-        const childSub = children * childrenPrice;
-        const subtotal = adultSub + childSub;
-        const gst = subtotal * 0.08;
-        const total = subtotal + gst;
-        const paymentMethod = document.getElementById('editPaymentMethod').value;
-        const isCash = paymentMethod === 'CASH';
-        let paymentStatus = 'COMPLETED';
-        if(!isCash && (!document.getElementById('editApprovalCode').value.trim() || !document.getElementById('editBatchNo').value.trim())) paymentStatus = 'PENDING_APPROVAL';
-        const updateData = {
-            passengerName: document.getElementById('editPName').value,
-            flightNo: document.getElementById('editFlightNo').value,
-            seatNo: document.getElementById('editSeatNo').value,
-            adult, children, currency, rateType, paymentMethod,
-            adultPrice, childrenPrice, adultSubtotal: adultSub, childrenSubtotal: childSub,
-            subtotal, gstAmount: gst, gstRate: 8, totalAmount: total,
-            approvalCode: document.getElementById('editApprovalCode').value.trim(),
-            batchNo: document.getElementById('editBatchNo').value.trim(),
-            paymentStatus, editedAt: new Date().toISOString(),
-            editedBy: currentUser ? currentUser.username : 'supervisor'
-        };
-        await passengerDb.collection('Kovelipay').doc(docId).update(updateData);
-        alert("Receipt updated");
-        await loadReceipts();
-        closeEditModal();
-    } catch(e) { alert("Error: "+e.message); }
-}
-function printReceipt(receiptNo) { const r = allReceipts.find(x=>x.receiptNo===receiptNo); if(r) window.open(`receipt.html?data=${encodeURIComponent(JSON.stringify(r))}&reprint=true`,'_blank'); }
-function printEditedReceipt() { if(currentEditReceipt) window.open(`receipt.html?data=${encodeURIComponent(JSON.stringify({...currentEditReceipt, ...getCurrentEditData()}))}&reprint=true`,'_blank'); }
-function getCurrentEditData() { return { passengerName:document.getElementById('editPName').value, flightNo:document.getElementById('editFlightNo').value, seatNo:document.getElementById('editSeatNo').value, adult:parseInt(document.getElementById('editAdult').value)||0, children:parseInt(document.getElementById('editChildren').value)||0, currency:document.getElementById('editCurrency').value, totalAmount:parseFloat(document.getElementById('editTotal').innerText) }; }
-function openVoidModal(receiptNo) { const r = allReceipts.find(x=>x.receiptNo===receiptNo); if(!r || r.paymentStatus==='VOID') return; receiptToVoid=r; document.getElementById('voidReceiptNo').innerText=receiptNo; document.getElementById('voidReason').value=''; document.getElementById('voidConfirmCheckbox').checked=false; document.getElementById('voidModal').style.display='block'; }
-function openVoidModalFromEdit() { if(currentEditReceipt) { receiptToVoid=currentEditReceipt; closeEditModal(); setTimeout(()=>{ document.getElementById('voidReceiptNo').innerText=receiptToVoid.receiptNo; document.getElementById('voidModal').style.display='block'; },200); } }
-function closeVoidModal() { document.getElementById('voidModal').style.display='none'; receiptToVoid=null; }
-async function confirmVoid() { if(!receiptToVoid) return; const reason = document.getElementById('voidReason').value.trim(); if(!reason) { alert("Enter reason"); return; } if(!document.getElementById('voidConfirmCheckbox').checked) { alert("Confirm void"); return; } try { await passengerDb.collection('Kovelipay').doc(receiptToVoid.docId).update({ paymentStatus:'VOID', voidReason:reason, voidedAt:new Date().toISOString(), voidedBy: currentUser ? currentUser.username : 'supervisor' }); alert(`Receipt ${receiptToVoid.receiptNo} voided`); await loadReceipts(); closeVoidModal(); } catch(e) { alert("Error: "+e.message); } }
-function initializeAppAfterAuth() {
-    setDefaultDates();
-    document.getElementById('loadReceiptsBtn').addEventListener('click', loadReceipts);
-    document.getElementById('searchInput').addEventListener('input', applyFilters);
-    document.getElementById('paymentFilter').addEventListener('change', applyFilters);
-    document.getElementById('statusFilter').addEventListener('change', applyFilters);
-    document.getElementById('refreshBtn').addEventListener('click', () => allReceipts.length ? applyFilters() : loadReceipts());
-    document.getElementById('editAdult').addEventListener('input', calculateEditPrices);
-    document.getElementById('editChildren').addEventListener('input', calculateEditPrices);
-    document.getElementById('editCurrency').addEventListener('change', calculateEditPrices);
-    document.getElementById('editRateType').addEventListener('change', calculateEditPrices);
-    document.getElementById('editPaymentMethod').addEventListener('change', handleEditPaymentMethodChange);
-    window.onclick = function(e) { if(e.target === document.getElementById('editModal')) closeEditModal(); if(e.target === document.getElementById('voidModal')) closeVoidModal(); };
-}
-
-// Initialize: load users first, then check session or show login
-loadUsersFromFile();
-if (!checkExistingSession()) {
-    showLoginOverlay();
-} else {
-    // Session restored, but need to ensure users are loaded
-    if (!usersDatabase.length) loadUsersFromFile();
-}
-</script>
+    </script>
 </body>
 </html>
