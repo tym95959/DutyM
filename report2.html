@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Airline Reports – Closed Flights Viewer (Admin Prefixes)</title>
+    <title>Airline Reports – Closed Flights (Admin Prefixes)</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     
-    <!-- Your config files (ensure these provide window.db, baDb, ekDb, qrDb, sqDb, defaultCardDb) -->
+    <!-- Your config files -->
     <script src="fireshift.js"></script>
     <script src="Co.js"></script>
     
@@ -31,7 +31,6 @@
             margin: 0 auto;
         }
         
-        /* header bar */
         .header-bar {
             background: #2c3e50;
             color: white;
@@ -65,11 +64,6 @@
             transition: 0.2s;
         }
         
-        .back-link:hover {
-            background: #ffcd33;
-        }
-        
-        /* admin panel */
         .admin-panel {
             background: #fff9e6;
             border-radius: 20px;
@@ -150,7 +144,6 @@
             background: #7f8c8d;
         }
         
-        /* filter card */
         .filter-card {
             background: white;
             border-radius: 24px;
@@ -177,19 +170,14 @@
             color: #8b6913;
         }
         
-        .filter-group select, .filter-group input {
+        .filter-group select {
             padding: 10px 14px;
             border-radius: 40px;
             border: 2px solid #e2dccf;
             background: white;
             font-size: 0.85rem;
             cursor: pointer;
-            min-width: 180px;
-        }
-        
-        .filter-group select:focus, .filter-group input:focus {
-            border-color: #e6b800;
-            outline: none;
+            min-width: 200px;
         }
         
         .refresh-btn {
@@ -200,10 +188,6 @@
             font-weight: 600;
             cursor: pointer;
             font-size: 0.8rem;
-        }
-        
-        .refresh-btn:hover {
-            background: #d4a500;
         }
         
         .stats-row {
@@ -223,7 +207,7 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.05);
         }
         
-        /* report card - matching original print layout */
+        /* Report Card - matching original design */
         .report-card {
             background: white;
             border-radius: 20px;
@@ -356,7 +340,7 @@
             border-top: 1px solid #e6b80040;
         }
         
-        /* ========== PRINT STYLES - MATCHING ORIGINAL CODE ========== */
+        /* ========== EXACT PRINT STYLES FROM ORIGINAL CODE ========== */
         @media print {
             body {
                 background: white;
@@ -397,6 +381,11 @@
             }
             thead {
                 display: table-header-group;
+            }
+            
+            /* Additional print-specific from original */
+            .report-header-print {
+                display: none;
             }
         }
     </style>
@@ -441,8 +430,8 @@
                 <option value="">-- Select date & airline first --</option>
             </select>
         </div>
-        <button class="refresh-btn" id="applyFilterBtn">📋 Load Report</button>
-        <button class="refresh-btn" id="printVisibleBtn" style="background:#4a6fa5; color:white;">🖨️ Print</button>
+        <button class="refresh-btn" id="loadFlightBtn">📋 Load Report</button>
+        <button class="refresh-btn" id="printReportBtn" style="background:#4a6fa5; color:white;">🖨️ PRINT</button>
     </div>
     
     <div class="stats-row" id="statsRow" style="display: none;">
@@ -451,7 +440,7 @@
     </div>
     
     <div id="reportsContainer">
-        <div class="empty-message">Select date and airline, then choose a flight from the dropdown to view report.</div>
+        <div class="empty-message">Select date and airline, then choose a flight from the dropdown and click "Load Report".</div>
     </div>
     <div class="footer-note">
         ⚠️ READ-ONLY • Only flights closed from main page are shown • No edits/deletions
@@ -459,10 +448,18 @@
 </div>
 
 <script>
-    // ========== ADMIN PREFIX MANAGEMENT (LocalStorage) ==========
-    const STORAGE_KEY = 'admin_airline_prefixes_v3';
+    // ========== ADMIN PREFIX MANAGEMENT ==========
+    const STORAGE_KEY = 'admin_airline_prefixes_final';
     const DEFAULT_PREFIXES = ['EK', 'FZ', 'BA', 'QR', 'SQ'];
     let airlinePrefixes = [...DEFAULT_PREFIXES];
+    
+    // Company info for print (matches original)
+    const companyInfo = { 
+        name: 'MACL', 
+        address: '123 Aviation Road', 
+        phone: '+123 456 7890',
+        logo: 'macl.png'
+    };
     
     function loadPrefixes() {
         try {
@@ -483,7 +480,6 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(airlinePrefixes));
         renderPrefixTags();
         updateAirlineDropdown();
-        // also refresh flight dropdown if needed
         populateFlightDropdown();
     }
     
@@ -572,11 +568,10 @@
     }
     
     let availableDates = [];
-    let allClosedFlights = []; // array of flight metadata objects
-    let currentDisplayedFlight = null;
-    let isLoading = false;
+    let allClosedFlights = [];
+    let currentFlightData = null;
+    let currentPassengers = [];
     
-    // scan only closed flights from FlightReports collection
     async function scanClosedFlightsOnly() {
         const dateSelect = document.getElementById('dateSelectFilter');
         dateSelect.innerHTML = '<option value="">⏳ Scanning closed flights...</option>';
@@ -609,9 +604,6 @@
                             flightNo, date: normalizedDate, dateRaw, shift, airline, std, firstPax, lastPax,
                             totalPax, database: dbInfo.name, dbRef: dbInfo.ref, isClosed: true
                         });
-                    } else {
-                        const existing = closedFlightsMap.get(key);
-                        existing.totalPax = Math.max(existing.totalPax, totalPax);
                     }
                 });
             } catch(err) { console.warn(err); }
@@ -628,7 +620,6 @@
         
         populateDateDropdown();
         dateSelect.disabled = false;
-        return { dates: availableDates, flights: allClosedFlights };
     }
     
     function populateDateDropdown() {
@@ -642,7 +633,6 @@
         dateSelect.innerHTML = options;
     }
     
-    // Populate flight dropdown based on selected date and airline
     function populateFlightDropdown() {
         const selectedDate = document.getElementById('dateSelectFilter').value;
         const airlineFilter = document.getElementById('airlineSelectFilter').value;
@@ -657,7 +647,6 @@
             filteredFlights = filteredFlights.filter(f => matchesAirline(f.flightNo, airlineFilter));
         }
         
-        // Sort flights by flight number
         filteredFlights.sort((a, b) => a.flightNo.localeCompare(b.flightNo));
         
         if (filteredFlights.length === 0) {
@@ -672,48 +661,6 @@
         });
         flightSelect.innerHTML = options;
         flightSelect.disabled = false;
-    }
-    
-    async function loadSelectedFlight() {
-        const flightSelect = document.getElementById('flightNoSelectFilter');
-        const selectedValue = flightSelect.value;
-        
-        if (!selectedValue) {
-            document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Please select a flight from the dropdown.</div>';
-            document.getElementById('statsRow').style.display = 'none';
-            currentDisplayedFlight = null;
-            return;
-        }
-        
-        const [flightNo, flightDate, shift, dbName] = selectedValue.split('|');
-        
-        // Find the flight metadata
-        const flightMeta = allClosedFlights.find(f => 
-            f.flightNo === flightNo && f.date === flightDate && f.shift === shift && f.database === dbName
-        );
-        
-        if (!flightMeta) {
-            document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Flight data not found.</div>';
-            return;
-        }
-        
-        currentDisplayedFlight = flightMeta;
-        
-        // Show loading
-        const container = document.getElementById('reportsContainer');
-        container.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading flight report...</p></div>';
-        
-        // Fetch passengers
-        const passengers = await fetchPassengersForFlight(flightMeta);
-        
-        // Update stats
-        document.getElementById('statsRow').style.display = 'flex';
-        document.getElementById('totalFlightsStat').innerHTML = `Selected: ${flightMeta.flightNo}`;
-        const totalPax = flightMeta.totalPax || 0;
-        document.getElementById('totalPaxStat').innerHTML = `Total passengers: ${totalPax}`;
-        
-        // Build report display
-        displayFlightReport(flightMeta, passengers);
     }
     
     async function fetchPassengersForFlight(flightMeta) {
@@ -748,7 +695,7 @@
                     });
                 });
                 if (passengers.length > 0) break;
-            } catch(e) { console.warn(e); }
+            } catch(e) {}
         }
         const regular = passengers.filter(p => !p.isDelayCharge).sort((a,b)=> (a.entryTime||'').localeCompare(b.entryTime||''));
         const delay = passengers.filter(p => p.isDelayCharge).sort((a,b)=> (a.entryTime||'').localeCompare(b.entryTime||''));
@@ -775,51 +722,129 @@
         });
     }
     
-    function displayFlightReport(flight, passengers) {
-        const container = document.getElementById('reportsContainer');
-        const prefix = getFlightPrefix(flight.flightNo);
-        const airlineDisplay = flight.airline || (prefix ? `${prefix} Airlines` : '—');
+    async function loadSelectedFlight() {
+        const flightSelect = document.getElementById('flightNoSelectFilter');
+        const selectedValue = flightSelect.value;
         
-        let rowsHtml = '';
+        if (!selectedValue) {
+            document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Please select a flight from the dropdown.</div>';
+            document.getElementById('statsRow').style.display = 'none';
+            return;
+        }
+        
+        const [flightNo, flightDate, shift, dbName] = selectedValue.split('|');
+        
+        const flightMeta = allClosedFlights.find(f => 
+            f.flightNo === flightNo && f.date === flightDate && f.shift === shift && f.database === dbName
+        );
+        
+        if (!flightMeta) return;
+        
+        currentFlightData = flightMeta;
+        
+        const container = document.getElementById('reportsContainer');
+        container.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading flight report...</p></div>';
+        
+        currentPassengers = await fetchPassengersForFlight(flightMeta);
+        
+        document.getElementById('statsRow').style.display = 'flex';
+        document.getElementById('totalFlightsStat').innerHTML = `Flight: ${flightMeta.flightNo}`;
+        const totalRegularPax = currentPassengers.filter(p => !p.isDelayCharge).reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        document.getElementById('totalPaxStat').innerHTML = `Total passengers: ${totalRegularPax}`;
+        
+        displayFlightReport();
+    }
+    
+    function displayFlightReport() {
+        if (!currentFlightData) return;
+        
+        const flight = currentFlightData;
+        const passengers = currentPassengers;
+        const isSQ = flight.flightNo.toUpperCase().startsWith('SQ');
+        const isFZ = flight.flightNo.toUpperCase().startsWith('FZ');
+        
+        const dateStr = flight.date;
+        const dateParts = dateStr.split('-');
+        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+        
+        const container = document.getElementById('reportsContainer');
+        
+        let tableHeaders = '';
+        if (isFZ) {
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>Name</th>
+                    <th>PNR</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
+        } else {
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
+        }
+        
+        let tableRows = '';
         passengers.forEach((p, idx) => {
             const serial = String(idx+1).padStart(3,'0');
             const rowClass = p.isDelayCharge ? 'delay-row' : '';
-            let nameDisplay = escapeHtml(p.pName) || '-';
-            let extraBadge = '';
-            if (flight.flightNo.toUpperCase().startsWith('FZ') && p.hiddenCode && !p.isDelayCharge) {
-                const pnr = extractPNR(p.hiddenCode);
-                if (pnr) extraBadge = `<span style="background:#4a6fa5; color:white; font-size:9px; padding:2px 8px; border-radius:12px; margin-left:6px;">PNR:${pnr}</span>`;
-            }
-            if (p.isDelayCharge) extraBadge = '<span class="delay-badge">DELAY CHARGE</span>';
             
-            rowsHtml += `<tr class="${rowClass}">
-                <td>${serial}</td>
-                <td>${nameDisplay} ${extraBadge}</td>
-                <td>${escapeHtml(p.seatNo) || '-'}</td>
-                <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td>
-                <td>${escapeHtml(p.FQTV) || '-'}</td>
-                <td>${escapeHtml(p.serialNo) || '—'}</td>
-                <td>${p.entryTime || '-'}</td>
-                <td>${escapeHtml(p.remarks) || '-'}</td>
-            </tr>`;
+            if (isFZ) {
+                const pnr = extractPNR(p.hiddenCode);
+                tableRows += `<tr class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td>${escapeHtml(p.pName) || '-'} ${p.isDelayCharge ? '<span class="delay-badge">DELAY CHARGE</span>' : ''}</td>
+                    <td>${pnr || '-'}</td>
+                    <td>${escapeHtml(p.seatNo) || '-'}</td>
+                    <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td>
+                    <td>${escapeHtml(p.FQTV) || '-'}</td>
+                    <td>${escapeHtml(p.serialNo) || '—'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${escapeHtml(p.remarks) || '-'}</td>
+                </tr>`;
+            } else {
+                tableRows += `<tr class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td>${escapeHtml(p.pName) || '-'} ${p.isDelayCharge ? '<span class="delay-badge">DELAY CHARGE</span>' : ''}</td>
+                    <td>${escapeHtml(p.seatNo) || '-'}</td>
+                    <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td>
+                    <td>${escapeHtml(p.FQTV) || '-'}</td>
+                    <td>${escapeHtml(p.serialNo) || '—'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${escapeHtml(p.remarks) || '-'}</td>
+                </tr>`;
+            }
         });
         
-        const tableHeader = flight.flightNo.startsWith('FZ') ? 
-            '<th>#</th><th>Name / PNR</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th>' :
-            `<th>#</th><th>${flight.flightNo.startsWith('SQ') ? 'Voucher No.' : 'Name'}</th><th>Seat</th><th>Pax</th><th>FQTV</th><th>Serial No</th><th>Time</th><th>Remarks</th>`;
+        const totalPaxSum = passengers.filter(p => !p.isDelayCharge).reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
         
         container.innerHTML = `
-            <div class="report-card">
+            <div class="report-card" id="printReportCard">
                 <div class="flight-header">
                     <div>
-                        <h3 style="color:#5a4a1a;">✈ ${flight.flightNo} <span class="airline-tag">${airlineDisplay}</span> <span class="status-closed-badge">🔒 CLOSED</span></h3>
+                        <h3 style="color:#5a4a1a;">✈ ${flight.flightNo} <span class="airline-tag">${flight.airline || getFlightPrefix(flight.flightNo)}</span> <span class="status-closed-badge">🔒 CLOSED</span></h3>
                         <div class="flight-meta">
-                            <span>📅 ${flight.date}</span>
+                            <span>📅 ${formattedDate}</span>
                             <span>⏱️ Shift: ${flight.shift}</span>
                             <span>⏰ STD: ${flight.std || '—'}</span>
                             <span>🕒 First Pax: ${flight.firstPax || '—'}</span>
                             <span>🕒 Last Pax: ${flight.lastPax || '—'}</span>
-                            <span>👥 Total Pax: ${flight.totalPax || 0}</span>
+                            <span>👥 Total Pax: ${totalPaxSum}</span>
                             <span>💾 DB: ${flight.database}</span>
                         </div>
                     </div>
@@ -827,25 +852,359 @@
                 </div>
                 <div class="table-wrapper">
                     <table>
-                        <thead><tr>${tableHeader}</tr></thead>
-                        <tbody>${rowsHtml || '<tr><td colspan="8" class="empty-message">No passengers found for this flight</td></tr>'}</tbody>
+                        <thead>${tableHeaders}</thead>
+                        <tbody>${tableRows || '<tr><td colspan="9" class="empty-message">No passengers found</td></tr>'}</tbody>
                     </table>
                 </div>
             </div>
         `;
     }
     
-    function printReports() {
-        window.print();
+    // ========== ORIGINAL PRINT FUNCTION (preserved exactly) ==========
+    function printReport() {
+        if (!currentFlightData) {
+            alert('Please load a flight report first.');
+            return;
+        }
+        
+        const flight = currentFlightData;
+        const passengers = currentPassengers;
+        const isSQ = flight.flightNo.toUpperCase().startsWith('SQ');
+        const isFZ = flight.flightNo.toUpperCase().startsWith('FZ');
+        
+        const dateStr = flight.date;
+        const dateParts = dateStr.split('-');
+        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+        
+        const airline = flight.airline || getFlightPrefix(flight.flightNo) || '—';
+        const flightNo = flight.flightNo;
+        const std = flight.std || '—';
+        const firstPax = flight.firstPax || '—';
+        const lastPax = flight.lastPax || '—';
+        const shift = flight.shift || '—';
+        
+        const regularPassengers = passengers.filter(p => !p.isDelayCharge);
+        const delayPassengers = passengers.filter(p => p.isDelayCharge);
+        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const sortedDelay = [...delayPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+        const sortedPassengers = [...sortedRegular, ...sortedDelay];
+        const totalPaxSum = regularPassengers.reduce((sum, p) => sum + (parseInt(p.pax) || 1), 0);
+        
+        const printWindow = window.open('', '_blank');
+        
+        let tableHeaders = '';
+        if (isFZ) {
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>Name</th>
+                    <th>PNR</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
+        } else {
+            tableHeaders = `
+                <tr>
+                    <th>No.</th>
+                    <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
+                    <th>Seat</th>
+                    <th>Pax</th>
+                    <th>FQTV</th>
+                    <th>Serial No</th>
+                    <th>Time</th>
+                    <th>Remarks</th>
+                </tr>
+            `;
+        }
+        
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Flight Report - ${flightNo} - ${formattedDate}</title>
+                <style>
+                    body {
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                        margin: 0.5in;
+                        color: #333;
+                    }
+                    .header {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-bottom: 30px;
+                        padding-bottom: 20px;
+                        border-bottom: 2px solid #e6b800;
+                    }
+                    .left-section {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 15px;
+                    }
+                    .logo-section {
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    .logo {
+                        width: 100px;
+                        height: auto;
+                        margin-bottom: 10px;
+                    }
+                    .logo img {
+                        max-width: 100%;
+                        max-height: 80px;
+                    }
+                    .company-address {
+                        font-size: 11px;
+                        color: #666;
+                        line-height: 1.4;
+                    }
+                    .flight-details {
+                        margin-top: 5px;
+                    }
+                    .flight-detail-item {
+                        font-size: 13px;
+                        margin-bottom: 3px;
+                    }
+                    .flight-detail-label {
+                        font-weight: 600;
+                        color: #8b6913;
+                        display: inline-block;
+                        width: 60px;
+                    }
+                    .right-section {
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: flex-start;
+                        padding-top: 95px;
+                    }
+                    .info-item {
+                        display: flex;
+                        gap: 15px;
+                        margin-bottom: 8px;
+                        justify-content: flex-end;
+                    }
+                    .label {
+                        font-weight: 600;
+                        color: #8b6913;
+                        min-width: 80px;
+                        text-align: right;
+                    }
+                    .value {
+                        color: #333;
+                        min-width: 60px;
+                        text-align: left;
+                    }
+                    .total-pax {
+                        margin: 15px 0;
+                        text-align: right;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+                    .total-pax span {
+                        background: #e6b800;
+                        color: white;
+                        padding: 5px 15px;
+                        border-radius: 20px;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 20px;
+                        font-size: 12px;
+                    }
+                    th {
+                        background: #e6b800;
+                        color: white;
+                        padding: 10px;
+                        text-align: left;
+                        font-size: 12px;
+                    }
+                    td {
+                        padding: 8px 10px;
+                        border-bottom: 1px solid #ddd;
+                    }
+                    tr:nth-child(even) {
+                        background: #f9f9f9;
+                    }
+                    .delay-charge-row {
+                        background-color: rgba(220, 53, 69, 0.05);
+                        font-style: italic;
+                    }
+                    .signature-section {
+                        margin-top: 50px;
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 0 20px;
+                    }
+                    .signature-box {
+                        text-align: center;
+                        width: 200px;
+                    }
+                    .signature-line {
+                        margin-top: 40px;
+                        border-bottom: 1px solid #333;
+                        width: 100%;
+                    }
+                    .signature-label {
+                        font-size: 12px;
+                        color: #8b6913;
+                        font-weight: 600;
+                        margin-top: 5px;
+                    }
+                    .date-info {
+                        margin-top: 20px;
+                        text-align: right;
+                        font-size: 11px;
+                        color: #666;
+                    }
+                    .footer {
+                        margin-top: 30px;
+                        text-align: center;
+                        font-size: 11px;
+                        color: #666;
+                        border-top: 1px solid #ddd;
+                        padding-top: 20px;
+                    }
+                    @media print {
+                        body { margin: 0.25in; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="left-section">
+                        <div class="logo-section">
+                            <div class="logo">
+                                <img src="macl.png" alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
+                            </div>
+                            <div class="company-address">
+                                <strong>${companyInfo.name}</strong><br>
+                                ${companyInfo.address}<br>
+                                ${companyInfo.phone}
+                            </div>
+                        </div>
+                        <div class="flight-details">
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Airline:</span> ${airline}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Flight No:</span> ${flightNo}
+                            </div>
+                            <div class="flight-detail-item">
+                                <span class="flight-detail-label">Date:</span> ${formattedDate}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="right-section">
+                        <div class="info-item">
+                            <span class="label">STD:</span>
+                            <span class="value">${std}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">First Pax:</span>
+                            <span class="value">${firstPax}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Last Pax:</span>
+                            <span class="value">${lastPax}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Shift:</span>
+                            <span class="value">${shift}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="total-pax">
+                    <span>TOTAL PAX: ${totalPaxSum}</span>
+                </div>
+                
+                <table>
+                    <thead>
+                        ${tableHeaders}
+                    </thead>
+                    <tbody>
+        `);
+        
+        sortedPassengers.forEach((p, idx) => {
+            const serial = String(idx+1).padStart(3,'0');
+            const rowClass = p.isDelayCharge ? 'delay-charge-row' : '';
+            
+            if (isFZ) {
+                const pnr = extractPNR(p.hiddenCode);
+                printWindow.document.write(`
+                    <tr class="${rowClass}">
+                        <td>${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'}${p.isDelayCharge ? ' (DELAY CHARGE)' : ''}</td>
+                        <td>${pnr || '-'}</td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td>${escapeHtml(p.serialNo) || '-'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                     </tr>
+                `);
+            } else {
+                printWindow.document.write(`
+                    <tr class="${rowClass}">
+                        <td>${serial}</td>
+                        <td>${escapeHtml(p.pName) || '-'}${p.isDelayCharge ? ' (DELAY CHARGE)' : ''}</td>
+                        <td>${escapeHtml(p.seatNo) || '-'}</td>
+                        <td style="text-align:center;">${p.isDelayCharge ? '0' : (p.pax || '0')}</td>
+                        <td>${escapeHtml(p.FQTV) || '-'}</td>
+                        <td>${escapeHtml(p.serialNo) || '-'}</td>
+                        <td>${p.entryTime || '-'}</td>
+                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                     </tr>
+                `);
+            }
+        });
+        
+        printWindow.document.write(`
+                    </tbody>
+                </table>
+                
+                <div class="signature-section">
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Prepared by:</div>
+                    </div>
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Checked by:</div>
+                    </div>
+                </div>
+                
+                <div class="date-info">
+                    Date: ____________________
+                </div>
+                
+                <div class="footer">
+                    <p>This is a computer generated report. Valid without signature.</p>
+                    <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
+                </div>
+                
+                <script>
+                    window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
+                <\/script>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
     }
     
-    // Event handlers
     function onFilterChange() {
         populateFlightDropdown();
-        // Clear current display
-        document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Select a flight from the dropdown to view report.</div>';
+        document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Select a flight from the dropdown and click "Load Report".</div>';
         document.getElementById('statsRow').style.display = 'none';
-        currentDisplayedFlight = null;
+        currentFlightData = null;
     }
     
     // ========== INIT ==========
@@ -853,24 +1212,10 @@
         loadPrefixes();
         await scanClosedFlightsOnly();
         
-        const dateSelect = document.getElementById('dateSelectFilter');
-        const airlineSelect = document.getElementById('airlineSelectFilter');
-        const flightSelect = document.getElementById('flightNoSelectFilter');
-        
-        dateSelect.addEventListener('change', onFilterChange);
-        airlineSelect.addEventListener('change', onFilterChange);
-        flightSelect.addEventListener('change', loadSelectedFlight);
-        
-        document.getElementById('applyFilterBtn').addEventListener('click', () => {
-            // Just refresh dropdown and load if flight selected
-            populateFlightDropdown();
-            if (flightSelect.value) {
-                loadSelectedFlight();
-            } else {
-                document.getElementById('reportsContainer').innerHTML = '<div class="empty-message">Please select a flight from the dropdown.</div>';
-            }
-        });
-        document.getElementById('printVisibleBtn').addEventListener('click', printReports);
+        document.getElementById('dateSelectFilter').addEventListener('change', onFilterChange);
+        document.getElementById('airlineSelectFilter').addEventListener('change', onFilterChange);
+        document.getElementById('loadFlightBtn').addEventListener('click', loadSelectedFlight);
+        document.getElementById('printReportBtn').addEventListener('click', printReport);
         document.getElementById('addPrefixBtn').addEventListener('click', () => {
             const input = document.getElementById('newPrefixInput');
             if (input.value) { addPrefix(input.value); input.value = ''; onFilterChange(); }
