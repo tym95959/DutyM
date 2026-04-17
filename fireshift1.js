@@ -361,4 +361,4 @@ console.log("  QR → cardentryqr");
 console.log("  SQ → dcleeli");
 console.log("  DE, OS, WK, NO → shift-592f5");
 console.log("  All others → cardentry-7bad1");
-console.log("==========================================");   --->  new code will work with this fireshift.js
+console.log("==========================================");  
