@@ -9,7 +9,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     
     <!-- Your config files -->
-    <script src="fireshift.js"></script>
+    <script src="fireshift1.js"></script>
     <script src="Co.js"></script>
     
     <style>
@@ -1127,7 +1127,7 @@
         }
     }
 
-    // ========== MULTI-DATABASE HELPER FUNCTIONS ==========
+    // ========== MULTI-DATABASE HELPER FUNCTIONS - UPDATED FOR DE/OS/WK/NO ==========
     
     function getFirestoreForFlight(flightNo) {
         if (!flightNo || typeof flightNo !== 'string') {
@@ -1139,14 +1139,31 @@
         
         switch(flightPrefix) {
             case 'BA':
+                console.log(`✈️ BA flight detected (${flightNo}) - using BA database`);
                 return window.baDb;
             case 'EK':
+                console.log(`✈️ EK flight detected (${flightNo}) - using EK database`);
                 return window.ekDb;
             case 'QR':
+                console.log(`✈️ QR flight detected (${flightNo}) - using QR database`);
                 return window.qrDb;
             case 'SQ':
+                console.log(`✈️ SQ flight detected (${flightNo}) - using SQ database`);
                 return window.sqDb;
+            case 'DE':
+                console.log(`✈️ DE (Condor) flight detected (${flightNo}) - using Shift database`);
+                return window.shiftDb;
+            case 'OS':
+                console.log(`✈️ OS (Austrian) flight detected (${flightNo}) - using Shift database`);
+                return window.shiftDb;
+            case 'WK':
+                console.log(`✈️ WK (Edelweiss) flight detected (${flightNo}) - using Shift database`);
+                return window.shiftDb;
+            case 'NO':
+                console.log(`✈️ NO (Norwegian) flight detected (${flightNo}) - using Shift database`);
+                return window.shiftDb;
             default:
+                console.log(`✈️ Other flight detected (${flightNo}) - using default database`);
                 return window.defaultCardDb;
         }
     }
@@ -1161,6 +1178,10 @@
             case 'EK': return "EK Database";
             case 'QR': return "QR Database";
             case 'SQ': return "SQ Database";
+            case 'DE': return "Shift Database (DE/OS/WK/NO)";
+            case 'OS': return "Shift Database (DE/OS/WK/NO)";
+            case 'WK': return "Shift Database (DE/OS/WK/NO)";
+            case 'NO': return "Shift Database (DE/OS/WK/NO)";
             default: return "Default Database";
         }
     }
@@ -1172,6 +1193,7 @@
         if (window.ekDb) databases.push({ name: 'EK Database', ref: window.ekDb, prefix: 'EK' });
         if (window.qrDb) databases.push({ name: 'QR Database', ref: window.qrDb, prefix: 'QR' });
         if (window.sqDb) databases.push({ name: 'SQ Database', ref: window.sqDb, prefix: 'SQ' });
+        if (window.shiftDb) databases.push({ name: 'Shift Database (DE/OS/WK/NO)', ref: window.shiftDb, prefix: 'DE,OS,WK,NO' });
         if (window.defaultCardDb) databases.push({ name: 'Default Database', ref: window.defaultCardDb, prefix: 'OTHER' });
         
         return databases;
@@ -1932,13 +1954,13 @@ function dismissDuplicateWarning() {
         document.getElementById('databaseBadge').textContent = flightInfo.database;
         document.getElementById('databaseBadge').style.display = 'inline-block';
         
-        document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax ? currentFlightData.firstPax.substring(0,5) : '-';
+        document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
         document.getElementById('stdInput').value = currentFlightData.std || '';
         document.getElementById('lastPaxInput').value = currentFlightData.lastPax || '';
         
         document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax || 0;
-        document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax ? currentFlightData.firstPax.substring(0,5) : '--:--';
-        document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax ? currentFlightData.lastPax.substring(0,5) : '--:--';
+        document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
+        document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
         
         const regularCount = countRegularPassengers(currentFlightData.passengers);
         document.getElementById('passengerCount').textContent = regularCount + ' PAX';
@@ -2095,7 +2117,7 @@ function dismissDuplicateWarning() {
                 `;
             } else {
                 tableHeader.innerHTML = `
-                    <tr>
+                    <table>
                         <th>No.</th>
                         <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
                         <th>Seat</th>
@@ -2108,14 +2130,16 @@ function dismissDuplicateWarning() {
                     </tr>
                 `;
             }
-            tbody.innerHTML = '<tr><td colspan="10" class="no-data">No passengers found for this flight</td></tr>';
-            document.getElementById('tableContainer').style.display = 'block';
+            tbody.innerHTML = '<tr><td colspan="10" class="no-data">No passengers found for this flight
+                                    <td colspan="10" class="no-data">No passengers found for this flight</td>
+                </tr>';
             return;
         }
         
+        // Update header based on flight type
         if (isFZ) {
             tableHeader.innerHTML = `
-                <table>
+                <tr>
                     <th>No.</th>
                     <th>Name</th>
                     <th>PNR</th>
@@ -2144,940 +2168,641 @@ function dismissDuplicateWarning() {
             `;
         }
         
-        const duplicates = detectDuplicates(passengers);
+        // Detect duplicates for highlighting
+        const duplicates = isFlightClosed ? [] : detectDuplicates(passengers);
         const duplicateIndices = new Set(duplicates.map(d => d.duplicateIndex));
         
-        // Separate regular passengers and delay charge passengers
-        const regularPassengers = passengers.filter(p => !p.isDelayCharge);
-        const delayChargePassengers = passengers.filter(p => p.isDelayCharge);
-        
-        // Sort regular passengers by entry time
-        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        
-        // Sort delay charge passengers by entry time (when they were created)
-        const sortedDelay = [...delayChargePassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        
-        // Combine: regular passengers first, then delay charges
-        const sorted = [...sortedRegular, ...sortedDelay];
+        // Sort passengers by entry time
+        const sortedPassengers = [...passengers].sort((a, b) => {
+            const timeA = a.entryTime || '23:59:59';
+            const timeB = b.entryTime || '23:59:59';
+            return timeA.localeCompare(timeB);
+        });
         
         let html = '';
+        let serial = 1;
         
-        sorted.forEach((p, idx) => {
-            const serial = String(idx+1).padStart(3,'000');
+        sortedPassengers.forEach((passenger, idx) => {
+            const actualIndex = passengers.findIndex(p => p.docId === passenger.docId);
+            const isDuplicate = duplicateIndices.has(actualIndex);
+            const isDelayCharge = passenger.isDelayCharge;
+            const rowClass = isDelayCharge ? 'delay-charge-row' : (isDuplicate ? 'duplicate-row' : '');
             
-            const originalIndex = passengers.findIndex(orig => orig.docId === p.docId);
-            const isDuplicate = duplicateIndices.has(originalIndex) && !p.isDelayCharge;
+            const rowId = `row-${passenger.docId}`;
+            const isEditing = editingRowId === passenger.docId;
             
-            let rowClass = isDuplicate ? 'duplicate-row' : '';
-            if (p.isDelayCharge) {
-                rowClass += ' delay-charge-row';
+            // Extract PNR for FZ flights
+            let pnrDisplay = '';
+            if (isFZ && passenger.hiddenCode) {
+                const pnr = extractPNRFromHiddenCode(passenger.hiddenCode);
+                if (pnr) {
+                    pnrDisplay = `<span class="pnr-badge">PNR: ${pnr}</span>`;
+                }
             }
             
-            const pnr = isFZ ? extractPNRFromHiddenCode(p.hiddenCode) : '';
+            // Format name display with guest badge
+            const nameDisplay = passenger.pName || '-';
+            const guestBadge = passenger.isGuest ? '<span class="duplicate-badge" style="background-color: #6b8e23;">GUEST</span>' : '';
             
-            if (editingRowId === p.docId && !isFlightClosed) {
-                // Edit mode - only if flight is not closed
-                const namePlaceholder = isSQ ? 'Voucher No.' : 'Name';
-                
+            if (isEditing) {
+                // Edit mode
                 if (isFZ) {
-                    html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
+                    html += `<tr class="${rowClass}" id="${rowId}">
                         <td class="serial-no">${serial}</td>
-                        <td>
-                            <input type="text" id="edit-pName-${p.docId}" 
-                                   value="${escapeHtml(p.pName||'')}" 
-                                   class="edit-mode-input" 
-                                   placeholder="${namePlaceholder}">
-                        </td>
-                        <td>
-                            <input type="text" id="edit-pnr-${p.docId}" 
-                                   value="${escapeHtml(pnr||'')}" 
-                                   class="edit-mode-input" 
-                                   placeholder="PNR"
-                                   readonly
-                                   style="background-color:#f5f5f5;">
-                        </td>
-                        <td>
-                            <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
-                            <div id="pax-warning-${p.docId}" class="pax-warning"></div>
-                        </td>
-                        <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||0}" class="edit-mode-input" style="width:60px;" min="0" onchange="onPaxChange('${p.docId}')"></td>
-                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
-                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
-                        <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
-                        <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
+                        <td><input type="text" id="edit-name-${passenger.docId}" value="${escapeHtml(passenger.pName || '')}" class="edit-mode-input" style="min-width:150px;"></td>
+                        <td><input type="text" id="edit-pnr-${passenger.docId}" value="${escapeHtml(extractPNRFromHiddenCode(passenger.hiddenCode) || '')}" class="edit-mode-input" style="width:80px;" placeholder="PNR"></td>
+                        <td><input type="text" id="edit-seat-${passenger.docId}" value="${escapeHtml(passenger.seatNo || '')}" class="edit-mode-input" style="width:70px;" onchange="onSeatChangeEdit('${passenger.docId}')"></td>
+                        <td><input type="number" id="edit-pax-${passenger.docId}" value="${passenger.pax || 1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChangeEdit('${passenger.docId}')"><div id="pax-warning-${passenger.docId}" class="pax-warning"></div></td>
+                        <td><input type="text" id="edit-fqtv-${passenger.docId}" value="${escapeHtml(passenger.FQTV || '')}" class="edit-mode-input" style="width:100px;"></td>
+                        <td><input type="text" id="edit-serial-${passenger.docId}" value="${escapeHtml(passenger.serialNo || '')}" class="edit-mode-input" style="width:80px;"></td>
+                        <td><input type="time" id="edit-time-${passenger.docId}" value="${passenger.entryTime || ''}" class="time-edit-input"></td>
+                        <td><input type="text" id="edit-remarks-${passenger.docId}" value="${escapeHtml(passenger.remarks || '')}" class="edit-mode-input" style="min-width:100px;"></td>
                         <td class="action-cell">
-                            <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
-                            <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                            <button class="table-action-btn save-table-btn" onclick="savePassengerEdit('${passenger.docId}')">💾 Save</button>
+                            <button class="table-action-btn cancel-table-btn" onclick="cancelPassengerEdit()">✖ Cancel</button>
                         </td>
-                    <tr>`;
+                    </tr>`;
                 } else {
-                    html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
+                    html += `<tr class="${rowClass}" id="${rowId}">
                         <td class="serial-no">${serial}</td>
-                        <td>
-                            <input type="text" id="edit-pName-${p.docId}" 
-                                   value="${escapeHtml(p.pName||'')}" 
-                                   class="edit-mode-input" 
-                                   placeholder="${namePlaceholder}">
-                        </td>
-                        <td>
-                            <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
-                            <div id="pax-warning-${p.docId}" class="pax-warning"></div>
-                        </td>
-                        <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||0}" class="edit-mode-input" style="width:60px;" min="0" onchange="onPaxChange('${p.docId}')"></td>
-                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
-                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
-                        <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
-                        <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
+                        <td><input type="text" id="edit-name-${passenger.docId}" value="${escapeHtml(passenger.pName || '')}" class="edit-mode-input" style="min-width:150px;">${guestBadge}</td>
+                        <td><input type="text" id="edit-seat-${passenger.docId}" value="${escapeHtml(passenger.seatNo || '')}" class="edit-mode-input" style="width:70px;" onchange="onSeatChangeEdit('${passenger.docId}')"></td>
+                        <td><input type="number" id="edit-pax-${passenger.docId}" value="${passenger.pax || 1}" class="edit-mode-input" style="width:60px;" min="1" onchange="onPaxChangeEdit('${passenger.docId}')"><div id="pax-warning-${passenger.docId}" class="pax-warning"></div></td>
+                        <td><input type="text" id="edit-fqtv-${passenger.docId}" value="${escapeHtml(passenger.FQTV || '')}" class="edit-mode-input" style="width:100px;"></td>
+                        <td><input type="text" id="edit-serial-${passenger.docId}" value="${escapeHtml(passenger.serialNo || '')}" class="edit-mode-input" style="width:80px;"></td>
+                        <td><input type="time" id="edit-time-${passenger.docId}" value="${passenger.entryTime || ''}" class="time-edit-input"></td>
+                        <td><input type="text" id="edit-remarks-${passenger.docId}" value="${escapeHtml(passenger.remarks || '')}" class="edit-mode-input" style="min-width:100px;"></td>
                         <td class="action-cell">
-                            <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
-                            <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                            <button class="table-action-btn save-table-btn" onclick="savePassengerEdit('${passenger.docId}')">💾 Save</button>
+                            <button class="table-action-btn cancel-table-btn" onclick="cancelPassengerEdit()">✖ Cancel</button>
                         </td>
                     </tr>`;
                 }
             } else {
-                const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate regular passenger with same Name and Seat Number">⚠️ DUPLICATE</span>' : '';
-                const delayBadge = p.isDelayCharge ? '<span class="delay-charge-badge" title="Delay Charge Entry">⏰ DELAY</span>' : '';
-                
+                // View mode
                 if (isFZ) {
-                    html += `<tr class="${rowClass}">
+                    html += `<tr class="${rowClass}" id="${rowId}">
                         <td class="serial-no">${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge} ${delayBadge}</td>
-                        <td>
-                            ${pnr ? `<span class="pnr-badge" title="PNR extracted from hiddenCode">${pnr}</span>` : '-'}
-                        </td>
-                        <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '0'}</td>
-                        <td>${escapeHtml(p.FQTV) || '-'}</td>
-                        <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
-                        <td>${p.entryTime ? p.entryTime.substring(0,5) : '-'}</td>
-                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                        <td>${escapeHtml(passenger.pName || '-')}${guestBadge}</td>
+                        <td>${pnrDisplay || '-'}</td>
+                        <td>${escapeHtml(passenger.seatNo || '-')}</td>
+                        <td>${passenger.pax || 1}${isDelayCharge ? ' <span class="delay-charge-badge">Delay</span>' : ''}</td>
+                        <td>${escapeHtml(passenger.FQTV || '-')}</td>
+                        <td>${escapeHtml(passenger.serialNo || '-')}</td>
+                        <td>${passenger.entryTime || '-'}</td>
+                        <td>${escapeHtml(passenger.remarks || '-')}</td>
                         <td class="action-cell">
-                            ${!isFlightClosed ? `
-                                <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                                <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
-                            ` : `
-                                <span style="color: #999; font-size: 10px;">Flight Closed</span>
-                            `}
+                            ${!isFlightClosed && !isDelayCharge ? `<button class="table-action-btn edit-table-btn" onclick="startEditPassenger('${passenger.docId}')">✏️ Edit</button>
+                            <button class="table-action-btn delete-table-btn" onclick="deletePassenger('${passenger.docId}')">🗑️ Del</button>` : ''}
+                            ${isDelayCharge ? '<span class="delay-charge-badge">Charged</span>' : ''}
                         </td>
                     </tr>`;
                 } else {
-                    html += `<tr class="${rowClass}">
+                    html += `<tr class="${rowClass}" id="${rowId}">
                         <td class="serial-no">${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge} ${delayBadge}</td>
-                        <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '0'}</td>
-                        <td>${escapeHtml(p.FQTV) || '-'}</td>
-                        <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
-                        <td>${p.entryTime ? p.entryTime.substring(0,5) : '-'}</td>
-                        <td>${escapeHtml(p.remarks) || '-'}</td>
+                        <td>${escapeHtml(passenger.pName || '-')}${guestBadge}</td>
+                        <td>${escapeHtml(passenger.seatNo || '-')}</td>
+                        <td>${passenger.pax || 1}${isDelayCharge ? ' <span class="delay-charge-badge">Delay</span>' : ''}</td>
+                        <td>${escapeHtml(passenger.FQTV || '-')}</td>
+                        <td>${escapeHtml(passenger.serialNo || '-')}</td>
+                        <td>${passenger.entryTime || '-'}</td>
+                        <td>${escapeHtml(passenger.remarks || '-')}</td>
                         <td class="action-cell">
-                            ${!isFlightClosed ? `
-                                <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                                <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
-                            ` : `
-                                <span style="color: #999; font-size: 10px;">Flight Closed</span>
-                            `}
+                            ${!isFlightClosed && !isDelayCharge ? `<button class="table-action-btn edit-table-btn" onclick="startEditPassenger('${passenger.docId}')">✏️ Edit</button>
+                            <button class="table-action-btn delete-table-btn" onclick="deletePassenger('${passenger.docId}')">🗑️ Del</button>` : ''}
+                            ${isDelayCharge ? '<span class="delay-charge-badge">Charged</span>' : ''}
                         </td>
                     </tr>`;
                 }
             }
+            serial++;
         });
         
         tbody.innerHTML = html;
-        document.getElementById('tableContainer').style.display = 'block';
-    }
-
-    function startEdit(docId) { 
-        if (currentFlightData?.isClosed) return;
-        editingRowId = docId; 
-        displayPassengerTable(currentFlightData.passengers); 
     }
     
-    function cancelEdit() { 
-        editingRowId = null; 
-        displayPassengerTable(currentFlightData.passengers); 
+    // Edit mode helper functions
+    function onSeatChangeEdit(docId) {
+        const seatInput = document.getElementById(`edit-seat-${docId}`);
+        const paxInput = document.getElementById(`edit-pax-${docId}`);
+        const warningDiv = document.getElementById(`pax-warning-${docId}`);
+        if (seatInput && paxInput) {
+            const calculated = calculatePaxFromSeat(seatInput.value);
+            paxInput.value = calculated;
+            if (warningDiv) {
+                warningDiv.textContent = '✓ auto-updated';
+                warningDiv.style.color = '#6b8e23';
+                setTimeout(() => { if(warningDiv) warningDiv.textContent = ''; }, 2000);
+            }
+        }
     }
-
-    async function savePassenger(docId) {
-        if (currentFlightData?.isClosed) return;
+    
+    function onPaxChangeEdit(docId) {
+        const seatInput = document.getElementById(`edit-seat-${docId}`);
+        const paxInput = document.getElementById(`edit-pax-${docId}`);
+        const warningDiv = document.getElementById(`pax-warning-${docId}`);
+        if (seatInput && paxInput) {
+            const calculated = calculatePaxFromSeat(seatInput.value);
+            const entered = parseInt(paxInput.value) || 0;
+            if (entered !== calculated) {
+                if (warningDiv) {
+                    warningDiv.innerHTML = `⚠ mismatch (seat->${calculated}) <button onclick="updatePaxFromSeatEdit('${docId}')" style="background:none; border:1px solid #c68b5e; border-radius:12px; padding:2px 6px; font-size:9px; cursor:pointer;">fix</button>`;
+                    warningDiv.style.color = '#c68b5e';
+                }
+            } else {
+                if (warningDiv) warningDiv.textContent = '';
+            }
+        }
+    }
+    
+    function updatePaxFromSeatEdit(docId) {
+        const seatInput = document.getElementById(`edit-seat-${docId}`);
+        const paxInput = document.getElementById(`edit-pax-${docId}`);
+        const warningDiv = document.getElementById(`pax-warning-${docId}`);
+        if (seatInput && paxInput) {
+            paxInput.value = calculatePaxFromSeat(seatInput.value);
+            if (warningDiv) warningDiv.textContent = '';
+        }
+    }
+    
+    function startEditPassenger(docId) {
+        if (currentFlightData?.isClosed) {
+            alert('Flight is closed. Cannot edit passengers.');
+            return;
+        }
+        editingRowId = docId;
+        displayPassengerTable(currentFlightData.passengers);
+    }
+    
+    function cancelPassengerEdit() {
+        editingRowId = null;
+        displayPassengerTable(currentFlightData.passengers);
+    }
+    
+    async function savePassengerEdit(docId) {
+        if (currentFlightData?.isClosed) {
+            alert('Flight is closed. Cannot save changes.');
+            return;
+        }
+        
+        const isFZ = isFZFlight();
+        
+        // Get updated values
+        const updatedName = document.getElementById(`edit-name-${docId}`)?.value || '';
+        const updatedSeat = document.getElementById(`edit-seat-${docId}`)?.value || '';
+        const updatedPax = parseInt(document.getElementById(`edit-pax-${docId}`)?.value) || 1;
+        const updatedFQTV = document.getElementById(`edit-fqtv-${docId}`)?.value || '';
+        const updatedSerial = document.getElementById(`edit-serial-${docId}`)?.value || '';
+        const updatedTime = document.getElementById(`edit-time-${docId}`)?.value || '';
+        const updatedRemarks = document.getElementById(`edit-remarks-${docId}`)?.value || '';
+        
+        let updatedPNR = '';
+        if (isFZ) {
+            updatedPNR = document.getElementById(`edit-pnr-${docId}`)?.value || '';
+        }
         
         try {
-            const pName = document.getElementById(`edit-pName-${docId}`).value;
-            const seatNo = document.getElementById(`edit-seatNo-${docId}`).value;
-            const pax = document.getElementById(`edit-pax-${docId}`).value;
-            const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
-            const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
-            const entryTime = document.getElementById(`edit-entryTime-${docId}`).value;
-            const remarks = document.getElementById(`edit-remarks-${docId}`).value;
-            
-            await currentDatabase.collection('KoveliPass').doc(docId).update({ 
-                pName, 
-                seatNo, 
-                pax: parseInt(pax), 
-                FQTV, 
-                serialNo, 
-                entryTime,
-                remarks, 
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
-            });
-            
+            // Find the passenger
             const passenger = currentFlightData.passengers.find(p => p.docId === docId);
-            if (passenger) { 
-                passenger.pName = pName; 
-                passenger.seatNo = seatNo; 
-                passenger.pax = pax; 
-                passenger.FQTV = FQTV; 
-                passenger.serialNo = serialNo; 
-                passenger.entryTime = entryTime;
-                passenger.remarks = remarks; 
+            if (!passenger) return;
+            
+            // Prepare update data
+            const updateData = {
+                pName: updatedName,
+                seatNo: updatedSeat,
+                pax: updatedPax,
+                FQTV: updatedFQTV,
+                serialNo: updatedSerial,
+                entryTime: updatedTime,
+                remarks: updatedRemarks,
+                updatedBy: getCurrentLoggedInUser(),
+                updatedAt: new Date().toISOString()
+            };
+            
+            // Handle PNR update for FZ flights
+            if (isFZ && updatedPNR) {
+                updateData.hiddenCode = `${updatedPNR}MLE`;
             }
             
-            // Update first/last pax times
-            const regular = currentFlightData.passengers.filter(p => !p.isDelayCharge);
-            const times = regular.map(p => p.entryTime).filter(t => t);
-            if (times.length > 0) {
-                currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
-                currentFlightData.lastPax = times.reduce((a, b) => a > b ? a : b);
-                document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax ? currentFlightData.firstPax.substring(0,5) : '-';
-                document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax ? currentFlightData.firstPax.substring(0,5) : '--:--';
-                document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax ? currentFlightData.lastPax.substring(0,5) : '--:--';
+            // Update in Firebase
+            await currentDatabase.collection('KoveliPass').doc(docId).update(updateData);
+            
+            // Update local data
+            passenger.pName = updatedName;
+            passenger.seatNo = updatedSeat;
+            passenger.pax = updatedPax;
+            passenger.FQTV = updatedFQTV;
+            passenger.serialNo = updatedSerial;
+            passenger.entryTime = updatedTime;
+            passenger.remarks = updatedRemarks;
+            if (isFZ && updatedPNR) {
+                passenger.hiddenCode = `${updatedPNR}MLE`;
             }
             
-            // Update total pax sum
-            currentFlightData.totalPax = calculateTotalPax(currentFlightData.passengers);
-            document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax;
+            // Recalculate totals
+            const totalPax = calculateTotalPax(currentFlightData.passengers);
+            currentFlightData.totalPax = totalPax;
+            document.getElementById('totalPaxStat').textContent = totalPax;
+            document.getElementById('passengerCount').textContent = countRegularPassengers(currentFlightData.passengers) + ' PAX';
             
-            // Update passenger count
-            const regularCount = countRegularPassengers(currentFlightData.passengers);
-            document.getElementById('passengerCount').textContent = regularCount + ' PAX';
-            
+            // Exit edit mode and refresh display
             editingRowId = null;
+            displayPassengerTable(currentFlightData.passengers);
             
-            // Check for duplicates
+            // Check for duplicates again
             const duplicates = detectDuplicates(currentFlightData.passengers);
-            if (duplicates.length > 0 && !currentFlightData.isClosed) {
+            if (duplicates.length > 0) {
                 showDuplicateWarning(duplicates);
             } else {
                 dismissDuplicateWarning();
             }
             
-            displayPassengerTable(currentFlightData.passengers);
-            
-        } catch (error) { 
+        } catch (error) {
             console.error('Error saving passenger:', error);
+            alert('Error saving changes: ' + error.message);
         }
-    }
-
-    function confirmDelete(docId, name) { 
-        if (currentFlightData?.isClosed) return;
-        if (confirm(`Delete ${name}?`)) deletePassenger(docId); 
     }
     
     async function deletePassenger(docId) {
-        if (currentFlightData?.isClosed) return;
+        if (currentFlightData?.isClosed) {
+            alert('Flight is closed. Cannot delete passengers.');
+            return;
+        }
+        
+        if (!confirm('Are you sure you want to delete this passenger?')) return;
         
         try {
             await currentDatabase.collection('KoveliPass').doc(docId).delete();
             
-            const idx = currentFlightData.passengers.findIndex(p => p.docId === docId);
-            if (idx !== -1) currentFlightData.passengers.splice(idx, 1);
+            // Remove from local data
+            const index = currentFlightData.passengers.findIndex(p => p.docId === docId);
+            if (index !== -1) {
+                currentFlightData.passengers.splice(index, 1);
+            }
             
-            // Update total pax sum
-            currentFlightData.totalPax = calculateTotalPax(currentFlightData.passengers);
-            document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax;
+            // Recalculate totals
+            const totalPax = calculateTotalPax(currentFlightData.passengers);
+            currentFlightData.totalPax = totalPax;
+            document.getElementById('totalPaxStat').textContent = totalPax;
+            document.getElementById('passengerCount').textContent = countRegularPassengers(currentFlightData.passengers) + ' PAX';
             
-            // Update passenger count
-            const regularCount = countRegularPassengers(currentFlightData.passengers);
-            document.getElementById('passengerCount').textContent = regularCount + ' PAX';
+            displayPassengerTable(currentFlightData.passengers);
             
-            // Check for duplicates
+            // Check for duplicates again
             const duplicates = detectDuplicates(currentFlightData.passengers);
-            if (duplicates.length > 0 && !currentFlightData.isClosed) {
+            if (duplicates.length > 0) {
                 showDuplicateWarning(duplicates);
             } else {
                 dismissDuplicateWarning();
             }
             
-            displayPassengerTable(currentFlightData.passengers);
-            
-        } catch (error) { 
+        } catch (error) {
             console.error('Error deleting passenger:', error);
+            alert('Error deleting passenger: ' + error.message);
         }
-    }
-
-    async function updateSTD() { 
-        if (currentFlightData?.isClosed) return;
-        const v = document.getElementById('stdInput').value; 
-        if(v && currentFlightData) { 
-            currentFlightData.std = v; 
-            validateCloseButton();
-            await saveFlightData();
-        } 
     }
     
-    async function updateLastPax() { 
-        if (currentFlightData?.isClosed) return;
-        const v = document.getElementById('lastPaxInput').value; 
-        if(v && currentFlightData) { 
-            currentFlightData.lastPax = v; 
-            document.getElementById('lastPaxStat').textContent = v; 
-            document.getElementById('lastPaxDisplay').textContent = v;
-            validateCloseButton();
-            await saveFlightData();
-        } 
-    }
-
-    async function saveFlightData() {
-        if (!currentFlightData) return;
+    // ========== FLIGHT OPERATIONS ==========
+    async function updateSTD() {
+        if (currentFlightData?.isClosed) {
+            alert('Flight is closed. Cannot update STD.');
+            return;
+        }
+        
+        const stdInput = document.getElementById('stdInput').value;
+        if (!stdInput) return;
         
         try {
-            const date = document.getElementById('dateDisplay').textContent;
-            const flightNo = document.getElementById('flightNoDisplay').textContent;
-            
-            let formattedDate = date;
-            if (date.includes('/')) {
-                const parts = date.split('/');
-                if (parts.length === 3) {
-                    if (parts[0].length === 4) {
-                        formattedDate = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
-                    } else {
-                        formattedDate = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-                    }
-                }
-            }
-            
-            const reportId = `${flightNo}_${formattedDate}`;
+            const formattedDate = formatDateForReport(currentFlightData.date);
+            const reportId = `${currentFlightData.flightNo}_${formattedDate}`;
             
             await currentDatabase.collection('FlightReports').doc(reportId).set({
-                flightNo: flightNo,
-                date: formattedDate,
-                shift: currentFlightData.shift,
-                airline: currentFlightData.airline,
-                std: currentFlightData.std || '',
-                firstPax: currentFlightData.firstPax || '',
+                std: stdInput,
                 lastPax: currentFlightData.lastPax || '',
-                totalPax: currentFlightData.totalPax || 0,
-                regularPassengerCount: countRegularPassengers(currentFlightData.passengers),
-                isClosed: currentFlightData.isClosed || false,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                isClosed: false,
+                updatedAt: new Date().toISOString(),
+                updatedBy: getCurrentLoggedInUser()
             }, { merge: true });
             
-        } catch (error) { 
-            console.error('Error saving flight data:', error);
+            currentFlightData.std = stdInput;
+            validateCloseButton();
+            
+        } catch (error) {
+            console.error('Error updating STD:', error);
+            alert('Error updating STD: ' + error.message);
         }
     }
-
+    
+    async function updateLastPax() {
+        if (currentFlightData?.isClosed) {
+            alert('Flight is closed. Cannot update last pax time.');
+            return;
+        }
+        
+        const lastPaxInput = document.getElementById('lastPaxInput').value;
+        if (!lastPaxInput) return;
+        
+        try {
+            const formattedDate = formatDateForReport(currentFlightData.date);
+            const reportId = `${currentFlightData.flightNo}_${formattedDate}`;
+            
+            await currentDatabase.collection('FlightReports').doc(reportId).set({
+                std: currentFlightData.std || '',
+                lastPax: lastPaxInput,
+                isClosed: false,
+                updatedAt: new Date().toISOString(),
+                updatedBy: getCurrentLoggedInUser()
+            }, { merge: true });
+            
+            currentFlightData.lastPax = lastPaxInput;
+            document.getElementById('lastPaxStat').textContent = lastPaxInput;
+            validateCloseButton();
+            
+        } catch (error) {
+            console.error('Error updating last pax:', error);
+            alert('Error updating last pax: ' + error.message);
+        }
+    }
+    
+    function formatDateForReport(dateStr) {
+        if (!dateStr) return '';
+        // Convert DD/MM/YYYY to YYYY-MM-DD
+        if (dateStr.includes('/')) {
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+                if (parts[0].length === 4) {
+                    return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                } else {
+                    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                }
+            }
+        }
+        return dateStr;
+    }
+    
     async function closeFlight() {
         if (!currentFlightData) return;
         
         const std = document.getElementById('stdInput').value;
         const lastPax = document.getElementById('lastPaxInput').value;
         
-        if (!std || !lastPax) return;
+        if (!std || !lastPax) {
+            alert('Please set both STD and Last Pax time before closing the flight.');
+            return;
+        }
         
-        currentFlightData.std = std;
-        currentFlightData.lastPax = lastPax;
-        currentFlightData.isClosed = true;
+        if (!confirm(`Are you sure you want to CLOSE flight ${currentFlightData.flightNo}? No further edits will be allowed.`)) {
+            return;
+        }
         
-        await saveFlightData();
-        
-        document.getElementById('flightStatus').textContent = 'CLOSED';
-        document.getElementById('flightStatus').className = 'flight-status status-closed';
-        document.getElementById('closeFlightBtn').style.display = 'none';
-        document.getElementById('reopenFlightBtn').style.display = 'block';
-        document.getElementById('printReportBtn').disabled = false;
-        document.getElementById('delayChargeBtn').disabled = true;
-        document.getElementById('stdInput').disabled = true;
-        document.getElementById('lastPaxInput').disabled = true;
-        document.getElementById('flightClosedMessage').style.display = 'block';
-        
-        // Clear duplicate warning when closing
-        dismissDuplicateWarning();
-        
-        displayPassengerTable(currentFlightData.passengers);
+        try {
+            const formattedDate = formatDateForReport(currentFlightData.date);
+            const reportId = `${currentFlightData.flightNo}_${formattedDate}`;
+            
+            await currentDatabase.collection('FlightReports').doc(reportId).set({
+                std: std,
+                lastPax: lastPax,
+                isClosed: true,
+                closedAt: new Date().toISOString(),
+                closedBy: getCurrentLoggedInUser()
+            }, { merge: true });
+            
+            currentFlightData.isClosed = true;
+            
+            // Update UI
+            document.getElementById('flightStatus').textContent = 'CLOSED';
+            document.getElementById('flightStatus').className = 'flight-status status-closed';
+            document.getElementById('closeFlightBtn').style.display = 'none';
+            document.getElementById('reopenFlightBtn').style.display = 'block';
+            document.getElementById('printReportBtn').disabled = false;
+            document.getElementById('delayChargeBtn').disabled = true;
+            document.getElementById('stdInput').disabled = true;
+            document.getElementById('lastPaxInput').disabled = true;
+            document.getElementById('flightClosedMessage').style.display = 'block';
+            
+            // Refresh display (remove edit/delete buttons)
+            displayPassengerTable(currentFlightData.passengers);
+            
+        } catch (error) {
+            console.error('Error closing flight:', error);
+            alert('Error closing flight: ' + error.message);
+        }
     }
-
+    
     async function reopenFlight() {
         if (!currentFlightData) return;
         
-        currentFlightData.isClosed = false;
-        await saveFlightData();
-        
-        document.getElementById('flightStatus').textContent = 'OPEN';
-        document.getElementById('flightStatus').className = 'flight-status status-open';
-        document.getElementById('closeFlightBtn').style.display = 'block';
-        document.getElementById('reopenFlightBtn').style.display = 'none';
-        document.getElementById('printReportBtn').disabled = true;
-        document.getElementById('delayChargeBtn').disabled = false;
-        document.getElementById('stdInput').disabled = false;
-        document.getElementById('lastPaxInput').disabled = false;
-        document.getElementById('flightClosedMessage').style.display = 'none';
-        validateCloseButton();
-        
-        // Re-check for duplicates when reopening
-        const duplicates = detectDuplicates(currentFlightData.passengers);
-        if (duplicates.length > 0) {
-            showDuplicateWarning(duplicates);
+        if (!confirm(`Are you sure you want to REOPEN flight ${currentFlightData.flightNo}? This will allow edits again.`)) {
+            return;
         }
         
-        displayPassengerTable(currentFlightData.passengers);
+        try {
+            const formattedDate = formatDateForReport(currentFlightData.date);
+            const reportId = `${currentFlightData.flightNo}_${formattedDate}`;
+            
+            await currentDatabase.collection('FlightReports').doc(reportId).set({
+                isClosed: false,
+                reopenedAt: new Date().toISOString(),
+                reopenedBy: getCurrentLoggedInUser()
+            }, { merge: true });
+            
+            currentFlightData.isClosed = false;
+            
+            // Update UI
+            document.getElementById('flightStatus').textContent = 'OPEN';
+            document.getElementById('flightStatus').className = 'flight-status status-open';
+            document.getElementById('closeFlightBtn').style.display = 'block';
+            document.getElementById('reopenFlightBtn').style.display = 'none';
+            document.getElementById('printReportBtn').disabled = true;
+            document.getElementById('delayChargeBtn').disabled = false;
+            document.getElementById('stdInput').disabled = false;
+            document.getElementById('lastPaxInput').disabled = false;
+            document.getElementById('flightClosedMessage').style.display = 'none';
+            validateCloseButton();
+            
+            // Refresh display (restore edit/delete buttons)
+            displayPassengerTable(currentFlightData.passengers);
+            
+        } catch (error) {
+            console.error('Error reopening flight:', error);
+            alert('Error reopening flight: ' + error.message);
+        }
     }
-
-    // ========== ENHANCED PRINT REPORT FUNCTION WITH USERNAME FROM SECOND CODE ==========
+    
     function printReport() {
-        if (!currentFlightData || !currentFlightData.isClosed) { 
-            return; 
-        }
-
-        const isSQ = isSQFlight();
-        const isFZ = isFZFlight();
-        const company = window.companyInfo || { 
-            name: 'MACL', 
-            address: '123 Aviation Road', 
-            phone: '+123 456 7890',
-            logo: 'macl.png'
-        };
+        if (!currentFlightData) return;
         
-        const dateStr = document.getElementById('dateDisplay').textContent; 
-        const dateParts = dateStr.split('-');
-        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
-
-        const airline = currentFlightData.airline || '—';
-        const flightNo = currentFlightData.flightNo || '—';
-        const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
-        const firstPax = currentFlightData.firstPax || '—';
-        const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
-        const shift = currentFlightData.shift || '—';
+        // Create a temporary print-friendly view
+        const originalTitle = document.title;
+        document.title = `Flight Report - ${currentFlightData.flightNo} ${currentFlightData.date}`;
         
-        const regularPassengers = currentFlightData.passengers.filter(p => !p.isDelayCharge);
-        const delayPassengers = currentFlightData.passengers.filter(p => p.isDelayCharge);
+        const printContent = document.createElement('div');
+        printContent.className = 'report-header-print';
+        printContent.innerHTML = `
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #8b6913;">Flight Report</h1>
+                <h2>${currentFlightData.airline || ''} ${currentFlightData.flightNo}</h2>
+                <p>Date: ${currentFlightData.date} | Shift: ${currentFlightData.shift}</p>
+                <p>STD: ${currentFlightData.std || 'Not set'} | Last Pax: ${currentFlightData.lastPax || 'Not set'}</p>
+                <p>Total Passengers: ${currentFlightData.totalPax || 0}</p>
+                <p>Printed: ${new Date().toLocaleString()} | By: ${getCurrentLoggedInUser()}</p>
+                <hr style="border: 1px solid #e6b800;">
+            </div>
+        `;
         
-        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        const sortedDelay = [...delayPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        
-        const sortedPassengers = [...sortedRegular, ...sortedDelay];
-        
-        // Calculate total pax (excluding pax=0)
-        const totalPaxSum = calculateTotalPax(currentFlightData.passengers);
-        
-        // Get current logged-in user using the same method as the second code (Koveli Lounge)
-        const currentUserDetails = getCurrentUserDetails();
-        const preparedByUser = currentUserDetails.name || currentUserDetails.username || 'System User';
-        
-        const printWindow = window.open('', '_blank');
-        
-        let tableHeaders = '';
-        if (isFZ) {
-            tableHeaders = `
-                <tr>
-                    <th>No.</th>
-                    <th>Name</th>
-                    <th>PNR</th>
-                    <th>Seat</th>
-                    <th>Pax</th>
-                    <th>FQTV</th>
-                    <th>Serial No</th>
-                    <th>Time</th>
-                    <th>Remarks</th>
-                </tr>
-            `;
-        } else {
-            tableHeaders = `
-                <tr>
-                    <th>No.</th>
-                    <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
-                    <th>Seat</th>
-                    <th>Pax</th>
-                    <th>FQTV</th>
-                    <th>Serial No</th>
-                    <th>Time</th>
-                    <th>Remarks</th>
-                </tr>
-            `;
+        // Get the table HTML
+        const tableElement = document.querySelector('.table-wrapper table');
+        if (tableElement) {
+            const tableClone = tableElement.cloneNode(true);
+            printContent.appendChild(tableClone);
         }
         
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Flight Report - ${flightNo} - ${formattedDate}</title>
-                <style>
-                    body {
-                        font-family: 'Segoe UI', Arial, sans-serif;
-                        margin: 0.5in;
-                        color: #333;
-                    }
-                    .header {
-                        display: flex;
-                        justify-content: space-between;
-                        margin-bottom: 30px;
-                        padding-bottom: 20px;
-                        border-bottom: 2px solid #e6b800;
-                    }
-                    .left-section {
-                        display: flex;
-                        flex-direction: column;
-                        gap: 15px;
-                    }
-                    .logo-section {
-                        display: flex;
-                        flex-direction: column;
-                    }
-                    .logo {
-                        width: 100px;
-                        height: auto;
-                        margin-bottom: 10px;
-                    }
-                    .logo img {
-                        max-width: 100%;
-                        max-height: 80px;
-                    }
-                    .company-address {
-                        font-size: 11px;
-                        color: #666;
-                        line-height: 1.4;
-                    }
-                    .flight-details {
-                        margin-top: 5px;
-                    }
-                    .flight-detail-item {
-                        font-size: 13px;
-                        margin-bottom: 3px;
-                    }
-                    .flight-detail-label {
-                        font-weight: 600;
-                        color: #8b6913;
-                        display: inline-block;
-                        width: 60px;
-                    }
-                    .right-section {
-                        display: flex;
-                        flex-direction: column;
-                        justify-content: flex-start;
-                        padding-top: 95px;
-                    }
-                    .info-item {
-                        display: flex;
-                        gap: 15px;
-                        margin-bottom: 8px;
-                        justify-content: flex-end;
-                    }
-                    .label {
-                        font-weight: 600;
-                        color: #8b6913;
-                        min-width: 80px;
-                        text-align: right;
-                    }
-                    .value {
-                        color: #333;
-                        min-width: 60px;
-                        text-align: left;
-                    }
-                    .total-pax {
-                        margin: 15px 0;
-                        text-align: right;
-                        font-size: 14px;
-                        font-weight: 600;
-                    }
-                    .total-pax span {
-                        background: #e6b800;
-                        color: white;
-                        padding: 5px 15px;
-                        border-radius: 20px;
-                    }
-                    table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-top: 20px;
-                        font-size: 12px;
-                    }
-                    th {
-                        background: #e6b800;
-                        color: white;
-                        padding: 10px;
-                        text-align: left;
-                        font-size: 12px;
-                    }
-                    td {
-                        padding: 8px 10px;
-                        border-bottom: 1px solid #ddd;
-                    }
-                    tr:nth-child(even) {
-                        background: #f9f9f9;
-                    }
-                    .delay-charge-row {
-                        background-color: rgba(220, 53, 69, 0.05);
-                        font-style: italic;
-                    }
-                    .signature-section {
-                        margin-top: 50px;
-                        display: flex;
-                        justify-content: space-between;
-                        padding: 0 20px;
-                    }
-                    .signature-box {
-                        text-align: center;
-                        width: 200px;
-                    }
-                    .signature-line {
-                        margin-top: 40px;
-                        border-bottom: 1px solid #333;
-                        width: 100%;
-                    }
-                    .signature-label {
-                        font-size: 12px;
-                        color: #8b6913;
-                        font-weight: 600;
-                        margin-top: 5px;
-                    }
-                    .date-info {
-                        margin-top: 20px;
-                        text-align: right;
-                        font-size: 11px;
-                        color: #666;
-                    }
-                    .footer {
-                        margin-top: 30px;
-                        text-align: center;
-                        font-size: 11px;
-                        color: #666;
-                        border-top: 1px solid #ddd;
-                        padding-top: 20px;
-                    }
-                    @media print {
-                        body { margin: 0.25in; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <div class="left-section">
-                        <div class="logo-section">
-                            <div class="logo">
-                                <img src="macl.png" alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
-                            </div>
-                            <div class="company-address">
-                                <strong>${company.name}</strong><br>
-                                ${company.address}<br>
-                                ${company.phone}
-                            </div>
-                        </div>
-                        <div class="flight-details">
-                            <div class="flight-detail-item">
-                                <span class="flight-detail-label">Airline:</span> ${airline}
-                            </div>
-                            <div class="flight-detail-item">
-                                <span class="flight-detail-label">Flight No:</span> ${flightNo}
-                            </div>
-                            <div class="flight-detail-item">
-                                <span class="flight-detail-label">Date:</span> ${formattedDate}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="right-section">
-                        <div class="info-item">
-                            <span class="label">STD:</span>
-                            <span class="value">${std}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">First Pax:</span>
-                            <span class="value">${firstPax}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Last Pax:</span>
-                            <span class="value">${lastPax}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Shift:</span>
-                            <span class="value">${shift}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="total-pax">
-                    <span>TOTAL PAX: ${totalPaxSum}</span>
-                </div>
-                
-                <table>
-                    <thead>
-                        ${tableHeaders}
-                    </thead>
-                    <tbody>
-        `);
-        
-        sortedPassengers.forEach((p, idx) => {
-            const serial = String(idx+1).padStart(3,'0');
-            const rowClass = p.isDelayCharge ? 'delay-charge-row' : '';
-            
-            if (isFZ) {
-                const pnr = extractPNRFromHiddenCode(p.hiddenCode);
-                printWindow.document.write(`
-                    <tr class="${rowClass}">
-                        <td>${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'}</td>
-                        <td>${pnr || '-'}</td>
-                        <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '0'}</td>
-                        <td>${escapeHtml(p.FQTV) || '-'}</td>
-                        <td>${escapeHtml(p.serialNo) || '-'}</td>
-                        <td>${p.entryTime || '-'}</td>
-                        <td>${escapeHtml(p.remarks) || '-'}</td>
-                    </tr>
-                `);
-            } else {
-                printWindow.document.write(`
-                    <tr class="${rowClass}">
-                        <td>${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'}</td>
-                        <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '0'}</td>
-                        <td>${escapeHtml(p.FQTV) || '-'}</td>
-                        <td>${escapeHtml(p.serialNo) || '-'}</td>
-                        <td>${p.entryTime || '-'}</td>
-                        <td>${escapeHtml(p.remarks) || '-'}</td>
-                    </tr>
-                `);
-            }
-        });
-        
-        printWindow.document.write(`
-                    </tbody>
-                </table>
-                
-                <div class="signature-section">
-                    <div class="signature-box">
-                        <div class="signature-line"></div>
-                        <div class="signature-label">Prepared by: ${escapeHtml(preparedByUser)}</div>
-                    </div>
-                    <div class="signature-box">
-                        <div class="signature-line"></div>
-                        <div class="signature-label">Checked by:</div>
-                    </div>
-                </div>
-                
-                <div class="date-info">
-                    Date: ____________________
-                </div>
-                
-                <div class="footer">
-                    <p>This is a computer generated report. Valid without signature.</p>
-                    <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
-                </div>
-                
-                <script>
-                    window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
-                <\/script>
-            </body>
-            </html>
-        `);
-        
-        printWindow.document.close();
+        // Add to body temporarily and print
+        document.body.appendChild(printContent);
+        window.print();
+        document.body.removeChild(printContent);
+        document.title = originalTitle;
     }
-
-    // ========== DELAY CHARGE FUNCTIONS ==========
     
-    function togglePassengerSelection(docId) {
-        const passenger = filteredDelayPassengers.find(p => p.docId === docId);
-        if (passenger) {
-            passenger.selected = !passenger.selected;
-        }
-    }
-
-    function updatePassengerPax(docId) {
-        const input = document.getElementById(`pax-${docId}`);
-        const passenger = filteredDelayPassengers.find(p => p.docId === docId);
-        
-        if (passenger && input) {
-            passenger.pax = parseInt(input.value) || 1;
-        }
-    }
-
-    function openDelayChargeModal() {
-        if (currentFlightData && currentFlightData.isClosed) {
-            alert('Cannot add delay charges to a closed flight');
+    // ========== DELAY CHARGE MODAL ==========
+    async function openDelayChargeModal() {
+        if (currentFlightData?.isClosed) {
+            alert('Flight is closed. Cannot process delay charges.');
             return;
         }
         
-        if (!currentFlightData) {
-            alert('Please select a flight first');
-            return;
-        }
-        
-        const modal = document.getElementById('delayChargeModal');
-        modal.style.display = 'block';
-        
-        populateDelayFlightSelect();
-        
-        document.getElementById('noFlightSelectedMessage').style.display = 'block';
-        document.getElementById('passengerListContainer').style.display = 'none';
-        document.getElementById('chargeSummary').style.display = 'none';
-        document.getElementById('delayFlightDate').value = document.getElementById('dateDisplay').textContent;
-        document.getElementById('globalLastPax').value = '';
-        
-        document.getElementById('startTimeFilter').value = '00:00';
-        document.getElementById('endTimeFilter').value = '23:59';
-    }
-    
-    function closeDelayChargeModal() {
-        const modal = document.getElementById('delayChargeModal');
-        modal.style.display = 'none';
-    }
-    
-    function populateDelayFlightSelect() {
+        // Populate flight selector
         const flightSelect = document.getElementById('delayFlightSelect');
-        const selectedDate = document.getElementById('dateSelect').value;
+        const options = ['<option value="">-- Select a flight --</option>'];
         
-        if (!selectedDate || !flightsByDate[selectedDate]) {
-            flightSelect.innerHTML = '<option value="">-- No flights available --</option>';
-            return;
-        }
-        
-        const flights = flightsByDate[selectedDate];
-        const flightsArray = Array.from(flights.values()).sort((a,b) => a.flightNo.localeCompare(b.flightNo));
-        
-        let options = '<option value="">-- Select a flight --</option>';
-        flightsArray.forEach(f => { 
-            const passengerCount = f.paxCount;
-            options += `<option value="${f.flightNo}|${f.shift}|${f.database}">${f.flightNo} [${f.database}] - ${passengerCount} pax</option>`; 
-        });
-        
-        flightSelect.innerHTML = options;
-        
-        // Auto-select current flight if it matches
-        if (currentFlightData) {
-            const currentFlightNo = document.getElementById('flightNoDisplay').textContent;
-            const currentShift = document.getElementById('shiftDisplay').textContent;
-            
-            for (let i = 0; i < flightSelect.options.length; i++) {
-                const opt = flightSelect.options[i];
-                const [fNo, shift] = opt.value.split('|');
-                if (fNo === currentFlightNo && shift === currentShift) {
-                    opt.selected = true;
-                    onDelayFlightSelected();
-                    break;
+        for (const date of allDates) {
+            const flights = flightsByDate[date];
+            if (flights) {
+                for (const [key, flight] of flights) {
+                    if (!flight.isClosed) {
+                        options.push(`<option value="${date}|${flight.flightNo}|${flight.shift}">${date} - ${flight.flightNo} (${flight.shift})</option>`);
+                    }
                 }
             }
         }
+        
+        flightSelect.innerHTML = options.join('');
+        document.getElementById('delayFlightDate').value = '';
+        document.getElementById('passengerListContainer').style.display = 'none';
+        document.getElementById('chargeSummary').style.display = 'none';
+        document.getElementById('noFlightSelectedMessage').style.display = 'none';
+        
+        // Reset filters
+        document.getElementById('startTimeFilter').value = '00:00';
+        document.getElementById('endTimeFilter').value = '23:59';
+        
+        // Show modal
+        document.getElementById('delayChargeModal').style.display = 'block';
     }
     
-    function onDelayFlightSelected() {
+    function closeDelayChargeModal() {
+        document.getElementById('delayChargeModal').style.display = 'none';
+        delaySelectedFlight = null;
+        delayPassengers = [];
+        filteredDelayPassengers = [];
+        delayCalculatedCharges = [];
+    }
+    
+    async function onDelayFlightSelected() {
         const flightSelect = document.getElementById('delayFlightSelect');
-        const selectedDate = document.getElementById('delayFlightDate').value;
         const selectedValue = flightSelect.value;
         
-        if (!selectedDate || !selectedValue) {
-            document.getElementById('noFlightSelectedMessage').style.display = 'block';
+        if (!selectedValue) {
+            document.getElementById('delayFlightDate').value = '';
             document.getElementById('passengerListContainer').style.display = 'none';
             document.getElementById('chargeSummary').style.display = 'none';
+            document.getElementById('noFlightSelectedMessage').style.display = 'block';
             return;
         }
         
-        const [flightNo, shift, dbName] = selectedValue.split('|');
+        document.getElementById('noFlightSelectedMessage').style.display = 'none';
+        
+        const [date, flightNo, shift] = selectedValue.split('|');
+        document.getElementById('delayFlightDate').value = date;
+        
+        // Get database for this flight
         const flightKey = `${flightNo}_${shift}`;
-        const flightData = flightsByDate[selectedDate]?.get(flightKey);
+        const flightInfo = flightsByDate[date]?.get(flightKey);
         
-        if (!flightData) {
+        if (!flightInfo) {
+            alert('Flight info not found');
             return;
         }
         
-        delaySelectedFlight = flightData;
-        
-        // Load passengers for this flight
-        loadDelayPassengers(flightNo, shift, selectedDate);
-    }
-    
-    async function loadDelayPassengers(flightNo, shift, date) {
-        const container = document.getElementById('passengerListContainer');
-        const noFlightMsg = document.getElementById('noFlightSelectedMessage');
-        const summaryDiv = document.getElementById('chargeSummary');
-        
-        if (!flightNo || !shift || !date) {
-            container.style.display = 'none';
-            noFlightMsg.style.display = 'block';
-            summaryDiv.style.display = 'none';
-            return;
-        }
-        
-        noFlightMsg.style.display = 'none';
-        container.style.display = 'block';
-        
-        // Get the database for this flight
-        const db = getFirestoreForFlight(flightNo);
+        const databases = getAllDatabases();
+        const dbInfo = databases.find(db => db.name === flightInfo.database);
+        const targetDb = dbInfo ? dbInfo.ref : getFirestoreForFlight(flightNo);
         
         try {
-            // Fetch passengers for this flight
-            const snapshot = await db.collection('KoveliPass')
+            // Fetch passengers
+            const snapshot = await targetDb.collection('KoveliPass')
                 .where('date', '==', date)
                 .where('flightNo', '==', flightNo)
                 .where('shift', '==', shift)
                 .get();
             
             delayPassengers = [];
-            
             snapshot.forEach(doc => {
                 const data = doc.data();
-                const paxValue = parseInt(data.pax) || 1;
-                const isDelayCharge = data.delayCharge || false;
-                
-                delayPassengers.push({
-                    docId: doc.id,
-                    pName: data.pName || data.name || '',
-                    entryTime: data.entryTime || data.time || '',
-                    lastPax: '',
-                    pax: isDelayCharge ? 0 : paxValue,
-                    isDelayCharge: isDelayCharge,
-                    selected: true,
-                    hoursUsed: 0,
-                    totalHours: 0
-                });
+                if (!data.delayCharge) { // Only regular passengers
+                    delayPassengers.push({
+                        docId: doc.id,
+                        pName: data.pName || '',
+                        seatNo: data.seatNo || '',
+                        pax: parseInt(data.pax) || 1,
+                        entryTime: data.entryTime || '',
+                        lastPaxUserEntered: data.lastPaxUserEntered || '',
+                        hoursUsed: 0
+                    });
+                }
             });
             
-            // Filter out delay charge passengers for the main list
-            filteredDelayPassengers = delayPassengers.filter(p => !p.isDelayCharge);
+            // Get flight's last pax time
+            const formattedDate = formatDateForReport(date);
+            const reportId = `${flightNo}_${formattedDate}`;
+            const reportDoc = await targetDb.collection('FlightReports').doc(reportId).get();
+            let flightLastPax = '';
+            if (reportDoc.exists) {
+                flightLastPax = reportDoc.data().lastPax || '';
+            }
             
-            // Display passengers
+            // Apply time filter
             filterPassengersByTime();
             
+            // Set global last pax if available
+            if (flightLastPax) {
+                document.getElementById('globalLastPax').value = flightLastPax;
+            }
+            
+            document.getElementById('passengerListContainer').style.display = 'block';
+            document.getElementById('chargeSummary').style.display = 'none';
+            
+            delaySelectedFlight = { date, flightNo, shift, targetDb, flightLastPax };
+            
         } catch (error) {
-            console.error('Error loading delay passengers:', error);
-            alert('Error loading passengers');
+            console.error('Error loading passengers for delay charge:', error);
+            alert('Error loading passengers: ' + error.message);
         }
-    }
-    
-    function updateAllLastPax() {
-        const globalLastPax = document.getElementById('globalLastPax').value;
-        if (!globalLastPax) return;
-        
-        filteredDelayPassengers.forEach(p => {
-            p.lastPax = globalLastPax;
-        });
-        
-        filterPassengersByTime();
-    }
-    
-    function selectAllPassengers(select) {
-        filteredDelayPassengers.forEach(p => {
-            p.selected = select;
-        });
-        
-        filterPassengersByTime();
     }
     
     function filterPassengersByTime() {
-        if (!delaySelectedFlight) return;
-        
         const startTime = document.getElementById('startTimeFilter').value;
         const endTime = document.getElementById('endTimeFilter').value;
         
-        if (!startTime || !endTime) {
-            filteredDelayPassengers = delayPassengers.filter(p => !p.isDelayCharge);
-        } else {
-            filteredDelayPassengers = delayPassengers.filter(p => {
-                return !p.isDelayCharge && p.entryTime >= startTime && p.entryTime <= endTime;
-            });
-        }
+        if (!startTime || !endTime) return;
         
-        displayDelayPassengers();
+        filteredDelayPassengers = delayPassengers.filter(p => {
+            const entryTime = p.entryTime;
+            if (!entryTime) return false;
+            return entryTime >= startTime && entryTime <= endTime;
+        });
+        
+        displayDelayPassengerList();
     }
     
     function resetTimeFilter() {
@@ -3086,292 +2811,189 @@ function dismissDuplicateWarning() {
         filterPassengersByTime();
     }
     
-    function displayDelayPassengers() {
+    function displayDelayPassengerList() {
         const container = document.getElementById('passengerList');
-        const noFlightMessage = document.getElementById('noFlightSelectedMessage');
-        const passengerListContainer = document.getElementById('passengerListContainer');
         
-        if (!filteredDelayPassengers || filteredDelayPassengers.length === 0) {
-            noFlightMessage.style.display = 'block';
-            passengerListContainer.style.display = 'none';
+        if (filteredDelayPassengers.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:20px;">No passengers found in selected time range</div>';
             return;
         }
         
-        noFlightMessage.style.display = 'none';
-        passengerListContainer.style.display = 'block';
-        
         let html = '';
-        
-        filteredDelayPassengers.forEach((p, index) => {
-            const hoursUsed = calculateHoursUsed(p.entryTime, p.lastPax);
-            const delayHours = calculateDelayHours(hoursUsed);
-            
-            // Format hoursUsed to 1 decimal place for display
-            const formattedHours = hoursUsed.toFixed(1);
-            
+        filteredDelayPassengers.forEach((passenger, index) => {
             html += `
-                <div class="passenger-item" id="passenger-${p.docId}">
-                    <div>
-                        <input type="checkbox" id="select-${p.docId}" ${p.selected ? 'checked' : ''} onchange="togglePassengerSelection('${p.docId}')">
-                    </div>
-                    <div>${escapeHtml(p.pName) || '-'}</div>
-                    <div>
-                        <input type="time" id="entryTime-${p.docId}" value="${p.entryTime || ''}" class="edit-input" readonly style="background-color:#f5f5f5;">
-                    </div>
-                    <div>
-                        <input type="time" id="lastPax-${p.docId}" value="${p.lastPax || ''}" class="edit-input" onchange="updatePassengerTime('${p.docId}')" placeholder="Enter Last Pax">
-                    </div>
-                    <div>
-                        <input type="number" id="pax-${p.docId}" value="${p.pax || 1}" class="edit-input" min="1" onchange="updatePassengerPax('${p.docId}')">
-                    </div>
-                    <div id="hours-${p.docId}">${formattedHours} hrs total (${delayHours} chargeable)</div>
+                <div class="passenger-item">
+                    <div><input type="checkbox" class="passenger-checkbox" data-index="${index}" checked></div>
+                    <div>${escapeHtml(passenger.pName)}</div>
+                    <div>${passenger.entryTime || '-'}</div>
+                    <div><input type="time" class="last-pax-input" data-index="${index}" value="${passenger.lastPaxUserEntered || ''}" style="padding:4px; border:2px solid #e6b800; border-radius:6px;"></div>
+                    <div>${passenger.pax}</div>
+                    <div class="hours-used-display" data-index="${index}">0</div>
                 </div>
             `;
         });
         
         container.innerHTML = html;
         
-        // Hide summary when list changes
-        document.getElementById('chargeSummary').style.display = 'none';
+        // Add event listeners to last pax inputs
+        document.querySelectorAll('.last-pax-input').forEach(input => {
+            input.addEventListener('change', function() {
+                const index = parseInt(this.dataset.index);
+                if (filteredDelayPassengers[index]) {
+                    filteredDelayPassengers[index].lastPaxUserEntered = this.value;
+                    calculateIndividualHours(index);
+                }
+            });
+        });
     }
     
-    function calculateHoursUsed(entryTime, lastPaxTime) {
-        if (!entryTime || !lastPaxTime) return 0;
-        
-        const [entryHour, entryMinute] = entryTime.split(':').map(Number);
-        const [lastHour, lastMinute] = lastPaxTime.split(':').map(Number);
-        
-        const entryTotalMinutes = entryHour * 60 + entryMinute;
-        const lastTotalMinutes = lastHour * 60 + lastMinute;
-        
-        let diffMinutes = lastTotalMinutes - entryTotalMinutes;
-        
-        // Handle overnight flights
-        if (diffMinutes < 0) {
-            diffMinutes += 24 * 60;
+    function calculateIndividualHours(index) {
+        const passenger = filteredDelayPassengers[index];
+        if (!passenger || !passenger.lastPaxUserEntered || !passenger.entryTime) {
+            document.querySelector(`.hours-used-display[data-index="${index}"]`).textContent = '0';
+            return 0;
         }
         
-        // Convert to decimal hours (not floored yet)
-        const totalHours = diffMinutes / 60;
+        // Parse times
+        const [entryHour, entryMinute] = passenger.entryTime.split(':').map(Number);
+        const [lastHour, lastMinute] = passenger.lastPaxUserEntered.split(':').map(Number);
         
-        return totalHours;
-    }
-
-    function calculateDelayHours(totalHours) {
-        // First 3 hours are free
-        // Charge for completed hours beyond 3
-        // If totalHours = 4.2, then 4.2 - 3 = 1.2, floor = 1 hour charge
-        // If totalHours = 5.9, then 5.9 - 3 = 2.9, floor = 2 hours charge
-        const hoursBeyondFree = totalHours - 3;
-        return hoursBeyondFree > 0 ? Math.floor(hoursBeyondFree) : 0;
-    }
-
-    function updatePassengerTime(docId) {
-        const input = document.getElementById(`lastPax-${docId}`);
-        const passenger = filteredDelayPassengers.find(p => p.docId === docId);
+        let hoursDiff = lastHour - entryHour;
+        let minutesDiff = lastMinute - entryMinute;
         
-        if (passenger && input) {
-            passenger.lastPax = input.value;
-            
-            const hoursUsed = calculateHoursUsed(passenger.entryTime, passenger.lastPax);
-            const delayHours = calculateDelayHours(hoursUsed);
-            const formattedHours = hoursUsed.toFixed(1);
-            const hoursDiv = document.getElementById(`hours-${docId}`);
-            if (hoursDiv) {
-                hoursDiv.textContent = `${formattedHours} hrs total (${delayHours} chargeable)`;
-            }
+        if (minutesDiff < 0) {
+            hoursDiff--;
+            minutesDiff += 60;
         }
+        
+        const totalHours = hoursDiff + (minutesDiff / 60);
+        const roundedHours = Math.ceil(totalHours * 4) / 4; // Round up to nearest 0.25
+        
+        passenger.hoursUsed = Math.max(0, roundedHours);
+        document.querySelector(`.hours-used-display[data-index="${index}"]`).textContent = passenger.hoursUsed;
+        
+        return passenger.hoursUsed;
     }
-
+    
+    function selectAllPassengers(select) {
+        document.querySelectorAll('.passenger-checkbox').forEach(cb => {
+            cb.checked = select;
+        });
+    }
+    
+    function updateAllLastPax() {
+        const globalLastPax = document.getElementById('globalLastPax').value;
+        if (!globalLastPax) return;
+        
+        document.querySelectorAll('.last-pax-input').forEach(input => {
+            input.value = globalLastPax;
+            const event = new Event('change');
+            input.dispatchEvent(event);
+        });
+    }
+    
     function calculateDelayCharges() {
-        const selectedPassengers = filteredDelayPassengers.filter(p => p.selected);
+        const selectedPassengers = [];
+        document.querySelectorAll('.passenger-checkbox:checked').forEach(cb => {
+            const index = parseInt(cb.dataset.index);
+            if (filteredDelayPassengers[index]) {
+                const passenger = filteredDelayPassengers[index];
+                calculateIndividualHours(index);
+                if (passenger.hoursUsed > 0) {
+                    selectedPassengers.push(passenger);
+                }
+            }
+        });
         
         if (selectedPassengers.length === 0) {
-            alert('Please select at least one passenger');
+            alert('No passengers selected with valid hours calculation');
             return;
         }
         
-        const missingLastPax = selectedPassengers.filter(p => !p.lastPax);
-        if (missingLastPax.length > 0) {
-            alert('Please enter Last Pax time for all selected passengers');
-            return;
-        }
-        
-        const delayGroups = {};
-        
+        // Group by hours used
+        const grouped = {};
         selectedPassengers.forEach(p => {
-            const totalHours = calculateHoursUsed(p.entryTime, p.lastPax);
-            const delayHours = calculateDelayHours(totalHours);
-            p.hoursUsed = delayHours; // Store the chargeable hours
-            p.totalHours = totalHours; // Store total hours for reference
-            
-            if (delayHours > 0) {
-                if (!delayGroups[delayHours]) {
-                    delayGroups[delayHours] = {
-                        hours: delayHours,
-                        passengers: [],
-                        totalPax: 0
-                    };
-                }
-                
-                delayGroups[delayHours].passengers.push(p);
-                delayGroups[delayHours].totalPax += p.pax || 1;
-            }
+            const hours = p.hoursUsed;
+            if (!grouped[hours]) grouped[hours] = [];
+            grouped[hours].push(p);
         });
         
-        delayCalculatedCharges = Object.values(delayGroups).sort((a, b) => a.hours - b.hours);
-        
-        displayChargeSummary();
-    }
-
-    function displayChargeSummary() {
-        const summaryDiv = document.getElementById('summaryGroups');
-        const totalSpan = document.getElementById('totalChargeAmount');
-        const summaryContainer = document.getElementById('chargeSummary');
-        
-        if (delayCalculatedCharges.length === 0) {
-            summaryDiv.innerHTML = '<div style="text-align:center; padding:20px;">No delay charges for selected passengers (all within 3 hours)</div>';
-            totalSpan.textContent = '0 hours';
-            summaryContainer.style.display = 'block';
-            return;
-        }
-        
-        let html = '';
+        // Display summary
+        let summaryHtml = '';
         let totalHours = 0;
         
-        delayCalculatedCharges.forEach(group => {
-            const groupTotalPax = group.totalPax;
-            const groupHours = group.hours;
-            totalHours += groupTotalPax * groupHours;
+        for (const [hours, passengers] of Object.entries(grouped)) {
+            const totalPaxInGroup = passengers.reduce((sum, p) => sum + p.pax, 0);
+            const groupHours = parseFloat(hours) * totalPaxInGroup;
+            totalHours += groupHours;
             
-            html += `
+            summaryHtml += `
                 <div class="summary-group">
-                    <div class="group-title">${groupHours} Hour${groupHours > 1 ? 's' : ''} Delay</div>
+                    <div class="group-title">${hours} hours (${passengers.length} passengers, ${totalPaxInGroup} pax total)</div>
+                    ${passengers.map(p => `<div class="summary-item"><span>${escapeHtml(p.pName)} (${p.pax} pax)</span><span>${hours} hrs × ${p.pax} = ${(parseFloat(hours) * p.pax).toFixed(2)} hrs</span></div>`).join('')}
+                </div>
             `;
-            
-            const lastPaxGroups = {};
-            group.passengers.forEach(p => {
-                const lastPax = p.lastPax || 'Unknown';
-                if (!lastPaxGroups[lastPax]) {
-                    lastPaxGroups[lastPax] = {
-                        lastPax: lastPax,
-                        totalPax: 0,
-                        passengerCount: 0,
-                        details: []
-                    };
-                }
-                lastPaxGroups[lastPax].totalPax += p.pax || 1;
-                lastPaxGroups[lastPax].passengerCount++;
-                lastPaxGroups[lastPax].details.push(`${p.pName} (${p.totalHours.toFixed(1)} hrs)`);
-            });
-            
-            Object.values(lastPaxGroups).forEach(lg => {
-                html += `
-                    <div class="summary-item">
-                        <span title="${lg.details.join('; ')}">Last Pax: ${lg.lastPax} - ${lg.passengerCount} passenger${lg.passengerCount > 1 ? 's' : ''}</span>
-                        <span>${lg.totalPax} pax × ${groupHours} hr${groupHours > 1 ? 's' : ''}</span>
-                    </div>
-                `;
-            });
-            
-            html += `</div>`;
-        });
+        }
         
-        summaryDiv.innerHTML = html;
-        totalSpan.textContent = `${totalHours} hours`;
-        summaryContainer.style.display = 'block';
+        document.getElementById('summaryGroups').innerHTML = summaryHtml;
+        document.getElementById('totalChargeAmount').textContent = totalHours.toFixed(2) + ' hours';
+        document.getElementById('chargeSummary').style.display = 'block';
+        
+        delayCalculatedCharges = selectedPassengers;
     }
-
+    
     async function submitDelayCharges() {
-        if (delayCalculatedCharges.length === 0) {
-            alert('Please calculate charges first');
+        if (!delaySelectedFlight || delayCalculatedCharges.length === 0) {
+            alert('No delay charges to submit');
             return;
         }
         
-        if (!delaySelectedFlight) {
-            return;
-        }
-        
-        const totalSelected = delayCalculatedCharges.reduce((sum, g) => sum + g.passengers.length, 0);
-        if (!confirm(`Submit delay charges for ${totalSelected} passenger(s)?`)) {
+        if (!confirm(`Submit delay charges for ${delayCalculatedCharges.length} passengers? This will create delay charge entries and cannot be undone.`)) {
             return;
         }
         
         try {
-            const targetDb = delaySelectedFlight.dbRef || getFirestoreForFlight(delaySelectedFlight.flightNo);
-            const selectedDate = document.getElementById('delayFlightDate').value;
+            const { date, flightNo, shift, targetDb } = delaySelectedFlight;
+            const currentUser = getCurrentLoggedInUser();
+            const timestamp = new Date().toISOString();
             
-            let formattedDate = selectedDate;
-            if (selectedDate.includes('/')) {
-                const parts = selectedDate.split('/');
-                if (parts.length === 3) {
-                    if (parts[0].length === 4) {
-                        formattedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-                    } else {
-                        formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                    }
-                }
-            }
-            
-            for (const group of delayCalculatedCharges) {
-                const lastPaxGroups = {};
-                group.passengers.forEach(p => {
-                    const lastPax = p.lastPax || 'Unknown';
-                    if (!lastPaxGroups[lastPax]) {
-                        lastPaxGroups[lastPax] = {
-                            lastPax: lastPax,
-                            totalPax: 0,
-                            passengerNames: [],
-                            totalHoursList: []
-                        };
-                    }
-                    lastPaxGroups[lastPax].totalPax += p.pax || 1;
-                    lastPaxGroups[lastPax].passengerNames.push(p.pName || 'Unknown');
-                    lastPaxGroups[lastPax].totalHoursList.push(p.totalHours.toFixed(1));
-                });
+            for (const passenger of delayCalculatedCharges) {
+                // Create delay charge entry
+                const delayChargeData = {
+                    date: date,
+                    flightNo: flightNo,
+                    shift: shift,
+                    pName: passenger.pName,
+                    seatNo: passenger.seatNo,
+                    pax: 0, // Delay charges don't count as pax
+                    entryTime: passenger.entryTime,
+                    lastPaxUserEntered: passenger.lastPaxUserEntered,
+                    hoursUsed: passenger.hoursUsed,
+                    isDelayCharge: true,
+                    originalPassengerId: passenger.docId,
+                    createdBy: currentUser,
+                    createdAt: timestamp,
+                    remarks: `Delay charge - ${passenger.hoursUsed} hours`
+                };
                 
-                for (const [lastPax, lg] of Object.entries(lastPaxGroups)) {
-                    const passengerCount = lg.passengerNames.length;
-                    const totalHoursSummary = lg.totalHoursList.join(', ');
-                    const remarks = `Delay Charge: ${passengerCount} passenger${passengerCount > 1 ? 's' : ''} for ${group.hours} hour${group.hours > 1 ? 's' : ''} (Last Pax: ${lastPax}) `;
-                    
-                    const nameList = lg.passengerNames.join(', ').substring(0, 100);
-                    
-                    const now = new Date();
-                    const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-                    
-                    const delayData = {
-                        pName: 'DELAY CHARGE',
-                        seatNo: 'N/A',
-                        pax: 0,
-                        FQTV: '',
-                        entryTime: currentTime,
-                        remarks: remarks,
-                        serialNo: '',
-                        date: formattedDate,
-                        flightNo: delaySelectedFlight.flightNo,
-                        shift: delaySelectedFlight.shift || 'UNKNOWN',
-                        airline: delaySelectedFlight.airline || '',
-                        hiddenCode: '',
-                        delayCharge: true,
-                        delayHours: group.hours,
-                        lastPaxTime: lastPax,
-                        passengerList: nameList,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-                    
-                    await targetDb.collection('KoveliPass').add(delayData);
-                }
+                await targetDb.collection('KoveliPass').add(delayChargeData);
+                
+                // Also update the original passenger to mark as charged if needed
+                await targetDb.collection('KoveliPass').doc(passenger.docId).update({
+                    hasDelayCharge: true,
+                    delayChargeHours: passenger.hoursUsed,
+                    delayChargeProcessedAt: timestamp,
+                    delayChargeProcessedBy: currentUser
+                });
             }
             
-            alert(`Successfully submitted ${totalSelected} delay charge(s)`);
+            alert(`Successfully submitted delay charges for ${delayCalculatedCharges.length} passengers. Total hours: ${delayCalculatedCharges.reduce((sum, p) => sum + p.hoursUsed * p.pax, 0).toFixed(2)}`);
+            
             closeDelayChargeModal();
             
             // Refresh current flight data if it's the same flight
-            if (currentFlightData && 
-                currentFlightData.flightNo === delaySelectedFlight.flightNo && 
-                document.getElementById('dateDisplay').textContent === selectedDate) {
-                await onFlightSelected();
+            if (currentFlightData && currentFlightData.flightNo === flightNo && currentFlightData.date === date && currentFlightData.shift === shift) {
+                onFlightSelected(); // Reload flight data
             }
             
         } catch (error) {
@@ -3379,26 +3001,27 @@ function dismissDuplicateWarning() {
             alert('Error submitting delay charges: ' + error.message);
         }
     }
-
+    
     // ========== INITIALIZATION ==========
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', () => {
         fetchOpenShift();
-        setInterval(fetchOpenShift, 30000);
         
-        // Auto-scan when page loads
-        setTimeout(() => {
-            scanDatesAndFlights();
-        }, 500);
+        // Add floating dashboard button
+        addFloatingDashboardButton();
         
+        // Setup modal close on click outside
         window.onclick = function(event) {
             const modal = document.getElementById('delayChargeModal');
-            if (event.target == modal) {
-                modal.style.display = 'none';
+            if (event.target === modal) {
+                closeDelayChargeModal();
             }
         };
+        
+        // Initialize date select dropdown
+        scanDatesAndFlights();
     });
-
-    // Export functions to window
+    
+    // Add function to ensure dates are loaded when clicking on date select
     window.scanDatesAndFlights = scanDatesAndFlights;
     window.onDateSelected = onDateSelected;
     window.onFlightSelected = onFlightSelected;
@@ -3407,36 +3030,30 @@ function dismissDuplicateWarning() {
     window.closeFlight = closeFlight;
     window.reopenFlight = reopenFlight;
     window.printReport = printReport;
-    window.fetchOpenShift = fetchOpenShift;
-    window.startEdit = startEdit;
-    window.cancelEdit = cancelEdit;
-    window.savePassenger = savePassenger;
-    window.confirmDelete = confirmDelete;
-    window.onSeatChange = onSeatChange;
-    window.onPaxChange = onPaxChange;
-    window.updatePaxFromSeat = updatePaxFromSeat;
-    window.validateCloseButton = validateCloseButton;
-    window.detectDuplicates = detectDuplicates;
-    window.showDuplicateWarning = showDuplicateWarning;
-    window.handleDuplicate = handleDuplicate;
-    window.deleteAllDuplicates = deleteAllDuplicates;
-    window.dismissDuplicateWarning = dismissDuplicateWarning;
-    window.isSQFlight = isSQFlight;
-    window.isFZFlight = isFZFlight;
-    window.extractPNRFromHiddenCode = extractPNRFromHiddenCode;
     window.openDelayChargeModal = openDelayChargeModal;
     window.closeDelayChargeModal = closeDelayChargeModal;
     window.onDelayFlightSelected = onDelayFlightSelected;
     window.filterPassengersByTime = filterPassengersByTime;
     window.resetTimeFilter = resetTimeFilter;
-    window.togglePassengerSelection = togglePassengerSelection;
-    window.updatePassengerTime = updatePassengerTime;
-    window.updatePassengerPax = updatePassengerPax;
+    window.selectAllPassengers = selectAllPassengers;
+    window.updateAllLastPax = updateAllLastPax;
     window.calculateDelayCharges = calculateDelayCharges;
     window.submitDelayCharges = submitDelayCharges;
-    window.updateAllLastPax = updateAllLastPax;
-    window.selectAllPassengers = selectAllPassengers;
+    window.startEditPassenger = startEditPassenger;
+    window.savePassengerEdit = savePassengerEdit;
+    window.cancelPassengerEdit = cancelPassengerEdit;
+    window.deletePassenger = deletePassenger;
+    window.onSeatChangeEdit = onSeatChangeEdit;
+    window.onPaxChangeEdit = onPaxChangeEdit;
+    window.updatePaxFromSeatEdit = updatePaxFromSeatEdit;
     window.clearDateCache = clearDateCache;
+    window.fetchOpenShift = fetchOpenShift;
+    window.handleDuplicate = handleDuplicate;
+    window.deleteAllDuplicates = deleteAllDuplicates;
+    window.dismissDuplicateWarning = dismissDuplicateWarning;
+    window.getCurrentLoggedInUser = getCurrentLoggedInUser;
+    window.getCurrentUserDetails = getCurrentUserDetails;
+    
 </script>
 </body>
 </html>
