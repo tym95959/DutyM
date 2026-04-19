@@ -2299,74 +2299,125 @@ function dismissDuplicateWarning() {
     }
 
     async function savePassenger(docId) {
-        if (currentFlightData?.isClosed) return;
+    if (currentFlightData?.isClosed) return;
+    
+    try {
+        const pName = document.getElementById(`edit-pName-${docId}`).value;
+        const seatNo = document.getElementById(`edit-seatNo-${docId}`).value;
+        const pax = document.getElementById(`edit-pax-${docId}`).value;
+        const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
+        const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
+        const entryTime = document.getElementById(`edit-entryTime-${docId}`).value;
+        const remarks = document.getElementById(`edit-remarks-${docId}`).value;
         
-        try {
-            const pName = document.getElementById(`edit-pName-${docId}`).value;
-            const seatNo = document.getElementById(`edit-seatNo-${docId}`).value;
-            const pax = document.getElementById(`edit-pax-${docId}`).value;
-            const FQTV = document.getElementById(`edit-FQTV-${docId}`).value;
-            const serialNo = document.getElementById(`edit-serialNo-${docId}`).value;
-            const entryTime = document.getElementById(`edit-entryTime-${docId}`).value;
-            const remarks = document.getElementById(`edit-remarks-${docId}`).value;
-            
-            await currentDatabase.collection('KoveliPass').doc(docId).update({ 
-                pName, 
-                seatNo, 
-                pax: parseInt(pax), 
-                FQTV, 
-                serialNo, 
-                entryTime,
-                remarks, 
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
-            });
-            
-            const passenger = currentFlightData.passengers.find(p => p.docId === docId);
-            if (passenger) { 
-                passenger.pName = pName; 
-                passenger.seatNo = seatNo; 
-                passenger.pax = pax; 
-                passenger.FQTV = FQTV; 
-                passenger.serialNo = serialNo; 
-                passenger.entryTime = entryTime;
-                passenger.remarks = remarks; 
+        // Get the passenger data to update
+        const updateData = { 
+            pName, 
+            seatNo, 
+            pax: parseInt(pax), 
+            FQTV, 
+            serialNo, 
+            entryTime,
+            remarks, 
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
+        };
+        
+        // Handle PNR for FZ flights
+        if (isFZFlight()) {
+            const pnrInput = document.getElementById(`edit-pnr-${docId}`);
+            if (pnrInput) {
+                const pnr = pnrInput.value.trim().toUpperCase();
+                if (pnr) {
+                    // Get existing passenger to preserve or update hiddenCode
+                    const passenger = currentFlightData.passengers.find(p => p.docId === docId);
+                    let hiddenCode = passenger?.hiddenCode || '';
+                    
+                    // Update hiddenCode with new PNR
+                    if (hiddenCode) {
+                        // Replace existing PNR in hiddenCode
+                        const existingPNR = extractPNRFromHiddenCode(hiddenCode);
+                        if (existingPNR && existingPNR !== pnr) {
+                            hiddenCode = hiddenCode.replace(existingPNR, pnr);
+                        } else if (!existingPNR) {
+                            // Add PNR to hiddenCode
+                            hiddenCode = pnr + ' MLE ' + (hiddenCode || '');
+                        }
+                    } else {
+                        // Create new hiddenCode with PNR
+                        hiddenCode = pnr + ' MLE';
+                    }
+                    updateData.hiddenCode = hiddenCode;
+                }
             }
-            
-            // Update first/last pax times
-            const regular = currentFlightData.passengers.filter(p => !p.isDelayCharge);
-            const times = regular.map(p => p.entryTime).filter(t => t);
-            if (times.length > 0) {
-                currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
-                currentFlightData.lastPax = times.reduce((a, b) => a > b ? a : b);
-                document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
-                document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
-                document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
-            }
-            
-            // Update total pax sum
-            currentFlightData.totalPax = calculateTotalPax(currentFlightData.passengers);
-            document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax;
-            
-            // Update passenger count
-            const regularCount = countRegularPassengers(currentFlightData.passengers);
-            document.getElementById('passengerCount').textContent = currentFlightData.totalPax + ' PAX';
-            
-            editingRowId = null;
-            
-            // Check for duplicates
-            const duplicates = detectDuplicates(currentFlightData.passengers);
-            if (duplicates.length > 0 && !currentFlightData.isClosed) {
-                showDuplicateWarning(duplicates);
-            } else {
-                dismissDuplicateWarning();
-            }
-            
-            displayPassengerTable(currentFlightData.passengers);
-            
-        } catch (error) { 
-            console.error('Error saving passenger:', error);
         }
+        
+        await currentDatabase.collection('KoveliPass').doc(docId).update(updateData);
+        
+        const passenger = currentFlightData.passengers.find(p => p.docId === docId);
+        if (passenger) { 
+            passenger.pName = pName; 
+            passenger.seatNo = seatNo; 
+            passenger.pax = pax; 
+            passenger.FQTV = FQTV; 
+            passenger.serialNo = serialNo; 
+            passenger.entryTime = entryTime;
+            passenger.remarks = remarks;
+            
+            // Update hiddenCode for FZ flights
+            if (isFZFlight()) {
+                const pnrInput = document.getElementById(`edit-pnr-${docId}`);
+                if (pnrInput) {
+                    const pnr = pnrInput.value.trim().toUpperCase();
+                    if (pnr) {
+                        let hiddenCode = passenger.hiddenCode || '';
+                        const existingPNR = extractPNRFromHiddenCode(hiddenCode);
+                        if (existingPNR && existingPNR !== pnr) {
+                            hiddenCode = hiddenCode.replace(existingPNR, pnr);
+                        } else if (!existingPNR) {
+                            hiddenCode = pnr + ' MLE ' + (hiddenCode || '');
+                        }
+                        passenger.hiddenCode = hiddenCode;
+                    }
+                }
+            }
+        }
+        
+        // Update first/last pax times
+        const regular = currentFlightData.passengers.filter(p => !p.isDelayCharge);
+        const times = regular.map(p => p.entryTime).filter(t => t);
+        if (times.length > 0) {
+            currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
+            currentFlightData.lastPax = times.reduce((a, b) => a > b ? a : b);
+            document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
+            document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
+            document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
+        }
+        
+        // Update total pax sum
+        currentFlightData.totalPax = calculateTotalPax(currentFlightData.passengers);
+        document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax;
+        
+        // Update passenger count
+        const regularCount = countRegularPassengers(currentFlightData.passengers);
+        document.getElementById('passengerCount').textContent = currentFlightData.totalPax + ' PAX';
+        
+        editingRowId = null;
+        
+        // Check for duplicates
+        const duplicates = detectDuplicates(currentFlightData.passengers);
+        if (duplicates.length > 0 && !currentFlightData.isClosed) {
+            showDuplicateWarning(duplicates);
+        } else {
+            dismissDuplicateWarning();
+        }
+        
+        displayPassengerTable(currentFlightData.passengers);
+        
+    } catch (error) { 
+        console.error('Error saving passenger:', error);
+        alert('Error saving passenger: ' + error.message);
     }
+}
 
     function confirmDelete(docId, name) { 
         if (currentFlightData?.isClosed) return;
