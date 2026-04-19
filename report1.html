@@ -2071,51 +2071,16 @@ function dismissDuplicateWarning() {
     }
 
     function displayPassengerTable(passengers) {
-        const tbody = document.getElementById('passengerTableBody');
-        const tableHeader = document.getElementById('tableHeader');
-        const isSQ = isSQFlight();
-        const isFZ = isFZFlight();
-        const isFlightClosed = currentFlightData?.isClosed;
-        
-        if (!passengers || passengers.length === 0) {
-            if (isFZ) {
-                tableHeader.innerHTML = `
-                    <table>
-                        <th>No.</th>
-                        <th>Name</th>
-                        <th>PNR</th>
-                        <th>Seat</th>
-                        <th>Pax</th>
-                        <th>FQTV</th>
-                        <th>Serial No</th>
-                        <th>Time</th>
-                        <th>Remarks</th>
-                        <th>Actions</th>
-                    </tr>
-                `;
-            } else {
-                tableHeader.innerHTML = `
-                    <tr>
-                        <th>No.</th>
-                        <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
-                        <th>Seat</th>
-                        <th>Pax</th>
-                        <th>FQTV</th>
-                        <th>Serial No</th>
-                        <th>Time</th>
-                        <th>Remarks</th>
-                        <th>Actions</th>
-                    </tr>
-                `;
-            }
-            tbody.innerHTML = '<tr><td colspan="10" class="no-data">No passengers found for this flight</td></tr>';
-            document.getElementById('tableContainer').style.display = 'block';
-            return;
-        }
-        
+    const tbody = document.getElementById('passengerTableBody');
+    const tableHeader = document.getElementById('tableHeader');
+    const isSQ = isSQFlight();
+    const isFZ = isFZFlight();
+    const isFlightClosed = currentFlightData?.isClosed;
+    
+    if (!passengers || passengers.length === 0) {
         if (isFZ) {
             tableHeader.innerHTML = `
-                <table>
+                <tr>
                     <th>No.</th>
                     <th>Name</th>
                     <th>PNR</th>
@@ -2143,149 +2108,301 @@ function dismissDuplicateWarning() {
                 </tr>
             `;
         }
-        
-        const duplicates = detectDuplicates(passengers);
-        const duplicateIndices = new Set(duplicates.map(d => d.duplicateIndex));
-        
-        // Separate regular passengers and delay charge passengers
-        const regularPassengers = passengers.filter(p => !p.isDelayCharge);
-        const delayChargePassengers = passengers.filter(p => p.isDelayCharge);
-        
-        // Sort regular passengers by entry time
-        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        
-        // Sort delay charge passengers by entry time (when they were created)
-        const sortedDelay = [...delayChargePassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        
-        // Combine: regular passengers first, then delay charges
-        const sorted = [...sortedRegular, ...sortedDelay];
-        
-        let html = '';
-        
-        sorted.forEach((p, idx) => {
-            const serial = String(idx+1).padStart(3,'000');
-            
-            const originalIndex = passengers.findIndex(orig => orig.docId === p.docId);
-            const isDuplicate = duplicateIndices.has(originalIndex) && !p.isDelayCharge;
-            
-            let rowClass = isDuplicate ? 'duplicate-row' : '';
-            if (p.isDelayCharge) {
-                rowClass += ' delay-charge-row';
-            }
-            
-            const pnr = isFZ ? extractPNRFromHiddenCode(p.hiddenCode) : '';
-            
-            if (editingRowId === p.docId && !isFlightClosed) {
-                // Edit mode - only if flight is not closed
-                const namePlaceholder = isSQ ? 'Voucher No.' : 'Name';
-                
-                if (isFZ) {
-                    html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
-                        <td class="serial-no">${serial}</td>
-                        <td>
-                            <input type="text" id="edit-pName-${p.docId}" 
-                                   value="${escapeHtml(p.pName||'')}" 
-                                   class="edit-mode-input" 
-                                   placeholder="${namePlaceholder}">
-                        </td>
-                        <td>
-                            <input type="text" id="edit-pnr-${p.docId}" 
-                                   value="${escapeHtml(pnr||'')}" 
-                                   class="edit-mode-input" 
-                                   placeholder="PNR"
-                                   
-                                   style="background-color:#f5f5f5;">
-                        </td>
-                        <td>
-                            <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
-                            <div id="pax-warning-${p.docId}" class="pax-warning"></div>
-                        </td>
-                        <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||0}" class="edit-mode-input" style="width:60px;" min="0" onchange="onPaxChange('${p.docId}')"></td>
-                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
-                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
-                        <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
-                        <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
-                        <td class="action-cell">
-                            <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
-                            <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
-                        </td>
-                    <tr>`;
-                } else {
-                    html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
-                        <td class="serial-no">${serial}</td>
-                        <td>
-                            <input type="text" id="edit-pName-${p.docId}" 
-                                   value="${escapeHtml(p.pName||'')}" 
-                                   class="edit-mode-input" 
-                                   placeholder="${namePlaceholder}">
-                        </td>
-                        <td>
-                            <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
-                            <div id="pax-warning-${p.docId}" class="pax-warning"></div>
-                        </td>
-                        <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||0}" class="edit-mode-input" style="width:60px;" min="0" onchange="onPaxChange('${p.docId}')"></td>
-                        <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
-                        <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
-                        <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
-                        <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
-                        <td class="action-cell">
-                            <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
-                            <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
-                        </td>
-                    </tr>`;
-                }
-            } else {
-                const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate regular passenger with same Name and Seat Number">⚠️ DUPLICATE</span>' : '';
-                const delayBadge = p.isDelayCharge ? '<span class="delay-charge-badge" title="Delay Charge Entry">⏰ DELAY</span>' : '';
-                
-                if (isFZ) {
-                    html += `<tr class="${rowClass}">
-                        <td class="serial-no">${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge} ${delayBadge}</td>
-                        <td>
-                            ${pnr ? `<span class="pnr-badge" title="PNR extracted from hiddenCode">${pnr}</span>` : '-'}
-                        </td>
-                        <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '0'}</td>
-                        <td>${escapeHtml(p.FQTV) || '-'}</td>
-                        <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
-                        <td>${p.entryTime || '-'}</td>
-                        <td>${escapeHtml(p.remarks) || '-'}</td>
-                        <td class="action-cell">
-                            ${!isFlightClosed ? `
-                                <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                                <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
-                            ` : `
-                                <span style="color: #999; font-size: 10px;">Flight Closed</span>
-                            `}
-                        </td>
-                    </tr>`;
-                } else {
-                    html += `<tr class="${rowClass}">
-                        <td class="serial-no">${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge} ${delayBadge}</td>
-                        <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '0'}</td>
-                        <td>${escapeHtml(p.FQTV) || '-'}</td>
-                        <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
-                        <td>${p.entryTime || '-'}</td>
-                        <td>${escapeHtml(p.remarks) || '-'}</td>
-                        <td class="action-cell">
-                            ${!isFlightClosed ? `
-                                <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
-                                <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
-                            ` : `
-                                <span style="color: #999; font-size: 10px;">Flight Closed</span>
-                            `}
-                        </td>
-                    </tr>`;
-                }
-            }
-        });
-        
-        tbody.innerHTML = html;
+        tbody.innerHTML = '<tr><td colspan="10" class="no-data">No passengers found for this flight</td></tr>';
         document.getElementById('tableContainer').style.display = 'block';
+        return;
     }
+    
+    if (isFZ) {
+        tableHeader.innerHTML = `
+            <tr>
+                <th>No.</th>
+                <th>Name</th>
+                <th>PNR</th>
+                <th>Seat</th>
+                <th>Pax</th>
+                <th>FQTV</th>
+                <th>Serial No</th>
+                <th>Time</th>
+                <th>Remarks</th>
+                <th>Actions</th>
+            </tr>
+        `;
+    } else {
+        tableHeader.innerHTML = `
+            <tr>
+                <th>No.</th>
+                <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
+                <th>Seat</th>
+                <th>Pax</th>
+                <th>FQTV</th>
+                <th>Serial No</th>
+                <th>Time</th>
+                <th>Remarks</th>
+                <th>Actions</th>
+            </tr>
+        `;
+    }
+    
+    const duplicates = detectDuplicates(passengers);
+    const duplicateIndices = new Set(duplicates.map(d => d.duplicateIndex));
+    
+    // Separate regular passengers and delay charge passengers
+    const regularPassengers = passengers.filter(p => !p.isDelayCharge);
+    const delayChargePassengers = passengers.filter(p => p.isDelayCharge);
+    
+    // Sort regular passengers by entry time
+    const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+    
+    // Sort delay charge passengers by entry time (when they were created)
+    const sortedDelay = [...delayChargePassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+    
+    // Combine: regular passengers first, then delay charges
+    const sorted = [...sortedRegular, ...sortedDelay];
+    
+    let html = '';
+    
+    sorted.forEach((p, idx) => {
+        const serial = String(idx+1).padStart(3,'000');
+        
+        const originalIndex = passengers.findIndex(orig => orig.docId === p.docId);
+        const isDuplicate = duplicateIndices.has(originalIndex) && !p.isDelayCharge;
+        
+        let rowClass = isDuplicate ? 'duplicate-row' : '';
+        if (p.isDelayCharge) {
+            rowClass += ' delay-charge-row';
+        }
+        
+        const pnr = isFZ ? extractPNRFromHiddenCode(p.hiddenCode) : '';
+        
+        if (editingRowId === p.docId && !isFlightClosed) {
+            // Edit mode - only if flight is not closed
+            const namePlaceholder = isSQ ? 'Voucher No.' : 'Name';
+            
+            if (isFZ) {
+                html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td>
+                        <input type="text" id="edit-pName-${p.docId}" 
+                               value="${escapeHtml(p.pName||'')}" 
+                               class="edit-mode-input" 
+                               placeholder="${namePlaceholder}">
+                    </td>
+                    <td>
+                        <input type="text" id="edit-pnr-${p.docId}" 
+                               value="${escapeHtml(pnr||'')}" 
+                               class="edit-mode-input" 
+                               placeholder="PNR">
+                    </td>
+                    <td>
+                        <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
+                        <div id="pax-warning-${p.docId}" class="pax-warning"></div>
+                    </td>
+                    <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||0}" class="edit-mode-input" style="width:60px;" min="0" onchange="onPaxChange('${p.docId}')"></td>
+                    <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
+                    <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
+                    <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
+                    <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
+                    <td class="action-cell">
+                        <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
+                        <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                    </td>
+                </tr>`;
+            } else {
+                html += `<tr id="edit-row-${p.docId}" class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td>
+                        <input type="text" id="edit-pName-${p.docId}" 
+                               value="${escapeHtml(p.pName||'')}" 
+                               class="edit-mode-input" 
+                               placeholder="${namePlaceholder}">
+                    </td>
+                    <td>
+                        <input type="text" id="edit-seatNo-${p.docId}" value="${escapeHtml(p.seatNo||'')}" class="edit-mode-input" oninput="onSeatChange('${p.docId}')" onchange="onPaxChange('${p.docId}')">
+                        <div id="pax-warning-${p.docId}" class="pax-warning"></div>
+                    </td>
+                    <td><input type="number" id="edit-pax-${p.docId}" value="${p.pax||0}" class="edit-mode-input" style="width:60px;" min="0" onchange="onPaxChange('${p.docId}')"></td>
+                    <td><input type="text" id="edit-FQTV-${p.docId}" value="${escapeHtml(p.FQTV||'')}" class="edit-mode-input"></td>
+                    <td><input type="text" id="edit-serialNo-${p.docId}" value="${escapeHtml(p.serialNo||'')}" class="edit-mode-input"></td>
+                    <td><input type="time" id="edit-entryTime-${p.docId}" value="${p.entryTime||''}" class="time-edit-input"></td>
+                    <td><input type="text" id="edit-remarks-${p.docId}" value="${escapeHtml(p.remarks||'')}" class="edit-mode-input"></td>
+                    <td class="action-cell">
+                        <button class="table-action-btn save-table-btn" onclick="savePassenger('${p.docId}')">Save</button>
+                        <button class="table-action-btn cancel-table-btn" onclick="cancelEdit()">Cancel</button>
+                    </td>
+                </tr>`;
+            }
+        } else {
+            const duplicateBadge = isDuplicate ? '<span class="duplicate-badge" title="Duplicate regular passenger with same Name and Seat Number">⚠️ DUPLICATE</span>' : '';
+            const delayBadge = p.isDelayCharge ? '<span class="delay-charge-badge" title="Delay Charge Entry">⏰ DELAY</span>' : '';
+            
+            if (isFZ) {
+                html += `<tr class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge} ${delayBadge}</td>
+                    <td>
+                        ${pnr ? `<span class="pnr-badge" title="PNR extracted from hiddenCode">${pnr}</span>` : '-'}
+                    </td>
+                    <td>${escapeHtml(p.seatNo) || '-'}</td>
+                    <td style="text-align:center;">${p.pax || '0'}</td>
+                    <td>${escapeHtml(p.FQTV) || '-'}</td>
+                    <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${escapeHtml(p.remarks) || '-'}</td>
+                    <td class="action-cell">
+                        ${!isFlightClosed ? `
+                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                        ` : `
+                            <span style="color: #999; font-size: 10px;">Flight Closed</span>
+                        `}
+                    </td>
+                </tr>`;
+            } else {
+                html += `<tr class="${rowClass}">
+                    <td class="serial-no">${serial}</td>
+                    <td>${escapeHtml(p.pName) || '-'} ${duplicateBadge} ${delayBadge}</td>
+                    <td>${escapeHtml(p.seatNo) || '-'}</td>
+                    <td style="text-align:center;">${p.pax || '0'}</td>
+                    <td>${escapeHtml(p.FQTV) || '-'}</td>
+                    <td class="${p.serialNo ? 'serial-no' : ''}">${escapeHtml(p.serialNo) || '—'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${escapeHtml(p.remarks) || '-'}</td>
+                    <td class="action-cell">
+                        ${!isFlightClosed ? `
+                            <button class="table-action-btn edit-table-btn" onclick="startEdit('${p.docId}')">Edit</button>
+                            <button class="table-action-btn delete-table-btn" onclick="confirmDelete('${p.docId}','${escapeHtml(p.pName)}')">Del</button>
+                        ` : `
+                            <span style="color: #999; font-size: 10px;">Flight Closed</span>
+                        `}
+                    </td>
+                </tr>`;
+            }
+        }
+    });
+    
+    tbody.innerHTML = html;
+    document.getElementById('tableContainer').style.display = 'block';
+}
+
+async function savePassenger(docId) {
+    if (currentFlightData?.isClosed) {
+        alert('Cannot save - flight is closed');
+        return;
+    }
+    
+    try {
+        // Get all form values
+        const pName = document.getElementById(`edit-pName-${docId}`)?.value || '';
+        const seatNo = document.getElementById(`edit-seatNo-${docId}`)?.value || '';
+        const pax = document.getElementById(`edit-pax-${docId}`)?.value || 0;
+        const FQTV = document.getElementById(`edit-FQTV-${docId}`)?.value || '';
+        const serialNo = document.getElementById(`edit-serialNo-${docId}`)?.value || '';
+        const entryTime = document.getElementById(`edit-entryTime-${docId}`)?.value || '';
+        const remarks = document.getElementById(`edit-remarks-${docId}`)?.value || '';
+        
+        // Prepare update data
+        const updateData = { 
+            pName: pName, 
+            seatNo: seatNo, 
+            pax: parseInt(pax) || 0, 
+            FQTV: FQTV, 
+            serialNo: serialNo, 
+            entryTime: entryTime,
+            remarks: remarks, 
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp() 
+        };
+        
+        // Handle PNR for FZ flights
+        if (isFZFlight()) {
+            const pnrInput = document.getElementById(`edit-pnr-${docId}`);
+            if (pnrInput) {
+                const pnr = pnrInput.value.trim().toUpperCase();
+                if (pnr) {
+                    // Get existing passenger to preserve or update hiddenCode
+                    const passenger = currentFlightData.passengers.find(p => p.docId === docId);
+                    let hiddenCode = passenger?.hiddenCode || '';
+                    
+                    // Update hiddenCode with new PNR
+                    if (hiddenCode && hiddenCode.length > 0) {
+                        // Check if there's an existing PNR in hiddenCode
+                        const existingPNR = extractPNRFromHiddenCode(hiddenCode);
+                        if (existingPNR && existingPNR !== pnr) {
+                            // Replace existing PNR with new one
+                            hiddenCode = hiddenCode.replace(existingPNR, pnr);
+                        } else if (!existingPNR) {
+                            // Add PNR to hiddenCode
+                            hiddenCode = pnr + ' MLE ' + hiddenCode;
+                        }
+                    } else {
+                        // Create new hiddenCode with PNR
+                        hiddenCode = pnr + ' MLE';
+                    }
+                    updateData.hiddenCode = hiddenCode;
+                    console.log('Saving PNR:', pnr, 'to hiddenCode:', hiddenCode);
+                }
+            }
+        }
+        
+        // Update in Firebase
+        await currentDatabase.collection('KoveliPass').doc(docId).update(updateData);
+        
+        // Update local passenger data
+        const passenger = currentFlightData.passengers.find(p => p.docId === docId);
+        if (passenger) { 
+            passenger.pName = pName; 
+            passenger.seatNo = seatNo; 
+            passenger.pax = parseInt(pax) || 0; 
+            passenger.FQTV = FQTV; 
+            passenger.serialNo = serialNo; 
+            passenger.entryTime = entryTime;
+            passenger.remarks = remarks;
+            
+            // Update hiddenCode for FZ flights
+            if (isFZFlight() && updateData.hiddenCode) {
+                passenger.hiddenCode = updateData.hiddenCode;
+            }
+        }
+        
+        // Update first/last pax times (excluding delay charges)
+        const regular = currentFlightData.passengers.filter(p => !p.isDelayCharge && p.entryTime);
+        const times = regular.map(p => p.entryTime).filter(t => t && t.length > 0);
+        if (times.length > 0) {
+            currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
+            currentFlightData.lastPax = times.reduce((a, b) => a > b ? a : b);
+            document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
+            document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
+            document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
+        }
+        
+        // Update total pax sum
+        currentFlightData.totalPax = calculateTotalPax(currentFlightData.passengers);
+        document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax;
+        
+        // Update passenger count
+        document.getElementById('passengerCount').textContent = currentFlightData.totalPax + ' PAX';
+        
+        // Exit edit mode
+        editingRowId = null;
+        
+        // Check for duplicates
+        const duplicates = detectDuplicates(currentFlightData.passengers);
+        if (duplicates.length > 0 && !currentFlightData.isClosed) {
+            showDuplicateWarning(duplicates);
+        } else {
+            dismissDuplicateWarning();
+        }
+        
+        // Refresh the table display
+        displayPassengerTable(currentFlightData.passengers);
+        
+        console.log('Passenger saved successfully');
+        
+    } catch (error) { 
+        console.error('Error saving passenger:', error);
+        alert('Error saving passenger: ' + error.message);
+    }
+}
 
     function startEdit(docId) { 
         if (currentFlightData?.isClosed) return;
