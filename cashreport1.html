@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koveli Lounge – Cash Report (detailed by payment method)</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <!-- external config & data -->
+    <script src="fireshift.js"></script>
+    <script src="iata.js"></script>
+    <script src="rate.js"></script>
+    <script src="Co.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f2ede4;
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            padding: 30px 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .report-container {
+            max-width: 1300px;
+            width: 100%;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 25px 45px -12px rgba(100, 70, 20, 0.25);
+            border: 1px solid #f0dbc0;
+            overflow: hidden;
+        }
+        /* company header */
+        .company-header {
+            padding: 24px 32px 8px 32px;
+            text-align: center;
+            border-bottom: 1px solid #e6d5b8;
+        }
+        .company-name {
+            font-size: 2.2rem;
+            font-weight: 400;
+            letter-spacing: 2px;
+            color: #3e362e;
+        }
+        .company-address {
+            font-size: 1rem;
+            color: #7f6e54;
+            margin-top: 6px;
+            font-weight: 300;
+        }
+        .report-title {
+            font-size: 1.8rem;
+            font-weight: 350;
+            color: #9b7b4b;
+            margin-top: 6px;
+            letter-spacing: 1px;
+        }
+
+        /* filter bar */
+        .filter-bar {
+            padding: 20px 32px 10px 32px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .filter-panel {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background: #faf8f2;
+            padding: 8px 20px;
+            border-radius: 48px;
+            border: 1px solid #e0cfb0;
+        }
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .filter-item label {
+            color: #6b4f2a;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        .filter-item input, .filter-item select {
+            padding: 8px 14px;
+            border: 1px solid #d4bc8c;
+            border-radius: 40px;
+            background: white;
+            font-size: 0.9rem;
+            min-width: 140px;
+            outline: none;
+        }
+        .filter-item input:focus, .filter-item select:focus {
+            border-color: #b48c48;
+            box-shadow: 0 0 0 2px rgba(180,140,72,0.2);
+        }
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        .btn {
+            border: none;
+            background: #2d5a4b;
+            color: white;
+            padding: 10px 28px;
+            border-radius: 40px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: 1px solid #244e41;
+        }
+        .btn.print {
+            background: #5e503f;
+            border-color: #4e4234;
+        }
+        .btn:hover {
+            filter: brightness(1.08);
+            transform: translateY(-1px);
+        }
+        .refresh-small {
+            background: #f1e9da;
+            border: 1px solid #bcaa85;
+            border-radius: 40px;
+            padding: 5px 18px;
+            cursor: pointer;
+        }
+
+        /* summary area – cash total, non-cash by currency, and totals row */
+        .summary-section {
+            padding: 16px 32px 8px 32px;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-block {
+            background: #fbf9f5;
+            border-radius: 18px;
+            padding: 18px 20px;
+            border: 1px solid #e7dbc6;
+        }
+        .stat-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #7f6e54;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        .currency-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 1.1rem;
+            border-bottom: 1px dashed #ddd0bb;
+        }
+        .currency-line:last-child {
+            border-bottom: none;
+        }
+        .currency-code {
+            font-weight: 400;
+            color: #5b4a32;
+        }
+        .currency-amount {
+            font-weight: 500;
+            color: #2c3e2f;
+        }
+        .sub-foot {
+            font-size: 0.75rem;
+            color: #9b8b74;
+            margin-top: 8px;
+        }
+        .void-stat {
+            color: #c68b5e;
+            font-size: 0.9rem;
+            margin-top: 5px;
+            padding-top: 5px;
+            border-top: 1px dashed #e7dbc6;
+        }
+
+        /* payment method and status badges */
+        .payment-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-align: center;
+            min-width: 70px;
+        }
+        
+        .payment-cash {
+            background: #2d5a4b;
+            color: white;
+        }
+        
+        .payment-card {
+            background: #4a6fa5;
+            color: white;
+        }
+        
+        .payment-bank {
+            background: #8b5a2b;
+            color: white;
+        }
+        
+        .payment-mobile {
+            background: #9b59b6;
+            color: white;
+        }
+        
+        .payment-voucher {
+            background: #16a085;
+            color: white;
+        }
+        
+        .payment-other {
+            background: #7f8c8d;
+            color: white;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-align: center;
+            min-width: 80px;
+        }
+        
+        .status-completed {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .status-pending {
+            background: #e67e22;
+            color: white;
+        }
+        
+        .status-void {
+            background: #c68b5e;
+            color: white;
+            text-decoration: line-through;
+        }
+
+        /* non-cash breakdown table */
+        .noncash-breakdown {
+            padding: 8px 32px 0 32px;
+        }
+        .noncash-breakdown h3 {
+            font-weight: 400;
+            font-size: 1.2rem;
+            color: #4e3f2b;
+            border-bottom: 1px solid #e6d5b8;
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+        }
+        .method-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fefdfa;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .method-table th {
+            text-align: left;
+            padding: 14px 16px;
+            background: #ece2d2;
+            font-weight: 500;
+            color: #3e3526;
+        }
+        .method-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0e4d2;
+        }
+        .method-table tr:last-child td { border-bottom: none; }
+
+        /* transaction list */
+        .table-wrapper {
+            padding: 24px 32px 16px 32px;
+        }
+        .list-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        .list-table th {
+            background: #ece2d2;
+            font-weight: 500;
+            padding: 16px 8px;
+            color: #3e3526;
+            font-size: 0.8rem;
+            border-bottom: 1px solid #dacbad;
+        }
+        .list-table td {
+            padding: 14px 8px;
+            border-bottom: 1px solid #f1e6d6;
+            text-align: center;
+            vertical-align: middle;
+        }
+        
+        /* void row styling */
+        .void-row {
+            background-color: rgba(198, 139, 94, 0.1);
+            opacity: 0.8;
+        }
+        
+        .void-row td {
+            text-decoration: line-through;
+            color: #a67244;
+        }
+        
+        /* signature section */
+        .signature-section {
+            padding: 24px 32px 32px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-top: 1px solid #eedfcb;
+            margin-top: 8px;
+        }
+        .signature-block {
+            flex: 1;
+            max-width: 280px;
+        }
+        .signature-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #7f6e54;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .signature-line {
+            border-bottom: 1px solid #b8a78c;
+            padding: 8px 0 4px 0;
+            margin-bottom: 6px;
+            min-width: 200px;
+        }
+        .signature-name {
+            font-size: 0.95rem;
+            color: #3e362e;
+            font-weight: 400;
+            padding: 4px 0;
+        }
+        .signature-date {
+            font-size: 0.8rem;
+            color: #8b7a62;
+            text-align: right;
+        }
+        .signature-placeholder {
+            font-size: 0.9rem;
+            color: #a09078;
+            font-style: italic;
+        }
+        
+        .footer-note {
+            padding: 0 32px 24px 32px;
+            text-align: right;
+            color: #856f4c;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #8b7a62;
+            font-style: italic;
+            font-size: 1.1rem;
+        }
+
+        /* BACK BUTTON STYLES - always visible on screen, hidden when printing */
+        .floating-back-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .floating-back-btn:hover {
+            background-color: #0056b3;
+            transform: scale(1.05);
+        }
+        
+        /* PRINT STYLES: hide back button, filters, action buttons completely */
+        @media print {
+            body { background: white; padding: 0; margin: 0; }
+            .report-container { box-shadow: none; border: none; max-width: 100%; border-radius: 0; }
+            .filter-panel, .action-buttons, .btn, .refresh-small, .floating-back-btn { display: none !important; }
+            .filter-bar { display: none !important; }
+            .stat-block { background: none; border: 1px solid #aaa; break-inside: avoid; }
+            .method-table { border: 1px solid #aaa; }
+            .list-table th { background: #ddd; }
+            .signature-line { border-bottom: 1px solid #333; }
+            .void-row { background: #f5f5f5; }
+            .summary-grid { break-inside: avoid; }
+            .noncash-breakdown { break-inside: avoid; }
+            .table-wrapper { break-inside: auto; }
+            .signature-section { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+<div class="report-container">
+    <!-- company header & main title -->
+    <div class="company-header">
+        <div class="company-name" id="companyName">KOVELI LOUNGE</div>
+        <div class="company-address" id="companyAddress">Velana International Airport, Malé, Maldives</div>
+        <div class="report-title">CASH REPORT</div>
+    </div>
+
+    <!-- filter row -->
+    <div class="filter-bar">
+        <div class="filter-panel">
+            <div class="filter-item"><label>📅 DATE</label><input type="date" id="filterDate" required></div>
+            <div class="filter-item"><label>⏳ SHIFT</label>
+                <select id="filterShift">
+                    <option value="ALL">ALL SHIFTS</option>
+                    <option value="MORNING">MORNING</option>
+                    <option value="EVENING">EVENING</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label>🚫 VOID</label>
+                <select id="filterVoid">
+                    <option value="EXCLUDE">Exclude Void</option>
+                    <option value="INCLUDE">Include Void</option>
+                    <option value="ONLY">Only Void</option>
+                </select>
+            </div>
+            <button class="refresh-small" id="loadReportBtn">↻ LOAD</button>
+        </div>
+        <div class="action-buttons"><button class="btn print" id="printReportBtn">🖨️ PRINT A4</button></div>
+    </div>
+
+    <!-- summary area: cash total, non-cash by currency, and totals row -->
+    <div class="summary-section">
+        <div class="summary-grid">
+            <!-- Block 1: Total cash (by currency) - EXCLUDING VOID -->
+            <div class="stat-block">
+                <div class="stat-label">💰 CASH TOTAL (active)</div>
+                <div class="currency-line"><span class="currency-code">USD</span><span class="currency-amount" id="cashUSD">0.00</span></div>
+                <div class="currency-line"><span class="currency-code">MVR</span><span class="currency-amount" id="cashMVR">0.00</span></div>
+                <div class="void-stat" id="voidCashInfo"></div>
+                <div class="sub-foot">excludes voided receipts</div>
+            </div>
+            <!-- Block 2: Non‑cash total by currency (all card & other non-cash combined) - EXCLUDING VOID -->
+            <div class="stat-block">
+                <div class="stat-label">💳 NON‑CASH TOTAL (active)</div>
+                <div class="currency-line"><span class="currency-code">USD</span><span class="currency-amount" id="noncashUSD">0.00</span></div>
+                <div class="currency-line"><span class="currency-code">MVR</span><span class="currency-amount" id="noncashMVR">0.00</span></div>
+                <div class="void-stat" id="voidNoncashInfo"></div>
+                <div class="sub-foot">excludes voided receipts</div>
+            </div>
+            <!-- Block 3: Receipts & pax summary - EXCLUDING VOID -->
+            <div class="stat-block">
+                <div class="stat-label">📋 SUMMARY (active)</div>
+                <div class="currency-line"><span class="currency-code">Receipts</span><span class="currency-amount" id="totalReceipts">0</span></div>
+                <div class="currency-line"><span class="currency-code">Adults</span><span class="currency-amount" id="totalAdults">0</span></div>
+                <div class="currency-line"><span class="currency-code">Children</span><span class="currency-amount" id="totalChildren">0</span></div>
+                <div class="void-stat" id="voidCountInfo"></div>
+                <div class="sub-foot">excludes voided receipts</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Non‑cash breakdown by card type -->
+    <div class="noncash-breakdown">
+        <h3>💳 PAYMENT METHOD DETAILS (active transactions only)</h3>
+        <table class="method-table" id="noncashTable">
+            <thead><tr><th>Payment method</th><th>USD total</th><th>MVR total</th><th>Transactions</th></tr></thead>
+            <tbody id="noncashBody">
+                <tr><td colspan="4" style="text-align:center;">Select a date and click LOAD</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Void summary (if there are voided receipts) -->
+    <div class="noncash-breakdown" id="voidSummarySection" style="display: none;">
+        <h3>🚫 VOIDED TRANSACTIONS</h3>
+        <table class="method-table" id="voidTable">
+            <thead><tr><th>Receipt</th><th>Amount</th><th>Currency</th><th>Method</th><th>Reason</th><th>Staff</th></tr>
+            </thead>
+            <tbody id="voidBody"></tbody>
+        </table>
+    </div>
+
+    <!-- detailed transaction list -->
+    <div class="table-wrapper">
+        <table class="list-table" id="reportTable">
+            <thead><tr>
+                <th>Receipt</th>
+                <th>Date/time</th>
+                <th>Shift</th>
+                <th>Flight</th>
+                <th>A/C</th>
+                <th>Curr</th>
+                <th>Total</th>
+                <th>Method</th>
+                <th>Staff</th>
+            </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr><td colspan="9" class="no-data">Select a date and click LOAD to view transactions</td></tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- signature section -->
+    <div class="signature-section">
+        <div class="signature-block">
+            <div class="signature-label">PREPARED BY</div>
+            <div class="signature-line" id="preparedByLine">
+                <span class="signature-placeholder" id="preparedByText">_________________________</span>
+            </div>
+            <div class="signature-name" id="preparedByName"></div>
+            <div class="signature-date" id="preparedDate"></div>
+        </div>
+        
+        <div class="signature-block">
+            <div class="signature-label">CHECKED BY</div>
+            <div class="signature-line" id="checkedByLine">
+                <span class="signature-placeholder" id="checkedByText">_________________________</span>
+            </div>
+            <div class="signature-name" id="checkedByName"></div>
+            <div class="signature-date" id="checkedDate"></div>
+        </div>
+        
+        <div class="signature-block">
+            <div class="signature-label">AUTHORIZED SIGNATURE</div>
+            <div class="signature-line" id="signatureLine">
+                <span class="signature-placeholder" id="signatureText">_________________________</span>
+            </div>
+            <div class="signature-name" id="signatureName"></div>
+            <div class="signature-date" id="signatureDate"></div>
+        </div>
+    </div>
+    
+    <div class="footer-note" id="generatedFoot"></div>
+</div>
+
+<!-- Back button placed OUTSIDE container so it's independent, will be hidden by print media query -->
+<a href="pay.html" class="floating-back-btn" id="floatingBackBtn">← Back</a>
+
+<script>
+    (function() {
+        // ----- configuration -----
+        let allTransactions = [];
+        let activeTransactions = [];
+        let voidTransactions = [];
+
+        // DOM elements
+        const dateInput = document.getElementById('filterDate');
+        const shiftSelect = document.getElementById('filterShift');
+        const voidFilter = document.getElementById('filterVoid');
+        const loadBtn = document.getElementById('loadReportBtn');
+        const printBtn = document.getElementById('printReportBtn');
+
+        // summary spans
+        const cashUSDspan = document.getElementById('cashUSD');
+        const cashMVRspan = document.getElementById('cashMVR');
+        const noncashUSDspan = document.getElementById('noncashUSD');
+        const noncashMVRspan = document.getElementById('noncashMVR');
+        const totalReceiptsSpan = document.getElementById('totalReceipts');
+        const totalAdultsSpan = document.getElementById('totalAdults');
+        const totalChildrenSpan = document.getElementById('totalChildren');
+        
+        // void info spans
+        const voidCashInfo = document.getElementById('voidCashInfo');
+        const voidNoncashInfo = document.getElementById('voidNoncashInfo');
+        const voidCountInfo = document.getElementById('voidCountInfo');
+
+        const noncashBody = document.getElementById('noncashBody');
+        const voidBody = document.getElementById('voidBody');
+        const tableBody = document.getElementById('tableBody');
+        const voidSummarySection = document.getElementById('voidSummarySection');
+        const footGen = document.getElementById('generatedFoot');
+        
+        // signature elements
+        const preparedByName = document.getElementById('preparedByName');
+        const preparedDate = document.getElementById('preparedDate');
+        const checkedByName = document.getElementById('checkedByName');
+        const checkedDate = document.getElementById('checkedDate');
+        const signatureName = document.getElementById('signatureName');
+        const signatureDate = document.getElementById('signatureDate');
+
+        // set company info from Co.js if available
+        if (typeof companyInfo !== 'undefined') {
+            const nameEl = document.getElementById('companyName');
+            const addrEl = document.getElementById('companyAddress');
+            if (companyInfo.name) nameEl.innerText = companyInfo.name;
+            if (companyInfo.address) addrEl.innerText = companyInfo.address;
+        }
+
+        // set default date = today
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.value = today;
+
+        // helper: extract YYYY-MM-DD from various date formats
+        function extractDateFromDateTimeField(dt) {
+            if (!dt) return '';
+            
+            // Try to parse the date
+            try {
+                // Handle "MM/DD/YYYY, HH:MM" format
+                if (dt.includes('/')) {
+                    let datePart = dt.split(',')[0].trim();
+                    let [m, d, y] = datePart.split('/');
+                    if (y && m && d) {
+                        // Ensure 4-digit year
+                        if (y.length === 2) y = '20' + y;
+                        return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+                    }
+                }
+                
+                // Handle ISO format
+                if (dt.includes('T')) {
+                    return dt.split('T')[0];
+                }
+                
+                // Handle YYYY-MM-DD format
+                if (dt.includes('-')) {
+                    let parts = dt.split(' ')[0].split('-');
+                    if (parts.length === 3) {
+                        return dt.split(' ')[0];
+                    }
+                }
+            } catch (e) {
+                console.warn('Date parsing error:', e);
+            }
+            
+            return '';
+        }
+
+        // safely get string value from any field (handles objects)
+        function getStringValue(value) {
+            if (!value) return '';
+            if (typeof value === 'string') return value;
+            if (typeof value === 'number') return value.toString();
+            if (typeof value === 'object') {
+                if (value.name) return value.name;
+                if (value.displayName) return value.displayName;
+                if (value.username) return value.username;
+                if (value.email) return value.email;
+                if (value.id) return value.id;
+                if (value.id && typeof value.id === 'string') return value.id;
+                try {
+                    const str = JSON.stringify(value);
+                    return str.length > 30 ? 'Reference' : str;
+                } catch {
+                    return 'Object';
+                }
+            }
+            return String(value);
+        }
+
+        // get username from transaction (handles objects)
+        function getStaffUsername(tx) {
+            const possibleFields = [
+                'username', 'userName', 'user', 'staff', 'staffName',
+                'cashier', 'operator', 'processedBy', 'processed_by',
+                'createdBy', 'enteredBy', 'userId', 'user_id'
+            ];
+            
+            for (let field of possibleFields) {
+                if (tx[field] !== undefined && tx[field] !== null) {
+                    return getStringValue(tx[field]);
+                }
+            }
+            return 'System';
+        }
+
+        // get payment method with styling
+        function getPaymentMethodBadge(method) {
+            method = (method || 'CASH').toUpperCase().trim();
+            let badgeClass = 'payment-other';
+            if (method === 'CASH' || method.includes('CASH')) badgeClass = 'payment-cash';
+            else if (method.includes('CARD') || method.includes('VISA') || method.includes('MASTER') || method.includes('AMEX')) badgeClass = 'payment-card';
+            else if (method.includes('BANK') || method.includes('TRANSFER')) badgeClass = 'payment-bank';
+            else if (method.includes('MOBILE') || method.includes('PAY')) badgeClass = 'payment-mobile';
+            else if (method.includes('VOUCHER')) badgeClass = 'payment-voucher';
+            return `<span class="payment-badge ${badgeClass}">${method}</span>`;
+        }
+
+        // ----- fetch data from Firestore -----
+        async function fetchReportData() {
+            const selectedDate = dateInput.value;
+            const shiftFilter = shiftSelect.value;
+            const voidOption = voidFilter.value;
+            
+            if (!selectedDate) { 
+                alert('Please select a date'); 
+                return; 
+            }
+            
+            if (typeof passengerDb === 'undefined') { 
+                alert('passengerDb not initialized. Check fireshift.js'); 
+                return; 
+            }
+
+            tableBody.innerHTML = '<tr><td colspan="9" class="no-data">⏳ Loading transactions...</td></tr>';
+            noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">⏳ Loading...</td></tr>';
+
+            try {
+                const kovelipayRef = passengerDb.collection('Kovelipay');
+                const snapshot = await kovelipayRef.get();
+                
+                if (snapshot.empty) {
+                    tableBody.innerHTML = '<tr><td colspan="9" class="no-data">No receipts found in database</td></tr>';
+                    noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No data available</td></tr>';
+                    footGen.innerText = 'No receipts found';
+                    return;
+                }
+                
+                const docs = [];
+                snapshot.forEach(doc => {
+                    docs.push({ id: doc.id, ...doc.data() });
+                });
+
+                const filteredByDate = docs.filter(d => {
+                    if (!d.submissionDateTime) return false;
+                    const docDate = extractDateFromDateTimeField(d.submissionDateTime);
+                    return docDate === selectedDate;
+                });
+
+                let filtered = filteredByDate;
+                if (shiftFilter !== 'ALL') {
+                    filtered = filteredByDate.filter(d => {
+                        const shift = (d.shift || '').toUpperCase();
+                        return shift === shiftFilter;
+                    });
+                }
+
+                activeTransactions = filtered.filter(tx => tx.paymentStatus !== 'VOID');
+                voidTransactions = filtered.filter(tx => tx.paymentStatus === 'VOID');
+                
+                if (voidOption === 'EXCLUDE') {
+                    allTransactions = activeTransactions;
+                } else if (voidOption === 'ONLY') {
+                    allTransactions = voidTransactions;
+                } else {
+                    allTransactions = filtered;
+                }
+
+                allTransactions.sort((a,b) => {
+                    const dateA = a.submissionDateTime || '';
+                    const dateB = b.submissionDateTime || '';
+                    return dateB.localeCompare(dateA);
+                });
+                
+                renderAll();
+                
+                const now = new Date();
+                const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+                preparedDate.innerText = dateStr;
+                checkedDate.innerText = dateStr;
+                signatureDate.innerText = dateStr;
+                footGen.innerText = `Loaded: ${now.toLocaleString()}  |  ${filtered.length} receipts for ${selectedDate} (${activeTransactions.length} active, ${voidTransactions.length} void)`;
+                
+            } catch (err) {
+                console.error('Error fetching data:', err);
+                tableBody.innerHTML = `<tr><td colspan="9" class="no-data">Error loading data: ${err.message}</td></tr>`;
+                noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Error loading data</td></tr>';
+            }
+        }
+
+        // ----- render everything -----
+        function renderAll() {
+            let cashUSD = 0, cashMVR = 0;
+            let noncashUSD = 0, noncashMVR = 0;
+            let totalAdults = 0, totalChildren = 0;
+
+            let voidCashUSD = 0, voidCashMVR = 0;
+            let voidNoncashUSD = 0, voidNoncashMVR = 0;
+            let voidCount = voidTransactions.length;
+
+            const noncashMap = new Map();
+
+            activeTransactions.forEach(tx => {
+                const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
+                const curr = (tx.currency || 'USD').toUpperCase();
+                const amt = parseFloat(tx.totalAmount) || 0;
+                totalAdults += parseInt(tx.adult) || 0;
+                totalChildren += parseInt(tx.children) || 0;
+
+                if (method === 'CASH') {
+                    if (curr === 'USD') cashUSD += amt;
+                    else cashMVR += amt;
+                } else {
+                    if (curr === 'USD') noncashUSD += amt;
+                    else noncashMVR += amt;
+
+                    let entry = noncashMap.get(method) || { usd: 0, mvr: 0, count: 0 };
+                    if (curr === 'USD') entry.usd += amt;
+                    else entry.mvr += amt;
+                    entry.count += 1;
+                    noncashMap.set(method, entry);
+                }
+            });
+
+            voidTransactions.forEach(tx => {
+                const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
+                const curr = (tx.currency || 'USD').toUpperCase();
+                const amt = parseFloat(tx.totalAmount) || 0;
+
+                if (method === 'CASH') {
+                    if (curr === 'USD') voidCashUSD += amt;
+                    else voidCashMVR += amt;
+                } else {
+                    if (curr === 'USD') voidNoncashUSD += amt;
+                    else voidNoncashMVR += amt;
+                }
+            });
+
+            cashUSDspan.innerText = cashUSD.toFixed(2);
+            cashMVRspan.innerText = cashMVR.toFixed(2);
+            noncashUSDspan.innerText = noncashUSD.toFixed(2);
+            noncashMVRspan.innerText = noncashMVR.toFixed(2);
+            totalReceiptsSpan.innerText = activeTransactions.length;
+            totalAdultsSpan.innerText = totalAdults;
+            totalChildrenSpan.innerText = totalChildren;
+
+            if (voidCount > 0) {
+                voidCashInfo.innerHTML = `🚫 Void cash: USD ${voidCashUSD.toFixed(2)} / MVR ${voidCashMVR.toFixed(2)}`;
+                voidNoncashInfo.innerHTML = `🚫 Void non-cash: USD ${voidNoncashUSD.toFixed(2)} / MVR ${voidNoncashMVR.toFixed(2)}`;
+                voidCountInfo.innerHTML = `🚫 Void receipts: ${voidCount}`;
+                voidSummarySection.style.display = 'block';
+                
+                let voidHtml = '';
+                voidTransactions.forEach(tx => {
+                    const staff = getStaffUsername(tx);
+                    voidHtml += `<tr>
+                        <td>${tx.receiptNo || tx.id || ''}</td>
+                        <td>${(parseFloat(tx.totalAmount) || 0).toFixed(2)}</td>
+                        <td>${tx.currency || 'USD'}</td>
+                        <td>${tx.paymentMethod || 'CASH'}</td>
+                        <td>${tx.voidReason || 'No reason provided'}</td>
+                        <td>${staff}</td>
+                    </tr>`;
+                });
+                voidBody.innerHTML = voidHtml;
+            } else {
+                voidCashInfo.innerHTML = '';
+                voidNoncashInfo.innerHTML = '';
+                voidCountInfo.innerHTML = '';
+                voidSummarySection.style.display = 'none';
+            }
+
+            let noncashHtml = '';
+            if (noncashMap.size === 0) {
+                noncashHtml = '<tr><td colspan="4" style="text-align:center;">— no active non‑cash transactions —</td></tr>';
+            } else {
+                const sortedMethods = Array.from(noncashMap.entries()).sort((a,b) => a[0].localeCompare(b[0]));
+                for (let [method, val] of sortedMethods) {
+                    noncashHtml += `<tr>
+                        <td>${method}</td>
+                        <td>USD ${val.usd.toFixed(2)}</td>
+                        <td>MVR ${val.mvr.toFixed(2)}</td>
+                        <td>${val.count}</td>
+                    </tr>`;
+                }
+            }
+            noncashBody.innerHTML = noncashHtml;
+
+            if (allTransactions.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="9" class="no-data">No transactions found for the selected criteria</td></tr>';
+                return;
+            }
+
+            let listHtml = '';
+            allTransactions.forEach(tx => {
+                const isVoid = tx.paymentStatus === 'VOID';
+                const rowClass = isVoid ? 'void-row' : '';
+                const staff = getStaffUsername(tx);
+                const paymentBadge = getPaymentMethodBadge(tx.paymentMethod);
+                
+                listHtml += `<tr class="${rowClass}">
+                    <td><strong>${tx.receiptNo || tx.id || ''}</strong></td>
+                    <td>${tx.submissionDateTime ? tx.submissionDateTime.substring(0,16) : ''}</td>
+                    <td>${tx.shift || '-'}</td>
+                    <td>${tx.flightNo || '-'}</td>
+                    <td>${tx.adult || 0}/${tx.children || 0}</td>
+                    <td>${tx.currency || 'USD'}</td>
+                    <td>${(parseFloat(tx.totalAmount) || 0).toFixed(2)}</td>
+                    <td>${paymentBadge}</td>
+                    <td>${staff}</td>
+                </tr>`;
+            });
+            tableBody.innerHTML = listHtml;
+        }
+
+        function printReport() { 
+            window.print(); 
+        }
+
+        loadBtn.addEventListener('click', fetchReportData);
+        printBtn.addEventListener('click', printReport);
+        
+        setTimeout(() => fetchReportData(), 500);
+    })();
+</script>
+</body>
+</html>
