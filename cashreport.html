@@ -377,15 +377,48 @@
             font-size: 1.1rem;
         }
 
+        /* BACK BUTTON STYLES - always visible on screen, hidden when printing */
+        .floating-back-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .floating-back-btn:hover {
+            background-color: #0056b3;
+            transform: scale(1.05);
+        }
+        
+        /* PRINT STYLES: hide back button, filters, action buttons completely */
         @media print {
-            body { background: white; padding: 0; }
-            .report-container { box-shadow: none; border: none; }
-            .filter-panel, .action-buttons, .btn, .refresh-small { display: none; }
-            .stat-block { background: none; border: 1px solid #aaa; }
+            body { background: white; padding: 0; margin: 0; }
+            .report-container { box-shadow: none; border: none; max-width: 100%; border-radius: 0; }
+            .filter-panel, .action-buttons, .btn, .refresh-small, .floating-back-btn { display: none !important; }
+            .filter-bar { display: none !important; }
+            .stat-block { background: none; border: 1px solid #aaa; break-inside: avoid; }
             .method-table { border: 1px solid #aaa; }
             .list-table th { background: #ddd; }
             .signature-line { border-bottom: 1px solid #333; }
             .void-row { background: #f5f5f5; }
+            .summary-grid { break-inside: avoid; }
+            .noncash-breakdown { break-inside: avoid; }
+            .table-wrapper { break-inside: auto; }
+            .signature-section { break-inside: avoid; }
         }
     </style>
 </head>
@@ -468,7 +501,8 @@
     <div class="noncash-breakdown" id="voidSummarySection" style="display: none;">
         <h3>🚫 VOIDED TRANSACTIONS</h3>
         <table class="method-table" id="voidTable">
-            <thead><tr><th>Receipt</th><th>Amount</th><th>Currency</th><th>Method</th><th>Reason</th><th>Staff</th></tr></thead>
+            <thead><tr><th>Receipt</th><th>Amount</th><th>Currency</th><th>Method</th><th>Reason</th><th>Staff</th></tr>
+            </thead>
             <tbody id="voidBody"></tbody>
         </table>
     </div>
@@ -486,7 +520,8 @@
                 <th>Total</th>
                 <th>Method</th>
                 <th>Staff</th>
-            </tr></thead>
+            </tr>
+            </thead>
             <tbody id="tableBody">
                 <tr><td colspan="9" class="no-data">Select a date and click LOAD to view transactions</td></tr>
             </tbody>
@@ -525,6 +560,9 @@
     
     <div class="footer-note" id="generatedFoot"></div>
 </div>
+
+<!-- Back button placed OUTSIDE container so it's independent, will be hidden by print media query -->
+<a href="pay.html" class="floating-back-btn" id="floatingBackBtn">← Back</a>
 
 <script>
     (function() {
@@ -622,15 +660,12 @@
             if (typeof value === 'string') return value;
             if (typeof value === 'number') return value.toString();
             if (typeof value === 'object') {
-                // If it's an object, try to get a readable value
                 if (value.name) return value.name;
                 if (value.displayName) return value.displayName;
                 if (value.username) return value.username;
                 if (value.email) return value.email;
                 if (value.id) return value.id;
-                // If it's a Firestore reference, return the ID
                 if (value.id && typeof value.id === 'string') return value.id;
-                // Last resort: try to stringify but limit length
                 try {
                     const str = JSON.stringify(value);
                     return str.length > 30 ? 'Reference' : str;
@@ -643,7 +678,6 @@
 
         // get username from transaction (handles objects)
         function getStaffUsername(tx) {
-            // Check common field names
             const possibleFields = [
                 'username', 'userName', 'user', 'staff', 'staffName',
                 'cashier', 'operator', 'processedBy', 'processed_by',
@@ -655,80 +689,20 @@
                     return getStringValue(tx[field]);
                 }
             }
-            
             return 'System';
         }
 
         // get payment method with styling
         function getPaymentMethodBadge(method) {
             method = (method || 'CASH').toUpperCase().trim();
-            
             let badgeClass = 'payment-other';
             if (method === 'CASH' || method.includes('CASH')) badgeClass = 'payment-cash';
             else if (method.includes('CARD') || method.includes('VISA') || method.includes('MASTER') || method.includes('AMEX')) badgeClass = 'payment-card';
             else if (method.includes('BANK') || method.includes('TRANSFER')) badgeClass = 'payment-bank';
             else if (method.includes('MOBILE') || method.includes('PAY')) badgeClass = 'payment-mobile';
             else if (method.includes('VOUCHER')) badgeClass = 'payment-voucher';
-            
             return `<span class="payment-badge ${badgeClass}">${method}</span>`;
         }
-
-        // get status with styling
-        function getStatusBadge(status) {
-            status = (status || 'COMPLETED').toUpperCase();
-            
-            let badgeClass = 'status-completed';
-            if (status === 'PENDING_APPROVAL' || status === 'PENDING') badgeClass = 'status-pending';
-            else if (status === 'VOID') badgeClass = 'status-void';
-            
-            let displayText = status;
-            if (status === 'PENDING_APPROVAL') displayText = 'PENDING';
-            
-            return `<span class="status-badge ${badgeClass}">${displayText}</span>`;
-        }
-
-        // ========== floating button ==========
-    function addFloatingDashboardButton() {
-    // Create button element
-    const floatingBtn = document.createElement('a');
-    floatingBtn.href = 'pay.html';
-    floatingBtn.innerHTML = '← Back';
-    
-    // Style the button
-    floatingBtn.style.position = 'fixed';
-    floatingBtn.style.bottom = '20px';
-    floatingBtn.style.right = '20px';
-    floatingBtn.style.backgroundColor = '#007bff';
-    floatingBtn.style.color = 'white';
-    floatingBtn.style.padding = '12px 24px';
-    floatingBtn.style.borderRadius = '50px';
-    floatingBtn.style.textDecoration = 'none';
-    floatingBtn.style.fontFamily = 'Arial, sans-serif';
-    floatingBtn.style.fontSize = '16px';
-    floatingBtn.style.fontWeight = 'bold';
-    floatingBtn.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
-    floatingBtn.style.transition = 'all 0.3s ease';
-    floatingBtn.style.zIndex = '1000';
-    floatingBtn.style.border = 'none';
-    floatingBtn.style.cursor = 'pointer';
-    
-    // Add hover effect
-    floatingBtn.onmouseover = function() {
-        this.style.backgroundColor = '#0056b3';
-        this.style.transform = 'scale(1.05)';
-    };
-    
-    floatingBtn.onmouseout = function() {
-        this.style.backgroundColor = '#007bff';
-        this.style.transform = 'scale(1)';
-    };
-    
-    // Add to page
-    document.body.appendChild(floatingBtn);
-}
-
-// Call the function when page loads
-document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
 
         // ----- fetch data from Firestore -----
         async function fetchReportData() {
@@ -746,19 +720,14 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
                 return; 
             }
 
-            // Show loading state
             tableBody.innerHTML = '<tr><td colspan="9" class="no-data">⏳ Loading transactions...</td></tr>';
             noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">⏳ Loading...</td></tr>';
 
             try {
-                console.log('Fetching data for date:', selectedDate);
-                
-                // Get all documents from Kovelipay collection
                 const kovelipayRef = passengerDb.collection('Kovelipay');
                 const snapshot = await kovelipayRef.get();
                 
                 if (snapshot.empty) {
-                    console.log('No documents found in Kovelipay collection');
                     tableBody.innerHTML = '<tr><td colspan="9" class="no-data">No receipts found in database</td></tr>';
                     noncashBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No data available</td></tr>';
                     footGen.innerText = 'No receipts found';
@@ -767,34 +736,15 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
                 
                 const docs = [];
                 snapshot.forEach(doc => {
-                    const data = doc.data();
-                    docs.push({ 
-                        id: doc.id, 
-                        ...data 
-                    });
+                    docs.push({ id: doc.id, ...doc.data() });
                 });
 
-                console.log(`Total documents: ${docs.length}`);
-                
-                // Log first document to see structure
-                if (docs.length > 0) {
-                    console.log('Sample document:', docs[0]);
-                }
-
-                // Filter by date
                 const filteredByDate = docs.filter(d => {
                     if (!d.submissionDateTime) return false;
                     const docDate = extractDateFromDateTimeField(d.submissionDateTime);
-                    const match = docDate === selectedDate;
-                    if (match) {
-                        console.log('Matching receipt:', d.receiptNo, d.submissionDateTime, '->', docDate);
-                    }
-                    return match;
+                    return docDate === selectedDate;
                 });
 
-                console.log(`Documents matching date ${selectedDate}: ${filteredByDate.length}`);
-
-                // Filter by shift
                 let filtered = filteredByDate;
                 if (shiftFilter !== 'ALL') {
                     filtered = filteredByDate.filter(d => {
@@ -803,11 +753,9 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
                     });
                 }
 
-                // Split into active and void
                 activeTransactions = filtered.filter(tx => tx.paymentStatus !== 'VOID');
                 voidTransactions = filtered.filter(tx => tx.paymentStatus === 'VOID');
                 
-                // Apply void filter for display
                 if (voidOption === 'EXCLUDE') {
                     allTransactions = activeTransactions;
                 } else if (voidOption === 'ONLY') {
@@ -824,14 +772,11 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
                 
                 renderAll();
                 
-                // Set signature dates
                 const now = new Date();
                 const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-                
                 preparedDate.innerText = dateStr;
                 checkedDate.innerText = dateStr;
                 signatureDate.innerText = dateStr;
-                
                 footGen.innerText = `Loaded: ${now.toLocaleString()}  |  ${filtered.length} receipts for ${selectedDate} (${activeTransactions.length} active, ${voidTransactions.length} void)`;
                 
             } catch (err) {
@@ -843,20 +788,16 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
 
         // ----- render everything -----
         function renderAll() {
-            // Calculate totals for ACTIVE transactions only
             let cashUSD = 0, cashMVR = 0;
             let noncashUSD = 0, noncashMVR = 0;
             let totalAdults = 0, totalChildren = 0;
 
-            // Calculate void totals
             let voidCashUSD = 0, voidCashMVR = 0;
             let voidNoncashUSD = 0, voidNoncashMVR = 0;
             let voidCount = voidTransactions.length;
 
-            // Detailed non-cash breakdown (active only)
             const noncashMap = new Map();
 
-            // Process active transactions
             activeTransactions.forEach(tx => {
                 const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
                 const curr = (tx.currency || 'USD').toUpperCase();
@@ -879,7 +820,6 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
                 }
             });
 
-            // Process void transactions for summary
             voidTransactions.forEach(tx => {
                 const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
                 const curr = (tx.currency || 'USD').toUpperCase();
@@ -894,7 +834,6 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
                 }
             });
 
-            // Update summary blocks
             cashUSDspan.innerText = cashUSD.toFixed(2);
             cashMVRspan.innerText = cashMVR.toFixed(2);
             noncashUSDspan.innerText = noncashUSD.toFixed(2);
@@ -903,14 +842,12 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
             totalAdultsSpan.innerText = totalAdults;
             totalChildrenSpan.innerText = totalChildren;
 
-            // Update void info
             if (voidCount > 0) {
                 voidCashInfo.innerHTML = `🚫 Void cash: USD ${voidCashUSD.toFixed(2)} / MVR ${voidCashMVR.toFixed(2)}`;
                 voidNoncashInfo.innerHTML = `🚫 Void non-cash: USD ${voidNoncashUSD.toFixed(2)} / MVR ${voidNoncashMVR.toFixed(2)}`;
                 voidCountInfo.innerHTML = `🚫 Void receipts: ${voidCount}`;
                 voidSummarySection.style.display = 'block';
                 
-                // Build void transactions table
                 let voidHtml = '';
                 voidTransactions.forEach(tx => {
                     const staff = getStaffUsername(tx);
@@ -931,7 +868,6 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
                 voidSummarySection.style.display = 'none';
             }
 
-            // Build non-cash breakdown table
             let noncashHtml = '';
             if (noncashMap.size === 0) {
                 noncashHtml = '<tr><td colspan="4" style="text-align:center;">— no active non‑cash transactions —</td></tr>';
@@ -948,7 +884,6 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
             }
             noncashBody.innerHTML = noncashHtml;
 
-            // Build transaction list
             if (allTransactions.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="9" class="no-data">No transactions found for the selected criteria</td></tr>';
                 return;
@@ -973,20 +908,16 @@ document.addEventListener('DOMContentLoaded', addFloatingDashboardButton);
                     <td>${staff}</td>
                 </tr>`;
             });
-            
             tableBody.innerHTML = listHtml;
         }
 
-        // Print function
         function printReport() { 
             window.print(); 
         }
 
-        // Event listeners
         loadBtn.addEventListener('click', fetchReportData);
         printBtn.addEventListener('click', printReport);
         
-        // Auto-load on page load
         setTimeout(() => fetchReportData(), 500);
     })();
 </script>
