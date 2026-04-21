@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Koveli Lounge – Full Cash Report (Void by status:"VOID")</title>
+    <title>Koveli Lounge – Cash Report (Strict Void Separation)</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    <!-- external config & data -->
+    <!-- external config & data (ensure these files exist) -->
     <script src="fireshift.js"></script>
     <script src="iata.js"></script>
     <script src="rate.js"></script>
@@ -112,7 +112,6 @@
         .currency-code { font-weight: 400; color: #5b4a32; }
         .currency-amount { font-weight: 500; color: #2c3e2f; }
         .sub-foot { font-size: 0.75rem; color: #9b8b74; margin-top: 8px; }
-        .void-stat { color: #c68b5e; font-size: 0.9rem; margin-top: 5px; padding-top: 5px; border-top: 1px dashed #e7dbc6; }
         .payment-badge {
             display: inline-block;
             padding: 4px 10px;
@@ -274,7 +273,7 @@
     <div class="company-header">
         <div class="company-name" id="companyName">KOVELI LOUNGE</div>
         <div class="company-address" id="companyAddress">Velana International Airport, Malé, Maldives</div>
-        <div class="report-title">CASH REPORT — WITH VOID TRANSACTIONS (status:"VOID")</div>
+        <div class="report-title">CASH REPORT — ACTIVE & VOID (STRICT SEPARATION)</div>
     </div>
 
     <div class="filter-bar">
@@ -288,7 +287,7 @@
                 </select>
             </div>
             <div class="filter-item">
-                <label>🚫 VOID DISPLAY</label>
+                <label>📋 DISPLAY MODE</label>
                 <select id="filterVoid">
                     <option value="ALL">Show All (Active + Void)</option>
                     <option value="ACTIVE_ONLY">Active Only</option>
@@ -300,32 +299,33 @@
         <div class="action-buttons"><button class="btn print" id="printReportBtn">🖨️ PRINT A4</button></div>
     </div>
 
-    <!-- summary area: active totals only -->
+    <!-- summary area: ONLY active transactions (voids EXCLUDED from all calculations) -->
     <div class="summary-section">
         <div class="summary-grid">
             <div class="stat-block">
                 <div class="stat-label">💰 ACTIVE CASH TOTAL</div>
                 <div class="currency-line"><span class="currency-code">USD</span><span class="currency-amount" id="cashUSD">0.00</span></div>
                 <div class="currency-line"><span class="currency-code">MVR</span><span class="currency-amount" id="cashMVR">0.00</span></div>
-                <div class="sub-foot">excludes voided receipts (status ≠ "VOID")</div>
+                <div class="sub-foot">✅ Active receipts only (status ≠ VOID)</div>
             </div>
             <div class="stat-block">
                 <div class="stat-label">💳 ACTIVE NON‑CASH TOTAL</div>
                 <div class="currency-line"><span class="currency-code">USD</span><span class="currency-amount" id="noncashUSD">0.00</span></div>
                 <div class="currency-line"><span class="currency-code">MVR</span><span class="currency-amount" id="noncashMVR">0.00</span></div>
-                <div class="sub-foot">excludes voided receipts</div>
+                <div class="sub-foot">✅ Active receipts only (status ≠ VOID)</div>
             </div>
             <div class="stat-block">
                 <div class="stat-label">📋 ACTIVE SUMMARY</div>
                 <div class="currency-line"><span class="currency-code">Receipts</span><span class="currency-amount" id="totalReceipts">0</span></div>
                 <div class="currency-line"><span class="currency-code">Adults</span><span class="currency-amount" id="totalAdults">0</span></div>
                 <div class="currency-line"><span class="currency-code">Children</span><span class="currency-amount" id="totalChildren">0</span></div>
-                <div class="sub-foot">excludes voided</div>
+                <div class="sub-foot">✅ Active receipts only</div>
             </div>
         </div>
-        <!-- VOID totals summary card (visible when any receipt has status:"VOID") -->
+        
+        <!-- VOID SUMMARY CARD - separate from active totals, shown only when voids exist -->
         <div id="voidTotalCard" style="margin-top: 5px; margin-bottom: 15px; background:#fef3ea; border-radius: 18px; padding: 12px 20px; border-left: 5px solid #c68b5e; display: none;">
-            <div style="font-weight: 600; color:#b35f2a;">🚫 VOIDED TRANSACTIONS SUMMARY (status:"VOID")</div>
+            <div style="font-weight: 600; color:#b35f2a;">🚫 VOIDED TRANSACTIONS SUMMARY (status = "VOID")</div>
             <div style="display: flex; flex-wrap: wrap; gap: 25px; margin-top: 8px;">
                 <div><span style="color:#7f6e54;">Cash Void:</span> <strong>USD <span id="voidCashUSDSpan">0.00</span> / MVR <span id="voidCashMVRSpan">0.00</span></strong></div>
                 <div><span style="color:#7f6e54;">Non‑Cash Void:</span> <strong>USD <span id="voidNoncashUSDSpan">0.00</span> / MVR <span id="voidNoncashMVRSpan">0.00</span></strong></div>
@@ -334,25 +334,25 @@
         </div>
     </div>
 
-    <!-- Non‑cash breakdown by payment method (active transactions only) -->
+    <!-- Non‑cash breakdown by payment method (ACTIVE transactions only) -->
     <div class="noncash-breakdown">
-        <h3>💳 PAYMENT METHOD DETAILS (active transactions only)</h3>
+        <h3>💳 PAYMENT METHOD DETAILS (active transactions only — voids excluded)</h3>
         <table class="method-table" id="noncashTable">
             <thead><tr><th>Payment method</th><th>USD total</th><th>MVR total</th><th>Transactions</th></tr></thead>
             <tbody id="noncashBody"><tr><td colspan="4" style="text-align:center;">Select a date and click LOAD</td></tr></tbody>
         </table>
     </div>
 
-    <!-- Voided transactions detailed list (shown if any receipt has status:"VOID") -->
+    <!-- Voided transactions detailed list (only shown if void receipts exist) -->
     <div class="noncash-breakdown" id="voidDetailSection" style="display: none;">
-        <h3>🚫 VOIDED TRANSACTIONS (full list — based on field status:"VOID")</h3>
+        <h3>🚫 VOIDED TRANSACTIONS (full list — receipts with status:"VOID")</h3>
         <table class="method-table" id="voidTable">
             <thead><tr><th>Receipt #</th><th>Date/Time</th><th>Shift</th><th>Amount</th><th>Currency</th><th>Method</th><th>Void Reason</th><th>Staff</th></tr></thead>
             <tbody id="voidBody"></tbody>
         </table>
     </div>
 
-    <!-- detailed transaction list (based on filter: ALL, ACTIVE_ONLY, VOID_ONLY) -->
+    <!-- detailed transaction list (based on display mode) -->
     <div class="table-wrapper">
         <table class="list-table" id="reportTable">
             <thead><tr>
@@ -373,16 +373,19 @@
 
 <script>
     (function() {
-        let allDisplayTransactions = [];
-        let activeTransactions = [];
-        let voidTransactions = [];
+        // Data containers
+        let activeTransactions = [];   // status !== "VOID"
+        let voidTransactions = [];     // status === "VOID"
+        let displayTransactions = [];
 
+        // DOM elements
         const dateInput = document.getElementById('filterDate');
         const shiftSelect = document.getElementById('filterShift');
-        const voidFilterSelect = document.getElementById('filterVoid');
+        const displayModeSelect = document.getElementById('filterVoid');
         const loadBtn = document.getElementById('loadReportBtn');
         const printBtn = document.getElementById('printReportBtn');
 
+        // Active summary spans
         const cashUSDspan = document.getElementById('cashUSD');
         const cashMVRspan = document.getElementById('cashMVR');
         const noncashUSDspan = document.getElementById('noncashUSD');
@@ -391,6 +394,7 @@
         const totalAdultsSpan = document.getElementById('totalAdults');
         const totalChildrenSpan = document.getElementById('totalChildren');
         
+        // Void card elements
         const voidTotalCard = document.getElementById('voidTotalCard');
         const voidCashUSDSpan = document.getElementById('voidCashUSDSpan');
         const voidCashMVRSpan = document.getElementById('voidCashMVRSpan');
@@ -408,6 +412,7 @@
         const checkedDateSpan = document.getElementById('checkedDate');
         const signatureDateSpan = document.getElementById('signatureDate');
 
+        // Set company info from Co.js if available
         if (typeof companyInfo !== 'undefined') {
             const nameEl = document.getElementById('companyName');
             const addrEl = document.getElementById('companyAddress');
@@ -415,12 +420,15 @@
             if (companyInfo.address) addrEl.innerText = companyInfo.address;
         }
 
+        // Default to today
         const today = new Date().toISOString().split('T')[0];
         dateInput.value = today;
 
+        // Helper: extract YYYY-MM-DD from various date formats
         function extractDateFromDateTimeField(dt) {
             if (!dt) return '';
             try {
+                // Handle MM/DD/YYYY, HH:MM format
                 if (dt.includes('/')) {
                     let datePart = dt.split(',')[0].trim();
                     let [m, d, y] = datePart.split('/');
@@ -470,18 +478,19 @@
             return `<span class="payment-badge ${cls}">${method}</span>`;
         }
 
-        function getStatusBadge(status) {
-            if (status === 'VOID') return `<span class="status-badge status-void">VOID</span>`;
+        function getStatusBadge(isVoid) {
+            if (isVoid) return `<span class="status-badge status-void">VOID</span>`;
             return `<span class="status-badge status-completed">ACTIVE</span>`;
         }
 
-        // determine if a transaction is voided: check field "status" (case-insensitive) equals "VOID"
+        // CRITICAL: Determine void based on "status" field exactly "VOID" (case-insensitive)
         function isVoidTransaction(tx) {
-            const statusValue = tx.status;
-            if (statusValue === undefined || statusValue === null) return false;
-            return String(statusValue).toUpperCase() === 'VOID';
+            const statusVal = tx.status;
+            if (statusVal === undefined || statusVal === null) return false;
+            return String(statusVal).toUpperCase() === 'VOID';
         }
 
+        // Main fetch and filter
         async function fetchReportData() {
             const selectedDate = dateInput.value;
             const shiftFilter = shiftSelect.value;
@@ -509,21 +518,29 @@
                     return docDate === selectedDate;
                 });
                 
+                // Filter by shift
                 let filteredByShift = filteredByDate;
                 if (shiftFilter !== 'ALL') {
                     filteredByShift = filteredByDate.filter(d => (d.shift || '').toUpperCase() === shiftFilter);
                 }
                 
-                // CRITICAL: Separate active vs void based on the "status" field (status:"VOID")
+                // CRITICAL SEPARATION: active = status NOT "VOID", void = status IS "VOID"
                 activeTransactions = filteredByShift.filter(tx => !isVoidTransaction(tx));
                 voidTransactions = filteredByShift.filter(tx => isVoidTransaction(tx));
                 
-                const voidDisplayMode = voidFilterSelect.value;
-                if (voidDisplayMode === 'ACTIVE_ONLY') allDisplayTransactions = [...activeTransactions];
-                else if (voidDisplayMode === 'VOID_ONLY') allDisplayTransactions = [...voidTransactions];
-                else allDisplayTransactions = [...activeTransactions, ...voidTransactions];
+                // Determine display list based on user selection
+                const displayMode = displayModeSelect.value;
+                if (displayMode === 'ACTIVE_ONLY') {
+                    displayTransactions = [...activeTransactions];
+                } else if (displayMode === 'VOID_ONLY') {
+                    displayTransactions = [...voidTransactions];
+                } else {
+                    displayTransactions = [...activeTransactions, ...voidTransactions];
+                }
                 
-                allDisplayTransactions.sort((a,b) => (b.submissionDateTime || '').localeCompare(a.submissionDateTime || ''));
+                // Sort by datetime descending
+                displayTransactions.sort((a,b) => (b.submissionDateTime || '').localeCompare(a.submissionDateTime || ''));
+                
                 renderAllSections();
                 
                 const now = new Date();
@@ -531,29 +548,35 @@
                 preparedDateSpan.innerText = dateStr;
                 checkedDateSpan.innerText = dateStr;
                 signatureDateSpan.innerText = dateStr;
-                footGen.innerText = `Report generated: ${now.toLocaleString()}  |  Date: ${selectedDate} | Active: ${activeTransactions.length} | Void (status:"VOID"): ${voidTransactions.length}`;
+                footGen.innerText = `Report: ${selectedDate} | Active receipts: ${activeTransactions.length} | Void receipts (status:"VOID"): ${voidTransactions.length} | Generated: ${now.toLocaleString()}`;
+                
             } catch (err) {
-                console.error(err);
-                tableBody.innerHTML = `<tr><td colspan="10" class="no-data">Error: ${err.message}</td></tr>`;
+                console.error('Firestore error:', err);
+                tableBody.innerHTML = `<tr><td colspan="10" class="no-data">Error loading data: ${err.message}</td></tr>`;
             }
         }
 
         function renderAllSections() {
-            // --- Active totals (cash, non-cash, pax) from activeTransactions only ---
-            let cashUSD = 0, cashMVR = 0, noncashUSD = 0, noncashMVR = 0, totalAdults = 0, totalChildren = 0;
-            const noncashMap = new Map();
+            // --- ACTIVE TOTALS (voids are completely excluded from these calculations) ---
+            let activeCashUSD = 0, activeCashMVR = 0;
+            let activeNoncashUSD = 0, activeNoncashMVR = 0;
+            let totalAdults = 0, totalChildren = 0;
+            const noncashMap = new Map(); // for active only
+            
             activeTransactions.forEach(tx => {
                 const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
                 const curr = (tx.currency || 'USD').toUpperCase();
                 const amt = parseFloat(tx.totalAmount) || 0;
                 totalAdults += parseInt(tx.adult) || 0;
                 totalChildren += parseInt(tx.children) || 0;
+                
                 if (method === 'CASH') {
-                    if (curr === 'USD') cashUSD += amt;
-                    else cashMVR += amt;
+                    if (curr === 'USD') activeCashUSD += amt;
+                    else activeCashMVR += amt;
                 } else {
-                    if (curr === 'USD') noncashUSD += amt;
-                    else noncashMVR += amt;
+                    if (curr === 'USD') activeNoncashUSD += amt;
+                    else activeNoncashMVR += amt;
+                    
                     let entry = noncashMap.get(method) || { usd: 0, mvr: 0, count: 0 };
                     if (curr === 'USD') entry.usd += amt;
                     else entry.mvr += amt;
@@ -561,16 +584,18 @@
                     noncashMap.set(method, entry);
                 }
             });
-            cashUSDspan.innerText = cashUSD.toFixed(2);
-            cashMVRspan.innerText = cashMVR.toFixed(2);
-            noncashUSDspan.innerText = noncashUSD.toFixed(2);
-            noncashMVRspan.innerText = noncashMVR.toFixed(2);
+            
+            cashUSDspan.innerText = activeCashUSD.toFixed(2);
+            cashMVRspan.innerText = activeCashMVR.toFixed(2);
+            noncashUSDspan.innerText = activeNoncashUSD.toFixed(2);
+            noncashMVRspan.innerText = activeNoncashMVR.toFixed(2);
             totalReceiptsSpan.innerText = activeTransactions.length;
             totalAdultsSpan.innerText = totalAdults;
             totalChildrenSpan.innerText = totalChildren;
-
-            // Void totals from voidTransactions (status:"VOID")
-            let voidCashUSD = 0, voidCashMVR = 0, voidNoncashUSD = 0, voidNoncashMVR = 0;
+            
+            // --- VOID TOTALS (separate, never mixed with active) ---
+            let voidCashUSD = 0, voidCashMVR = 0;
+            let voidNoncashUSD = 0, voidNoncashMVR = 0;
             voidTransactions.forEach(tx => {
                 const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
                 const curr = (tx.currency || 'USD').toUpperCase();
@@ -583,6 +608,7 @@
                     else voidNoncashMVR += amt;
                 }
             });
+            
             const voidCount = voidTransactions.length;
             if (voidCount > 0) {
                 voidTotalCard.style.display = 'block';
@@ -592,11 +618,13 @@
                 voidNoncashMVRSpan.innerText = voidNoncashMVR.toFixed(2);
                 voidCountTotalSpan.innerText = voidCount;
                 
+                // Build detailed void table
                 voidDetailSection.style.display = 'block';
                 let voidHtml = '';
                 voidTransactions.forEach(tx => {
                     const staff = getStaffUsername(tx);
                     const datetime = tx.submissionDateTime ? tx.submissionDateTime.substring(0,16) : '';
+                    const voidReason = tx.voidReason || tx.reason || 'No reason provided';
                     voidHtml += `<tr>
                         <td><strong>${tx.receiptNo || tx.id || ''}</strong></td>
                         <td>${datetime}</td>
@@ -604,7 +632,7 @@
                         <td>${(parseFloat(tx.totalAmount) || 0).toFixed(2)}</td>
                         <td>${tx.currency || 'USD'}</td>
                         <td>${tx.paymentMethod || 'CASH'}</td>
-                        <td>${tx.voidReason || tx.reason || 'No reason provided'}</td>
+                        <td>${voidReason}</td>
                         <td>${staff}</td>
                     </tr>`;
                 });
@@ -614,30 +642,36 @@
                 voidDetailSection.style.display = 'none';
             }
             
-            // Non-cash breakdown table (active only)
+            // --- Non-cash breakdown table (active only, voids excluded) ---
             let noncashHtml = '';
             if (noncashMap.size === 0) {
                 noncashHtml = '<tr><td colspan="4" style="text-align:center;">— no active non‑cash transactions —</td></tr>';
             } else {
-                const sorted = Array.from(noncashMap.entries()).sort((a,b)=>a[0].localeCompare(b[0]));
+                const sorted = Array.from(noncashMap.entries()).sort((a,b) => a[0].localeCompare(b[0]));
                 for (let [method, val] of sorted) {
-                    noncashHtml += `<tr><td>${method}</td><td>USD ${val.usd.toFixed(2)}</td><td>MVR ${val.mvr.toFixed(2)}</td><td>${val.count}</td></tr>`;
+                    noncashHtml += `<tr>
+                        <td>${method}</td>
+                        <td>USD ${val.usd.toFixed(2)}</td>
+                        <td>MVR ${val.mvr.toFixed(2)}</td>
+                        <td>${val.count}</td>
+                    </tr>`;
                 }
             }
             noncashBody.innerHTML = noncashHtml;
-
-            // Main transaction list (allDisplayTransactions)
-            if (allDisplayTransactions.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="10" class="no-data">No transactions match current filters</td></tr>';
+            
+            // --- Main transaction list (based on displayTransactions) ---
+            if (displayTransactions.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="10" class="no-data">No transactions match current display mode</td></tr>';
                 return;
             }
+            
             let listHtml = '';
-            allDisplayTransactions.forEach(tx => {
+            displayTransactions.forEach(tx => {
                 const voidFlag = isVoidTransaction(tx);
                 const rowClass = voidFlag ? 'void-row' : '';
                 const staff = getStaffUsername(tx);
                 const paymentBadge = getPaymentMethodBadge(tx.paymentMethod);
-                const statusBadge = getStatusBadge(voidFlag ? 'VOID' : 'ACTIVE');
+                const statusBadge = getStatusBadge(voidFlag);
                 listHtml += `<tr class="${rowClass}">
                     <td><strong>${tx.receiptNo || tx.id || ''}</strong></td>
                     <td>${tx.submissionDateTime ? tx.submissionDateTime.substring(0,16) : ''}</td>
@@ -655,9 +689,12 @@
         }
 
         function printReport() { window.print(); }
+        
         loadBtn.addEventListener('click', fetchReportData);
         printBtn.addEventListener('click', printReport);
-        setTimeout(() => fetchReportData(), 300);
+        
+        // Auto-load on page ready
+        setTimeout(() => fetchReportData(), 400);
     })();
 </script>
 </body>
