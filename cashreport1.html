@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Koveli Lounge – Cash Report (Strict Void Separation)</title>
+    <title>Koveli Lounge – Cash Report (Active Non-Cash Fixed)</title>
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
@@ -273,7 +273,7 @@
     <div class="company-header">
         <div class="company-name" id="companyName">KOVELI LOUNGE</div>
         <div class="company-address" id="companyAddress">Velana International Airport, Malé, Maldives</div>
-        <div class="report-title">CASH REPORT — ACTIVE & VOID (STRICT SEPARATION)</div>
+        <div class="report-title">CASH REPORT — ACTIVE TOTALS EXCLUDE VOIDS</div>
     </div>
 
     <div class="filter-bar">
@@ -312,7 +312,7 @@
                 <div class="stat-label">💳 ACTIVE NON‑CASH TOTAL</div>
                 <div class="currency-line"><span class="currency-code">USD</span><span class="currency-amount" id="noncashUSD">0.00</span></div>
                 <div class="currency-line"><span class="currency-code">MVR</span><span class="currency-amount" id="noncashMVR">0.00</span></div>
-                <div class="sub-foot">✅ Active receipts only (status ≠ VOID)</div>
+                <div class="sub-foot">✅ Active receipts only (status ≠ VOID) — VOIDS EXCLUDED</div>
             </div>
             <div class="stat-block">
                 <div class="stat-label">📋 ACTIVE SUMMARY</div>
@@ -373,7 +373,7 @@
 
 <script>
     (function() {
-        // Data containers
+        // Data containers - strict separation
         let activeTransactions = [];   // status !== "VOID"
         let voidTransactions = [];     // status === "VOID"
         let displayTransactions = [];
@@ -428,7 +428,6 @@
         function extractDateFromDateTimeField(dt) {
             if (!dt) return '';
             try {
-                // Handle MM/DD/YYYY, HH:MM format
                 if (dt.includes('/')) {
                     let datePart = dt.split(',')[0].trim();
                     let [m, d, y] = datePart.split('/');
@@ -524,7 +523,7 @@
                     filteredByShift = filteredByDate.filter(d => (d.shift || '').toUpperCase() === shiftFilter);
                 }
                 
-                // CRITICAL SEPARATION: active = status NOT "VOID", void = status IS "VOID"
+                // STRICT SEPARATION: active = status NOT "VOID", void = status IS "VOID"
                 activeTransactions = filteredByShift.filter(tx => !isVoidTransaction(tx));
                 voidTransactions = filteredByShift.filter(tx => isVoidTransaction(tx));
                 
@@ -563,6 +562,7 @@
             let totalAdults = 0, totalChildren = 0;
             const noncashMap = new Map(); // for active only
             
+            // IMPORTANT: Only iterate through activeTransactions (status !== VOID)
             activeTransactions.forEach(tx => {
                 const method = (tx.paymentMethod || 'OTHER').trim().toUpperCase();
                 const curr = (tx.currency || 'USD').toUpperCase();
@@ -574,6 +574,7 @@
                     if (curr === 'USD') activeCashUSD += amt;
                     else activeCashMVR += amt;
                 } else {
+                    // NON-CASH: cards, mobile, bank, voucher, etc.
                     if (curr === 'USD') activeNoncashUSD += amt;
                     else activeNoncashMVR += amt;
                     
@@ -585,6 +586,7 @@
                 }
             });
             
+            // Update active summary displays
             cashUSDspan.innerText = activeCashUSD.toFixed(2);
             cashMVRspan.innerText = activeCashMVR.toFixed(2);
             noncashUSDspan.innerText = activeNoncashUSD.toFixed(2);
