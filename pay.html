@@ -159,6 +159,7 @@
         .floating-menu-item.dashboard { background: #6b8e23; color: white; border-color: #e6b800; }
         .floating-menu-item.edit { background: #c68b5e; color: white; border-color: #e6b800; }
         .floating-menu-item.report { background: #8b6913; color: white; border-color: #e6b800; }
+        .floating-menu-item.drawer { background: #1a2632; color: #e6b800; border-color: #e6b800; font-size: 18px; }
         .floating-menu-item.logout { background: #b63e3e; color: white; border-color: #e6b800; }
         .floating-menu-item i { font-style: normal; }
         @media (max-width: 768px) { .floating-menu { bottom: 20px; right: 20px; } }
@@ -325,39 +326,13 @@
             color: #c68b5e;
         }
 
-        /* ========== DRAWER BUTTON STYLES (ADDED) ========== */
-        .drawer-btn {
-            position: fixed;
-            bottom: 100px;
-            right: 30px;
-            width: 55px;
-            height: 55px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #2c3e50, #1a2632);
-            color: #e6b800;
-            border: none;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 26px;
-            transition: all 0.3s ease;
-            z-index: 1000;
-        }
-        .drawer-btn:hover {
-            transform: scale(1.08);
-            background: linear-gradient(135deg, #e6b800, #b89400);
-            color: #2c3e50;
-        }
-
         /* ========== PRINT RECEIPT - 3cm max height (ADDED) ========== */
         .drawer-print-area {
             display: none;
         }
 
         @media print {
-            html, body, .container, .floating-menu, .drawer-btn, .modal, 
+            html, body, .container, .floating-menu, .modal, 
             body *:not(.drawer-print-area):not(.drawer-receipt) {
                 visibility: hidden !important;
                 display: none !important;
@@ -434,17 +409,19 @@
         }
 
         @media (max-width: 768px) {
-            .drawer-btn { bottom: 90px; right: 20px; width: 48px; height: 48px; font-size: 22px; }
+            .floating-menu { bottom: 20px; right: 20px; }
         }
     </style>
 </head>
 <body>
-    <!-- Floating Menu (unchanged) -->
+    <!-- Floating Menu - WITH DRAWER BUTTON INTEGRATED (no separate drawer button, no cashier float) -->
     <div class="floating-menu">
         <div class="floating-menu-items">
             <a href="dashboard.html" class="floating-menu-item dashboard" data-tooltip="Dashboard"><i>📊</i></a>
             <a href="payedit.html" class="floating-menu-item edit" data-tooltip="Edit Payment"><i>✏️</i></a>
             <a href="cashreport.html" class="floating-menu-item report" data-tooltip="Cash Report"><i>📋</i></a>
+            <!-- DRAWER BUTTON integrated inside floating menu -->
+            <a href="#" class="floating-menu-item drawer" data-tooltip="Open Cash Drawer" id="drawerFloatingBtn"><i>🗄️</i></a>
             <a href="#" class="floating-menu-item logout" id="floatingLogoutBtn" data-tooltip="Logout"><i>🚪</i></a>
         </div>
         <div class="floating-btn"><span>⚡</span></div>
@@ -552,8 +529,6 @@
         </div>
     </div>
 
-    <!-- DRAWER BUTTON (ADDED) -->
-    <button class="drawer-btn" id="drawerOpenBtn" title="Open Cash Drawer">🗄️</button>
     <div id="drawerPrintContainer" class="drawer-print-area"></div>
 
     <!-- Reprint Modal -->
@@ -570,7 +545,7 @@
     </div>
 
 <script>
-// ========== ORIGINAL JAVASCRIPT - UNCHANGED except for added drawer function at the end ==========
+// ========== ORIGINAL JAVASCRIPT - UNCHANGED except for drawer button integrated into floating menu ==========
 
 let currentShiftData = { date: '', shift: '', status: '', openTime: '' };
 let currentCashier = { name: '', level: '', rcno: '', status: 'CLOSED' };
@@ -1674,7 +1649,7 @@ function debugShiftData() {
     alert(`Shift Data:\nDate: ${currentShiftData.date}\nShift: ${currentShiftData.shift}\nStatus: ${currentShiftData.status}\n\nCashier Data:\nName: ${currentCashier.name}\nStatus: ${currentCashier.status}\nRC: ${currentCashier.rcno}`);
 }
 
-// ========== CASH DRAWER PRINT FUNCTION (ADDED) ==========
+// ========== CASH DRAWER PRINT FUNCTION (integrated into floating menu - no separate button) ==========
 function openCashDrawer() {
     const now = new Date();
     const dateStr = now.toLocaleDateString();
@@ -1701,7 +1676,7 @@ function openCashDrawer() {
 
 // DOM Content Loaded
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM fully loaded');
+    console.log('DOM fully loaded - REFRESHING SHIFT & DATE ON LOAD');
     checkAuth();
     
     loadUsers();
@@ -1728,7 +1703,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const searchReceiptBtn = document.getElementById('searchReceiptBtn');
     
     setupNumberInputs();
-    loadShiftDataOnce();
+    
+    // ========== CHANGED: Force refresh shift from Firebase on load ==========
+    refreshShiftData();     // ← This replaces loadShiftDataOnce() for fresh data
     
     setTimeout(() => {
         fetchCashierStatus();
@@ -1746,7 +1723,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fetchCashierStatus();
     }, 30000);
     
-    updateDateTime();
+    updateDateTime();       // ← Already there, keeps date/time updating
     
     setTimeout(() => { 
         if (typeof rates !== 'undefined') { 
@@ -1790,17 +1767,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     document.addEventListener('keydown', function(e) { if (e.ctrlKey && e.shiftKey && e.key === 'D') { e.preventDefault(); debugShiftData(); } });
     
-    // ========== DRAWER BUTTON EVENT LISTENER (ADDED) ==========
-    const drawerBtn = document.getElementById('drawerOpenBtn');
-    if (drawerBtn) drawerBtn.addEventListener('click', openCashDrawer);
+    const drawerFloatingBtn = document.getElementById('drawerFloatingBtn');
+    if (drawerFloatingBtn) drawerFloatingBtn.addEventListener('click', function(e) { e.preventDefault(); openCashDrawer(); });
     
-    console.log('Dual scanning initialized - Redirect to receipt.html for printing');
-    console.log('Cashier status fetched from Firebase cashier/current collection');
-    console.log('PAYMENTS ARE BLOCKED WHEN CASHIER IS CLOSED');
-    console.log('Void receipt support enabled - Use reprint for voided transactions');
-    console.log('Document ID is now the receipt number');
-    console.log('Cash payment with amount received and change calculation added');
-    console.log('DRAWER BUTTON ADDED - Click to print cash drawer open receipt');
+    console.log('✅ Page loaded with REFRESHED SHIFT DATA from Firebase');
+    console.log('✅ Current date/time active');
 });
 </script>
 </body>
