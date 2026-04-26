@@ -7,9 +7,10 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
     
     <!-- Your config files -->
-    <script src="fireshift.js"></script>
+    <script src="fireshift1.js"></script>
     <script src="Co.js"></script>
     
     <style>
@@ -1126,31 +1127,78 @@
             return { name: 'User', rcno: 'N/A', level: 'OPERATOR', username: 'unknown' };
         }
     }
+        // ========== AUTHENTICATION GUARD ==========
+        function checkAuthentication() {
+            const username = localStorage.getItem('username');
+            const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+            const loggedInUser = localStorage.getItem('loggedInUser');
+            
+            // Check multiple possible login indicators
+            let isAuthenticated = false;
+            
+            if (username && isLoggedIn) {
+                isAuthenticated = true;
+            } else if (loggedInUser) {
+                try {
+                    const user = JSON.parse(loggedInUser);
+                    if (user && user.username) {
+                        isAuthenticated = true;
+                        localStorage.setItem('isLoggedIn', 'true');
+                    }
+                } catch(e) {}
+            } else if (username) {
+                isAuthenticated = true;
+                localStorage.setItem('isLoggedIn', 'true');
+            }
+            
+            if (!isAuthenticated) {
+                console.warn('No active session detected. Redirecting to login...');
+                window.location.href = 'login.html';
+                return false;
+            }
+            return true;
+        }
 
+    // Helper function to format time to 24-hour format (HH:MM)
+    function formatTo24Hour(timeValue) {
+        if (!timeValue) return '--:--';
+        
+        // If it's already in HH:MM or HH:MM:SS format
+        const timeMatch = timeValue.toString().match(/(\d{1,2}):(\d{2})/);
+        if (timeMatch) {
+            let hours = parseInt(timeMatch[1]);
+            const minutes = timeMatch[2];
+            // Ensure 24h format (0-23)
+            if (hours >= 0 && hours <= 23) {
+                return `${hours.toString().padStart(2, '0')}:${minutes}`;
+            }
+        }
+        
+        // Try to parse as date string
+        try {
+            const date = new Date(timeValue);
+            if (!isNaN(date.getTime())) {
+                const hours = date.getHours();
+                const minutes = date.getMinutes();
+                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            }
+        } catch(e) {}
+        
+        // Handle AM/PM format like "2:30 PM"
+        const ampmMatch = timeValue.toString().match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (ampmMatch) {
+            let hours = parseInt(ampmMatch[1]);
+            const minutes = ampmMatch[2];
+            const ampm = ampmMatch[3].toUpperCase();
+            if (ampm === 'PM' && hours !== 12) hours += 12;
+            if (ampm === 'AM' && hours === 12) hours = 0;
+            return `${hours.toString().padStart(2, '0')}:${minutes}`;
+        }
+        
+        return '--:--';
+    }
     // ========== MULTI-DATABASE HELPER FUNCTIONS ==========
     
-    function getFirestoreForFlight(flightNo) {
-        if (!flightNo || typeof flightNo !== 'string') {
-            console.log("No valid flight number provided, using default database");
-            return window.defaultCardDb || window.db;
-        }
-
-        const flightPrefix = flightNo.substring(0, 2).toUpperCase();
-        
-        switch(flightPrefix) {
-            case 'BA':
-                return window.baDb;
-            case 'EK':
-                return window.ekDb;
-            case 'QR':
-                return window.qrDb;
-            case 'SQ':
-                return window.sqDb;
-            default:
-                return window.defaultCardDb;
-        }
-    }
-
     function getFirestoreNameForFlight(flightNo) {
         if (!flightNo || typeof flightNo !== 'string') return "Default Database";
         
@@ -1161,9 +1209,23 @@
             case 'EK': return "EK Database";
             case 'QR': return "QR Database";
             case 'SQ': return "SQ Database";
+            case 'DE':
+            case 'OS':
+            case 'WK':
+            case 'NO': return "DE/OS/WK/NO Database";
+            case 'MU':
+            case 'VS':
+            case 'SU':
+            case 'KC': return "MU/VS/SU/KC Database";
+            case 'EY':
+            case 'FZ':
+            case 'TK':
+            case 'MH': return "EY/FZ/TK/MH Database";
             default: return "Default Database";
         }
     }
+
+    
 
     function getAllDatabases() {
         const databases = [];
@@ -1172,6 +1234,9 @@
         if (window.ekDb) databases.push({ name: 'EK Database', ref: window.ekDb, prefix: 'EK' });
         if (window.qrDb) databases.push({ name: 'QR Database', ref: window.qrDb, prefix: 'QR' });
         if (window.sqDb) databases.push({ name: 'SQ Database', ref: window.sqDb, prefix: 'SQ' });
+        if (window.deoswknoDb) databases.push({ name: 'DE/OS/WK/NO Database', ref: window.deoswknoDb, prefix: 'DE/OS/WK/NO' });
+        if (window.muvssukcDb) databases.push({ name: 'MU/VS/SU/KC Database', ref: window.muvssukcDb, prefix: 'MU/VS/SU/KC' });
+        if (window.eyfztkmhDb) databases.push({ name: 'EY/FZ/TK/MH Database', ref: window.eyfztkmhDb, prefix: 'EY/FZ/TK/MH' });
         if (window.defaultCardDb) databases.push({ name: 'Default Database', ref: window.defaultCardDb, prefix: 'OTHER' });
         
         return databases;
@@ -1932,13 +1997,17 @@ function dismissDuplicateWarning() {
         document.getElementById('databaseBadge').textContent = flightInfo.database;
         document.getElementById('databaseBadge').style.display = 'inline-block';
         
-        document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
+        const formattedFirstPax = formatTo24Hour(currentFlightData.firstPax);
+        const formattedLastPax = formatTo24Hour(currentFlightData.lastPax);
+        const formattedStd = formatTo24Hour(currentFlightData.std);
+
+        document.getElementById('firstPaxDisplay').textContent = formattedFirstPax;
         document.getElementById('stdInput').value = currentFlightData.std || '';
         document.getElementById('lastPaxInput').value = currentFlightData.lastPax || '';
-        
+
         document.getElementById('totalPaxStat').textContent = currentFlightData.totalPax || 0;
-        document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
-        document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
+        document.getElementById('firstPaxStat').textContent = formattedFirstPax;
+        document.getElementById('lastPaxStat').textContent = formattedLastPax;
         
         const regularCount = countRegularPassengers(currentFlightData.passengers);
         document.getElementById('passengerCount').textContent = currentFlightData.totalPax + ' PAX';
@@ -2370,9 +2439,11 @@ async function savePassenger(docId) {
         if (times.length > 0) {
             currentFlightData.firstPax = times.reduce((a, b) => a < b ? a : b);
             currentFlightData.lastPax = times.reduce((a, b) => a > b ? a : b);
-            document.getElementById('firstPaxDisplay').textContent = currentFlightData.firstPax || '-';
-            document.getElementById('firstPaxStat').textContent = currentFlightData.firstPax || '--:--';
-            document.getElementById('lastPaxStat').textContent = currentFlightData.lastPax || '--:--';
+            const formattedFirstPax = formatTo24Hour(currentFlightData.firstPax);
+            const formattedLastPax = formatTo24Hour(currentFlightData.lastPax);
+            document.getElementById('firstPaxDisplay').textContent = formattedFirstPax;
+            document.getElementById('firstPaxStat').textContent = formattedFirstPax;
+            document.getElementById('lastPaxStat').textContent = formattedLastPax;
         }
         
         // Update total pax sum
@@ -2692,355 +2763,377 @@ async function savePassenger(docId) {
     }
 
     // ========== ENHANCED PRINT REPORT FUNCTION WITH USERNAME FROM SECOND CODE ==========
-    function printReport() {
-        if (!currentFlightData || !currentFlightData.isClosed) { 
-            return; 
-        }
-
-        const isSQ = isSQFlight();
-        const isFZ = isFZFlight();
-        const company = window.companyInfo || { 
-            name: 'MACL', 
-            address: '123 Aviation Road', 
-            phone: '+123 456 7890',
-            logo: 'macl.png'
-        };
-        
-        const dateStr = document.getElementById('dateDisplay').textContent; 
-        const dateParts = dateStr.split('-');
-        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
-
-        const airline = currentFlightData.airline || '—';
-        const flightNo = currentFlightData.flightNo || '—';
-        const std = currentFlightData.std || document.getElementById('stdInput').value || '—';
-        const firstPax = currentFlightData.firstPax || '—';
-        const lastPax = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
-        const shift = currentFlightData.shift || '—';
-        
-        const regularPassengers = currentFlightData.passengers.filter(p => !p.isDelayCharge);
-        const delayPassengers = currentFlightData.passengers.filter(p => p.isDelayCharge);
-        
-        const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        const sortedDelay = [...delayPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
-        
-        const sortedPassengers = [...sortedRegular, ...sortedDelay];
-        
-        // Calculate total pax (excluding pax=0)
-        const totalPaxSum = calculateTotalPax(currentFlightData.passengers);
-        
-        // Get current logged-in user using the same method as the second code (Koveli Lounge)
-        const currentUserDetails = getCurrentUserDetails();
-        const preparedByUser = currentUserDetails.name || currentUserDetails.username || 'System User';
-        
-        const printWindow = window.open('', '_blank');
-        
-        let tableHeaders = '';
-        if (isFZ) {
-            tableHeaders = `
-                <tr>
-                    <th>No.</th>
-                    <th>Name</th>
-                    <th>PNR</th>
-                    <th>Seat</th>
-                    <th>Pax</th>
-                    <th>FQTV</th>
-                    <th>Serial No</th>
-                    <th>Time</th>
-                    <th>Remarks</th>
-                </tr>
-            `;
-        } else {
-            tableHeaders = `
-                <tr>
-                    <th>No.</th>
-                    <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
-                    <th>Seat</th>
-                    <th>Pax</th>
-                    <th>FQTV</th>
-                    <th>Serial No</th>
-                    <th>Time</th>
-                    <th>Remarks</th>
-                </tr>
-            `;
-        }
-        
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Flight Report - ${flightNo} - ${formattedDate}</title>
-                <style>
-                    body {
-                        font-family: 'Segoe UI', Arial, sans-serif;
-                        margin: 0.5in;
-                        color: #333;
-                    }
-                    .header {
-                        display: flex;
-                        justify-content: space-between;
-                        margin-bottom: 30px;
-                        padding-bottom: 20px;
-                        border-bottom: 2px solid #e6b800;
-                    }
-                    .left-section {
-                        display: flex;
-                        flex-direction: column;
-                        gap: 15px;
-                    }
-                    .logo-section {
-                        display: flex;
-                        flex-direction: column;
-                    }
-                    .logo {
-                        width: 100px;
-                        height: auto;
-                        margin-bottom: 10px;
-                    }
-                    .logo img {
-                        max-width: 100%;
-                        max-height: 80px;
-                    }
-                    .company-address {
-                        font-size: 11px;
-                        color: #666;
-                        line-height: 1.4;
-                    }
-                    .flight-details {
-                        margin-top: 5px;
-                    }
-                    .flight-detail-item {
-                        font-size: 13px;
-                        margin-bottom: 3px;
-                    }
-                    .flight-detail-label {
-                        font-weight: 600;
-                        color: #8b6913;
-                        display: inline-block;
-                        width: 60px;
-                    }
-                    .right-section {
-                        display: flex;
-                        flex-direction: column;
-                        justify-content: flex-start;
-                        padding-top: 95px;
-                    }
-                    .info-item {
-                        display: flex;
-                        gap: 15px;
-                        margin-bottom: 8px;
-                        justify-content: flex-end;
-                    }
-                    .label {
-                        font-weight: 600;
-                        color: #8b6913;
-                        min-width: 80px;
-                        text-align: right;
-                    }
-                    .value {
-                        color: #333;
-                        min-width: 60px;
-                        text-align: left;
-                    }
-                    .total-pax {
-                        margin: 15px 0;
-                        text-align: right;
-                        font-size: 14px;
-                        font-weight: 600;
-                    }
-                    .total-pax span {
-                        background: #e6b800;
-                        color: white;
-                        padding: 5px 15px;
-                        border-radius: 20px;
-                    }
-                    table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-top: 20px;
-                        font-size: 12px;
-                    }
-                    th {
-                        background: #e6b800;
-                        color: white;
-                        padding: 10px;
-                        text-align: left;
-                        font-size: 12px;
-                    }
-                    td {
-                        padding: 8px 10px;
-                        border-bottom: 1px solid #ddd;
-                    }
-                    tr:nth-child(even) {
-                        background: #f9f9f9;
-                    }
-                    .delay-charge-row {
-                        background-color: rgba(220, 53, 69, 0.05);
-                        font-style: italic;
-                    }
-                    .signature-section {
-                        margin-top: 50px;
-                        display: flex;
-                        justify-content: space-between;
-                        padding: 0 20px;
-                    }
-                    .signature-box {
-                        text-align: center;
-                        width: 200px;
-                    }
-                    .signature-line {
-                        margin-top: 40px;
-                        border-bottom: 1px solid #333;
-                        width: 100%;
-                    }
-                    .signature-label {
-                        font-size: 12px;
-                        color: #8b6913;
-                        font-weight: 600;
-                        margin-top: 5px;
-                    }
-                    .date-info {
-                        margin-top: 20px;
-                        text-align: right;
-                        font-size: 11px;
-                        color: #666;
-                    }
-                    .footer {
-                        margin-top: 30px;
-                        text-align: center;
-                        font-size: 11px;
-                        color: #666;
-                        border-top: 1px solid #ddd;
-                        padding-top: 20px;
-                    }
-                    @media print {
-                        body { margin: 0.25in; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <div class="left-section">
-                        <div class="logo-section">
-                            <div class="logo">
-                                <img src="macl.png" alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
-                            </div>
-                            <div class="company-address">
-                                <strong>${company.name}</strong><br>
-                                ${company.address}<br>
-                                ${company.phone}
-                            </div>
-                        </div>
-                        <div class="flight-details">
-                            <div class="flight-detail-item">
-                                <span class="flight-detail-label">Airline:</span> ${airline}
-                            </div>
-                            <div class="flight-detail-item">
-                                <span class="flight-detail-label">Flight No:</span> ${flightNo}
-                            </div>
-                            <div class="flight-detail-item">
-                                <span class="flight-detail-label">Date:</span> ${formattedDate}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="right-section">
-                        <div class="info-item">
-                            <span class="label">STD:</span>
-                            <span class="value">${std}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">First Pax:</span>
-                            <span class="value">${firstPax}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Last Pax:</span>
-                            <span class="value">${lastPax}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Shift:</span>
-                            <span class="value">${shift}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="total-pax">
-                    <span>TOTAL PAX: ${totalPaxSum}</span>
-                </div>
-                
-                <table>
-                    <thead>
-                        ${tableHeaders}
-                    </thead>
-                    <tbody>
-        `);
-        
-        sortedPassengers.forEach((p, idx) => {
-            const serial = String(idx+1).padStart(3,'0');
-            const rowClass = p.isDelayCharge ? 'delay-charge-row' : '';
-            
-            if (isFZ) {
-                const pnr = extractPNRFromHiddenCode(p.hiddenCode);
-                printWindow.document.write(`
-                    <tr class="${rowClass}">
-                        <td>${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'}</td>
-                        <td>${pnr || '-'}</td>
-                        <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '0'}</td>
-                        <td>${escapeHtml(p.FQTV) || '-'}</td>
-                        <td>${escapeHtml(p.serialNo) || '-'}</td>
-                        <td>${p.entryTime || '-'}</td>
-                        <td>${escapeHtml(p.remarks) || '-'}</td>
-                    </tr>
-                `);
-            } else {
-                printWindow.document.write(`
-                    <tr class="${rowClass}">
-                        <td>${serial}</td>
-                        <td>${escapeHtml(p.pName) || '-'}</td>
-                        <td>${escapeHtml(p.seatNo) || '-'}</td>
-                        <td style="text-align:center;">${p.pax || '0'}</td>
-                        <td>${escapeHtml(p.FQTV) || '-'}</td>
-                        <td>${escapeHtml(p.serialNo) || '-'}</td>
-                        <td>${p.entryTime || '-'}</td>
-                        <td>${escapeHtml(p.remarks) || '-'}</td>
-                    </tr>
-                `);
-            }
-        });
-        
-        printWindow.document.write(`
-                    </tbody>
-                </table>
-                
-                <div class="signature-section">
-                    <div class="signature-box">
-                        <div class="signature-line"></div>
-                        <div class="signature-label">Prepared by: ${escapeHtml(preparedByUser)}</div>
-                    </div>
-                    <div class="signature-box">
-                        <div class="signature-line"></div>
-                        <div class="signature-label">Checked by:</div>
-                    </div>
-                </div>
-                
-                <div class="date-info">
-                    Date: ____________________
-                </div>
-                
-                <div class="footer">
-                    <p>This is a computer generated report. Valid without signature.</p>
-                    <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
-                </div>
-                
-                <script>
-                    window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
-                <\/script>
-            </body>
-            </html>
-        `);
-        
-        printWindow.document.close();
+    // ========== ENHANCED PRINT REPORT FUNCTION WITH CORRECT DELAY CHARGE PAX ==========
+function printReport() {
+    if (!currentFlightData || !currentFlightData.isClosed) { 
+        return; 
     }
+
+    const isSQ = isSQFlight();
+    const isFZ = isFZFlight();
+    const company = window.companyInfo || { 
+        name: 'MACL', 
+        address: '123 Aviation Road', 
+        phone: '+123 456 7890',
+        logo: 'macl.png'
+    };
+    
+    const dateStr = document.getElementById('dateDisplay').textContent; 
+    const dateParts = dateStr.split('-');
+    const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
+
+    const airline = currentFlightData.airline || '—';
+    const flightNo = currentFlightData.flightNo || '—';
+    const stdRaw = currentFlightData.std || document.getElementById('stdInput').value || '—';
+    const firstPaxRaw = currentFlightData.firstPax || '—';
+    const lastPaxRaw = currentFlightData.lastPax || document.getElementById('lastPaxInput').value || '—';
+
+    const shift = currentFlightData.shift || '—';
+    const std = formatTo24Hour(stdRaw);
+    const firstPax = formatTo24Hour(firstPaxRaw);
+    const lastPax = formatTo24Hour(lastPaxRaw);
+    
+    const regularPassengers = currentFlightData.passengers.filter(p => !p.isDelayCharge);
+    const delayPassengers = currentFlightData.passengers.filter(p => p.isDelayCharge);
+    
+    const sortedRegular = [...regularPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+    const sortedDelay = [...delayPassengers].sort((a,b) => (a.entryTime||'').localeCompare(b.entryTime||''));
+    
+    const sortedPassengers = [...sortedRegular, ...sortedDelay];
+    
+    // Calculate total pax (excluding pax=0)
+    const totalPaxSum = calculateTotalPax(currentFlightData.passengers);
+    
+    // Get current logged-in user
+    const currentUserDetails = getCurrentUserDetails();
+    const preparedByUser = currentUserDetails.name || currentUserDetails.username || 'System User';
+    
+    const printWindow = window.open('', '_blank');
+    
+    // Helper function to extract passenger count from delay charge remarks
+    function getDelayChargePax(remarks) {
+        if (!remarks) return '0';
+        // Extract number like "Delay Charge: 3 passengers for 1 hour"
+        const match = remarks.match(/Delay Charge:\s*(\d+)\s*passengers?/i);
+        if (match && match[1]) {
+            return match[1];
+        }
+        return '0';
+    }
+    
+    let tableHeaders = '';
+    if (isFZ) {
+        tableHeaders = `
+            <table>
+                <th>No.</th>
+                <th>Name</th>
+                <th>PNR</th>
+                <th>Seat</th>
+                <th>Pax</th>
+                <th>FQTV</th>
+                <th>Serial No</th>
+                <th>Time</th>
+                <th>Remarks</th>
+            </tr>
+        `;
+    } else {
+        tableHeaders = `
+            <table>
+                <th>No.</th>
+                <th>${isSQ ? 'Voucher No.' : 'Name'}</th>
+                <th>Seat</th>
+                <th>Pax</th>
+                <th>FQTV</th>
+                <th>Serial No</th>
+                <th>Time</th>
+                <th>Remarks</th>
+            </tr>
+        `;
+    }
+    
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Flight Report - ${flightNo} - ${formattedDate}</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    margin: 0.5in;
+                    color: #333;
+                }
+                .header {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 30px;
+                    padding-bottom: 20px;
+                    border-bottom: 2px solid #e6b800;
+                }
+                .left-section {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 15px;
+                }
+                .logo-section {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .logo {
+                    width: 100px;
+                    height: auto;
+                    margin-bottom: 10px;
+                }
+                .logo img {
+                    max-width: 100%;
+                    max-height: 80px;
+                }
+                .company-address {
+                    font-size: 11px;
+                    color: #666;
+                    line-height: 1.4;
+                }
+                .flight-details {
+                    margin-top: 5px;
+                }
+                .flight-detail-item {
+                    font-size: 13px;
+                    margin-bottom: 3px;
+                }
+                .flight-detail-label {
+                    font-weight: 600;
+                    color: #8b6913;
+                    display: inline-block;
+                    width: 60px;
+                }
+                .right-section {
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: flex-start;
+                    padding-top: 95px;
+                }
+                .info-item {
+                    display: flex;
+                    gap: 15px;
+                    margin-bottom: 8px;
+                    justify-content: flex-end;
+                }
+                .label {
+                    font-weight: 600;
+                    color: #8b6913;
+                    min-width: 80px;
+                    text-align: right;
+                }
+                .value {
+                    color: #333;
+                    min-width: 60px;
+                    text-align: left;
+                }
+                .total-pax {
+                    margin: 15px 0;
+                    text-align: right;
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+                .total-pax span {
+                    background: #e6b800;
+                    color: white;
+                    padding: 5px 15px;
+                    border-radius: 20px;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 20px;
+                    font-size: 12px;
+                }
+                th {
+                    background: #e6b800;
+                    color: white;
+                    padding: 10px;
+                    text-align: left;
+                    font-size: 12px;
+                }
+                td {
+                    padding: 8px 10px;
+                    border-bottom: 1px solid #ddd;
+                }
+                tr:nth-child(even) {
+                    background: #f9f9f9;
+                }
+                .delay-charge-row {
+                    background-color: rgba(220, 53, 69, 0.05);
+                    font-style: italic;
+                }
+                .signature-section {
+                    margin-top: 50px;
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 0 20px;
+                }
+                .signature-box {
+                    text-align: center;
+                    width: 200px;
+                }
+                .signature-line {
+                    margin-top: 40px;
+                    border-bottom: 1px solid #333;
+                    width: 100%;
+                }
+                .signature-label {
+                    font-size: 12px;
+                    color: #8b6913;
+                    font-weight: 600;
+                    margin-top: 5px;
+                }
+                .date-info {
+                    margin-top: 20px;
+                    text-align: right;
+                    font-size: 11px;
+                    color: #666;
+                }
+                .footer {
+                    margin-top: 30px;
+                    text-align: center;
+                    font-size: 11px;
+                    color: #666;
+                    border-top: 1px solid #ddd;
+                    padding-top: 20px;
+                }
+                @media print {
+                    body { margin: 0.25in; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div class="left-section">
+                    <div class="logo-section">
+                        <div class="logo">
+                            <img src="macl.png" alt="MACL Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\'font-size: 32px; font-weight: bold; color: #e6b800;\'>MACL</div>'">
+                        </div>
+                        <div class="company-address">
+                            <strong>${company.name}</strong><br>
+                            ${company.address}<br>
+                            ${company.phone}
+                        </div>
+                    </div>
+                    <div class="flight-details">
+                        <div class="flight-detail-item">
+                            <span class="flight-detail-label">Airline:</span> ${airline}
+                        </div>
+                        <div class="flight-detail-item">
+                            <span class="flight-detail-label">Flight No:</span> ${flightNo}
+                        </div>
+                        <div class="flight-detail-item">
+                            <span class="flight-detail-label">Date:</span> ${formattedDate}
+                        </div>
+                    </div>
+                </div>
+                <div class="right-section">
+                    <div class="info-item">
+                        <span class="label">STD:</span>
+                        <span class="value">${std}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">First Pax:</span>
+                        <span class="value">${firstPax}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Last Pax:</span>
+                        <span class="value">${lastPax}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Shift:</span>
+                        <span class="value">${shift}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="total-pax">
+                <span>TOTAL PAX: ${totalPaxSum}</span>
+            </div>
+            
+            <table>
+                <thead>
+                    ${tableHeaders}
+                </thead>
+                <tbody>
+    `);
+    
+    sortedPassengers.forEach((p, idx) => {
+        const serial = String(idx+1).padStart(3,'0');
+        const rowClass = p.isDelayCharge ? 'delay-charge-row' : '';
+        
+        // For delay charge entries, get the correct pax count from remarks
+        let displayPax = p.pax || '0';
+        if (p.isDelayCharge) {
+            displayPax = getDelayChargePax(p.remarks);
+        }
+        
+        if (isFZ) {
+            const pnr = extractPNRFromHiddenCode(p.hiddenCode);
+            printWindow.document.write(`
+                <tr class="${rowClass}">
+                    <td>${serial}</td>
+                    <td>${escapeHtml(p.pName) || '-'}</td>
+                    <td>${pnr || '-'}</td>
+                    <td>${escapeHtml(p.seatNo) || '-'}</td>
+                    <td style="text-align:center; ${p.isDelayCharge ? 'font-weight:bold;color:#dc3545;' : ''}">${displayPax}</td>
+                    <td>${escapeHtml(p.FQTV) || '-'}</td>
+                    <td>${escapeHtml(p.serialNo) || '-'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${escapeHtml(p.remarks) || '-'}</td>
+                </tr>
+            `);
+        } else {
+            printWindow.document.write(`
+                <tr class="${rowClass}">
+                    <td>${serial}</td>
+                    <td>${escapeHtml(p.pName) || '-'}</td>
+                    <td>${escapeHtml(p.seatNo) || '-'}</td>
+                    <td style="text-align:center; ${p.isDelayCharge ? 'font-weight:bold;color:#dc3545;' : ''}">${displayPax}</td>
+                    <td>${escapeHtml(p.FQTV) || '-'}</td>
+                    <td>${escapeHtml(p.serialNo) || '-'}</td>
+                    <td>${p.entryTime || '-'}</td>
+                    <td>${escapeHtml(p.remarks) || '-'}</td>
+                </tr>
+            `);
+        }
+    });
+    
+    printWindow.document.write(`
+                </tbody>
+            </table>
+            
+            <div class="signature-section">
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <div class="signature-label">Prepared by: ${escapeHtml(preparedByUser)}</div>
+                </div>
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <div class="signature-label">Checked by:</div>
+                </div>
+            </div>
+            
+            <div class="date-info">
+                Date: ____________________
+            </div>
+            
+            <div class="footer">
+                <p>This is a computer generated report. Valid without signature.</p>
+                <p>© ${new Date().getFullYear()} MACL. All rights reserved.</p>
+            </div>
+            
+            <script>
+                window.onload = function() { window.print(); window.onafterprint = function() { window.close(); } }
+            <\/script>
+        </body>
+        </html>
+    `);
+    
+    printWindow.document.close();
+}
 
     // ========== DELAY CHARGE FUNCTIONS ==========
     
@@ -3550,6 +3643,11 @@ async function savePassenger(docId) {
 
     // ========== INITIALIZATION ==========
     document.addEventListener('DOMContentLoaded', function() {
+        // 🔐 AUTHENTICATION GUARD: Check if user is logged in
+        if (!checkAuthentication()) {
+            return;
+        }
+        
         fetchOpenShift();
         setInterval(fetchOpenShift, 30000);
         
