@@ -872,9 +872,12 @@
                                 const data = doc.data();
                                 const flightNo = data.flightNo;
                                 const shift = data.shift || 'UNKNOWN';
-                                // Use flight number only as key (no database)
                                 const key = `${flightNo}`;
-                                const pax = parseInt(data.pax) || 1;
+                                
+                                // IMPORTANT: Skip delay charge entries for PAX counting
+                                // Delay charges have delayCharge = true and pax should be 0
+                                const isDelayCharge = data.delayCharge === true;
+                                const pax = isDelayCharge ? 0 : (parseInt(data.pax) || 1);
                                 
                                 if (!flightMap.has(key)) {
                                     flightMap.set(key, {
@@ -882,12 +885,12 @@
                                         shift: shift,
                                         airline: data.airline || getAirlineFromFlight(flightNo),
                                         transactions: 1,
-                                        totalPax: pax
+                                        totalPax: pax  // Will be 0 for delay charges
                                     });
                                 } else {
                                     const existing = flightMap.get(key);
                                     existing.transactions++;
-                                    existing.totalPax += pax;
+                                    existing.totalPax += pax;  // Adds 0 for delay charges
                                 }
                             });
                             
