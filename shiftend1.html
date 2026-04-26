@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shift End Report</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <!-- Your config files -->
+    <script src="fireshift.js"></script>
+    <script src="Co.js"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f0e1, #fff5e6);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        /* Top Ribbon */
+        .shift-ribbon {
+            background: linear-gradient(135deg, #8b6913, #e6b800);
+            color: white;
+            padding: 12px 25px;
+            border-radius: 50px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 20px rgba(230, 184, 0, 0.3);
+        }
+        
+        .shift-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .shift-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 18px;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .date-value {
+            font-weight: 600;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .refresh-shift {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 4px 15px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .refresh-shift:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        /* Main Card */
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(230, 184, 0, 0.2);
+            border: 2px solid #e6b800;
+            margin-bottom: 25px;
+        }
+        
+        h2 {
+            color: #8b6913;
+            margin-bottom: 20px;
+            font-size: 24px;
+            border-bottom: 2px solid #e6b800;
+            padding-bottom: 10px;
+        }
+        
+        /* Filter Section */
+        .filter-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 20px;
+            margin-bottom: 30px;
+            align-items: end;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .filter-group label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .filter-control {
+            padding: 12px 15px;
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-radius: 12px;
+            font-size: 15px;
+            background: white;
+            transition: all 0.3s;
+        }
+        
+        .filter-control:focus {
+            outline: none;
+            border-color: #e6b800;
+            box-shadow: 0 0 0 3px rgba(230, 184, 0, 0.1);
+        }
+        
+        .fetch-btn {
+            background: #e6b800;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 40px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        
+        .fetch-btn:hover {
+            background: #d4a900;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(230, 184, 0, 0.3);
+        }
+        
+        .fetch-btn:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Report Header */
+        .report-header {
+            background: linear-gradient(145deg, #fff9e6, #fff2d7);
+            border-radius: 16px;
+            padding: 20px 25px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .report-title {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .report-title h3 {
+            color: #8b6913;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .report-meta {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .meta-label {
+            color: #8b6913;
+            font-weight: 600;
+            font-size: 14px;
+            background: rgba(230, 184, 0, 0.1);
+            padding: 4px 12px;
+            border-radius: 30px;
+        }
+        
+        .meta-value {
+            color: #2c3e50;
+            font-weight: 500;
+            font-size: 16px;
+        }
+        
+        .shift-badge-report {
+            background: #e6b800;
+            color: white;
+            padding: 8px 25px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
+        /* Summary Cards - Only visible on screen, hidden in print */
+        .summary-section {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-card {
+            background: #fff9e6;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid rgba(230, 184, 0, 0.3);
+        }
+        
+        .summary-label {
+            color: #8b6913;
+            font-size: 14px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        
+        .summary-value {
+            color: #2c3e50;
+            font-size: 32px;
+            font-weight: 600;
+        }
+        
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .print-btn {
+            background: #4a6fa5;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 40px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+        }
+        
+        .print-btn:hover:not(:disabled) {
+            background: #3a5a84;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 111, 165, 0.3);
+        }
+        
+        .print-btn:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        /* Table Styles */
+        .table-container {
+            background: white;
+            border-radius: 16px;
+            border: 2px solid #e6b800;
+            overflow: hidden;
+        }
+        
+        .table-header {
+            background: linear-gradient(135deg, #faf3e0, #fff5e6);
+            padding: 15px 20px;
+            border-bottom: 2px solid #e6b800;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .table-header h3 {
+            color: #8b6913;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .table-header span {
+            background: #6b8e23;
+            color: white;
+            padding: 4px 14px;
+            border-radius: 30px;
+            font-size: 13px;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 600px;
+        }
+        
+        th {
+            background: #e6b800;
+            color: white;
+            padding: 12px 15px;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(230, 184, 0, 0.2);
+            color: #2c3e50;
+            font-size: 14px;
+        }
+        
+        tr:hover td {
+            background: rgba(230, 184, 0, 0.05);
+        }
+        
+        .flight-no {
+            font-weight: 600;
+            color: #8b6913;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .total-row {
+            background: #f5f0e1 !important;
+            font-weight: 600;
+        }
+        
+        .total-row td {
+            border-top: 2px solid #e6b800;
+        }
+        
+        /* Hide shift column */
+        .shift-column {
+            display: none;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #c68b5e;
+            font-style: italic;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #e6b800;
+            font-style: italic;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+        
+        .spinner-dark {
+            border: 2px solid rgba(230, 184, 0, 0.3);
+            border-top-color: #e6b800;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Print Styles - Hide summary cards in print */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            
+            .shift-ribbon, .filter-section, .fetch-btn, .action-buttons, .refresh-shift, .summary-section {
+                display: none !important;
+            }
+            
+            .container {
+                max-width: 100%;
+                padding: 0;
+                margin: 0;
+            }
+            
+            .card {
+                border: none;
+                box-shadow: none;
+                padding: 0;
+                margin: 0;
+            }
+            
+            .report-header {
+                background: none;
+                border: 1px solid #ccc;
+                padding: 15px;
+                margin-bottom: 20px;
+            }
+            
+            .table-container {
+                border: 1px solid #000;
+            }
+            
+            th {
+                background: #333 !important;
+                color: white !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .total-row {
+                background: #f0f0f0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            @page {
+                size: A4;
+                margin: 1.5cm;
+            }
+        }
+        
+        /* Enhanced Floating Action Buttons */
+        .fab-container {
+            position: fixed;
+            top: 15px;
+            right: 30px;
+            z-index: 1000;
+            display: flex;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px 15px;
+            border-radius: 50px;
+            box-shadow: 0 4px 20px rgba(230, 184, 0, 0.3);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(230, 184, 0, 0.3);
+        }
+
+        .fab-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #e6b800, #d4a900);
+            border: 2px solid white;
+            box-shadow: 0 2px 8px rgba(230, 184, 0, 0.4);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            color: white;
+            font-size: 18px;
+            position: relative;
+            overflow: visible;
+        }
+
+        .fab-button::before {
+            content: attr(data-tooltip);
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            background: linear-gradient(135deg, #8b6913, #5e4a1a);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            z-index: 1001;
+            margin-top: 8px;
+        }
+
+        .fab-button::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(2px);
+            border-width: 0 5px 5px 5px;
+            border-style: solid;
+            border-color: transparent transparent #5e4a1a transparent;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            z-index: 1002;
+        }
+
+        .fab-button:hover::before,
+        .fab-button:hover::after {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .fab-button:hover {
+            transform: scale(1.15) rotate(5deg);
+            box-shadow: 0 8px 25px rgba(230, 184, 0, 0.6);
+        }
+
+        .fab-button:active {
+            transform: scale(0.95);
+        }
+
+        .fab-button[data-tooltip="Report"] {
+            background: linear-gradient(135deg, #6b8e23, #556b2f);
+        }
+
+        .fab-button[data-tooltip="Logout"] {
+            background: linear-gradient(135deg, #c68b5e, #a67244);
+        }
+
+        .fab-button[data-tooltip="Dashboard"] {
+            background: linear-gradient(135deg, #4682b4, #31698e);
+        }
+
+        .fab-button[data-tooltip="Payment"] {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+        }
+
+        .fab-button[data-tooltip="Shift End"] {
+            background: linear-gradient(135deg, #e67e22, #d35400);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Floating Action Buttons -->
+    <div class="fab-container">
+        <button class="fab-button" data-tooltip="Report" onclick="window.location.href='report.html'">
+            <i class="fas fa-chart-bar"></i>
+        </button>
+        <button class="fab-button" data-tooltip="Logout" onclick="logout()">
+            <i class="fas fa-sign-out-alt"></i>
+        </button>
+        <button class="fab-button" data-tooltip="Dashboard" onclick="window.location.href='dashboard.html'">
+            <i class="fas fa-tachometer-alt"></i>
+        </button>
+        <button class="fab-button" data-tooltip="Payment" onclick="window.location.href='pay.html'">
+            <i class="fas fa-credit-card"></i>
+        </button>
+        <button class="fab-button" data-tooltip="Shift End" onclick="window.location.href='cardentry.html'">
+            <i class="fas fa-barcode"></i>
+        </button>
+    </div>
+    
+    <div class="container">
+        <!-- Top Ribbon -->
+        <div class="shift-ribbon" id="shiftRibbon">
+            <div class="shift-info">
+                <span class="shift-badge" id="shiftBadge">LOADING...</span>
+                <span class="date-value" id="ribbonDate">--</span>
+            </div>
+            <button class="refresh-shift" onclick="fetchOpenShift()">↻ REFRESH</button>
+        </div>
+
+        <!-- Main Card -->
+        <div class="card">
+            <h2>📊 SHIFT END REPORT</h2>
+            
+            <!-- Filter Section -->
+            <div class="filter-section">
+                <div class="filter-group">
+                    <label>📅 SELECT DATE</label>
+                    <input type="date" id="reportDate" class="filter-control" value="">
+                </div>
+                
+                <div class="filter-group">
+                    <label>🕒 SELECT SHIFT</label>
+                    <select id="shiftSelect" class="filter-control">
+                        <option value="ALL">ALL SHIFTS</option>
+                        <option value="MORNING">MORNING</option>
+                        <option value="EVENING">EVENING</option>
+                    </select>
+                </div>
+                
+                <button class="fetch-btn" onclick="generateReport()" id="generateBtn">
+                    🔍 GENERATE REPORT
+                </button>
+            </div>
+
+            <!-- Report Content (hidden until report generated) -->
+            <div id="reportContent" style="display: none;">
+                <!-- Report Header -->
+                <div id="reportHeader" class="report-header">
+                    <div class="report-title">
+                        <h3>✈ SHIFT END REPORT</h3>
+                        <div class="report-meta">
+                            <div class="meta-item">
+                                <span class="meta-label">DATE</span>
+                                <span class="meta-value" id="headerDate">-</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">SHIFT</span>
+                                <span class="meta-value" id="headerShift">-</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">GENERATED</span>
+                                <span class="meta-value" id="headerTime">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="shift-badge-report" id="headerShiftBadge">ALL SHIFTS</div>
+                </div>
+                
+                <!-- Summary Cards - Visible only on screen -->
+                <div id="summarySection" class="summary-section">
+                    <div class="summary-card">
+                        <div class="summary-label">Total Flights</div>
+                        <div class="summary-value" id="totalFlights">0</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Morning Flights</div>
+                        <div class="summary-value" id="morningFlights">0</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-label">Evening Flights</div>
+                        <div class="summary-value" id="eveningFlights">0</div>
+                    </div>
+                </div>
+
+                <!-- Print Button -->
+                <div class="action-buttons">
+                    <button class="print-btn" onclick="printReport()" id="printBtn" disabled>
+                        🖨️ PRINT REPORT
+                    </button>
+                </div>
+
+                <!-- Results Table -->
+                <div id="resultsContainer" class="table-container">
+                    <div class="table-header">
+                        <h3>FLIGHT DETAILS</h3>
+                        <span id="recordCount">0 Records</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Flight No</th>
+                                    <th>Airline</th>
+                                    <th class="shift-column">Shift</th>
+                                    <th class="text-right">No of Transactions</th>
+                                    <th class="text-right">Total Pax</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reportTableBody">
+                                <tr>
+                                    <td colspan="5" class="no-data">Select date and shift to generate report</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== GLOBAL VARIABLES ==========
+        let currentReportData = [];
+
+        // ========== MULTI-DATABASE HELPER FUNCTIONS ==========
+        
+        /**
+         * Gets all available databases for loading passenger data
+         * @returns {Array} - Array of database objects with name and reference
+         */
+        function getAllDatabases() {
+            const databases = [];
+            
+            if (window.baDb) {
+                databases.push({ 
+                    name: 'BA Database', 
+                    ref: window.baDb, 
+                    prefix: 'BA',
+                    projectId: 'cardentryba'
+                });
+            }
+            
+            if (window.ekDb) {
+                databases.push({ 
+                    name: 'EK Database', 
+                    ref: window.ekDb, 
+                    prefix: 'EK',
+                    projectId: 'cardentryek'
+                });
+            }
+            
+            if (window.qrDb) {
+                databases.push({ 
+                    name: 'QR Database', 
+                    ref: window.qrDb, 
+                    prefix: 'QR',
+                    projectId: 'cardentryqr'
+                });
+            }
+            
+            if (window.sqDb) {
+                databases.push({ 
+                    name: 'SQ Database', 
+                    ref: window.sqDb, 
+                    prefix: 'SQ',
+                    projectId: 'dcleeli'
+                });
+            }
+            
+            if (window.defaultCardDb) {
+                databases.push({ 
+                    name: 'Default Database', 
+                    ref: window.defaultCardDb, 
+                    prefix: 'OTHER',
+                    projectId: 'cardentry-7bad1'
+                });
+            }
+            
+            return databases;
+        }
+
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set today's date as default
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('reportDate').value = today;
+            
+            // Load shift info
+            fetchOpenShift();
+            setInterval(fetchOpenShift, 30000);
+        });
+
+        // ========== TOP RIBBON - SHIFT INFO ==========
+        async function fetchOpenShift() {
+            try {
+                const shiftBadge = document.getElementById('shiftBadge');
+                const ribbonDate = document.getElementById('ribbonDate');
+                const ribbon = document.getElementById('shiftRibbon');
+                
+                shiftBadge.textContent = 'LOADING...';
+                ribbonDate.textContent = '--';
+                
+                if (typeof passengerDb === 'undefined') {
+                    throw new Error('Database not initialized');
+                }
+                
+                const shiftDoc = await passengerDb.collection('shifts').doc('currentshift').get();
+                
+                if (shiftDoc.exists) {
+                    const data = shiftDoc.data();
+                    const date = data.date || 'No date';
+                    const morning = data.morning || 'closed';
+                    const evening = data.evening || 'closed';
+                    
+                    if (morning === 'open') {
+                        shiftBadge.textContent = 'MORNING SHIFT';
+                        ribbonDate.textContent = date;
+                        ribbon.style.background = 'linear-gradient(135deg, #6b8e23, #8b6913)';
+                    } 
+                    else if (evening === 'open') {
+                        shiftBadge.textContent = 'EVENING SHIFT';
+                        ribbonDate.textContent = date;
+                        ribbon.style.background = 'linear-gradient(135deg, #c68b5e, #8b6913)';
+                    } 
+                    else {
+                        shiftBadge.textContent = 'NO OPEN SHIFT';
+                        ribbonDate.textContent = date;
+                        ribbon.style.background = 'linear-gradient(135deg, #7f8c8d, #5e4a1a)';
+                    }
+                } else {
+                    throw new Error('Shift document not found');
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('shiftBadge').textContent = 'ERROR';
+                document.getElementById('ribbonDate').textContent = '--';
+            }
+        }
+
+        // ========== GENERATE REPORT FROM ALL DATABASES ==========
+        async function generateReport() {
+            const selectedDate = document.getElementById('reportDate').value;
+            const selectedShift = document.getElementById('shiftSelect').value;
+            const generateBtn = document.getElementById('generateBtn');
+            
+            if (!selectedDate) {
+                alert('Please select a date');
+                return;
+            }
+            
+            // Show loading
+            generateBtn.innerHTML = '<span class="spinner"></span> LOADING...';
+            generateBtn.disabled = true;
+            
+            document.getElementById('reportTableBody').innerHTML = '<tr><td colspan="5" class="loading"><span class="spinner-dark"></span> Loading data from all databases...</td></tr>';
+            
+            try {
+                const databases = getAllDatabases();
+                
+                if (databases.length === 0) {
+                    throw new Error('No databases available');
+                }
+                
+                // Query each database and consolidate results
+                const flightMap = new Map();
+                let totalRecords = 0;
+                
+                for (const dbInfo of databases) {
+                    try {
+                        console.log(`🔍 Querying ${dbInfo.name} for date: ${selectedDate}`);
+                        
+                        // Build query
+                        let query = dbInfo.ref.collection('KoveliPass').where('date', '==', selectedDate);
+                        
+                        // Add shift filter if not ALL
+                        if (selectedShift !== 'ALL') {
+                            query = query.where('shift', '==', selectedShift);
+                        }
+                        
+                        const snapshot = await query.get();
+                        
+                        if (snapshot.size > 0) {
+                            totalRecords += snapshot.size;
+                            
+                            snapshot.forEach(doc => {
+                                const data = doc.data();
+                                const flightNo = data.flightNo;
+                                const shift = data.shift || 'UNKNOWN';
+                                const key = `${flightNo}`;
+                                
+                                // IMPORTANT: Skip delay charge entries for PAX counting
+                                // Delay charges have delayCharge = true and pax should be 0
+                                const isDelayCharge = data.delayCharge === true;
+                                const pax = isDelayCharge ? 0 : (parseInt(data.pax) || 1);
+                                
+                                if (!flightMap.has(key)) {
+                                    flightMap.set(key, {
+                                        flightNo: flightNo,
+                                        shift: shift,
+                                        airline: data.airline || getAirlineFromFlight(flightNo),
+                                        transactions: 1,
+                                        totalPax: pax  // Will be 0 for delay charges
+                                    });
+                                } else {
+                                    const existing = flightMap.get(key);
+                                    existing.transactions++;
+                                    existing.totalPax += pax;  // Adds 0 for delay charges
+                                }
+                            });
+                            
+                            console.log(`✅ ${dbInfo.name}: ${snapshot.size} records found`);
+                        }
+                        
+                    } catch (dbError) {
+                        console.error(`❌ Error querying ${dbInfo.name}:`, dbError);
+                    }
+                }
+                
+                if (flightMap.size === 0) {
+                    document.getElementById('reportTableBody').innerHTML = '<tr><td colspan="5" class="no-data">No data found in any database for selected date and shift</td></tr>';
+                    document.getElementById('reportContent').style.display = 'none';
+                    document.getElementById('printBtn').disabled = true;
+                    generateBtn.innerHTML = '🔍 GENERATE REPORT';
+                    generateBtn.disabled = false;
+                    return;
+                }
+                
+                // Convert to array and sort
+                currentReportData = Array.from(flightMap.values()).sort((a, b) => 
+                    a.flightNo.localeCompare(b.flightNo)
+                );
+                
+                // Calculate totals for screen display only
+                const totalFlights = currentReportData.length;
+                const morningFlights = currentReportData.filter(f => f.shift === 'MORNING').length;
+                const eveningFlights = currentReportData.filter(f => f.shift === 'EVENING').length;
+                
+                // Update Report Header
+                document.getElementById('headerDate').textContent = formatDate(selectedDate);
+                document.getElementById('headerShift').textContent = selectedShift;
+                document.getElementById('headerTime').textContent = new Date().toLocaleTimeString();
+                document.getElementById('headerShiftBadge').textContent = selectedShift;
+                
+                // Update summary cards (screen only)
+                document.getElementById('totalFlights').textContent = totalFlights;
+                document.getElementById('morningFlights').textContent = morningFlights;
+                document.getElementById('eveningFlights').textContent = eveningFlights;
+                document.getElementById('recordCount').textContent = totalRecords + ' Records';
+                
+                // Display results
+                displayReportTable(currentReportData);
+                
+                // Show report content and enable print
+                document.getElementById('reportContent').style.display = 'block';
+                document.getElementById('printBtn').disabled = false;
+                
+            } catch (error) {
+                console.error('Error generating report:', error);
+                document.getElementById('reportTableBody').innerHTML = `<tr><td colspan="5" class="error">Error: ${error.message}</td></tr>`;
+                document.getElementById('printBtn').disabled = true;
+            } finally {
+                generateBtn.innerHTML = '🔍 GENERATE REPORT';
+                generateBtn.disabled = false;
+            }
+        }
+        
+        // ========== DISPLAY REPORT TABLE ==========
+        function displayReportTable(data) {
+            const tbody = document.getElementById('reportTableBody');
+            
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="no-data">No data available</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            let totalTransactions = 0;
+            let totalPaxAll = 0;
+            
+            data.forEach(flight => {
+                totalTransactions += flight.transactions;
+                totalPaxAll += flight.totalPax;
+                
+                html += `<tr>
+                    <td class="flight-no">${escapeHtml(flight.flightNo)}</td>
+                    <td>${escapeHtml(flight.airline || '-')}</td>
+                    <td class="shift-column">${escapeHtml(flight.shift)}</td>
+                    <td class="text-right">${flight.transactions}</td>
+                    <td class="text-right">${flight.totalPax}</td>
+                </tr>`;
+            });
+            
+            // Add total row
+            html += `<tr class="total-row">
+                <td colspan="2"><strong>TOTAL</strong></td>
+                <td class="text-right"><strong>${totalTransactions}</strong></td>
+                <td class="text-right"><strong>${totalPaxAll}</strong></td>
+                <td></td>
+            </tr>`;
+            
+            tbody.innerHTML = html;
+        }
+        
+        // ========== PRINT REPORT FUNCTION ==========
+        function printReport() {
+            if (!currentReportData || currentReportData.length === 0) {
+                alert('No data to print. Please generate a report first.');
+                return;
+            }
+            
+            // Show loading indicator on button
+            const printBtn = document.getElementById('printBtn');
+            const originalText = printBtn.innerHTML;
+            printBtn.innerHTML = '<span class="spinner"></span> Preparing...';
+            printBtn.disabled = true;
+            
+            // Use setTimeout to allow UI to update
+            setTimeout(() => {
+                try {
+                    // Get company info from Co.js with fallbacks
+                    const companyName = window.companyInfo?.name || "MACL";
+                    const companyAddress = window.companyInfo?.address || "Aviation Road";
+                    const companyPhone = window.companyInfo?.phone || "+123 456 7890";
+                    
+                    const selectedDate = document.getElementById('reportDate').value;
+                    const selectedShift = document.getElementById('shiftSelect').value;
+                    const formattedDate = formatDate(selectedDate);
+                    const generatedTime = new Date().toLocaleString();
+                    
+                    // Calculate totals for print
+                    const totalTransactions = currentReportData.reduce((sum, f) => sum + f.transactions, 0);
+                    const totalPaxAll = currentReportData.reduce((sum, f) => sum + f.totalPax, 0);
+                    
+                    // Build table rows
+                    const tableRows = currentReportData.map(flight => `
+                        <tr>
+                            <td><strong>${escapeHtml(flight.flightNo)}</strong></td>
+                            <td>${escapeHtml(flight.airline || '-')}</td>
+                            <td class="text-right">${flight.transactions}</td>
+                            <td class="text-right">${flight.totalPax}</td>
+                        </tr>
+                    `).join('');
+                    
+                    // Create print window
+                    const printWindow = window.open('', '_blank', 'width=800,height=600');
+                    
+                    if (!printWindow) {
+                        alert('Please allow pop-ups to print the report');
+                        printBtn.innerHTML = originalText;
+                        printBtn.disabled = false;
+                        return;
+                    }
+                    
+                    // Write clean HTML - WITHOUT summary cards
+                    printWindow.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Shift End Report - ${formattedDate} - ${selectedShift}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            color: #2c3e50;
+            font-size: 12px;
+        }
+        .header { 
+            border-bottom: 3px solid #e6b800; 
+            padding-bottom: 15px; 
+            margin-bottom: 20px;
+        }
+        .company-name { 
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #8b6913; 
+        }
+        .report-title { 
+            text-align: center; 
+            margin: 20px 0;
+            font-size: 20px;
+            color: #8b6913;
+        }
+        .meta { 
+            display: flex; 
+            justify-content: center; 
+            gap: 30px; 
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        .meta-item { 
+            display: flex; 
+            gap: 5px; 
+        }
+        .meta-label { 
+            font-weight: bold; 
+            color: #8b6913; 
+        }
+        .shift-badge { 
+            background: #e6b800; 
+            color: white; 
+            padding: 5px 20px; 
+            border-radius: 20px; 
+            display: inline-block;
+            margin: 0 auto 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin: 20px 0; 
+        }
+        th { 
+            background: #e6b800; 
+            color: white; 
+            padding: 10px; 
+            text-align: left; 
+        }
+        td { 
+            padding: 8px 10px; 
+            border-bottom: 1px solid #e6d8a5; 
+        }
+        .text-right { 
+            text-align: right; 
+        }
+        .total-row { 
+            font-weight: bold; 
+            background: #e6d8a5; 
+        }
+        .signature { 
+            display: flex; 
+            justify-content: space-between; 
+            margin: 40px 0 20px;
+        }
+        .signature-item {
+            text-align: center;
+            width: 200px;
+        }
+        .signature-line { 
+            border-bottom: 2px solid #333; 
+            width: 100%; 
+            margin-top: 40px;
+            margin-bottom: 8px;
+            padding-top: 5px;
+        }
+        .signature-label {
+            font-size: 11px;
+            color: #666;
+        }
+        .signature-name {
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 5px;
+            color: #333;
+        }
+        .footer { 
+            margin-top: 30px; 
+            text-align: center; 
+            font-size: 10px; 
+            color: #666; 
+            border-top: 1px solid #ccc;
+            padding-top: 10px;
+        }
+        @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="company-name">${escapeHtml(companyName)}</div>
+        <div style="font-size: 11px; color: #666;">${escapeHtml(companyAddress)}</div>
+        <div style="font-size: 11px; color: #666;">${escapeHtml(companyPhone)}</div>
+    </div>
+    
+    <div class="report-title">SHIFT END REPORT</div>
+    
+    <div class="meta">
+        <div class="meta-item"><span class="meta-label">DATE:</span> ${formattedDate}</div>
+        <div class="meta-item"><span class="meta-label">SHIFT:</span> ${selectedShift}</div>
+        <div class="meta-item"><span class="meta-label">GENERATED:</span> ${generatedTime}</div>
+    </div>
+    
+    <div style="text-align: center;">
+        <div class="shift-badge">${selectedShift} SHIFT</div>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Flight No</th>
+                <th>Airline</th>
+                <th class="text-right">Transactions</th>
+                <th class="text-right">Total Pax</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${tableRows}
+            <tr class="total-row">
+                <td><strong>TOTAL</strong></td>
+                <td></td>
+                <td class="text-right"><strong>${totalTransactions}</strong></td>
+                <td class="text-right"><strong>${totalPaxAll}</strong></td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <div class="signature">
+        <div class="signature-item">
+            <div class="signature-line"></div>
+            <div class="signature-label">Prepared By</div>
+            <div class="signature-name">_________________</div>
+        </div>
+        <div class="signature-item">
+            <div class="signature-line"></div>
+            <div class="signature-label">Checked By</div>
+            <div class="signature-name">_________________</div>
+        </div>
+        <div class="signature-item">
+            <div class="signature-line"></div>
+            <div class="signature-label">Approved By</div>
+            <div class="signature-name">_________________</div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        System generated report - Valid with signatures
+    </div>
+    
+    <div style="text-align: center; margin-top: 20px;" class="no-print">
+        <button onclick="window.print();" style="padding: 10px 30px; background: #e6b800; border: none; color: white; border-radius: 5px; cursor: pointer; margin-right: 10px;">
+            🖨️ Print Report
+        </button>
+        <button onclick="window.close();" style="padding: 10px 30px; background: #ccc; border: none; border-radius: 5px; cursor: pointer;">
+            ✖ Cancel
+        </button>
+    </div>
+</body>
+</html>`);
+                    
+                    printWindow.document.close();
+                    
+                    // Reset button
+                    printBtn.innerHTML = originalText;
+                    printBtn.disabled = false;
+                    
+                } catch (error) {
+                    console.error('Print error:', error);
+                    alert('Error preparing print: ' + error.message);
+                    printBtn.innerHTML = originalText;
+                    printBtn.disabled = false;
+                }
+            }, 100);
+        }
+
+        // ========== UTILITY FUNCTIONS ==========
+        function getAirlineFromFlight(flightNo) {
+            if (!flightNo) return '';
+            const iataCode = flightNo.substring(0, 2);
+            
+            if (window.airlineData?.airlines_flying_to_maldives) {
+                const airline = window.airlineData.airlines_flying_to_maldives.find(a => a.iata === iataCode);
+                return airline ? airline.airline : iataCode;
+            }
+            return iataCode;
+        }
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const parts = dateStr.split('-');
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Make functions globally available
+        window.generateReport = generateReport;
+        window.fetchOpenShift = fetchOpenShift;
+        window.printReport = printReport;
+    </script>
+</body>
+</html>
