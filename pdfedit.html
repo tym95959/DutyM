@@ -91,6 +91,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            position: relative;
         }
 
         #pdfCanvas {
@@ -103,6 +104,28 @@
             cursor: crosshair;
         }
 
+        /* Inline text input */
+        .inline-text-input {
+            position: absolute;
+            background: white;
+            border: 2px solid #d97706;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 16px;
+            font-family: Arial, sans-serif;
+            resize: both;
+            overflow: auto;
+            min-width: 100px;
+            min-height: 30px;
+            z-index: 1000;
+            outline: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        .inline-text-input:focus {
+            border-color: #0f3b2c;
+        }
+
         .no-pdf {
             text-align: center;
             padding: 60px 20px;
@@ -111,6 +134,7 @@
             border-radius: 12px;
         }
 
+        /* Signature Modal */
         .modal {
             display: none;
             position: fixed;
@@ -128,7 +152,7 @@
             background: white;
             border-radius: 24px;
             width: 90%;
-            max-width: 500px;
+            max-width: 550px;
             padding: 24px;
             text-align: center;
             max-height: 90vh;
@@ -138,6 +162,35 @@
         .modal-card h3 {
             margin-bottom: 16px;
             color: #0f3b2c;
+        }
+
+        .signature-preview {
+            margin: 16px 0;
+            padding: 16px;
+            background: #f3f4f6;
+            border-radius: 12px;
+        }
+        
+        .signature-preview p {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+        
+        .preview-box {
+            min-height: 100px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+        }
+        
+        .preview-box canvas, .preview-box img {
+            max-width: 100%;
+            max-height: 100px;
+            object-fit: contain;
         }
 
         #sigCanvas {
@@ -185,13 +238,29 @@
             z-index: 100;
         }
         
-        .text-tool-instruction {
-            background: #fef3c7;
+        .font-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: white;
             padding: 8px;
-            border-radius: 8px;
-            margin-top: 10px;
+            border-radius: 12px;
+            display: flex;
+            gap: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+        
+        .font-controls button {
+            background: #f3f4f6;
+            color: #1f2937;
+            padding: 6px 12px;
             font-size: 12px;
-            color: #92400e;
+        }
+        
+        .font-controls button.active {
+            background: #0f3b2c;
+            color: white;
         }
     </style>
 </head>
@@ -204,7 +273,7 @@
 </div>
 
 <div class="toolbar">
-    <button class="tool-btn active" data-mode="text">✏️ Add Text</button>
+    <button class="tool-btn active" data-mode="text">✏️ Add/Edit Text</button>
     <button class="tool-btn" data-mode="draw">🖌️ Draw</button>
     <button class="tool-btn" data-mode="sign">🖊️ Add Signature</button>
     <button class="tool-btn" id="clearDraw">🗑️ Clear All</button>
@@ -213,9 +282,10 @@
 <div class="pdf-viewer" id="pdfViewer">
     <div class="no-pdf" id="noPdfMsg">
         📁 Click "Upload PDF" to start<br><br>
-        ✏️ Click anywhere to add text (type and press OK)<br>
+        ✏️ Click anywhere to add text (type directly)<br>
         🖌️ Select Draw to freehand draw<br>
-        🖊️ Select Signature to sign or upload signature image
+        🖊️ Select Signature to draw, type, or upload<br>
+        📝 Double-click existing text to edit
     </div>
     <canvas id="pdfCanvas" style="display: none;"></canvas>
 </div>
@@ -223,7 +293,14 @@
 <!-- Signature Modal -->
 <div id="sigModal" class="modal">
     <div class="modal-card">
-        <h3>✍️ Add Your Signature</h3>
+        <h3>✍️ Create Your Signature</h3>
+        
+        <div class="signature-preview">
+            <p>Current signature preview:</p>
+            <div class="preview-box" id="signaturePreview">
+                <span style="color: #9ca3af;">No signature yet</span>
+            </div>
+        </div>
         
         <p style="margin: 8px 0;">Draw signature:</p>
         <canvas id="sigCanvas" width="400" height="200"></canvas>
@@ -233,17 +310,29 @@
         </div>
         
         <p style="margin: 16px 0 8px;">— OR type signature —</p>
-        <input type="text" id="typedSignature" placeholder="Type your name">
-        <button id="useTypedBtn" style="width: 100%;">Use Typed Name</button>
+        <input type="text" id="typedSignature" placeholder="Type your name" oninput="updateTypedPreview()">
         
         <p style="margin: 16px 0 8px;">— OR upload signature image —</p>
         <input type="file" id="uploadSignatureFile" accept="image/png,image/jpeg,image/jpg,image/gif">
-        <button id="useUploadedBtn" class="upload-signature-btn">Use Uploaded Signature</button>
+        <button id="useUploadedBtn" class="upload-signature-btn">Upload & Use</button>
         
         <div class="sig-buttons" style="margin-top: 16px;">
             <button id="cancelSigBtn">Cancel</button>
         </div>
     </div>
+</div>
+
+<div class="font-controls" id="fontControls" style="display: none;">
+    <span style="font-size: 12px; margin-right: 5px;">Font:</span>
+    <button data-font="Arial">Arial</button>
+    <button data-font="Georgia">Georgia</button>
+    <button data-font="Courier New">Courier</button>
+    <button data-font="cursive" style="font-family: cursive;">Cursive</button>
+    <span style="margin-left: 10px;">Size:</span>
+    <button data-size="16">16</button>
+    <button data-size="20" class="active">20</button>
+    <button data-size="24">24</button>
+    <button data-size="32">32</button>
 </div>
 
 <div class="status" id="status">Ready - Click to add text</div>
@@ -264,8 +353,10 @@
     let signatures = [];
     let currentPdfBytes = null;
     let currentPageImage = null;
-    let currentPageNumber = 1;
-    let totalPages = 1;
+    let activeTextElement = null;
+    let currentFont = 'Arial';
+    let currentFontSize = 20;
+    let currentSignatureImage = null; // Store current signature for preview
 
     const uploadBtn = document.getElementById('uploadBtn');
     const saveBtn = document.getElementById('saveBtn');
@@ -274,6 +365,7 @@
     const sigModal = document.getElementById('sigModal');
     const sigCanvas = document.getElementById('sigCanvas');
     const statusDiv = document.getElementById('status');
+    const fontControls = document.getElementById('fontControls');
     let sigCtx = sigCanvas.getContext('2d');
     let signing = false;
     let lastSigX, lastSigY;
@@ -281,7 +373,7 @@
     function showStatus(msg) {
         statusDiv.textContent = msg;
         setTimeout(() => {
-            if (statusDiv.textContent === msg) statusDiv.textContent = currentMode === 'text' ? 'Click anywhere to add text' : (currentMode === 'draw' ? 'Draw on the PDF' : 'Ready');
+            if (statusDiv.textContent === msg) statusDiv.textContent = currentMode === 'text' ? 'Click to add text, double-click to edit' : (currentMode === 'draw' ? 'Draw on the PDF' : 'Ready');
         }, 2000);
     }
 
@@ -307,15 +399,14 @@
     async function loadPDF(arrayBuffer) {
         try {
             pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            totalPages = pdfDoc.numPages;
-            currentPageNumber = 1;
-            await renderPage(currentPageNumber);
+            await renderPage(1);
             noPdfMsg.style.display = 'none';
             canvas.style.display = 'block';
+            fontControls.style.display = 'flex';
             drawings = [];
             texts = [];
             signatures = [];
-            showStatus(`Loaded: ${totalPages} page(s)`);
+            showStatus(`PDF loaded - Click to add text`);
         } catch (error) {
             console.error('Load error:', error);
             showStatus('Error loading PDF');
@@ -325,7 +416,7 @@
     async function renderPage(pageNum) {
         if (!pdfDoc) return;
         
-        showStatus(`Rendering page ${pageNum}...`);
+        showStatus(`Rendering...`);
         const page = await pdfDoc.getPage(pageNum);
         const viewport = page.getViewport({ scale: 1.5 });
         
@@ -336,12 +427,10 @@
         
         await page.render({ canvasContext: ctx, viewport }).promise;
         
-        // Store as image
         currentPageImage = new Image();
         currentPageImage.src = canvas.toDataURL();
         await new Promise(resolve => { currentPageImage.onload = resolve; });
         
-        // Redraw annotations
         redrawAnnotations();
         showStatus('Ready');
     }
@@ -352,14 +441,12 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(currentPageImage, 0, 0);
         
-        // Draw drawings
         drawings.forEach(drawing => {
             ctx.beginPath();
             ctx.strokeStyle = drawing.color;
             ctx.lineWidth = drawing.width;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
-            
             if (drawing.points.length > 0) {
                 ctx.moveTo(drawing.points[0].x, drawing.points[0].y);
                 for (let i = 1; i < drawing.points.length; i++) {
@@ -369,7 +456,6 @@
             }
         });
         
-        // Draw texts
         texts.forEach(text => {
             ctx.font = `${text.fontSize}px ${text.fontFamily}`;
             ctx.fillStyle = text.color;
@@ -377,7 +463,6 @@
             ctx.fillText(text.content, text.x, text.y);
         });
         
-        // Draw signatures
         signatures.forEach(sig => {
             if (sig.img) {
                 ctx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
@@ -408,13 +493,81 @@
         return { x, y };
     }
 
+    // Inline text editing
+    function createInlineTextInput(x, y, existingText = null, existingTextObj = null) {
+        if (activeTextElement) {
+            activeTextElement.remove();
+            activeTextElement = null;
+        }
+        
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = rect.width / canvas.width;
+        const scaleY = rect.height / canvas.height;
+        
+        const input = document.createElement('div');
+        input.className = 'inline-text-input';
+        input.contentEditable = true;
+        input.textContent = existingText || '';
+        input.style.left = (rect.left + x * scaleX) + 'px';
+        input.style.top = (rect.top + y * scaleY) + 'px';
+        input.style.fontFamily = currentFont;
+        input.style.fontSize = currentFontSize + 'px';
+        
+        document.body.appendChild(input);
+        input.focus();
+        
+        // Select all text if editing existing
+        if (existingText) {
+            const range = document.createRange();
+            const sel = window.getSelection();
+            range.selectNodeContents(input);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+        
+        const saveText = () => {
+            const newText = input.textContent.trim();
+            if (newText) {
+                if (existingTextObj) {
+                    // Update existing text
+                    existingTextObj.content = newText;
+                    existingTextObj.fontFamily = currentFont;
+                    existingTextObj.fontSize = currentFontSize;
+                } else {
+                    // Add new text
+                    texts.push({
+                        content: newText,
+                        x: x,
+                        y: y,
+                        fontSize: currentFontSize,
+                        fontFamily: currentFont,
+                        color: '#000000'
+                    });
+                }
+                redrawAnnotations();
+                showStatus('Text added/updated');
+            }
+            input.remove();
+            activeTextElement = null;
+        };
+        
+        input.addEventListener('blur', saveText);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                saveText();
+            }
+        });
+        
+        activeTextElement = input;
+    }
+
     // Drawing events
     function startDrawing(e) {
         if (currentMode !== 'draw') return;
         e.preventDefault();
         isDrawing = true;
         const pos = getMousePos(e);
-        
         drawings.push({
             points: [{ x: pos.x, y: pos.y }],
             color: '#dc2626',
@@ -426,7 +579,6 @@
         if (!isDrawing || currentMode !== 'draw') return;
         e.preventDefault();
         const pos = getMousePos(e);
-        
         if (drawings.length > 0) {
             drawings[drawings.length - 1].points.push({ x: pos.x, y: pos.y });
             redrawAnnotations();
@@ -445,24 +597,52 @@
     canvas.addEventListener('touchmove', draw);
     canvas.addEventListener('touchend', stopDrawing);
 
-    // Add text on CLICK (not double-click) - fixed
+    // Add text on click
     canvas.addEventListener('click', (e) => {
         if (currentMode === 'text') {
             const pos = getMousePos(e);
-            const newText = prompt('Enter your text:', '');
-            if (newText && newText.trim()) {
-                texts.push({
-                    content: newText,
-                    x: pos.x,
-                    y: pos.y,
-                    fontSize: 20,
-                    fontFamily: 'Arial',
-                    color: '#000000'
-                });
-                redrawAnnotations();
-                showStatus('Text added');
+            createInlineTextInput(pos.x, pos.y);
+        }
+    });
+    
+    // Edit text on double-click
+    canvas.addEventListener('dblclick', (e) => {
+        if (currentMode === 'text') {
+            const pos = getMousePos(e);
+            // Find text at position
+            for (let i = texts.length - 1; i >= 0; i--) {
+                const text = texts[i];
+                ctx.font = `${text.fontSize}px ${text.fontFamily}`;
+                const metrics = ctx.measureText(text.content);
+                const width = metrics.width;
+                const height = text.fontSize;
+                
+                if (pos.x >= text.x && pos.x <= text.x + width &&
+                    pos.y >= text.y && pos.y <= text.y + height) {
+                    createInlineTextInput(text.x, text.y, text.content, text);
+                    break;
+                }
             }
         }
+    });
+
+    // Font controls
+    document.querySelectorAll('[data-font]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentFont = btn.dataset.font;
+            document.querySelectorAll('[data-font]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            showStatus(`Font changed to ${currentFont}`);
+        });
+    });
+    
+    document.querySelectorAll('[data-size]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentFontSize = parseInt(btn.dataset.size);
+            document.querySelectorAll('[data-size]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            showStatus(`Font size: ${currentFontSize}px`);
+        });
     });
 
     // Mode switching
@@ -473,9 +653,9 @@
             btn.classList.add('active');
             
             if (currentMode === 'text') {
-                showStatus('Click anywhere on the PDF to add text');
+                showStatus('Click to add text, double-click to edit');
             } else if (currentMode === 'draw') {
-                showStatus('Draw on the PDF with your mouse or finger');
+                showStatus('Draw on the PDF');
             } else if (currentMode === 'sign') {
                 openSignatureModal();
             }
@@ -492,6 +672,21 @@
         sigCtx.lineWidth = 2;
         sigCtx.lineCap = 'round';
         sigCtx.lineJoin = 'round';
+        updatePreview();
+    }
+
+    function updatePreview() {
+        const previewBox = document.getElementById('signaturePreview');
+        if (currentSignatureImage) {
+            previewBox.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = currentSignatureImage;
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100px';
+            previewBox.appendChild(img);
+        } else {
+            previewBox.innerHTML = '<span style="color: #9ca3af;">No signature yet</span>';
+        }
     }
 
     function getSigCoords(e, canvasEl) {
@@ -551,18 +746,21 @@
         sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
         sigCtx.fillStyle = 'white';
         sigCtx.fillRect(0, 0, sigCanvas.width, sigCanvas.height);
+        currentSignatureImage = null;
+        updatePreview();
     };
 
-    // Save drawn signature
     document.getElementById('saveSigBtn').onclick = () => {
         const dataURL = sigCanvas.toDataURL();
-        const img = new Image();
-        img.onload = () => {
-            showStatus('Click on PDF to place signature');
-            sigModal.style.display = 'none';
-            
-            const placeSignature = (e) => {
-                const pos = getMousePos(e);
+        currentSignatureImage = dataURL;
+        updatePreview();
+        showStatus('Signature saved! Click on PDF to place it');
+        sigModal.style.display = 'none';
+        
+        const placeSignature = (e) => {
+            const pos = getMousePos(e);
+            const img = new Image();
+            img.onload = () => {
                 signatures.push({
                     img: img,
                     x: pos.x - 75,
@@ -576,37 +774,74 @@
                 document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
                 document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
                 showStatus('Signature placed');
+                currentSignatureImage = null;
             };
-            
-            canvas.addEventListener('click', placeSignature);
+            img.src = dataURL;
         };
-        img.src = dataURL;
-        document.getElementById('typedSignature').value = '';
+        
+        canvas.addEventListener('click', placeSignature);
     };
 
-    // Use typed signature
+    window.updateTypedPreview = () => {
+        const typedName = document.getElementById('typedSignature').value;
+        if (typedName.trim()) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 300;
+            canvas.height = 80;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '28px cursive';
+            ctx.fillStyle = '#000';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(typedName, 10, 40);
+            currentSignatureImage = canvas.toDataURL();
+            updatePreview();
+        } else {
+            currentSignatureImage = null;
+            updatePreview();
+        }
+    };
+
     document.getElementById('useTypedBtn').onclick = () => {
         const typedName = document.getElementById('typedSignature').value;
         if (typedName.trim()) {
-            showStatus('Click on PDF to place signature');
+            const canvas = document.createElement('canvas');
+            canvas.width = 300;
+            canvas.height = 80;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = '28px cursive';
+            ctx.fillStyle = '#000';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(typedName, 10, 40);
+            const dataURL = canvas.toDataURL();
+            currentSignatureImage = dataURL;
+            updatePreview();
+            showStatus('Typed signature saved! Click on PDF to place it');
             sigModal.style.display = 'none';
             
             const placeTyped = (e) => {
                 const pos = getMousePos(e);
-                texts.push({
-                    content: typedName,
-                    x: pos.x,
-                    y: pos.y,
-                    fontSize: 28,
-                    fontFamily: 'cursive',
-                    color: '#000000'
-                });
-                redrawAnnotations();
-                canvas.removeEventListener('click', placeTyped);
-                currentMode = 'text';
-                document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
-                document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
-                showStatus('Signature placed');
+                const img = new Image();
+                img.onload = () => {
+                    signatures.push({
+                        img: img,
+                        x: pos.x - 75,
+                        y: pos.y - 37,
+                        width: 150,
+                        height: 75
+                    });
+                    redrawAnnotations();
+                    canvas.removeEventListener('click', placeTyped);
+                    currentMode = 'text';
+                    document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
+                    document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+                    showStatus('Signature placed');
+                    currentSignatureImage = null;
+                };
+                img.src = dataURL;
             };
             
             canvas.addEventListener('click', placeTyped);
@@ -616,50 +851,56 @@
         }
     };
 
-    // Upload signature image
     document.getElementById('uploadSignatureFile').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
             reader.onload = (ev) => {
-                const img = new Image();
-                img.onload = () => {
-                    showStatus('Click on PDF to place uploaded signature');
-                    sigModal.style.display = 'none';
-                    
-                    const placeUploaded = (e) => {
-                        const pos = getMousePos(e);
-                        // Maintain aspect ratio
-                        const maxWidth = 150;
-                        const ratio = maxWidth / img.width;
-                        const width = maxWidth;
-                        const height = img.height * ratio;
-                        
-                        signatures.push({
-                            img: img,
-                            x: pos.x - width/2,
-                            y: pos.y - height/2,
-                            width: width,
-                            height: height
-                        });
-                        redrawAnnotations();
-                        canvas.removeEventListener('click', placeUploaded);
-                        currentMode = 'text';
-                        document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
-                        document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
-                        showStatus('Signature placed');
-                    };
-                    
-                    canvas.addEventListener('click', placeUploaded);
-                };
-                img.src = ev.target.result;
+                currentSignatureImage = ev.target.result;
+                updatePreview();
+                showStatus('Signature uploaded! Click "Use Uploaded Signature" to place it');
             };
             reader.readAsDataURL(file);
         }
     });
 
     document.getElementById('useUploadedBtn').onclick = () => {
-        document.getElementById('uploadSignatureFile').click();
+        if (currentSignatureImage) {
+            showStatus('Click on PDF to place uploaded signature');
+            sigModal.style.display = 'none';
+            
+            const placeUploaded = (e) => {
+                const pos = getMousePos(e);
+                const img = new Image();
+                img.onload = () => {
+                    const maxWidth = 150;
+                    const ratio = maxWidth / img.width;
+                    const width = maxWidth;
+                    const height = img.height * ratio;
+                    
+                    signatures.push({
+                        img: img,
+                        x: pos.x - width/2,
+                        y: pos.y - height/2,
+                        width: width,
+                        height: height
+                    });
+                    redrawAnnotations();
+                    canvas.removeEventListener('click', placeUploaded);
+                    currentMode = 'text';
+                    document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
+                    document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+                    showStatus('Signature placed');
+                    currentSignatureImage = null;
+                };
+                img.src = currentSignatureImage;
+            };
+            
+            canvas.addEventListener('click', placeUploaded);
+            document.getElementById('uploadSignatureFile').value = '';
+        } else {
+            alert('Please upload a signature image first');
+        }
     };
 
     document.getElementById('cancelSigBtn').onclick = () => {
@@ -667,11 +908,11 @@
         currentMode = 'text';
         document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
         document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+        currentSignatureImage = null;
         document.getElementById('typedSignature').value = '';
         document.getElementById('uploadSignatureFile').value = '';
     };
 
-    // Clear all annotations
     clearDrawBtn.onclick = () => {
         if (confirm('Clear all drawings, text, and signatures?')) {
             drawings = [];
@@ -682,7 +923,6 @@
         }
     };
 
-    // Save PDF
     saveBtn.onclick = async () => {
         if (!pdfDoc) {
             alert('Please upload a PDF first');
@@ -696,7 +936,6 @@
             const pages = pdfDocLib.getPages();
             const firstPage = pages[0];
             
-            // Create overlay canvas
             const overlayCanvas = document.createElement('canvas');
             overlayCanvas.width = canvas.width;
             overlayCanvas.height = canvas.height;
@@ -704,7 +943,6 @@
             
             overlayCtx.drawImage(currentPageImage, 0, 0);
             
-            // Draw drawings
             drawings.forEach(drawing => {
                 overlayCtx.beginPath();
                 overlayCtx.strokeStyle = drawing.color;
@@ -720,7 +958,6 @@
                 }
             });
             
-            // Draw texts
             texts.forEach(text => {
                 overlayCtx.font = `${text.fontSize}px ${text.fontFamily}`;
                 overlayCtx.fillStyle = text.color;
@@ -728,7 +965,6 @@
                 overlayCtx.fillText(text.content, text.x, text.y);
             });
             
-            // Draw signatures
             signatures.forEach(sig => {
                 overlayCtx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
             });
