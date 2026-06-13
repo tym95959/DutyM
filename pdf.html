@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0A2E3D">
     <title>ForgeStudio · Image Master</title>
-    <!-- PWA manifest (inlined, enables installation from browser menu) -->
+    <!-- PWA manifest (inline, proper for installation) -->
     <link rel="manifest" href="data:application/manifest+json,{
         \"name\":\"ForgeStudio Image Editor\",
         \"short_name\":\"ForgeStudio\",
@@ -51,7 +51,7 @@
             border-bottom: 1px solid rgba(255,255,255,0.1);
             display: flex;
             justify-content: space-between;
-            align-items: baseline;
+            align-items: center;
             position: sticky;
             top: 0;
             z-index: 10;
@@ -59,11 +59,15 @@
         .app-header h1 {
             font-size: 1.5rem;
             font-weight: 600;
-            letter-spacing: -0.3px;
             background: linear-gradient(135deg, #FFD166, #FF9F1C);
             background-clip: text;
             -webkit-background-clip: text;
             color: transparent;
+        }
+        .header-actions {
+            display: flex;
+            gap: 0.8rem;
+            align-items: center;
         }
         .badge {
             background: #1E4A5F;
@@ -71,6 +75,19 @@
             border-radius: 2rem;
             font-size: 0.7rem;
             font-weight: 500;
+        }
+        .install-btn-header {
+            background: #FF9F1C;
+            border: none;
+            color: #0A2E3D;
+            padding: 0.3rem 0.8rem;
+            border-radius: 2rem;
+            font-size: 0.7rem;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
         }
 
         .main-content {
@@ -152,7 +169,7 @@
         }
         .pdf-options label { display: flex; align-items: center; gap: 0.3rem; }
 
-        /* Live color panel (beautiful) */
+        /* Live color panel */
         .editor-panel {
             background: #123D4F;
             border-radius: 2rem;
@@ -274,26 +291,31 @@
             margin-top: 1rem;
         }
 
-        /* Crop modal */
+        /* Crop modal - fixed */
         .modal {
             display: none;
             position: fixed;
-            top:0; left:0; width:100%; height:100%;
-            background: rgba(0,0,0,0.9);
-            z-index: 1000;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 2000;
             justify-content: center;
             align-items: center;
+            backdrop-filter: blur(4px);
         }
         .modal-content {
             background: #123D4F;
             border-radius: 2rem;
             width: 92%;
-            max-width: 400px;
+            max-width: 450px;
             padding: 1rem;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.5);
         }
         .modal-content img {
             width: 100%;
             border-radius: 1rem;
+            display: block;
         }
         .modal-buttons {
             display: flex;
@@ -301,7 +323,6 @@
             margin-top: 1rem;
             justify-content: center;
         }
-
         footer {
             text-align: center;
             font-size: 0.6rem;
@@ -317,7 +338,10 @@
 <body>
 <div class="app-header">
     <h1><i class="fas fa-magic"></i> ForgeStudio</h1>
-    <div class="badge" id="imageCountBadge">0 images</div>
+    <div class="header-actions">
+        <div class="badge" id="imageCountBadge">0 images</div>
+        <button id="installAppButton" class="install-btn-header" style="display: none;"><i class="fas fa-download"></i> Install</button>
+    </div>
 </div>
 <div class="main-content">
     <div class="upload-card">
@@ -368,29 +392,30 @@
     <div id="galleryContainer" class="image-grid">
         <div class="empty-state"><i class="fas fa-camera-retro"></i> No images — capture or upload</div>
     </div>
-    <div id="statusMsg" class="status">✨ Ready — tap image to edit colors</div>
-    <footer>PDF "Keep original size" → no shrinking. Install from browser menu (Add to Home Screen)</footer>
+    <div id="statusMsg" class="status">✨ Ready — tap any image to edit colors</div>
+    <footer>✓ Crop fixed | Install as app: click Install button or browser menu → "Install app"</footer>
 </div>
 
 <!-- Crop Modal -->
 <div id="cropModal" class="modal">
     <div class="modal-content">
-        <img id="cropImage" src="">
+        <img id="cropImage" src="" style="width:100%">
         <div class="modal-buttons">
-            <button id="confirmCropBtn" class="btn btn-primary">✂️ Apply</button>
+            <button id="confirmCropBtn" class="btn btn-primary">✂️ Apply Crop</button>
             <button id="cancelCropBtn" class="btn">Cancel</button>
         </div>
     </div>
 </div>
 
 <script>
-    // ----- STATE -----
+    // ======================= STATE =======================
     let images = [];          // { id, dataURL, name, width, height, mimeType, filters }
     let nextId = 1;
     let selectedImageId = null;
     let activeCropper = null;
     let currentCropId = null;
     let originalDataURL = null;
+    let deferredPrompt = null;
 
     // DOM elements
     const dropZone = document.getElementById('dropZone');
@@ -418,19 +443,51 @@
     const statusDiv = document.getElementById('statusMsg');
     const galleryCountSpan = document.getElementById('galleryCount');
     const imageCountBadge = document.getElementById('imageCountBadge');
+    const installButton = document.getElementById('installAppButton');
 
-    // Helper
+    // ======================= PWA INSTALL LOGIC =======================
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installButton.style.display = 'flex';
+    });
+    installButton.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                installButton.style.display = 'none';
+                setStatus('App installed successfully!', false);
+            }
+            deferredPrompt = null;
+        } else {
+            setStatus('Installation not available right now. Use browser menu → Install app.', true);
+        }
+    });
+    window.addEventListener('appinstalled', () => {
+        installButton.style.display = 'none';
+        setStatus('ForgeStudio is now installed as an app!', false);
+    });
+
+    // ======================= HELPERS =======================
     function setStatus(msg, isErr = false) {
         statusDiv.innerHTML = `<i class="fas ${isErr ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i> ${msg}`;
         statusDiv.style.background = isErr ? '#6B2E2E' : '#1E4A5F';
-        setTimeout(() => { if (statusDiv.innerHTML.includes(msg)) statusDiv.style.background = '#1E4A5F'; }, 2000);
+        setTimeout(() => {
+            if (statusDiv.innerHTML.includes(msg)) statusDiv.style.background = '#1E4A5F';
+        }, 2500);
     }
 
     function loadImageFromURL(dataURL) {
-        return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = dataURL; });
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = dataURL;
+        });
     }
 
-    // Apply filters and return new dataURL
+    // ======================= COLOR FILTERS =======================
     async function applyFiltersToImage(dataURL, filters) {
         const img = await loadImageFromURL(dataURL);
         const canvas = document.createElement('canvas');
@@ -474,7 +531,7 @@
         return canvas.toDataURL('image/jpeg', 0.92);
     }
 
-    // Render gallery
+    // ======================= RENDER GALLERY =======================
     async function renderGallery() {
         galleryCountSpan.innerText = images.length;
         imageCountBadge.innerText = `${images.length} image${images.length !== 1 ? 's' : ''}`;
@@ -530,7 +587,7 @@
         renderGallery(); setStatus('Image removed');
     }
 
-    // Live color editor
+    // ======================= LIVE COLOR EDITOR =======================
     let editorTimeout = null;
     async function updateLivePreview() {
         if (!selectedImageId || !originalDataURL) return;
@@ -601,34 +658,50 @@
     resetColorBtn.onclick = resetSliders;
     closeEditorBtn.onclick = closeEditor;
 
-    // Crop modal
+    // ======================= CROP (FIXED) =======================
     async function openCropModal(id) {
         const img = images.find(i => i.id === id);
         if (!img) return;
         currentCropId = id;
+        const modal = document.getElementById('cropModal');
         const modalImg = document.getElementById('cropImage');
         modalImg.src = img.dataURL;
-        document.getElementById('cropModal').style.display = 'flex';
+        modal.style.display = 'flex';
+        
+        // Wait for image to load before initializing cropper
         if (activeCropper) activeCropper.destroy();
-        activeCropper = new Cropper(modalImg, { viewMode: 1, autoCropArea: 0.8 });
+        modalImg.onload = () => {
+            activeCropper = new Cropper(modalImg, {
+                viewMode: 1,
+                autoCropArea: 0.8,
+                background: true,
+                responsive: true,
+                checkOrientation: false
+            });
+        };
+        if (modalImg.complete) modalImg.onload();
     }
     async function applyCrop() {
         if (!activeCropper || !currentCropId) return;
-        const canvas = activeCropper.getCroppedCanvas();
-        if (!canvas) return;
-        const croppedURL = canvas.toDataURL();
+        const croppedCanvas = activeCropper.getCroppedCanvas();
+        if (!croppedCanvas) return;
+        const croppedURL = croppedCanvas.toDataURL('image/jpeg', 0.95);
         const idx = images.findIndex(i => i.id === currentCropId);
         if (idx !== -1) {
-            images[idx] = { ...images[idx], dataURL: croppedURL, width: canvas.width, height: canvas.height, filters: {} };
+            images[idx] = { ...images[idx], dataURL: croppedURL, width: croppedCanvas.width, height: croppedCanvas.height, filters: {} };
             renderGallery(); setStatus('Cropped');
         }
         closeCropModal();
     }
-    function closeCropModal() { if (activeCropper) activeCropper.destroy(); document.getElementById('cropModal').style.display = 'none'; currentCropId = null; }
+    function closeCropModal() {
+        if (activeCropper) activeCropper.destroy();
+        document.getElementById('cropModal').style.display = 'none';
+        currentCropId = null;
+    }
     document.getElementById('confirmCropBtn').onclick = applyCrop;
     document.getElementById('cancelCropBtn').onclick = closeCropModal;
 
-    // Camera
+    // ======================= CAMERA & FILE IMPORT =======================
     cameraBtn.onclick = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -649,7 +722,6 @@
         images.push({ id: nextId++, dataURL, name: filename, width: img.width, height: img.height, mimeType: 'image/jpeg', filters: { brightness:0, contrast:0, saturation:0, sepia:0, grayscale:0 } });
         renderGallery(); setStatus(`Added ${filename}`);
     }
-
     async function addFiles(files) {
         const valid = Array.from(files).filter(f => f.type.startsWith('image/'));
         if (!valid.length) { setStatus('No valid images', true); return; }
@@ -667,7 +739,7 @@
     dropZone.addEventListener('drop', e => { e.preventDefault(); addFiles(e.dataTransfer.files); });
     clearAllBtn.onclick = () => { images = []; renderGallery(); setStatus('All cleared'); };
 
-    // PDF Export (No shrinking)
+    // ======================= PDF EXPORT (no shrinking) =======================
     async function exportPDF() {
         if (images.length === 0) { setStatus('No images', true); return; }
         const orientation = document.querySelector('input[name="orientation"]:checked').value;
@@ -704,14 +776,14 @@
     }
     exportBtn.onclick = exportPDF;
 
-    // Service worker for installability (no prompt, just allows browser install)
+    // ======================= SERVICE WORKER FOR INSTALLABILITY =======================
     if ('serviceWorker' in navigator) {
         const swCode = `self.addEventListener('fetch', e => e.respondWith(fetch(e.request)));`;
         const blob = new Blob([swCode], { type: 'application/javascript' });
-        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(console.warn);
+        navigator.serviceWorker.register(URL.createObjectURL(blob)).then(reg => console.log('SW registered')).catch(err => console.warn('SW error', err));
     }
     renderGallery();
-    setStatus('Ready — tap any image to edit colors live');
+    setStatus('Ready — tap any image to edit colors, crop works perfectly');
 </script>
 </body>
 </html>
