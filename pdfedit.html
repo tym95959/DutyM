@@ -58,8 +58,8 @@
         }
 
         .btn-sign {
-            background: #0f3b2c;
-            border: 2px solid #d97706;
+            background: #d97706;
+            border: none;
         }
 
         .toolbar {
@@ -159,7 +159,7 @@
             background: white;
             border-radius: 20px;
             width: 90%;
-            max-width: 550px;
+            max-width: 600px;
             padding: 20px;
             text-align: center;
             max-height: 85vh;
@@ -311,7 +311,7 @@
             flex-wrap: wrap;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             z-index: 100;
-            max-width: 500px;
+            max-width: 550px;
             align-items: center;
         }
         
@@ -353,6 +353,23 @@
             border: 1px solid #d1d5db;
             cursor: pointer;
         }
+        
+        .text-controls {
+            display: flex;
+            gap: 5px;
+            margin-left: 10px;
+            border-left: 1px solid #d1d5db;
+            padding-left: 10px;
+        }
+        
+        .text-controls button {
+            background: #ef4444;
+        }
+        
+        .selected-text {
+            outline: 2px solid #d97706;
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
@@ -360,7 +377,7 @@
 <div class="header">
     <h1>📄 PDF Sign & Edit</h1>
     <button id="uploadBtn">📂 Upload PDF</button>
-    <button id="quickSignBtn" class="btn-sign" style="background: #d97706;">✍️ Quick Sign (Default)</button>
+    <button id="quickSignBtn" class="btn-sign">✍️ Quick Sign (Default)</button>
     <button id="saveBtn" class="btn-primary">💾 Save PDF</button>
 </div>
 
@@ -376,7 +393,7 @@
 <div class="pdf-viewer" id="pdfViewer">
     <div class="no-pdf" id="noPdfMsg">
         📁 Click "Upload PDF" to start<br><br>
-        ✏️ Click to add text, double-click to edit text<br>
+        ✏️ Click to add text, click text to select, then use toolbar to format<br>
         🖱️ Select Move mode to drag text anywhere<br>
         🧽 Select Eraser to cover PDF content<br>
         🖊️ Create and save signatures, set default, then Quick Sign!
@@ -460,6 +477,11 @@
     <input type="color" id="colorPicker" value="#000000">
     <div class="color-preview" id="colorPreview" style="background-color: #000000;"></div>
     
+    <div class="text-controls">
+        <button id="deleteTextBtn" style="background: #ef4444;">🗑️ Delete Selected</button>
+        <button id="applyFormatBtn" style="background: #0f3b2c;">Apply Format</button>
+    </div>
+    
     <div class="eraser-size" id="eraserSizeControl" style="display: none;">
         <span>Eraser:</span>
         <input type="range" id="eraserSize" min="10" max="80" value="30">
@@ -467,7 +489,7 @@
     </div>
 </div>
 
-<div class="status" id="status">Ready - Click to add text, double-click to edit</div>
+<div class="status" id="status">Ready - Click to add text, click text to select and format</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -488,7 +510,7 @@
     let currentPdfBytes = null;
     let currentPageImage = null;
     let activeTextElement = null;
-    let editingTextObj = null;
+    let selectedTextIndex = null;
     let currentFont = 'Arial';
     let currentFontSize = 20;
     let isBold = false;
@@ -500,7 +522,7 @@
     let draggingText = null;
     let dragOffsetX = 0, dragOffsetY = 0;
     let eraserSize = 30;
-    let isPlacingSignature = false; // Flag to prevent text click during signature placement
+    let isPlacingSignature = false;
 
     // Load saved signatures from localStorage
     function loadSavedSignatures() {
@@ -511,6 +533,7 @@
         const defaultId = localStorage.getItem('defaultSignatureId');
         if (defaultId) {
             defaultSignatureId = defaultId;
+            console.log('Loaded default signature ID:', defaultSignatureId);
         }
         renderSavedSignatures();
     }
@@ -519,6 +542,7 @@
         localStorage.setItem('pdfSignatures', JSON.stringify(savedSignatures));
         if (defaultSignatureId) {
             localStorage.setItem('defaultSignatureId', defaultSignatureId);
+            console.log('Saved default signature ID:', defaultSignatureId);
         } else {
             localStorage.removeItem('defaultSignatureId');
         }
@@ -588,7 +612,7 @@
         savedSignatures.push({ id: id, data: dataURL, name: name });
         defaultSignatureId = id;
         saveSignaturesToStorage();
-        showStatus(`"${name}" saved and set as DEFAULT! Use "Quick Sign" button`);
+        showStatus(`✅ "${name}" saved and set as DEFAULT! Use "Quick Sign" button`);
         return id;
     }
     
@@ -598,13 +622,15 @@
             return;
         }
         if (!defaultSignatureId) {
-            alert('No default signature set. Please set a default signature in Manage Signatures');
+            alert('No default signature set. Please go to Manage Signatures and set a default signature (click ⭐ on any signature)');
             return;
         }
         
         const defaultSig = savedSignatures.find(sig => sig.id === defaultSignatureId);
         if (!defaultSig) {
-            alert('Default signature not found');
+            alert('Default signature not found. Please set a new default signature.');
+            defaultSignatureId = null;
+            saveSignaturesToStorage();
             return;
         }
         
@@ -659,6 +685,8 @@
     const italicBtn = document.getElementById('italicBtn');
     const colorPicker = document.getElementById('colorPicker');
     const colorPreview = document.getElementById('colorPreview');
+    const deleteTextBtn = document.getElementById('deleteTextBtn');
+    const applyFormatBtn = document.getElementById('applyFormatBtn');
     
     let sigCtx = sigCanvas.getContext('2d');
     let signing = false;
@@ -668,7 +696,7 @@
         statusDiv.textContent = msg;
         setTimeout(() => {
             if (statusDiv.textContent === msg) {
-                if (currentMode === 'text') statusDiv.textContent = 'Click to add text, double-click to edit';
+                if (currentMode === 'text') statusDiv.textContent = 'Click to add text, click text to select and format';
                 else if (currentMode === 'move') statusDiv.textContent = 'Drag any text to move it';
                 else if (currentMode === 'draw') statusDiv.textContent = 'Draw on the PDF';
                 else if (currentMode === 'eraser') statusDiv.textContent = 'Click and drag to cover PDF content';
@@ -765,11 +793,21 @@
             }
         });
         
-        texts.forEach(text => {
+        texts.forEach((text, idx) => {
             ctx.font = text.fontString;
             ctx.fillStyle = text.color;
             ctx.textBaseline = 'top';
             ctx.fillText(text.content, text.x, text.y);
+            
+            // Draw selection outline if this text is selected
+            if (selectedTextIndex === idx) {
+                const metrics = ctx.measureText(text.content);
+                const width = metrics.width;
+                const height = text.fontSize;
+                ctx.strokeStyle = '#d97706';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(text.x - 2, text.y - 2, width + 4, height + 4);
+            }
         });
         
         signatures.forEach(sig => {
@@ -817,13 +855,13 @@
         return null;
     }
 
-    function createInlineTextInput(x, y, existingTextObj = null) {
+    function createInlineTextInput(x, y, existingTextObj = null, existingIndex = null) {
         if (activeTextElement) {
             activeTextElement.remove();
             activeTextElement = null;
         }
         
-        editingTextObj = existingTextObj;
+        selectedTextIndex = null;
         
         const rect = canvas.getBoundingClientRect();
         const scaleX = rect.width / canvas.width;
@@ -837,10 +875,17 @@
         input.style.top = (rect.top + y * scaleY) + 'px';
         
         let fontStyle = '';
-        if (isItalic) fontStyle += 'italic ';
-        if (isBold) fontStyle += 'bold ';
-        input.style.font = `${fontStyle}${currentFontSize}px ${currentFont}`;
-        input.style.color = currentColor;
+        if (existingTextObj) {
+            if (existingTextObj.isItalic) fontStyle += 'italic ';
+            if (existingTextObj.isBold) fontStyle += 'bold ';
+            input.style.font = `${fontStyle}${existingTextObj.fontSize}px ${existingTextObj.font}`;
+            input.style.color = existingTextObj.color;
+        } else {
+            if (isItalic) fontStyle += 'italic ';
+            if (isBold) fontStyle += 'bold ';
+            input.style.font = `${fontStyle}${currentFontSize}px ${currentFont}`;
+            input.style.color = currentColor;
+        }
         
         document.body.appendChild(input);
         input.focus();
@@ -856,16 +901,11 @@
         const saveText = () => {
             const newText = input.textContent.trim();
             if (newText) {
-                const fontString = getFontString();
-                if (editingTextObj) {
-                    editingTextObj.content = newText;
-                    editingTextObj.font = currentFont;
-                    editingTextObj.fontSize = currentFontSize;
-                    editingTextObj.isBold = isBold;
-                    editingTextObj.isItalic = isItalic;
-                    editingTextObj.color = currentColor;
-                    editingTextObj.fontString = fontString;
+                if (existingTextObj && existingIndex !== null) {
+                    existingTextObj.content = newText;
+                    texts[existingIndex] = existingTextObj;
                 } else {
+                    const fontString = getFontString();
                     texts.push({
                         content: newText,
                         x: x,
@@ -883,7 +923,7 @@
             }
             input.remove();
             activeTextElement = null;
-            editingTextObj = null;
+            redrawAnnotations();
         };
         
         input.addEventListener('blur', saveText);
@@ -911,44 +951,24 @@
     fontSelect.addEventListener('change', () => {
         currentFont = fontSelect.value;
         updateFormattingUI();
-        if (editingTextObj) {
-            editingTextObj.font = currentFont;
-            editingTextObj.fontString = getFontString();
-            redrawAnnotations();
-        }
         showStatus(`Font: ${currentFont}`);
     });
     
     fontSizeSelect.addEventListener('change', () => {
         currentFontSize = parseInt(fontSizeSelect.value);
         updateFormattingUI();
-        if (editingTextObj) {
-            editingTextObj.fontSize = currentFontSize;
-            editingTextObj.fontString = getFontString();
-            redrawAnnotations();
-        }
         showStatus(`Size: ${currentFontSize}px`);
     });
     
     boldBtn.addEventListener('click', () => {
         isBold = !isBold;
         updateFormattingUI();
-        if (editingTextObj) {
-            editingTextObj.isBold = isBold;
-            editingTextObj.fontString = getFontString();
-            redrawAnnotations();
-        }
         showStatus(isBold ? 'Bold ON' : 'Bold OFF');
     });
     
     italicBtn.addEventListener('click', () => {
         isItalic = !isItalic;
         updateFormattingUI();
-        if (editingTextObj) {
-            editingTextObj.isItalic = isItalic;
-            editingTextObj.fontString = getFontString();
-            redrawAnnotations();
-        }
         showStatus(isItalic ? 'Italic ON' : 'Italic OFF');
     });
     
@@ -956,15 +976,41 @@
         currentColor = colorPicker.value;
         colorPreview.style.backgroundColor = currentColor;
         updateFormattingUI();
-        if (editingTextObj) {
-            editingTextObj.color = currentColor;
-            redrawAnnotations();
-        }
         showStatus(`Color changed`);
+    });
+    
+    // Apply formatting to selected text
+    applyFormatBtn.addEventListener('click', () => {
+        if (selectedTextIndex !== null && texts[selectedTextIndex]) {
+            const text = texts[selectedTextIndex];
+            text.font = currentFont;
+            text.fontSize = currentFontSize;
+            text.isBold = isBold;
+            text.isItalic = isItalic;
+            text.color = currentColor;
+            text.fontString = getFontString();
+            redrawAnnotations();
+            showStatus('Format applied to selected text');
+        } else {
+            showStatus('No text selected. Click on a text to select it first.');
+        }
+    });
+    
+    // Delete selected text
+    deleteTextBtn.addEventListener('click', () => {
+        if (selectedTextIndex !== null && texts[selectedTextIndex]) {
+            if (confirm('Delete this text?')) {
+                texts.splice(selectedTextIndex, 1);
+                selectedTextIndex = null;
+                redrawAnnotations();
+                showStatus('Text deleted');
+            }
+        } else {
+            showStatus('No text selected. Click on a text to select it first.');
+        }
     });
 
     function startDrawing(e) {
-        // Don't start drawing if we're placing signature
         if (isPlacingSignature) return;
         
         if (currentMode === 'draw') {
@@ -996,6 +1042,8 @@
                 dragOffsetX = pos.x - textObj.text.x;
                 dragOffsetY = pos.y - textObj.text.y;
                 canvas.style.cursor = 'grabbing';
+                selectedTextIndex = null;
+                redrawAnnotations();
             }
         }
     }
@@ -1042,32 +1090,42 @@
     canvas.addEventListener('touchmove', draw);
     canvas.addEventListener('touchend', stopDrawing);
 
-    // Text click handler - only when in text mode and not placing signature
+    // Click to add text or select text
     canvas.addEventListener('click', (e) => {
-        // Don't add text if we're placing a signature
         if (isPlacingSignature) return;
         
         if (currentMode === 'text') {
             const pos = getMousePos(e);
-            editingTextObj = null;
-            createInlineTextInput(pos.x, pos.y);
-        }
-    });
-    
-    // Double-click to edit existing text
-    canvas.addEventListener('dblclick', (e) => {
-        if (currentMode === 'text') {
-            const pos = getMousePos(e);
             const textObj = getTextAtPosition(pos.x, pos.y);
+            
             if (textObj) {
-                // Load text formatting into current UI
+                // Select the text instead of creating new
+                selectedTextIndex = textObj.index;
+                // Load its formatting into UI
                 currentFont = textObj.text.font;
                 currentFontSize = textObj.text.fontSize;
                 isBold = textObj.text.isBold || false;
                 isItalic = textObj.text.isItalic || false;
                 currentColor = textObj.text.color;
                 updateFormattingUI();
-                createInlineTextInput(textObj.text.x, textObj.text.y, textObj.text);
+                redrawAnnotations();
+                showStatus(`Text selected. Use toolbar to format or delete.`);
+            } else {
+                // Create new text
+                selectedTextIndex = null;
+                createInlineTextInput(pos.x, pos.y);
+            }
+        }
+    });
+    
+    // Double-click to edit text inline
+    canvas.addEventListener('dblclick', (e) => {
+        if (currentMode === 'text') {
+            const pos = getMousePos(e);
+            const textObj = getTextAtPosition(pos.x, pos.y);
+            if (textObj) {
+                selectedTextIndex = null;
+                createInlineTextInput(textObj.text.x, textObj.text.y, textObj.text, textObj.index);
             }
         }
     });
@@ -1084,9 +1142,11 @@
             currentMode = btn.dataset.mode;
             document.querySelectorAll('.tool-btn[data-mode]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
+            selectedTextIndex = null;
+            redrawAnnotations();
             
             if (currentMode === 'text') {
-                showStatus('Click to add text, double-click to edit, use toolbar to format');
+                showStatus('Click to add text, click text to select and format');
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
             } else if (currentMode === 'move') {
                 showStatus('Drag any text to move it');
@@ -1433,6 +1493,7 @@
                 texts = [];
                 signatures = [];
                 whiteouts = [];
+                selectedTextIndex = null;
                 redrawAnnotations();
                 showStatus('All annotations cleared');
             }
