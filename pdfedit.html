@@ -57,6 +57,11 @@
             background: #d97706;
         }
 
+        .btn-sign {
+            background: #0f3b2c;
+            border: 2px solid #d97706;
+        }
+
         .toolbar {
             background: white;
             padding: 8px 12px;
@@ -219,11 +224,17 @@
             cursor: pointer;
             transition: 0.2s;
             text-align: center;
+            position: relative;
         }
         
         .saved-sig-item:hover {
             border-color: #d97706;
             transform: scale(1.02);
+        }
+        
+        .saved-sig-item.default {
+            border: 3px solid #d97706;
+            background: #fef3c7;
         }
         
         .saved-sig-item img {
@@ -236,6 +247,17 @@
             padding: 2px 6px;
             font-size: 10px;
             margin-top: 5px;
+        }
+        
+        .default-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #d97706;
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
         }
 
         #sigCanvas {
@@ -289,7 +311,7 @@
             flex-wrap: wrap;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             z-index: 100;
-            max-width: 450px;
+            max-width: 500px;
             align-items: center;
         }
         
@@ -338,6 +360,7 @@
 <div class="header">
     <h1>📄 PDF Sign & Edit</h1>
     <button id="uploadBtn">📂 Upload PDF</button>
+    <button id="quickSignBtn" class="btn-sign" style="background: #d97706;">✍️ Quick Sign (Default)</button>
     <button id="saveBtn" class="btn-primary">💾 Save PDF</button>
 </div>
 
@@ -346,7 +369,7 @@
     <button class="tool-btn" data-mode="move">🖱️ Move Text</button>
     <button class="tool-btn" data-mode="draw">🖌️ Draw</button>
     <button class="tool-btn" data-mode="eraser">🧽 Eraser/Whiteout</button>
-    <button class="tool-btn" data-mode="sign">🖊️ Add Signature</button>
+    <button class="tool-btn" data-mode="sign">🖊️ Manage Signatures</button>
     <button class="tool-btn" id="clearDrawBtn">🗑️ Clear All</button>
 </div>
 
@@ -356,7 +379,7 @@
         ✏️ Click to add text, then drag to move<br>
         🖱️ Select Move mode to drag text anywhere<br>
         🧽 Select Eraser to cover PDF content<br>
-        🖊️ Create and save signatures for reuse
+        🖊️ Create and save signatures, set default, then Quick Sign!
     </div>
     <div class="canvas-container" id="canvasContainer" style="display: none;">
         <canvas id="pdfCanvas"></canvas>
@@ -366,7 +389,7 @@
 <!-- Signature Modal -->
 <div id="sigModal" class="modal">
     <div class="modal-card">
-        <h3>✍️ Create Your Signature</h3>
+        <h3>✍️ Manage Signatures</h3>
         
         <div class="signature-preview">
             <p>Current signature preview:</p>
@@ -376,7 +399,7 @@
         </div>
         
         <div class="saved-signatures" id="savedSignaturesSection">
-            <p>Saved Signatures (click to use):</p>
+            <p>Saved Signatures (click to use, ⭐ to set default):</p>
             <div class="saved-signatures-grid" id="savedSignaturesGrid"></div>
             <button id="clearAllSignaturesBtn" style="margin-top: 8px; background: #ef4444; font-size: 12px;">Clear All Saved</button>
         </div>
@@ -386,6 +409,7 @@
         <div class="sig-buttons">
             <button id="clearSigBtn">Clear Drawing</button>
             <button id="saveSignatureBtn" class="btn-primary">Save Signature</button>
+            <button id="setAsDefaultBtn">⭐ Set as Default</button>
             <button id="useDrawnBtn">Use & Place</button>
         </div>
         
@@ -470,6 +494,7 @@
     let currentColor = '#000000';
     let currentSignatureImage = null;
     let savedSignatures = [];
+    let defaultSignatureId = null;
     let draggingText = null;
     let dragOffsetX = 0, dragOffsetY = 0;
     let eraserSize = 30;
@@ -479,12 +504,21 @@
         const saved = localStorage.getItem('pdfSignatures');
         if (saved) {
             savedSignatures = JSON.parse(saved);
-            renderSavedSignatures();
         }
+        const defaultId = localStorage.getItem('defaultSignatureId');
+        if (defaultId) {
+            defaultSignatureId = defaultId;
+        }
+        renderSavedSignatures();
     }
     
     function saveSignaturesToStorage() {
         localStorage.setItem('pdfSignatures', JSON.stringify(savedSignatures));
+        if (defaultSignatureId) {
+            localStorage.setItem('defaultSignatureId', defaultSignatureId);
+        } else {
+            localStorage.removeItem('defaultSignatureId');
+        }
         renderSavedSignatures();
     }
     
@@ -495,10 +529,17 @@
         savedSignatures.forEach((sig, index) => {
             const div = document.createElement('div');
             div.className = 'saved-sig-item';
+            if (defaultSignatureId === sig.id) {
+                div.classList.add('default');
+            }
             div.innerHTML = `
+                ${defaultSignatureId === sig.id ? '<div class="default-badge">⭐ Default</div>' : ''}
                 <img src="${sig.data}" style="max-width:80px; max-height:40px">
                 <div style="font-size:10px; margin-top:4px;">${sig.name}</div>
-                <button onclick="event.stopPropagation(); deleteSignature(${index})">Delete</button>
+                <div style="display: flex; gap: 4px; margin-top: 5px;">
+                    <button onclick="event.stopPropagation(); setAsDefault(${index})" style="background: #d97706; padding: 2px 6px;">⭐</button>
+                    <button onclick="event.stopPropagation(); deleteSignature(${index})" style="background: #ef4444; padding: 2px 6px;">🗑️</button>
+                </div>
             `;
             div.onclick = (e) => {
                 if (e.target.tagName !== 'BUTTON') {
@@ -509,8 +550,18 @@
         });
     }
     
+    window.setAsDefault = function(index) {
+        defaultSignatureId = savedSignatures[index].id;
+        saveSignaturesToStorage();
+        showStatus(`"${savedSignatures[index].name}" set as default signature`);
+    };
+    
     window.deleteSignature = function(index) {
+        const sigId = savedSignatures[index].id;
         savedSignatures.splice(index, 1);
+        if (defaultSignatureId === sigId) {
+            defaultSignatureId = null;
+        }
         saveSignaturesToStorage();
         showStatus('Signature deleted');
     };
@@ -522,9 +573,48 @@
     }
     
     function addSavedSignature(dataURL, name) {
-        savedSignatures.push({ data: dataURL, name: name });
+        const id = 'sig_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        savedSignatures.push({ id: id, data: dataURL, name: name });
         saveSignaturesToStorage();
         showStatus('Signature saved!');
+    }
+    
+    function placeDefaultSignature() {
+        if (!pdfDoc) {
+            alert('Please upload a PDF first');
+            return;
+        }
+        if (!defaultSignatureId) {
+            alert('No default signature set. Please set a default signature in Manage Signatures');
+            return;
+        }
+        
+        const defaultSig = savedSignatures.find(sig => sig.id === defaultSignatureId);
+        if (!defaultSig) {
+            alert('Default signature not found');
+            return;
+        }
+        
+        showStatus('Click on PDF to place default signature');
+        
+        const placeSignature = (e) => {
+            const pos = getMousePos(e);
+            const img = new Image();
+            img.onload = () => {
+                signatures.push({
+                    img: img,
+                    x: pos.x - 75,
+                    y: pos.y - 37,
+                    width: 150,
+                    height: 75
+                });
+                redrawAnnotations();
+                canvas.removeEventListener('click', placeSignature);
+                showStatus('Default signature placed');
+            };
+            img.src = defaultSig.data;
+        };
+        canvas.addEventListener('click', placeSignature);
     }
 
     function getFontString() {
@@ -536,6 +626,7 @@
 
     const uploadBtn = document.getElementById('uploadBtn');
     const saveBtn = document.getElementById('saveBtn');
+    const quickSignBtn = document.getElementById('quickSignBtn');
     const clearDrawBtn = document.getElementById('clearDrawBtn');
     const noPdfMsg = document.getElementById('noPdfMsg');
     const canvasContainer = document.getElementById('canvasContainer');
@@ -547,7 +638,6 @@
     const eraserSizeSlider = document.getElementById('eraserSize');
     const eraserSizeValue = document.getElementById('eraserSizeValue');
     
-    // Formatting elements
     const fontSelect = document.getElementById('fontSelect');
     const fontSizeSelect = document.getElementById('fontSizeSelect');
     const boldBtn = document.getElementById('boldBtn');
@@ -563,7 +653,7 @@
         statusDiv.textContent = msg;
         setTimeout(() => {
             if (statusDiv.textContent === msg) {
-                if (currentMode === 'text') statusDiv.textContent = 'Click to add text, select text to format';
+                if (currentMode === 'text') statusDiv.textContent = 'Click to add text, double-click to edit';
                 else if (currentMode === 'move') statusDiv.textContent = 'Drag any text to move it';
                 else if (currentMode === 'draw') statusDiv.textContent = 'Draw on the PDF';
                 else if (currentMode === 'eraser') statusDiv.textContent = 'Click and drag to cover PDF content';
@@ -590,6 +680,8 @@
         };
         input.click();
     });
+
+    quickSignBtn.addEventListener('click', placeDefaultSignature);
 
     async function loadPDF(arrayBuffer) {
         try {
@@ -729,7 +821,6 @@
         input.style.left = (rect.left + x * scaleX) + 'px';
         input.style.top = (rect.top + y * scaleY) + 'px';
         
-        // Apply current formatting
         let fontStyle = '';
         if (isItalic) fontStyle += 'italic ';
         if (isBold) fontStyle += 'bold ';
@@ -791,7 +882,6 @@
         activeTextElement = input;
     }
 
-    // Update formatting UI
     function updateFormattingUI() {
         fontSelect.value = currentFont;
         fontSizeSelect.value = currentFontSize;
@@ -803,7 +893,6 @@
         colorPreview.style.backgroundColor = currentColor;
     }
 
-    // Formatting event listeners
     fontSelect.addEventListener('change', () => {
         currentFont = fontSelect.value;
         updateFormattingUI();
@@ -948,7 +1037,6 @@
             const pos = getMousePos(e);
             const textObj = getTextAtPosition(pos.x, pos.y);
             if (textObj) {
-                // Load text formatting into current UI
                 currentFont = textObj.text.font;
                 currentFontSize = textObj.text.fontSize;
                 isBold = textObj.text.isBold || false;
@@ -1124,6 +1212,23 @@
         };
     }
 
+    const setAsDefaultBtn = document.getElementById('setAsDefaultBtn');
+    if (setAsDefaultBtn) {
+        setAsDefaultBtn.onclick = () => {
+            const dataURL = sigCanvas.toDataURL();
+            const name = prompt('Name this default signature:', `Default Signature`);
+            if (name) {
+                const id = 'sig_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                savedSignatures.push({ id: id, data: dataURL, name: name });
+                defaultSignatureId = id;
+                saveSignaturesToStorage();
+                currentSignatureImage = dataURL;
+                updatePreview();
+                showStatus('Signature saved and set as DEFAULT! Use "Quick Sign" button');
+            }
+        };
+    }
+
     const useDrawnBtn = document.getElementById('useDrawnBtn');
     if (useDrawnBtn) {
         useDrawnBtn.onclick = () => {
@@ -1153,7 +1258,7 @@
                     addSavedSignature(dataURL, name);
                     currentSignatureImage = dataURL;
                     updatePreview();
-                    showStatus('Signature saved! Click "Use & Place" to put on PDF');
+                    showStatus('Signature saved!');
                 }
             } else {
                 alert('Please type a name first');
@@ -1192,7 +1297,7 @@
                 const name = prompt('Name this signature:', `Uploaded ${savedSignatures.length + 1}`);
                 if (name) {
                     addSavedSignature(currentSignatureImage, name);
-                    showStatus('Signature saved! Click "Use & Place" to put on PDF');
+                    showStatus('Signature saved!');
                 }
             } else {
                 alert('Please upload an image first');
@@ -1217,6 +1322,7 @@
         clearAllSignaturesBtn.onclick = () => {
             if (confirm('Delete ALL saved signatures?')) {
                 savedSignatures = [];
+                defaultSignatureId = null;
                 saveSignaturesToStorage();
                 showStatus('All signatures cleared');
             }
@@ -1350,8 +1456,8 @@
         };
     }
     
-    // Initialize formatting UI
     updateFormattingUI();
+    loadSavedSignatures();
 </script>
 </body>
 </html>
