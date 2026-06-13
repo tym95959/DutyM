@@ -2,796 +2,562 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-    <meta name="theme-color" content="#0A2E3D">
-    <title>ForgeStudio · Full‑Screen Editor</title>
-    <link rel="manifest" href="data:application/manifest+json,{
-        \"name\":\"ForgeStudio Editor\",
-        \"short_name\":\"ForgeStudio\",
-        \"start_url\":\".\",
-        \"display\":\"standalone\",
-        \"background_color\":\"#0A2E3D\",
-        \"theme_color\":\"#0A2E3D\",
-        \"icons\":[{
-            \"src\":\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230A2E3D'/%3E%3Ctext x='50' y='67' font-size='50' text-anchor='middle' fill='white'%3EFS%3C/text%3E%3C/svg%3E\",
-            \"sizes\":\"any\"
-        }]
-    }">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>PDF Editor & Signer</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: #0A2E3D;
-            color: #F0F4F8;
+            background: #e5e7eb;
             height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
-        .app-header {
-            background: rgba(10, 46, 61, 0.98);
-            backdrop-filter: blur(10px);
-            padding: 1rem 1.2rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-shrink: 0;
-        }
-        .app-header h1 {
-            font-size: 1.5rem;
-            background: linear-gradient(135deg, #FFD166, #FF9F1C);
-            background-clip: text;
-            -webkit-background-clip: text;
-            color: transparent;
-        }
-        .badge {
-            background: #1E4A5F;
-            padding: 0.3rem 0.8rem;
-            border-radius: 2rem;
-            font-size: 0.7rem;
-        }
-        .install-btn-header {
-            background: #FF9F1C;
-            border: none;
-            color: #0A2E3D;
-            padding: 0.3rem 0.9rem;
-            border-radius: 2rem;
-            font-size: 0.7rem;
-            font-weight: bold;
-            cursor: pointer;
-            margin-left: 0.5rem;
-        }
-        .main-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1rem;
-            padding-bottom: 2rem;
-        }
-        .upload-card, .pdf-bar {
-            background: #123D4F;
-            border-radius: 1.8rem;
-            padding: 1.2rem;
-            margin-bottom: 1rem;
-        }
-        .drop-area {
-            border: 2px dashed #2C6B7E;
-            border-radius: 1.5rem;
-            padding: 1rem;
-            text-align: center;
-        }
-        .btn-row {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            margin-top: 1rem;
-            flex-wrap: wrap;
-        }
-        .btn {
-            border: none;
-            padding: 0.7rem 1.2rem;
-            border-radius: 3rem;
-            font-weight: 600;
-            font-size: 0.85rem;
-            background: #1E4A5F;
+
+        /* Header */
+        .header {
+            background: #0f3b2c;
             color: white;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            cursor: pointer;
-        }
-        .btn-primary {
-            background: #FF9F1C;
-            color: #0A2E3D;
-        }
-        .btn-outline {
-            background: transparent;
-            border: 1px solid #FF9F1C;
-            color: #FF9F1C;
-        }
-        .pdf-options {
+            padding: 16px;
             display: flex;
-            gap: 1rem;
-            background: #0E3444;
-            padding: 0.3rem 1rem;
-            border-radius: 2rem;
-            font-size: 0.75rem;
+            align-items: center;
+            gap: 12px;
             flex-wrap: wrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
-        .image-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 1rem;
-            margin-top: 0.5rem;
-        }
-        .image-card {
-            background: #123D4F;
-            border-radius: 1.2rem;
-            overflow: hidden;
-        }
-        .image-card img {
-            width: 100%;
-            aspect-ratio: 1;
-            object-fit: cover;
-            cursor: pointer;
-        }
-        .card-footer {
-            padding: 0.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 0.3rem;
-            flex-wrap: wrap;
-        }
-        .action-icons {
-            display: flex;
-            gap: 0.3rem;
-        }
-        .action-icons button {
-            background: #0E3444;
-            border: none;
-            border-radius: 2rem;
-            padding: 0.3rem 0.5rem;
-            color: #FFD166;
-            font-size: 0.7rem;
-            cursor: pointer;
-        }
-        .empty-state {
-            text-align: center;
-            padding: 2rem;
-            background: #123D4F;
-            border-radius: 2rem;
-        }
-        .status {
-            background: #1E4A5F;
-            border-radius: 2rem;
-            padding: 0.6rem;
-            text-align: center;
-            font-size: 0.75rem;
-            margin-top: 1rem;
-        }
-        .editor-fullscreen {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #0A2E3D;
-            z-index: 3000;
-            flex-direction: column;
-        }
-        .editor-fullscreen.active {
-            display: flex;
-        }
-        .editor-header {
-            background: #0E3444;
-            padding: 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #2C6B7E;
-        }
-        .editor-header h3 {
+
+        .header h1 {
             font-size: 1.2rem;
-        }
-        .editor-content {
             flex: 1;
-            overflow-y: auto;
-            padding: 1rem;
         }
-        .editor-preview {
-            background: #071F2A;
-            border-radius: 1.5rem;
-            padding: 1rem;
-            text-align: center;
-            margin-bottom: 1.5rem;
-        }
-        .editor-preview img {
-            max-width: 100%;
-            max-height: 40vh;
-            object-fit: contain;
-            border-radius: 1rem;
-        }
-        .editor-sliders {
-            background: #123D4F;
-            border-radius: 1.5rem;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        .slider-group {
-            margin-bottom: 1rem;
-        }
-        .slider-group label {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.8rem;
-            margin-bottom: 0.3rem;
-        }
-        input[type="range"] {
-            width: 100%;
-            height: 4px;
-            -webkit-appearance: none;
-            background: #2C6B7E;
-            border-radius: 5px;
-        }
-        input[type="range"]::-webkit-slider-thumb {
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #FF9F1C;
+
+        button {
+            background: #2d5a4a;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
             cursor: pointer;
+            transition: 0.2s;
+            touch-action: manipulation;
         }
-        .editor-actions {
+
+        button:active {
+            transform: scale(0.96);
+            background: #1e3d31;
+        }
+
+        .btn-primary {
+            background: #d97706;
+        }
+
+        .btn-primary:active {
+            background: #b45309;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            background: white;
+            padding: 10px 12px;
             display: flex;
-            gap: 0.8rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        .crop-modal {
-            display: none;
-            position: fixed;
+            gap: 10px;
+            overflow-x: auto;
+            border-bottom: 1px solid #d1d5db;
+            position: sticky;
             top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.96);
-            z-index: 4000;
-            justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(5px);
         }
-        .crop-modal-content {
-            background: #123D4F;
-            border-radius: 2rem;
-            width: 94%;
-            max-width: 500px;
-            max-height: 90vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
+
+        .tool-btn {
+            background: #f3f4f6;
+            color: #1f2937;
+            border: 1px solid #d1d5db;
+            padding: 8px 16px;
+            font-size: 14px;
+            white-space: nowrap;
         }
-        .crop-image-container {
+
+        .tool-btn.active {
+            background: #0f3b2c;
+            color: white;
+            border-color: #0f3b2c;
+        }
+
+        /* PDF Viewer */
+        .pdf-viewer {
             flex: 1;
             overflow: auto;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 1rem;
-            min-height: 250px;
+            background: #374151;
+            padding: 20px;
         }
-        .crop-image-container img {
-            max-width: 100%;
-            max-height: 55vh;
+
+        canvas {
             display: block;
             margin: 0 auto;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            background: white;
+            border-radius: 4px;
+            width: 100%;
+            height: auto;
         }
-        .crop-buttons {
-            display: flex;
-            gap: 1rem;
-            padding: 1rem;
+
+        /* Signature Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
             justify-content: center;
-            background: #0E3444;
-            border-top: 1px solid #2C6B7E;
+            align-items: center;
+            z-index: 1000;
         }
-        footer {
+
+        .modal-card {
+            background: white;
+            border-radius: 24px;
+            width: 90%;
+            max-width: 450px;
+            padding: 24px;
             text-align: center;
-            font-size: 0.6rem;
-            padding: 0.8rem;
-            color: #5F8B9C;
+        }
+
+        .modal-card h3 {
+            margin-bottom: 16px;
+            color: #0f3b2c;
+        }
+
+        #sigCanvas {
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            background: white;
+            width: 100%;
+            height: auto;
+            touch-action: none;
+            cursor: crosshair;
+        }
+
+        .sig-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 16px 0;
+            justify-content: center;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            font-size: 16px;
+            margin: 8px 0;
+        }
+
+        .no-pdf {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9ca3af;
         }
     </style>
 </head>
 <body>
-<div class="app-header">
-    <h1><i class="fas fa-magic"></i> ForgeStudio</h1>
-    <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <div class="badge" id="imageCountBadge">0</div>
-        <button id="installAppButton" class="install-btn-header" style="display: none;"><i class="fas fa-download"></i> Install</button>
-    </div>
-</div>
-<div class="main-content">
-    <div class="upload-card">
-        <div id="dropZone" class="drop-area">
-            <i class="fas fa-cloud-upload-alt fa-2x"></i>
-            <p>Drag & drop images here</p>
-            <div class="btn-row">
-                <label class="btn btn-outline" id="galleryLabel">
-                    <i class="fas fa-images"></i> Gallery
-                    <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp" hidden>
-                </label>
-                <button id="cameraBtn" class="btn btn-outline"><i class="fas fa-camera"></i> Camera</button>
-            </div>
-        </div>
-    </div>
-    <div class="pdf-bar" style="display: flex; flex-wrap: wrap; gap: 0.8rem; justify-content: space-between;">
-        <div class="pdf-options">
-            <label><input type="checkbox" id="keepOriginalCheck"> Keep original size</label>
-            <label><input type="radio" name="orientation" value="portrait" checked> Portrait</label>
-            <label><input type="radio" name="orientation" value="landscape"> Landscape</label>
-        </div>
-        <div style="display: flex; gap: 0.5rem;">
-            <button id="exportPdfBtn" class="btn btn-primary"><i class="fas fa-file-pdf"></i> Export PDF</button>
-            <button id="clearAllBtn" class="btn"><i class="fas fa-trash"></i> Clear</button>
-        </div>
-    </div>
-    <div style="display: flex; justify-content: space-between; margin: 0.5rem 0;">
-        <span><i class="fas fa-layer-group"></i> My images</span>
-        <span id="galleryCount" style="background:#1E4A5F; padding:0.2rem 0.8rem; border-radius:2rem;">0</span>
-    </div>
-    <div id="galleryContainer" class="image-grid">
-        <div class="empty-state">📸 No images — upload or capture</div>
-    </div>
-    <div id="statusMsg" class="status">✨ Tap any image to open full‑screen editor</div>
-    <footer>✓ Crop fixed | No double file picker | Installable PWA</footer>
+
+<div class="header">
+    <h1>📄 PDF Sign & Edit</h1>
+    <button id="uploadBtn">📂 Upload PDF</button>
+    <button id="saveBtn" class="btn-primary">💾 Save PDF</button>
 </div>
 
-<div id="fullEditor" class="editor-fullscreen">
-    <div class="editor-header">
-        <h3><i class="fas fa-edit"></i> Image Editor</h3>
-        <button id="closeEditorBtn" class="btn"><i class="fas fa-times"></i> Close</button>
+<div class="toolbar">
+    <button class="tool-btn" data-mode="text">✏️ Add Text</button>
+    <button class="tool-btn" data-mode="draw">🖌️ Draw</button>
+    <button class="tool-btn" data-mode="sign">🖊️ Add Signature</button>
+    <button class="tool-btn" id="clearDraw">🗑️ Clear Drawings</button>
+</div>
+
+<div class="pdf-viewer" id="pdfViewer">
+    <div class="no-pdf">
+        📁 Click "Upload PDF" to start<br>
+        Add text, draw, or sign your document
     </div>
-    <div class="editor-content">
-        <div class="editor-preview">
-            <img id="editorPreviewImg" alt="preview">
+    <canvas id="pdfCanvas" style="display: none;"></canvas>
+</div>
+
+<!-- Signature Modal -->
+<div id="sigModal" class="modal">
+    <div class="modal-card">
+        <h3>✍️ Draw Your Signature</h3>
+        <canvas id="sigCanvas" width="400" height="200"></canvas>
+        <div class="sig-buttons">
+            <button id="clearSigBtn">Clear</button>
+            <button id="saveSigBtn" class="btn-primary">Use Signature</button>
+            <button id="cancelSigBtn">Cancel</button>
         </div>
-        <div class="editor-sliders">
-            <div class="slider-group"><label>Brightness <span id="editBrightVal">0</span></label><input type="range" id="editBrightness" min="-100" max="100" value="0"></div>
-            <div class="slider-group"><label>Contrast <span id="editContVal">0</span></label><input type="range" id="editContrast" min="-100" max="100" value="0"></div>
-            <div class="slider-group"><label>Saturation <span id="editSatVal">0</span></label><input type="range" id="editSaturation" min="-100" max="100" value="0"></div>
-            <div class="slider-group"><label>Sepia <span id="editSepiaVal">0</span></label><input type="range" id="editSepia" min="0" max="100" value="0"></div>
-            <div class="slider-group"><label>Grayscale <span id="editGrayVal">0</span></label><input type="range" id="editGrayscale" min="0" max="100" value="0"></div>
-        </div>
-        <div class="editor-actions">
-            <button id="editorRotateLeft" class="btn"><i class="fas fa-undo-alt"></i> Rotate 90°</button>
-            <button id="editorRotateRight" class="btn"><i class="fas fa-redo-alt"></i> Rotate 90°</button>
-            <button id="editorCropBtn" class="btn"><i class="fas fa-crop"></i> Crop</button>
-            <button id="editorResetBtn" class="btn">Reset filters</button>
-            <button id="editorApplyBtn" class="btn btn-primary"><i class="fas fa-check"></i> Apply & Save</button>
-        </div>
+        <p style="margin: 12px 0 4px;">— or type signature —</p>
+        <input type="text" id="typedSignature" placeholder="Type your name">
+        <button id="useTypedBtn" style="margin-top: 8px; width: 100%;">Use Typed Name</button>
     </div>
 </div>
 
-<div id="cropModal" class="crop-modal">
-    <div class="crop-modal-content">
-        <div class="crop-image-container">
-            <img id="cropImage" src="">
-        </div>
-        <div class="crop-buttons">
-            <button id="confirmCropBtn" class="btn btn-primary">✂️ Apply Crop</button>
-            <button id="cancelCropBtn" class="btn">Cancel</button>
-        </div>
-    </div>
-</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 
 <script>
-    let images = [];
-    let nextId = 1;
-    let deferredPrompt = null;
-    
-    let currentEditId = null;
-    let originalEditDataURL = null;
-    let currentFilterValues = { brightness:0, contrast:0, saturation:0, sepia:0, grayscale:0 };
-    let activeCropper = null;
-    let cropTempImageId = null;
+    // Initialize PDF.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    const cameraBtn = document.getElementById('cameraBtn');
-    const galleryDiv = document.getElementById('galleryContainer');
-    const exportBtn = document.getElementById('exportPdfBtn');
-    const clearAllBtn = document.getElementById('clearAllBtn');
-    const keepOriginalCheck = document.getElementById('keepOriginalCheck');
-    const statusDiv = document.getElementById('statusMsg');
-    const galleryCountSpan = document.getElementById('galleryCount');
-    const imageCountBadge = document.getElementById('imageCountBadge');
-    const installButton = document.getElementById('installAppButton');
-    
-    const fullEditor = document.getElementById('fullEditor');
-    const editorPreview = document.getElementById('editorPreviewImg');
-    const editBrightness = document.getElementById('editBrightness');
-    const editContrast = document.getElementById('editContrast');
-    const editSaturation = document.getElementById('editSaturation');
-    const editSepia = document.getElementById('editSepia');
-    const editGrayscale = document.getElementById('editGrayscale');
-    const editBrightVal = document.getElementById('editBrightVal');
-    const editContVal = document.getElementById('editContVal');
-    const editSatVal = document.getElementById('editSatVal');
-    const editSepiaVal = document.getElementById('editSepiaVal');
-    const editGrayVal = document.getElementById('editGrayVal');
-    const closeEditorBtn = document.getElementById('closeEditorBtn');
-    const editorRotateLeft = document.getElementById('editorRotateLeft');
-    const editorRotateRight = document.getElementById('editorRotateRight');
-    const editorCropBtn = document.getElementById('editorCropBtn');
-    const editorResetBtn = document.getElementById('editorResetBtn');
-    const editorApplyBtn = document.getElementById('editorApplyBtn');
-    
-    const cropModal = document.getElementById('cropModal');
-    const cropImageEl = document.getElementById('cropImage');
-    const confirmCropBtn = document.getElementById('confirmCropBtn');
-    const cancelCropBtn = document.getElementById('cancelCropBtn');
+    let pdfDoc = null;
+    let currentPage = 1;
+    let pdfScale = 1.3;
+    let canvas = document.getElementById('pdfCanvas');
+    let ctx = canvas.getContext('2d');
+    let fabricCanvas = null;
+    let currentMode = 'text';
+    let isDrawing = false;
 
-    function setStatus(msg, isErr = false) {
-        statusDiv.innerHTML = `<i class="fas ${isErr ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i> ${msg}`;
-        statusDiv.style.background = isErr ? '#6B2E2E' : '#1E4A5F';
-        setTimeout(() => { if (statusDiv.innerHTML.includes(msg)) statusDiv.style.background = '#1E4A5F'; }, 2500);
-    }
-    function loadImageFromURL(dataURL) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = reject;
-            img.src = dataURL;
-        });
-    }
-    async function applyFiltersToImage(dataURL, filters) {
-        const img = await loadImageFromURL(dataURL);
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        const b = filters.brightness || 0;
-        const c = (filters.contrast || 0) / 100;
-        const s = (filters.saturation || 0) / 100;
-        const sep = (filters.sepia || 0) / 100;
-        const gray = (filters.grayscale || 0) / 100;
-        for (let i = 0; i < data.length; i += 4) {
-            let r = data[i], g = data[i+1], bl = data[i+2];
-            r += b * 2.55; g += b * 2.55; bl += b * 2.55;
-            const factor = (259 * (c + 255)) / (255 * (259 - c));
-            r = factor * (r - 128) + 128; g = factor * (g - 128) + 128; bl = factor * (bl - 128) + 128;
-            const grayVal = 0.2989 * r + 0.5870 * g + 0.1140 * bl;
-            r = grayVal + (r - grayVal) * (1 + s);
-            g = grayVal + (g - grayVal) * (1 + s);
-            bl = grayVal + (bl - grayVal) * (1 + s);
-            if (sep > 0) {
-                const tr = r, tg = g, tb = bl;
-                r = (tr * 0.393 + tg * 0.769 + tb * 0.189) * sep + tr * (1 - sep);
-                g = (tr * 0.349 + tg * 0.686 + tb * 0.168) * sep + tg * (1 - sep);
-                bl = (tr * 0.272 + tg * 0.534 + tb * 0.131) * sep + tb * (1 - sep);
+    // DOM elements
+    const uploadBtn = document.getElementById('uploadBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const clearDrawBtn = document.getElementById('clearDraw');
+    const pdfViewer = document.getElementById('pdfViewer');
+    const sigModal = document.getElementById('sigModal');
+    const sigCanvas = document.getElementById('sigCanvas');
+    let sigCtx = sigCanvas.getContext('2d');
+    let signing = false;
+    let lastX, lastY;
+
+    // Upload PDF
+    uploadBtn.addEventListener('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'application/pdf';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    await loadPDF(ev.target.result);
+                };
+                reader.readAsArrayBuffer(file);
             }
-            if (gray > 0) {
-                const grayMix = r * 0.3 + g * 0.59 + bl * 0.11;
-                r = r * (1 - gray) + grayMix * gray;
-                g = g * (1 - gray) + grayMix * gray;
-                bl = bl * (1 - gray) + grayMix * gray;
-            }
-            data[i] = Math.min(255, Math.max(0, r));
-            data[i+1] = Math.min(255, Math.max(0, g));
-            data[i+2] = Math.min(255, Math.max(0, bl));
-        }
-        ctx.putImageData(imageData, 0, 0);
-        return canvas.toDataURL('image/jpeg', 0.95);
-    }
-
-    async function renderGallery() {
-        galleryCountSpan.innerText = images.length;
-        imageCountBadge.innerText = images.length;
-        if (images.length === 0) {
-            galleryDiv.innerHTML = `<div class="empty-state">📸 No images — upload or capture</div>`;
-            return;
-        }
-        galleryDiv.innerHTML = '';
-        for (let i = 0; i < images.length; i++) {
-            const img = images[i];
-            const card = document.createElement('div'); card.className = 'image-card';
-            const thumb = document.createElement('img');
-            thumb.src = img.dataURL;
-            thumb.addEventListener('click', () => openFullEditor(img.id));
-            const footer = document.createElement('div'); footer.className = 'card-footer';
-            footer.innerHTML = `<span>${img.width}×${img.height}</span><div class="action-icons"></div>`;
-            const actions = footer.querySelector('.action-icons');
-            const rotLeft = document.createElement('button'); rotLeft.innerHTML = '<i class="fas fa-undo-alt"></i>'; rotLeft.onclick = (e) => { e.stopPropagation(); rotateImage(img.id, -90); };
-            const rotRight = document.createElement('button'); rotRight.innerHTML = '<i class="fas fa-redo-alt"></i>'; rotRight.onclick = (e) => { e.stopPropagation(); rotateImage(img.id, 90); };
-            const cropBtn = document.createElement('button'); cropBtn.innerHTML = '<i class="fas fa-crop"></i>'; cropBtn.onclick = (e) => { e.stopPropagation(); openCropFromGallery(img.id); };
-            const colorBtn = document.createElement('button'); colorBtn.innerHTML = '<i class="fas fa-palette"></i>'; colorBtn.onclick = (e) => { e.stopPropagation(); openFullEditor(img.id); };
-            const delBtn = document.createElement('button'); delBtn.innerHTML = '<i class="fas fa-trash"></i>'; delBtn.style.background = '#5E2E2E'; delBtn.onclick = (e) => { e.stopPropagation(); deleteImage(img.id); };
-            actions.append(rotLeft, rotRight, cropBtn, colorBtn, delBtn);
-            card.append(thumb, footer);
-            galleryDiv.appendChild(card);
-        }
-    }
-
-    async function rotateImage(id, deg) {
-        const idx = images.findIndex(i => i.id === id);
-        if (idx === -1) return;
-        const img = images[idx];
-        const loaded = await loadImageFromURL(img.dataURL);
-        const w = loaded.width, h = loaded.height;
-        const canvas = document.createElement('canvas');
-        let newW = w, newH = h, rad = 0;
-        if (deg === 90) { newW = h; newH = w; rad = Math.PI/2; }
-        else if (deg === -90) { newW = h; newH = w; rad = -Math.PI/2; }
-        canvas.width = newW; canvas.height = newH;
-        const ctx = canvas.getContext('2d');
-        if (deg === 90) { ctx.translate(newW, 0); ctx.rotate(rad); }
-        else if (deg === -90) { ctx.translate(0, newH); ctx.rotate(rad); }
-        ctx.drawImage(loaded, 0, 0);
-        const newURL = canvas.toDataURL(img.mimeType || 'image/jpeg', 0.95);
-        images[idx] = { ...img, dataURL: newURL, width: canvas.width, height: canvas.height, filters: {} };
-        renderGallery(); setStatus(`Rotated ${img.name}`);
-    }
-    function deleteImage(id) {
-        images = images.filter(i => i.id !== id);
-        if (currentEditId === id) closeFullEditor();
-        renderGallery(); setStatus('Image deleted');
-    }
-
-    let editorTimeout = null;
-    async function updateEditorPreview() {
-        if (!currentEditId || !originalEditDataURL) return;
-        const filters = {
-            brightness: parseInt(editBrightness.value),
-            contrast: parseInt(editContrast.value),
-            saturation: parseInt(editSaturation.value),
-            sepia: parseInt(editSepia.value),
-            grayscale: parseInt(editGrayscale.value)
         };
-        currentFilterValues = filters;
-        const preview = await applyFiltersToImage(originalEditDataURL, filters);
-        editorPreview.src = preview;
-    }
-    function debouncedEditorUpdate() { clearTimeout(editorTimeout); editorTimeout = setTimeout(updateEditorPreview, 60); }
-    function attachEditorSliders() {
-        [editBrightness, editContrast, editSaturation, editSepia, editGrayscale].forEach(sl => {
-            sl.removeEventListener('input', debouncedEditorUpdate);
-            sl.addEventListener('input', debouncedEditorUpdate);
-        });
-        editBrightness.addEventListener('input', () => editBrightVal.innerText = editBrightness.value);
-        editContrast.addEventListener('input', () => editContVal.innerText = editContrast.value);
-        editSaturation.addEventListener('input', () => editSatVal.innerText = editSaturation.value);
-        editSepia.addEventListener('input', () => editSepiaVal.innerText = editSepia.value);
-        editGrayscale.addEventListener('input', () => editGrayVal.innerText = editGrayscale.value);
-    }
-    async function openFullEditor(id) {
-        const img = images.find(i => i.id === id);
-        if (!img) return;
-        currentEditId = id;
-        originalEditDataURL = img.dataURL;
-        const f = img.filters || { brightness:0, contrast:0, saturation:0, sepia:0, grayscale:0 };
-        editBrightness.value = f.brightness; editBrightVal.innerText = f.brightness;
-        editContrast.value = f.contrast; editContVal.innerText = f.contrast;
-        editSaturation.value = f.saturation; editSatVal.innerText = f.saturation;
-        editSepia.value = f.sepia; editSepiaVal.innerText = f.sepia;
-        editGrayscale.value = f.grayscale; editGrayVal.innerText = f.grayscale;
-        const preview = await applyFiltersToImage(originalEditDataURL, f);
-        editorPreview.src = preview;
-        fullEditor.classList.add('active');
-        attachEditorSliders();
-    }
-    function closeFullEditor() {
-        fullEditor.classList.remove('active');
-        currentEditId = null;
-        originalEditDataURL = null;
-    }
-    async function applyEditorChanges() {
-        if (!currentEditId) return;
-        const idx = images.findIndex(i => i.id === currentEditId);
-        if (idx === -1) { closeFullEditor(); return; }
-        const newURL = await applyFiltersToImage(originalEditDataURL, currentFilterValues);
-        images[idx] = { ...images[idx], dataURL: newURL, filters: currentFilterValues };
-        renderGallery();
-        setStatus('Changes saved');
-        closeFullEditor();
-    }
-    async function editorRotate() {
-        if (!currentEditId) return;
-        const idx = images.findIndex(i => i.id === currentEditId);
-        if (idx === -1) return;
-        const loaded = await loadImageFromURL(originalEditDataURL);
-        const w = loaded.width, h = loaded.height;
-        const canvas = document.createElement('canvas');
-        canvas.width = h; canvas.height = w;
-        const ctx = canvas.getContext('2d');
-        ctx.translate(h, 0); ctx.rotate(Math.PI/2);
-        ctx.drawImage(loaded, 0, 0);
-        const newURL = canvas.toDataURL(images[idx].mimeType || 'image/jpeg', 0.95);
-        originalEditDataURL = newURL;
-        images[idx] = { ...images[idx], dataURL: newURL, width: canvas.width, height: canvas.height, filters: currentFilterValues };
-        const preview = await applyFiltersToImage(originalEditDataURL, currentFilterValues);
-        editorPreview.src = preview;
-        setStatus('Rotated');
-    }
-    function resetEditorFilters() {
-        editBrightness.value = 0; editContrast.value = 0; editSaturation.value = 0; editSepia.value = 0; editGrayscale.value = 0;
-        editBrightVal.innerText = 0; editContVal.innerText = 0; editSatVal.innerText = 0; editSepiaVal.innerText = 0; editGrayVal.innerText = 0;
-        currentFilterValues = { brightness:0, contrast:0, saturation:0, sepia:0, grayscale:0 };
-        updateEditorPreview();
-    }
-    editorRotateLeft.onclick = editorRotate;
-    editorRotateRight.onclick = editorRotate;
-    editorResetBtn.onclick = resetEditorFilters;
-    editorApplyBtn.onclick = applyEditorChanges;
-    closeEditorBtn.onclick = closeFullEditor;
+        input.click();
+    });
 
-    // ========== CROP FIX: reliable Cropper initialization ==========
-    function initCropper() {
-        if (activeCropper) activeCropper.destroy();
-        activeCropper = new Cropper(cropImageEl, {
-            viewMode: 1,
-            autoCropArea: 0.8,
-            background: true,
-            responsive: true,
-            checkOrientation: false
+    async function loadPDF(arrayBuffer) {
+        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        currentPage = 1;
+        await renderPage(currentPage);
+        document.querySelector('.no-pdf')?.remove();
+        canvas.style.display = 'block';
+    }
+
+    async function renderPage(pageNum) {
+        if (!pdfDoc) return;
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: pdfScale });
+        
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
+        
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        
+        // Initialize fabric overlay
+        if (fabricCanvas) fabricCanvas.dispose();
+        fabricCanvas = new fabric.Canvas(canvas, {
+            selection: true,
+            allowTouchScrolling: true,
+            width: viewport.width,
+            height: viewport.height
+        });
+        
+        // Drawing mode
+        fabricCanvas.on('mouse:down', (opt) => {
+            if (currentMode === 'draw' && opt.e) {
+                isDrawing = true;
+                const pointer = fabricCanvas.getPointer(opt.e);
+                const path = new fabric.Path(`M ${pointer.x} ${pointer.y}`, {
+                    stroke: '#dc2626',
+                    strokeWidth: 3,
+                    fill: '',
+                    selectable: false
+                });
+                fabricCanvas.add(path);
+                fabricCanvas.currentPath = path;
+            }
+        });
+        
+        fabricCanvas.on('mouse:move', (opt) => {
+            if (currentMode === 'draw' && isDrawing && fabricCanvas.currentPath) {
+                const pointer = fabricCanvas.getPointer(opt.e);
+                const newPath = fabricCanvas.currentPath.path.concat([['L', pointer.x, pointer.y]]);
+                fabricCanvas.currentPath.set({ path: newPath });
+                fabricCanvas.renderAll();
+            }
+        });
+        
+        fabricCanvas.on('mouse:up', () => {
+            if (fabricCanvas.currentPath) {
+                fabricCanvas.currentPath.set({ selectable: true, evented: true });
+                fabricCanvas.currentPath = null;
+            }
+            isDrawing = false;
+        });
+        
+        // Double click to add text
+        fabricCanvas.on('mouse:dblclick', (e) => {
+            if (currentMode === 'text') {
+                const pointer = fabricCanvas.getPointer(e.e);
+                const textbox = new fabric.Textbox('Edit text', {
+                    left: pointer.x,
+                    top: pointer.y,
+                    width: 150,
+                    fontSize: 18,
+                    fill: '#000000',
+                    backgroundColor: 'rgba(255,255,0,0.3)',
+                    editable: true
+                });
+                fabricCanvas.add(textbox);
+                fabricCanvas.setActiveObject(textbox);
+                fabricCanvas.renderAll();
+            }
         });
     }
-    async function openCropFromGallery(id) {
-        const img = images.find(i => i.id === id);
-        if (!img) return;
-        cropTempImageId = id;
-        cropImageEl.src = img.dataURL;
-        cropModal.style.display = 'flex';
-        // Wait for the image to load completely
-        if (cropImageEl.complete) {
-            initCropper();
-        } else {
-            cropImageEl.onload = () => {
-                initCropper();
-            };
-        }
+
+    // Mode switching
+    document.querySelectorAll('.tool-btn[data-mode]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentMode = btn.dataset.mode;
+            document.querySelectorAll('.tool-btn[data-mode]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            if (currentMode === 'sign') {
+                openSignatureModal();
+            }
+        });
+    });
+
+    // Signature modal functions
+    function openSignatureModal() {
+        sigModal.style.display = 'flex';
+        sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+        sigCtx.fillStyle = 'white';
+        sigCtx.fillRect(0, 0, sigCanvas.width, sigCanvas.height);
+        sigCtx.strokeStyle = '#000';
+        sigCtx.lineWidth = 2;
+        sigCtx.lineCap = 'round';
+        sigCtx.lineJoin = 'round';
     }
-    async function applyCrop() {
-        if (!activeCropper || !cropTempImageId) {
-            setStatus('Crop error: no active cropper', true);
+
+    // Touch drawing on signature canvas
+    function getCanvasCoords(e, canvasEl) {
+        const rect = canvasEl.getBoundingClientRect();
+        const scaleX = canvasEl.width / rect.width;
+        const scaleY = canvasEl.height / rect.height;
+        let clientX, clientY;
+        
+        if (e.touches) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        
+        const x = (clientX - rect.left) * scaleX;
+        const y = (clientY - rect.top) * scaleY;
+        return { x, y };
+    }
+
+    function startSign(e) {
+        e.preventDefault();
+        signing = true;
+        const coords = getCanvasCoords(e, sigCanvas);
+        lastX = coords.x;
+        lastY = coords.y;
+        sigCtx.beginPath();
+        sigCtx.moveTo(lastX, lastY);
+    }
+
+    function drawSign(e) {
+        e.preventDefault();
+        if (!signing) return;
+        const coords = getCanvasCoords(e, sigCanvas);
+        sigCtx.lineTo(coords.x, coords.y);
+        sigCtx.stroke();
+        sigCtx.beginPath();
+        sigCtx.moveTo(coords.x, coords.y);
+        lastX = coords.x;
+        lastY = coords.y;
+    }
+
+    function endSign() {
+        signing = false;
+        sigCtx.beginPath();
+    }
+
+    sigCanvas.addEventListener('mousedown', startSign);
+    sigCanvas.addEventListener('mousemove', drawSign);
+    sigCanvas.addEventListener('mouseup', endSign);
+    sigCanvas.addEventListener('touchstart', startSign);
+    sigCanvas.addEventListener('touchmove', drawSign);
+    sigCanvas.addEventListener('touchend', endSign);
+
+    document.getElementById('clearSigBtn').onclick = () => {
+        sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+        sigCtx.fillStyle = 'white';
+        sigCtx.fillRect(0, 0, sigCanvas.width, sigCanvas.height);
+    };
+
+    document.getElementById('saveSigBtn').onclick = () => {
+        const dataURL = sigCanvas.toDataURL();
+        fabric.Image.fromURL(dataURL, (img) => {
+            img.scaleToWidth(150);
+            fabricCanvas.add(img);
+            fabricCanvas.renderAll();
+        });
+        sigModal.style.display = 'none';
+        currentMode = 'text';
+        document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
+        document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+    };
+
+    document.getElementById('useTypedBtn').onclick = () => {
+        const typedName = document.getElementById('typedSignature').value;
+        if (typedName.trim()) {
+            const text = new fabric.Text(typedName, {
+                fontSize: 28,
+                fontFamily: 'cursive',
+                fill: '#000',
+                fontStyle: 'italic'
+            });
+            fabricCanvas.add(text);
+            fabricCanvas.renderAll();
+            sigModal.style.display = 'none';
+            currentMode = 'text';
+            document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
+            document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+        } else {
+            alert('Please type a name');
+        }
+    };
+
+    document.getElementById('cancelSigBtn').onclick = () => {
+        sigModal.style.display = 'none';
+        currentMode = 'text';
+        document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
+        document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+    };
+
+    // Clear drawings
+    clearDrawBtn.onclick = () => {
+        if (fabricCanvas) {
+            const objects = fabricCanvas.getObjects();
+            objects.forEach(obj => {
+                if (obj.type === 'path' || obj.type === 'textbox') {
+                    fabricCanvas.remove(obj);
+                }
+            });
+            fabricCanvas.renderAll();
+        }
+    };
+
+    // Save PDF with edits
+    saveBtn.onclick = async () => {
+        if (!pdfDoc) {
+            alert('Please upload a PDF first');
             return;
         }
+        
+        alert('Saving PDF...');
+        
         try {
-            const croppedCanvas = activeCropper.getCroppedCanvas();
-            if (!croppedCanvas) {
-                setStatus('Crop failed: canvas empty', true);
-                return;
-            }
-            const croppedURL = croppedCanvas.toDataURL('image/jpeg', 0.95);
-            const idx = images.findIndex(i => i.id === cropTempImageId);
-            if (idx !== -1) {
-                images[idx] = { ...images[idx], dataURL: croppedURL, width: croppedCanvas.width, height: croppedCanvas.height, filters: {} };
-                renderGallery();
-                setStatus('Cropped successfully');
-            }
-            closeCropModal();
-            if (currentEditId === cropTempImageId) closeFullEditor();
-        } catch (err) {
-            console.error(err);
-            setStatus('Crop failed', true);
+            const pdfBytes = await pdfDoc.getData();
+            const pdfDocLib = await PDFLib.PDFDocument.load(pdfBytes);
+            const pages = pdfDocLib.getPages();
+            const firstPage = pages[0];
+            
+            // Create overlay canvas with all edits
+            const overlayCanvas = document.createElement('canvas');
+            overlayCanvas.width = canvas.width;
+            overlayCanvas.height = canvas.height;
+            const overlayCtx = overlayCanvas.getContext('2d');
+            
+            // Draw original PDF page
+            overlayCtx.drawImage(canvas, 0, 0);
+            
+            // Draw fabric objects
+            fabricCanvas.getObjects().forEach(obj => {
+                if (obj.type === 'textbox') {
+                    overlayCtx.font = `${obj.fontSize}px ${obj.fontFamily || 'Arial'}`;
+                    overlayCtx.fillStyle = obj.fill;
+                    overlayCtx.fillText(obj.text, obj.left, obj.top + obj.fontSize);
+                } else if (obj.type === 'image') {
+                    const img = new Image();
+                    img.src = obj.toDataURL();
+                    overlayCtx.drawImage(img, obj.left, obj.top, obj.width * obj.scaleX, obj.height * obj.scaleY);
+                } else if (obj.type === 'path') {
+                    overlayCtx.beginPath();
+                    const path = obj.path;
+                    let first = true;
+                    path.forEach(cmd => {
+                        if (cmd[0] === 'M') {
+                            if (!first) overlayCtx.stroke();
+                            overlayCtx.beginPath();
+                            overlayCtx.moveTo(cmd[1], cmd[2]);
+                            first = false;
+                        } else if (cmd[0] === 'L') {
+                            overlayCtx.lineTo(cmd[1], cmd[2]);
+                        }
+                    });
+                    overlayCtx.strokeStyle = obj.stroke;
+                    overlayCtx.lineWidth = obj.strokeWidth;
+                    overlayCtx.stroke();
+                }
+            });
+            
+            const overlayImage = await pdfDocLib.embedPng(overlayCanvas.toDataURL());
+            const pageWidth = firstPage.getWidth();
+            const pageHeight = firstPage.getHeight();
+            
+            firstPage.drawImage(overlayImage, {
+                x: 0,
+                y: 0,
+                width: pageWidth,
+                height: pageHeight
+            });
+            
+            const modifiedPdfBytes = await pdfDocLib.save();
+            const blob = new Blob([modifiedPdfBytes], { type: 'application/pdf' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.download = 'signed_document.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            alert('✅ PDF saved successfully!');
+        } catch (error) {
+            console.error('Save error:', error);
+            alert('Error saving PDF. Check console for details.');
         }
-    }
-    function closeCropModal() {
-        if (activeCropper) {
-            activeCropper.destroy();
-            activeCropper = null;
-        }
-        cropModal.style.display = 'none';
-        cropTempImageId = null;
-        cropImageEl.onload = null;
-    }
-    confirmCropBtn.onclick = applyCrop;
-    cancelCropBtn.onclick = closeCropModal;
-    editorCropBtn.onclick = () => { if (currentEditId) openCropFromGallery(currentEditId); };
-
-    // ========== CAMERA & FILE IMPORT (no double trigger) ==========
-    cameraBtn.onclick = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            const video = document.createElement('video');
-            video.srcObject = stream; video.setAttribute('playsinline', true); video.play();
-            const canvas = document.createElement('canvas');
-            setTimeout(() => {
-                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-                canvas.getContext('2d').drawImage(video, 0, 0);
-                stream.getTracks().forEach(t => t.stop());
-                addFromDataURL(canvas.toDataURL('image/jpeg', 0.92), `camera_${Date.now()}.jpg`);
-            }, 1000);
-            setStatus('Capturing...');
-        } catch(e) { setStatus('Camera error: ' + e.message, true); }
     };
-    async function addFromDataURL(dataURL, name) {
-        const img = await loadImageFromURL(dataURL);
-        images.push({ id: nextId++, dataURL, name, width: img.width, height: img.height, mimeType: 'image/jpeg', filters: {} });
-        renderGallery(); setStatus(`Added ${name}`);
-    }
-    async function addFiles(files) {
-        const valid = Array.from(files).filter(f => f.type.startsWith('image/'));
-        if (!valid.length) { setStatus('No valid images', true); return; }
-        for (let file of valid) {
-            const dataURL = await new Promise(resolve => { const r = new FileReader(); r.onload = e => resolve(e.target.result); r.readAsDataURL(file); });
-            const img = await loadImageFromURL(dataURL);
-            images.push({ id: nextId++, dataURL, name: file.name, width: img.width, height: img.height, mimeType: file.type, filters: {} });
-        }
-        renderGallery(); setStatus(`Added ${valid.length} image(s)`);
-    }
-    fileInput.addEventListener('change', e => addFiles(e.target.files));
-    dropZone.addEventListener('dragover', e => e.preventDefault());
-    dropZone.addEventListener('drop', e => { e.preventDefault(); addFiles(e.dataTransfer.files); });
-    clearAllBtn.onclick = () => { images = []; renderGallery(); setStatus('All cleared'); };
-
-    async function exportPDF() {
-        if (images.length === 0) { setStatus('No images', true); return; }
-        const orientation = document.querySelector('input[name="orientation"]:checked').value;
-        const keepOriginal = keepOriginalCheck.checked;
-        const { jsPDF } = window.jspdf;
-        let pdf = null;
-        const pageW = orientation === 'portrait' ? 210 : 297, pageH = orientation === 'portrait' ? 297 : 210;
-        const margin = 8, bottomSpace = 12, usableW = pageW - margin*2, usableH = pageH - margin - bottomSpace;
-        const pxToMM = (px) => px * 25.4 / 96;
-        for (let i = 0; i < images.length; i++) {
-            const img = images[i];
-            const imgEl = await loadImageFromURL(img.dataURL);
-            let wmm, hmm, x, y;
-            if (keepOriginal) {
-                wmm = pxToMM(imgEl.width); hmm = pxToMM(imgEl.height);
-                x = margin + (usableW - wmm)/2; y = margin + (usableH - hmm)/2;
-                x = Math.max(margin - wmm + 2, Math.min(margin+usableW-2, x));
-                y = Math.max(margin - hmm + 2, Math.min(margin+usableH-2, y));
-            } else {
-                const aspect = imgEl.width/imgEl.height;
-                let targetW = usableW, targetH = targetW/aspect;
-                if (targetH > usableH) { targetH = usableH; targetW = targetH * aspect; }
-                wmm = targetW; hmm = targetH;
-                x = margin + (usableW - wmm)/2; y = margin + (usableH - hmm)/2;
-            }
-            if (i === 0) pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
-            else pdf.addPage();
-            let format = img.mimeType === 'image/png' ? 'PNG' : 'JPEG';
-            try { pdf.addImage(img.dataURL, format, x, y, wmm, hmm); } catch(e) { pdf.text(`Error: ${img.name}`, margin+2, margin+10); }
-            pdf.setFontSize(8); pdf.text(`${img.name} (${i+1}/${images.length})`, pageW/2, pageH-4, { align: 'center' });
-        }
-        if (pdf) { pdf.save(`forgestudio_${Date.now()}.pdf`); setStatus('PDF exported!'); }
-        else setStatus('PDF failed', true);
-    }
-    exportBtn.onclick = exportPDF;
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        installButton.style.display = 'flex';
-    });
-    installButton.addEventListener('click', async () => {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') installButton.style.display = 'none';
-            deferredPrompt = null;
-        } else setStatus('Use browser menu → Install app', true);
-    });
-    if ('serviceWorker' in navigator) {
-        const swCode = `self.addEventListener('fetch', e => e.respondWith(fetch(e.request)));`;
-        const blob = new Blob([swCode], { type: 'application/javascript' });
-        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(console.warn);
-    }
-    renderGallery();
-    setStatus('Ready — tap any image to edit, crop button now works');
 </script>
 </body>
 </html>
