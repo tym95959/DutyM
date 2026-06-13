@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>PixelForge | Camera · Color Edit · Crop to PDF</title>
-    <!-- PWA manifest and theme -->
+    <meta name="theme-color" content="#1f6390">
+    <title>PixelForge Studio | Camera · Color · PDF</title>
+    <!-- PWA manifest (inlined) -->
     <link rel="manifest" href="data:application/manifest+json,{
-        \"name\":\"PixelForge Studio\",
+        \"name\":\"PixelForge Image Studio\",
         \"short_name\":\"PixelForge\",
         \"start_url\":\".\",
         \"display\":\"standalone\",
-        \"background_color\":\"#f0f4f9\",
+        \"background_color\":\"#f8fafc\",
         \"theme_color\":\"#1f6390\",
         \"icons\":[{
             \"src\":\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%231f6390'/%3E%3Ctext x='50' y='67' font-size='50' text-anchor='middle' fill='white'%3EPF%3C/text%3E%3C/svg%3E\",
@@ -18,50 +19,81 @@
             \"type\":\"image/svg+xml\"
         }]
     }">
-    <!-- jsPDF + Cropper + Font Awesome + CSS -->
+    <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * {
+            margin: 0;
+            padding: 0;
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
         }
         body {
-            margin: 0;
-            font-family: system-ui, 'Segoe UI', 'Inter', -apple-system, sans-serif;
-            background: #f0f4f9;
-            color: #1e2f3b;
+            font-family: system-ui, 'Inter', -apple-system, 'Segoe UI', sans-serif;
+            background: #f1f5f9;
+            color: #0f2b38;
             padding: 1rem;
             padding-bottom: 2rem;
         }
         .app-container {
-            max-width: 700px;
+            max-width: 780px;
             margin: 0 auto;
         }
+        /* header */
         .hero {
             text-align: center;
             margin-bottom: 1.5rem;
         }
         .hero h1 {
-            font-size: 1.8rem;
-            background: linear-gradient(135deg, #1f5e7e, #2c8cb0);
+            font-size: 1.9rem;
+            background: linear-gradient(135deg, #1a5d7a, #2b8fae);
             background-clip: text;
             -webkit-background-clip: text;
             color: transparent;
+            letter-spacing: -0.3px;
         }
-        /* buttons & cards */
+        .hero p {
+            font-size: 0.85rem;
+            color: #4a6a7c;
+        }
+        /* cards & buttons */
+        .card {
+            background: white;
+            border-radius: 1.8rem;
+            padding: 1.2rem;
+            margin-bottom: 1.2rem;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.03), 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        .drop-zone {
+            border: 2px dashed #bbd4e3;
+            border-radius: 1.5rem;
+            background: #fefefe;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .drop-zone:active { background: #eef3fc; }
+        .flex-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.8rem;
+            margin-top: 1rem;
+        }
         .btn {
             border: none;
-            padding: 0.6rem 1.2rem;
+            padding: 0.6rem 1.3rem;
             border-radius: 3rem;
             font-weight: 600;
+            font-size: 0.85rem;
             background: white;
             border: 1px solid #cde0ea;
-            transition: 0.2s;
             cursor: pointer;
-            font-size: 0.9rem;
+            transition: 0.15s;
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
@@ -74,52 +106,23 @@
         }
         .btn-primary:active { transform: scale(0.97); }
         .btn-secondary { background: #eef2f8; }
-        .icon-btn {
-            background: #eff3f8;
-            border: none;
-            border-radius: 2rem;
-            padding: 0.5rem 0.8rem;
-            font-size: 0.75rem;
-            cursor: pointer;
-        }
-        .upload-area {
-            background: white;
-            border-radius: 1.8rem;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        }
-        .drop-zone {
-            border: 2px dashed #bbd4e3;
-            border-radius: 1.5rem;
-            background: #fefefe;
-            padding: 1.2rem;
-            text-align: center;
-            cursor: pointer;
-        }
-        .flex-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.8rem;
-            justify-content: center;
-            margin-top: 0.8rem;
-        }
         .toolbar {
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
-            margin: 1rem 0;
             gap: 0.8rem;
+            margin-top: 1rem;
         }
         .pdf-options {
             background: #eef2f8;
-            border-radius: 2rem;
+            border-radius: 2.5rem;
             padding: 0.3rem 1rem;
             display: flex;
             gap: 1rem;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
         }
+        /* gallery grid */
         .image-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -128,27 +131,40 @@
         }
         .image-card {
             background: white;
-            border-radius: 1.2rem;
+            border-radius: 1.3rem;
             overflow: hidden;
             box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            transition: 0.1s;
         }
         .thumbnail {
             width: 100%;
             aspect-ratio: 1;
             object-fit: cover;
-            background: #fafcfd;
+            background: #f4f9fe;
         }
         .card-info {
-            padding: 0.5rem;
+            padding: 0.6rem;
             font-size: 0.7rem;
         }
         .card-actions {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.3rem;
-            margin-top: 0.4rem;
+            gap: 0.4rem;
+            margin-top: 0.5rem;
+            justify-content: space-between;
         }
-        /* color edit panel */
+        .icon-btn {
+            background: #f0f4fa;
+            border: none;
+            border-radius: 2rem;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.7rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        /* color panel */
         .color-panel {
             background: white;
             border-radius: 1.5rem;
@@ -169,21 +185,22 @@
         }
         input[type="range"] {
             width: 100%;
-            margin: 0.4rem 0;
+            margin: 0.3rem 0;
         }
         .status-msg {
-            background: #eef3f8;
+            background: #e6f0f7;
             border-radius: 2rem;
-            padding: 0.5rem;
+            padding: 0.6rem;
             text-align: center;
             font-size: 0.8rem;
             margin-top: 1rem;
         }
-        /* modal for crop */
+        /* crop modal */
         .crop-modal {
             display: none;
             position: fixed;
-            top:0;left:0;width:100%;height:100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             background: rgba(0,0,0,0.85);
             z-index: 1000;
             justify-content: center;
@@ -207,32 +224,31 @@
             color: #6c8fa0;
             margin-top: 2rem;
         }
-        @media (max-width: 550px) {
-            body { padding: 0.8rem; }
-            .btn { padding: 0.5rem 1rem; font-size: 0.8rem; }
+        @media (max-width: 500px) {
+            body { padding: 0.7rem; }
+            .btn { padding: 0.5rem 1rem; font-size: 0.75rem; }
         }
     </style>
 </head>
 <body>
 <div class="app-container">
     <div class="hero">
-        <h1><i class="fas fa-mobile-alt"></i> PixelForge</h1>
-        <p>Camera · Color Edit · Crop · PDF (no shrink)</p>
+        <h1><i class="fas fa-magic"></i> PixelForge</h1>
+        <p>Camera · Color grading · Crop · PDF (no shrink)</p>
     </div>
 
-    <div class="upload-area">
+    <div class="card">
         <div id="dropZone" class="drop-zone">
             <i class="fas fa-cloud-upload-alt fa-2x"></i>
-            <p>Tap to pick images or drag</p>
+            <p>Tap to upload or drag & drop</p>
             <div class="flex-row">
                 <label class="btn btn-primary"><i class="fas fa-images"></i> Gallery<input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp" hidden></label>
                 <button id="cameraBtn" class="btn btn-primary"><i class="fas fa-camera"></i> Camera</button>
             </div>
         </div>
-
         <div class="toolbar">
             <div class="pdf-options">
-                <label><input type="checkbox" id="keepOriginalCheckbox"> 📐 1:1 pixels</label>
+                <label><input type="checkbox" id="keepOriginalCheck"> 📐 Keep original size</label>
                 <label><input type="radio" name="orientation" value="portrait" checked> Portrait</label>
                 <label><input type="radio" name="orientation" value="landscape"> Landscape</label>
             </div>
@@ -241,46 +257,46 @@
         </div>
     </div>
 
-    <!-- Color editing panel (applies to selected image) -->
+    <!-- Color editing panel -->
     <div id="colorPanel" class="color-panel">
-        <h4><i class="fas fa-palette"></i> Color Adjust <span id="editImageName"></span></h4>
+        <h4><i class="fas fa-palette"></i> Edit: <span id="editImageName"></span></h4>
         <div class="slider-group"><label>Brightness <span id="brightVal">0</span></label><input type="range" id="brightness" min="-100" max="100" value="0"></div>
         <div class="slider-group"><label>Contrast <span id="contVal">0</span></label><input type="range" id="contrast" min="-100" max="100" value="0"></div>
         <div class="slider-group"><label>Saturation <span id="satVal">0</span></label><input type="range" id="saturation" min="-100" max="100" value="0"></div>
         <div class="slider-group"><label>Sepia <span id="sepiaVal">0</span></label><input type="range" id="sepia" min="0" max="100" value="0"></div>
         <div class="slider-group"><label>Grayscale <span id="grayVal">0</span></label><input type="range" id="grayscale" min="0" max="100" value="0"></div>
         <div class="flex-row" style="justify-content: space-between;">
-            <button id="applyColorBtn" class="btn btn-primary">✓ Apply to image</button>
+            <button id="applyColorBtn" class="btn btn-primary">✓ Apply</button>
             <button id="closeColorBtn" class="btn btn-secondary">Cancel</button>
         </div>
     </div>
 
-    <div class="gallery-header" style="display: flex; justify-content: space-between; margin: 0.5rem 0;">
-        <h3><i class="fas fa-layer-group"></i> Images <span id="imageCount">0</span></h3>
-        <small>Tap image → edit color</small>
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin: 0.5rem 0 0.2rem;">
+        <h3><i class="fas fa-layer-group"></i> Gallery <span id="imageCount">0</span></h3>
+        <small style="color:#6f8ea0;"><i class="fas fa-arrows-alt"></i> Tap image → color edit</small>
     </div>
     <div id="galleryContainer" class="image-grid">
-        <div class="status-msg">⬅️ No images. Use camera or upload.</div>
+        <div class="status-msg"><i class="fas fa-camera-retro"></i> No images — capture or upload</div>
     </div>
-    <footer>📸 Camera capture supported on HTTPS/localhost. Color filters + crop keep original quality. PDF “1:1 pixels” prevents any shrinking.</footer>
+    <footer>📸 Camera works on HTTPS/localhost. Color filters, crop & rotate. PDF “Keep original size” prevents any shrinking.</footer>
 </div>
 
-<!-- Crop Modal -->
+<!-- Crop modal -->
 <div id="cropModal" class="crop-modal">
     <div class="crop-modal-content">
         <img id="cropImage" src="">
         <div class="flex-row" style="margin-top: 1rem;">
-            <button id="confirmCropBtn" class="btn btn-primary">Apply Crop</button>
+            <button id="confirmCropBtn" class="btn btn-primary">✂️ Apply Crop</button>
             <button id="cancelCropBtn" class="btn btn-secondary">Cancel</button>
         </div>
     </div>
 </div>
 
 <script>
-    // ------------------- STATE -------------------
-    let imagesArray = [];      // { id, dataURL, name, width, height, mimeType, filters: {brightness,contrast,saturation,sepia,grayscale} }
+    // ---------- STATE ----------
+    let imagesArray = [];      // { id, dataURL, name, width, height, mimeType, filters }
     let nextId = 1;
-    let selectedImageIdForColor = null;
+    let selectedImageId = null;
     let activeCropper = null;
     let currentCropId = null;
 
@@ -292,7 +308,7 @@
     const imageCountSpan = document.getElementById('imageCount');
     const exportBtn = document.getElementById('exportPdfBtn');
     const clearAllBtn = document.getElementById('clearAllBtn');
-    const keepOriginalCheck = document.getElementById('keepOriginalCheckbox');
+    const keepOriginalCheck = document.getElementById('keepOriginalCheck');
     const colorPanel = document.getElementById('colorPanel');
     const editImageNameSpan = document.getElementById('editImageName');
     const brightnessSlider = document.getElementById('brightness');
@@ -309,91 +325,92 @@
     const grayVal = document.getElementById('grayVal');
 
     // Helper status
-    function setStatus(msg, isError = false) {
+    function setStatus(msg, isErr = false) {
         const statusDiv = document.querySelector('.status-msg');
-        if(statusDiv) {
-            statusDiv.innerHTML = `<i class="fas ${isError ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i> ${msg}`;
-            statusDiv.style.background = isError ? '#ffe8e5' : '#eef3f8';
+        if (statusDiv) {
+            statusDiv.innerHTML = `<i class="fas ${isErr ? 'fa-exclamation-triangle' : 'fa-check-circle'}"></i> ${msg}`;
+            statusDiv.style.background = isErr ? '#ffe6e2' : '#e6f0f7';
             setTimeout(() => {
-                if (statusDiv.innerHTML.includes(msg)) statusDiv.style.background = '#eef3f8';
+                if (statusDiv.innerHTML.includes(msg)) statusDiv.style.background = '#e6f0f7';
             }, 2500);
         }
     }
 
-    // load image from dataURL with optional filters (canvas based)
-    async function applyFiltersToImage(dataURL, filters) {
+    // Load image from dataURL
+    function loadImageFromDataURL(dataURL) {
         return new Promise((resolve, reject) => {
             const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
-                // Apply filters: brightness, contrast, saturation, sepia, grayscale
-                const brightness = filters.brightness || 0;
-                const contrast = (filters.contrast || 0) / 100;
-                const saturation = (filters.saturation || 0) / 100;
-                const sepia = (filters.sepia || 0) / 100;
-                const grayscale = (filters.grayscale || 0) / 100;
-                
-                for (let i = 0; i < data.length; i += 4) {
-                    let r = data[i];
-                    let g = data[i+1];
-                    let b = data[i+2];
-                    
-                    // Brightness
-                    r += brightness * 2.55;
-                    g += brightness * 2.55;
-                    b += brightness * 2.55;
-                    // Contrast
-                    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-                    r = factor * (r - 128) + 128;
-                    g = factor * (g - 128) + 128;
-                    b = factor * (b - 128) + 128;
-                    // Saturation (simple)
-                    const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
-                    r = gray + (r - gray) * (1 + saturation);
-                    g = gray + (g - gray) * (1 + saturation);
-                    b = gray + (b - gray) * (1 + saturation);
-                    // Sepia
-                    if (sepia > 0) {
-                        const tr = r, tg = g, tb = b;
-                        r = (tr * 0.393 + tg * 0.769 + tb * 0.189) * sepia + tr * (1 - sepia);
-                        g = (tr * 0.349 + tg * 0.686 + tb * 0.168) * sepia + tg * (1 - sepia);
-                        b = (tr * 0.272 + tg * 0.534 + tb * 0.131) * sepia + tb * (1 - sepia);
-                    }
-                    // Grayscale
-                    if (grayscale > 0) {
-                        const grayVal = r * 0.3 + g * 0.59 + b * 0.11;
-                        r = r * (1 - grayscale) + grayVal * grayscale;
-                        g = g * (1 - grayscale) + grayVal * grayscale;
-                        b = b * (1 - grayscale) + grayVal * grayscale;
-                    }
-                    // clamp
-                    data[i] = Math.min(255, Math.max(0, r));
-                    data[i+1] = Math.min(255, Math.max(0, g));
-                    data[i+2] = Math.min(255, Math.max(0, b));
-                }
-                ctx.putImageData(imageData, 0, 0);
-                resolve(canvas.toDataURL('image/jpeg', 0.92));
-            };
+            img.onload = () => resolve(img);
             img.onerror = reject;
             img.src = dataURL;
         });
     }
 
-    // update gallery render
+    // Apply color filters via canvas
+    async function applyFiltersToImage(dataURL, filters) {
+        const img = await loadImageFromDataURL(dataURL);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const b = filters.brightness || 0;
+        const c = (filters.contrast || 0) / 100;
+        const s = (filters.saturation || 0) / 100;
+        const sep = (filters.sepia || 0) / 100;
+        const gray = (filters.grayscale || 0) / 100;
+        for (let i = 0; i < data.length; i += 4) {
+            let r = data[i];
+            let g = data[i+1];
+            let b2 = data[i+2];
+            // brightness
+            r += b * 2.55;
+            g += b * 2.55;
+            b2 += b * 2.55;
+            // contrast
+            const factor = (259 * (c + 255)) / (255 * (259 - c));
+            r = factor * (r - 128) + 128;
+            g = factor * (g - 128) + 128;
+            b2 = factor * (b2 - 128) + 128;
+            // saturation
+            const grayVal = 0.2989 * r + 0.5870 * g + 0.1140 * b2;
+            r = grayVal + (r - grayVal) * (1 + s);
+            g = grayVal + (g - grayVal) * (1 + s);
+            b2 = grayVal + (b2 - grayVal) * (1 + s);
+            // sepia
+            if (sep > 0) {
+                const tr = r, tg = g, tb = b2;
+                r = (tr * 0.393 + tg * 0.769 + tb * 0.189) * sep + tr * (1 - sep);
+                g = (tr * 0.349 + tg * 0.686 + tb * 0.168) * sep + tg * (1 - sep);
+                b2 = (tr * 0.272 + tg * 0.534 + tb * 0.131) * sep + tb * (1 - sep);
+            }
+            // grayscale
+            if (gray > 0) {
+                const grayMix = r * 0.3 + g * 0.59 + b2 * 0.11;
+                r = r * (1 - gray) + grayMix * gray;
+                g = g * (1 - gray) + grayMix * gray;
+                b2 = b2 * (1 - gray) + grayMix * gray;
+            }
+            data[i] = Math.min(255, Math.max(0, r));
+            data[i+1] = Math.min(255, Math.max(0, g));
+            data[i+2] = Math.min(255, Math.max(0, b2));
+        }
+        ctx.putImageData(imageData, 0, 0);
+        return canvas.toDataURL('image/jpeg', 0.92);
+    }
+
+    // Render gallery (with reorder, rotate, crop, color)
     async function renderGallery() {
         imageCountSpan.innerText = imagesArray.length;
         if (imagesArray.length === 0) {
-            galleryDiv.innerHTML = `<div class="status-msg"><i class="fas fa-camera-retro"></i> No images — capture or upload</div>`;
+            galleryDiv.innerHTML = `<div class="status-msg"><i class="fas fa-camera"></i> No images — use camera or upload</div>`;
             return;
         }
         galleryDiv.innerHTML = '';
-        for (let img of imagesArray) {
+        for (let i = 0; i < imagesArray.length; i++) {
+            const img = imagesArray[i];
             const card = document.createElement('div');
             card.className = 'image-card';
             const thumb = document.createElement('img');
@@ -402,10 +419,10 @@
             thumb.addEventListener('click', () => openColorPanel(img.id));
             const info = document.createElement('div');
             info.className = 'card-info';
-            info.innerHTML = `<div><strong>${img.name.length>20?img.name.slice(0,18)+'..':img.name}</strong> ${img.width}×${img.height}</div>`;
+            info.innerHTML = `<div><strong>${img.name.length > 22 ? img.name.slice(0,19)+'..' : img.name}</strong> ${img.width}×${img.height}</div>`;
             const actions = document.createElement('div');
             actions.className = 'card-actions';
-            // rotate, crop, color edit, move up/down, remove
+            
             const rotLeft = document.createElement('button'); rotLeft.innerHTML = '<i class="fas fa-undo-alt"></i>'; rotLeft.className = 'icon-btn';
             rotLeft.onclick = (e) => { e.stopPropagation(); rotateImage(img.id, -90); };
             const rotRight = document.createElement('button'); rotRight.innerHTML = '<i class="fas fa-redo-alt"></i>'; rotRight.className = 'icon-btn';
@@ -415,11 +432,11 @@
             const colorBtn = document.createElement('button'); colorBtn.innerHTML = '<i class="fas fa-palette"></i>'; colorBtn.className = 'icon-btn';
             colorBtn.onclick = (e) => { e.stopPropagation(); openColorPanel(img.id); };
             const upBtn = document.createElement('button'); upBtn.innerHTML = '<i class="fas fa-arrow-up"></i>'; upBtn.className = 'icon-btn';
-            upBtn.disabled = imagesArray.indexOf(img) === 0;
-            upBtn.onclick = (e) => { e.stopPropagation(); moveImage(imagesArray.indexOf(img), imagesArray.indexOf(img)-1); };
+            upBtn.disabled = i === 0;
+            upBtn.onclick = (e) => { e.stopPropagation(); moveImage(i, i-1); };
             const downBtn = document.createElement('button'); downBtn.innerHTML = '<i class="fas fa-arrow-down"></i>'; downBtn.className = 'icon-btn';
-            downBtn.disabled = imagesArray.indexOf(img) === imagesArray.length-1;
-            downBtn.onclick = (e) => { e.stopPropagation(); moveImage(imagesArray.indexOf(img), imagesArray.indexOf(img)+1); };
+            downBtn.disabled = i === imagesArray.length-1;
+            downBtn.onclick = (e) => { e.stopPropagation(); moveImage(i, i+1); };
             const delBtn = document.createElement('button'); delBtn.innerHTML = '<i class="fas fa-trash"></i>'; delBtn.className = 'icon-btn';
             delBtn.style.background = '#fde7e4';
             delBtn.onclick = (e) => { e.stopPropagation(); removeImage(img.id); };
@@ -434,7 +451,7 @@
         const idx = imagesArray.findIndex(i => i.id === id);
         if (idx === -1) return;
         const img = imagesArray[idx];
-        const loaded = await loadImage(img.dataURL);
+        const loaded = await loadImageFromDataURL(img.dataURL);
         const w = loaded.width, h = loaded.height;
         const canvas = document.createElement('canvas');
         let newW = w, newH = h;
@@ -444,44 +461,39 @@
         else if (deg === 180) rad = Math.PI;
         canvas.width = newW; canvas.height = newH;
         const ctx = canvas.getContext('2d');
-        if (deg === 90) { ctx.translate(newW,0); ctx.rotate(rad); }
+        if (deg === 90) { ctx.translate(newW, 0); ctx.rotate(rad); }
         else if (deg === -90) { ctx.translate(0, newH); ctx.rotate(rad); }
         else if (deg === 180) { ctx.translate(w, h); ctx.rotate(rad); }
-        else { ctx.translate(0,0); }
         ctx.drawImage(loaded, 0, 0);
-        const rotatedURL = canvas.toDataURL(img.mimeType || 'image/jpeg', 0.95);
-        imagesArray[idx] = { ...img, dataURL: rotatedURL, width: canvas.width, height: canvas.height };
+        const newURL = canvas.toDataURL(img.mimeType || 'image/jpeg', 0.95);
+        imagesArray[idx] = { ...img, dataURL: newURL, width: canvas.width, height: canvas.height };
         renderGallery();
         setStatus(`Rotated ${img.name}`);
     }
 
     function moveImage(from, to) {
-        if(to<0 || to>=imagesArray.length) return;
+        if (to < 0 || to >= imagesArray.length) return;
         const arr = [...imagesArray];
-        const [item] = arr.splice(from,1);
-        arr.splice(to,0,item);
+        const [item] = arr.splice(from, 1);
+        arr.splice(to, 0, item);
         imagesArray = arr;
         renderGallery();
     }
+
     function removeImage(id) {
         imagesArray = imagesArray.filter(i => i.id !== id);
-        if(selectedImageIdForColor === id) closeColorPanel();
+        if (selectedImageId === id) closeColorPanel();
         renderGallery();
         setStatus('Image removed');
     }
 
-    // load image helper
-    function loadImage(dataURL) {
-        return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = dataURL; });
-    }
-
-    // open color panel for specific image
+    // Color Panel Logic
     function openColorPanel(id) {
         const img = imagesArray.find(i => i.id === id);
-        if(!img) return;
-        selectedImageIdForColor = id;
+        if (!img) return;
+        selectedImageId = id;
         editImageNameSpan.innerText = img.name;
-        const f = img.filters || { brightness:0, contrast:0, saturation:0, sepia:0, grayscale:0 };
+        const f = img.filters || { brightness: 0, contrast: 0, saturation: 0, sepia: 0, grayscale: 0 };
         brightnessSlider.value = f.brightness; brightVal.innerText = f.brightness;
         contrastSlider.value = f.contrast; contVal.innerText = f.contrast;
         saturationSlider.value = f.saturation; satVal.innerText = f.saturation;
@@ -489,15 +501,11 @@
         grayscaleSlider.value = f.grayscale; grayVal.innerText = f.grayscale;
         colorPanel.classList.add('active');
     }
-    function closeColorPanel() {
-        colorPanel.classList.remove('active');
-        selectedImageIdForColor = null;
-    }
-    // Apply color edits to image and store new dataURL
+    function closeColorPanel() { colorPanel.classList.remove('active'); selectedImageId = null; }
     async function applyColorToSelected() {
-        if(!selectedImageIdForColor) return;
-        const idx = imagesArray.findIndex(i => i.id === selectedImageIdForColor);
-        if(idx === -1) { closeColorPanel(); return; }
+        if (!selectedImageId) return;
+        const idx = imagesArray.findIndex(i => i.id === selectedImageId);
+        if (idx === -1) { closeColorPanel(); return; }
         const img = imagesArray[idx];
         const newFilters = {
             brightness: parseInt(brightnessSlider.value),
@@ -507,14 +515,13 @@
             grayscale: parseInt(grayscaleSlider.value)
         };
         try {
-            const newDataURL = await applyFiltersToImage(img.dataURL, newFilters);
-            imagesArray[idx] = { ...img, dataURL: newDataURL, filters: newFilters };
+            const newURL = await applyFiltersToImage(img.dataURL, newFilters);
+            imagesArray[idx] = { ...img, dataURL: newURL, filters: newFilters };
             renderGallery();
             setStatus(`Color applied to ${img.name}`);
             closeColorPanel();
-        } catch(e) { setStatus('Filter error', true); }
+        } catch (e) { setStatus('Filter failed', true); }
     }
-
     brightnessSlider.oninput = () => brightVal.innerText = brightnessSlider.value;
     contrastSlider.oninput = () => contVal.innerText = contrastSlider.value;
     saturationSlider.oninput = () => satVal.innerText = saturationSlider.value;
@@ -526,21 +533,21 @@
     // Crop modal
     async function openCropModal(id) {
         const img = imagesArray.find(i => i.id === id);
-        if(!img) return;
+        if (!img) return;
         currentCropId = id;
         const modalImg = document.getElementById('cropImage');
         modalImg.src = img.dataURL;
         document.getElementById('cropModal').style.display = 'flex';
-        if(activeCropper) activeCropper.destroy();
+        if (activeCropper) activeCropper.destroy();
         activeCropper = new Cropper(modalImg, { viewMode: 1, autoCropArea: 0.8 });
     }
     async function applyCrop() {
-        if(!activeCropper || !currentCropId) return;
+        if (!activeCropper || !currentCropId) return;
         const canvas = activeCropper.getCroppedCanvas();
-        if(!canvas) return;
+        if (!canvas) return;
         const croppedURL = canvas.toDataURL();
         const idx = imagesArray.findIndex(i => i.id === currentCropId);
-        if(idx !== -1) {
+        if (idx !== -1) {
             imagesArray[idx] = { ...imagesArray[idx], dataURL: croppedURL, width: canvas.width, height: canvas.height, filters: {} };
             renderGallery();
             setStatus('Cropped');
@@ -548,7 +555,7 @@
         closeCropModal();
     }
     function closeCropModal() {
-        if(activeCropper) activeCropper.destroy();
+        if (activeCropper) activeCropper.destroy();
         document.getElementById('cropModal').style.display = 'none';
         currentCropId = null;
     }
@@ -568,18 +575,17 @@
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 canvas.getContext('2d').drawImage(video, 0, 0);
-                stream.getTracks().forEach(track => track.stop());
-                const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+                stream.getTracks().forEach(t => t.stop());
+                const dataURL = canvas.toDataURL('image/jpeg', 0.92);
                 addFromDataURL(dataURL, `camera_${Date.now()}.jpg`);
             };
-            // simple prompt: we show a quick overlay? but simplest: capture after 0.5 sec
-            setStatus('Capturing in 1 sec...');
+            setStatus('Capturing in 1 second...');
             setTimeout(capture, 1000);
-        } catch(e) { setStatus('Camera not accessible: '+e.message, true); }
+        } catch (e) { setStatus('Camera error: ' + e.message, true); }
     };
 
     async function addFromDataURL(dataURL, filename) {
-        const img = await loadImage(dataURL);
+        const img = await loadImageFromDataURL(dataURL);
         imagesArray.push({
             id: nextId++,
             dataURL: dataURL,
@@ -587,20 +593,23 @@
             width: img.width,
             height: img.height,
             mimeType: 'image/jpeg',
-            filters: { brightness:0, contrast:0, saturation:0, sepia:0, grayscale:0 }
+            filters: { brightness: 0, contrast: 0, saturation: 0, sepia: 0, grayscale: 0 }
         });
         renderGallery();
         setStatus(`Added ${filename}`);
     }
 
-    // File upload & drag&drop
+    // Add files from upload
     async function addFiles(files) {
         const valid = Array.from(files).filter(f => f.type.startsWith('image/'));
-        if(!valid.length) { setStatus('No images', true); return; }
-        for(let file of valid) {
-            const reader = new FileReader();
-            const dataURL = await new Promise(resolve => { reader.onload = e => resolve(e.target.result); reader.readAsDataURL(file); });
-            const img = await loadImage(dataURL);
+        if (!valid.length) { setStatus('No valid images', true); return; }
+        for (let file of valid) {
+            const dataURL = await new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.readAsDataURL(file);
+            });
+            const img = await loadImageFromDataURL(dataURL);
             imagesArray.push({
                 id: nextId++,
                 dataURL: dataURL,
@@ -608,77 +617,75 @@
                 width: img.width,
                 height: img.height,
                 mimeType: file.type,
-                filters: { brightness:0, contrast:0, saturation:0, sepia:0, grayscale:0 }
+                filters: { brightness: 0, contrast: 0, saturation: 0, sepia: 0, grayscale: 0 }
             });
         }
         renderGallery();
-        setStatus(`Added ${valid.length} images`);
+        setStatus(`Added ${valid.length} image(s)`);
     }
+
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', e => addFiles(e.target.files));
     dropZone.addEventListener('dragover', e => e.preventDefault());
     dropZone.addEventListener('drop', e => { e.preventDefault(); addFiles(e.dataTransfer.files); });
     clearAllBtn.onclick = () => { imagesArray = []; renderGallery(); setStatus('Cleared all'); };
-    
-    // PDF Export - NO SHRINK (original dimensions if checkbox)
+
+    // PDF Export (No shrinking if checkbox)
     async function exportPDF() {
-        if(imagesArray.length === 0) { setStatus('No images to export', true); return; }
+        if (imagesArray.length === 0) { setStatus('No images to export', true); return; }
         const orientation = document.querySelector('input[name="orientation"]:checked').value;
-        const keepOriginal = keepOriginalCheckbox.checked;
+        const keepOriginal = keepOriginalCheck.checked;
         const { jsPDF } = window.jspdf;
         let pdf = null;
         const pageW = orientation === 'portrait' ? 210 : 297;
         const pageH = orientation === 'portrait' ? 297 : 210;
         const margin = 8;
         const bottomSpace = 12;
+        const usableW = pageW - margin * 2;
         const usableH = pageH - margin - bottomSpace;
-        const usableW = pageW - margin*2;
         const pxToMM = (px) => px * 25.4 / 96;
-        for(let i=0; i<imagesArray.length; i++) {
+        for (let i = 0; i < imagesArray.length; i++) {
             const img = imagesArray[i];
-            const imgEl = await loadImage(img.dataURL);
+            const imgEl = await loadImageFromDataURL(img.dataURL);
             let wmm, hmm, x, y;
-            if(keepOriginal) {
+            if (keepOriginal) {
                 wmm = pxToMM(imgEl.width);
                 hmm = pxToMM(imgEl.height);
-                x = margin + (usableW - wmm)/2;
-                y = margin + (usableH - hmm)/2;
-                x = Math.max(margin - wmm + 2, Math.min(margin+usableW-2, x));
-                y = Math.max(margin - hmm + 2, Math.min(margin+usableH-2, y));
+                x = margin + (usableW - wmm) / 2;
+                y = margin + (usableH - hmm) / 2;
+                // avoid extreme overflow but never scale
+                x = Math.max(margin - wmm + 2, Math.min(margin + usableW - 2, x));
+                y = Math.max(margin - hmm + 2, Math.min(margin + usableH - 2, y));
             } else {
-                const aspect = imgEl.width/imgEl.height;
+                const aspect = imgEl.width / imgEl.height;
                 let targetW = usableW;
-                let targetH = targetW/aspect;
-                if(targetH > usableH) { targetH = usableH; targetW = targetH*aspect; }
+                let targetH = targetW / aspect;
+                if (targetH > usableH) { targetH = usableH; targetW = targetH * aspect; }
                 wmm = targetW; hmm = targetH;
-                x = margin + (usableW - wmm)/2;
-                y = margin + (usableH - hmm)/2;
+                x = margin + (usableW - wmm) / 2;
+                y = margin + (usableH - hmm) / 2;
             }
-            if(i===0) pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+            if (i === 0) pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
             else pdf.addPage();
             let format = 'JPEG';
-            if(img.mimeType === 'image/png') format = 'PNG';
-            try { pdf.addImage(img.dataURL, format, x, y, wmm, hmm); } catch(e) { pdf.text(`Error: ${img.name}`, margin+2, margin+10); }
+            if (img.mimeType === 'image/png') format = 'PNG';
+            try { pdf.addImage(img.dataURL, format, x, y, wmm, hmm); } catch (e) { pdf.text(`Error: ${img.name}`, margin+2, margin+10); }
             pdf.setFontSize(8);
-            pdf.text(`${img.name}  (${i+1}/${imagesArray.length})`, pageW/2, pageH-4, { align: 'center' });
+            pdf.text(`${img.name} (${i+1}/${imagesArray.length})`, pageW/2, pageH-4, { align: 'center' });
         }
-        if(pdf) { pdf.save(`pixelforge_${Date.now()}.pdf`); setStatus('PDF exported!'); }
+        if (pdf) { pdf.save(`pixelforge_${Date.now()}.pdf`); setStatus('PDF exported!'); }
         else setStatus('PDF failed', true);
     }
     exportBtn.onclick = exportPDF;
 
-    // PWA service worker for installability
-    if('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(()=>{});
-        // fallback: create simple sw if not exists
-        if(!navigator.serviceWorker.controller) {
-            const swCode = `self.addEventListener('fetch', event => { event.respondWith(fetch(event.request)); });`;
-            const blob = new Blob([swCode], {type: 'application/javascript'});
-            navigator.serviceWorker.register(URL.createObjectURL(blob));
-        }
+    // Service worker for PWA installability
+    if ('serviceWorker' in navigator) {
+        const swCode = `self.addEventListener('fetch', e => e.respondWith(fetch(e.request)));`;
+        const blob = new Blob([swCode], { type: 'application/javascript' });
+        navigator.serviceWorker.register(URL.createObjectURL(blob)).then(reg => console.log('SW registered', reg)).catch(err => console.warn('SW error', err));
     }
     renderGallery();
-    setStatus('Ready! Tap camera, color edit, crop → PDF');
+    setStatus('Ready! Camera, crop, color & PDF — fully installable');
 </script>
 </body>
 </html>
