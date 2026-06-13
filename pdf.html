@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0A2E3D">
     <title>ForgeStudio · Full‑Screen Editor</title>
-    <!-- PWA manifest -->
     <link rel="manifest" href="data:application/manifest+json,{
         \"name\":\"ForgeStudio Editor\",
         \"short_name\":\"ForgeStudio\",
@@ -89,7 +88,6 @@
             border-radius: 1.5rem;
             padding: 1rem;
             text-align: center;
-            cursor: pointer;
         }
         .btn-row {
             display: flex;
@@ -260,7 +258,7 @@
             justify-content: center;
             flex-wrap: wrap;
         }
-        /* CROP MODAL - FIXED: always visible buttons */
+        /* CROP MODAL - buttons always visible */
         .crop-modal {
             display: none;
             position: fixed;
@@ -327,9 +325,13 @@
     <div class="upload-card">
         <div id="dropZone" class="drop-area">
             <i class="fas fa-cloud-upload-alt fa-2x"></i>
-            <p>Tap to import photos</p>
+            <p>Drag & drop images here</p>
             <div class="btn-row">
-                <label class="btn btn-outline"><i class="fas fa-images"></i> Gallery<input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp" hidden></label>
+                <!-- Gallery button - only trigger once -->
+                <label class="btn btn-outline" id="galleryLabel">
+                    <i class="fas fa-images"></i> Gallery
+                    <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp" hidden>
+                </label>
                 <button id="cameraBtn" class="btn btn-outline"><i class="fas fa-camera"></i> Camera</button>
             </div>
         </div>
@@ -383,7 +385,7 @@
     </div>
 </div>
 
-<!-- CROP MODAL (buttons always visible) -->
+<!-- CROP MODAL -->
 <div id="cropModal" class="crop-modal">
     <div class="crop-modal-content">
         <div class="crop-image-container">
@@ -402,7 +404,6 @@
     let nextId = 1;
     let deferredPrompt = null;
     
-    // Editor state
     let currentEditId = null;
     let originalEditDataURL = null;
     let currentFilterValues = { brightness:0, contrast:0, saturation:0, sepia:0, grayscale:0 };
@@ -422,7 +423,6 @@
     const imageCountBadge = document.getElementById('imageCountBadge');
     const installButton = document.getElementById('installAppButton');
     
-    // Editor elements
     const fullEditor = document.getElementById('fullEditor');
     const editorPreview = document.getElementById('editorPreviewImg');
     const editBrightness = document.getElementById('editBrightness');
@@ -442,7 +442,6 @@
     const editorResetBtn = document.getElementById('editorResetBtn');
     const editorApplyBtn = document.getElementById('editorApplyBtn');
     
-    // Crop modal elements
     const cropModal = document.getElementById('cropModal');
     const cropImageEl = document.getElementById('cropImage');
     const confirmCropBtn = document.getElementById('confirmCropBtn');
@@ -647,7 +646,7 @@
     editorApplyBtn.onclick = applyEditorChanges;
     closeEditorBtn.onclick = closeFullEditor;
 
-    // ========== CROP (fixed modal with visible buttons) ==========
+    // ========== CROP ==========
     async function openCropFromGallery(id) {
         const img = images.find(i => i.id === id);
         if (!img) return;
@@ -683,7 +682,7 @@
     cancelCropBtn.onclick = closeCropModal;
     editorCropBtn.onclick = () => { if (currentEditId) openCropFromGallery(currentEditId); };
 
-    // ========== CAMERA & FILE IMPORT (fixed double trigger) ==========
+    // ========== CAMERA & FILE IMPORT (no double trigger) ==========
     cameraBtn.onclick = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -714,10 +713,11 @@
         }
         renderGallery(); setStatus(`Added ${valid.length} image(s)`);
     }
-    // Fix double trigger: only one way to open file picker
-    const openFilePicker = () => fileInput.click();
-    dropZone.addEventListener('click', openFilePicker);
+    // Only trigger file picker via the label (Gallery button) - no extra click on dropZone
+    // The label naturally triggers the file input because the input is inside it.
+    // No extra click listener on dropZone.
     fileInput.addEventListener('change', e => addFiles(e.target.files));
+    // Drag & drop support on dropZone (does not trigger file picker)
     dropZone.addEventListener('dragover', e => e.preventDefault());
     dropZone.addEventListener('drop', e => { e.preventDefault(); addFiles(e.dataTransfer.files); });
     clearAllBtn.onclick = () => { images = []; renderGallery(); setStatus('All cleared'); };
