@@ -128,9 +128,11 @@
             background: white;
             border-radius: 24px;
             width: 90%;
-            max-width: 450px;
+            max-width: 500px;
             padding: 24px;
             text-align: center;
+            max-height: 90vh;
+            overflow-y: auto;
         }
 
         .modal-card h3 {
@@ -153,15 +155,22 @@
             gap: 10px;
             margin: 16px 0;
             justify-content: center;
+            flex-wrap: wrap;
         }
 
-        input[type="text"] {
+        input[type="text"], input[type="file"] {
             width: 100%;
             padding: 12px;
             border: 1px solid #d1d5db;
             border-radius: 10px;
             font-size: 16px;
             margin: 8px 0;
+        }
+
+        .upload-signature-btn {
+            background: #0f3b2c;
+            width: 100%;
+            margin-top: 8px;
         }
         
         .status {
@@ -175,6 +184,15 @@
             font-size: 12px;
             z-index: 100;
         }
+        
+        .text-tool-instruction {
+            background: #fef3c7;
+            padding: 8px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #92400e;
+        }
     </style>
 </head>
 <body>
@@ -186,7 +204,7 @@
 </div>
 
 <div class="toolbar">
-    <button class="tool-btn" data-mode="text">✏️ Add Text</button>
+    <button class="tool-btn active" data-mode="text">✏️ Add Text</button>
     <button class="tool-btn" data-mode="draw">🖌️ Draw</button>
     <button class="tool-btn" data-mode="sign">🖊️ Add Signature</button>
     <button class="tool-btn" id="clearDraw">🗑️ Clear All</button>
@@ -195,29 +213,40 @@
 <div class="pdf-viewer" id="pdfViewer">
     <div class="no-pdf" id="noPdfMsg">
         📁 Click "Upload PDF" to start<br><br>
-        ✏️ Double-click to add text<br>
+        ✏️ Click anywhere to add text (type and press OK)<br>
         🖌️ Select Draw to freehand draw<br>
-        🖊️ Select Signature to sign
+        🖊️ Select Signature to sign or upload signature image
     </div>
     <canvas id="pdfCanvas" style="display: none;"></canvas>
 </div>
 
+<!-- Signature Modal -->
 <div id="sigModal" class="modal">
     <div class="modal-card">
-        <h3>✍️ Draw Your Signature</h3>
+        <h3>✍️ Add Your Signature</h3>
+        
+        <p style="margin: 8px 0;">Draw signature:</p>
         <canvas id="sigCanvas" width="400" height="200"></canvas>
         <div class="sig-buttons">
-            <button id="clearSigBtn">Clear</button>
-            <button id="saveSigBtn" class="btn-primary">Use Signature</button>
+            <button id="clearSigBtn">Clear Drawing</button>
+            <button id="saveSigBtn" class="btn-primary">Use Drawn Signature</button>
+        </div>
+        
+        <p style="margin: 16px 0 8px;">— OR type signature —</p>
+        <input type="text" id="typedSignature" placeholder="Type your name">
+        <button id="useTypedBtn" style="width: 100%;">Use Typed Name</button>
+        
+        <p style="margin: 16px 0 8px;">— OR upload signature image —</p>
+        <input type="file" id="uploadSignatureFile" accept="image/png,image/jpeg,image/jpg,image/gif">
+        <button id="useUploadedBtn" class="upload-signature-btn">Use Uploaded Signature</button>
+        
+        <div class="sig-buttons" style="margin-top: 16px;">
             <button id="cancelSigBtn">Cancel</button>
         </div>
-        <p style="margin: 12px 0 4px;">— or type signature —</p>
-        <input type="text" id="typedSignature" placeholder="Type your name">
-        <button id="useTypedBtn" style="margin-top: 8px; width: 100%;">Use Typed Name</button>
     </div>
 </div>
 
-<div class="status" id="status">Ready</div>
+<div class="status" id="status">Ready - Click to add text</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -252,7 +281,7 @@
     function showStatus(msg) {
         statusDiv.textContent = msg;
         setTimeout(() => {
-            if (statusDiv.textContent === msg) statusDiv.textContent = 'Ready';
+            if (statusDiv.textContent === msg) statusDiv.textContent = currentMode === 'text' ? 'Click anywhere to add text' : (currentMode === 'draw' ? 'Draw on the PDF' : 'Ready');
         }, 2000);
     }
 
@@ -416,11 +445,11 @@
     canvas.addEventListener('touchmove', draw);
     canvas.addEventListener('touchend', stopDrawing);
 
-    // Add text
-    canvas.addEventListener('dblclick', (e) => {
+    // Add text on CLICK (not double-click) - fixed
+    canvas.addEventListener('click', (e) => {
         if (currentMode === 'text') {
             const pos = getMousePos(e);
-            const newText = prompt('Enter your text:', 'Edit this text');
+            const newText = prompt('Enter your text:', '');
             if (newText && newText.trim()) {
                 texts.push({
                     content: newText,
@@ -443,7 +472,11 @@
             document.querySelectorAll('.tool-btn[data-mode]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             
-            if (currentMode === 'sign') {
+            if (currentMode === 'text') {
+                showStatus('Click anywhere on the PDF to add text');
+            } else if (currentMode === 'draw') {
+                showStatus('Draw on the PDF with your mouse or finger');
+            } else if (currentMode === 'sign') {
                 openSignatureModal();
             }
         });
@@ -520,6 +553,7 @@
         sigCtx.fillRect(0, 0, sigCanvas.width, sigCanvas.height);
     };
 
+    // Save drawn signature
     document.getElementById('saveSigBtn').onclick = () => {
         const dataURL = sigCanvas.toDataURL();
         const img = new Image();
@@ -550,6 +584,7 @@
         document.getElementById('typedSignature').value = '';
     };
 
+    // Use typed signature
     document.getElementById('useTypedBtn').onclick = () => {
         const typedName = document.getElementById('typedSignature').value;
         if (typedName.trim()) {
@@ -577,8 +612,54 @@
             canvas.addEventListener('click', placeTyped);
             document.getElementById('typedSignature').value = '';
         } else {
-            alert('Please type a name or draw a signature');
+            alert('Please type a name');
         }
+    };
+
+    // Upload signature image
+    document.getElementById('uploadSignatureFile').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    showStatus('Click on PDF to place uploaded signature');
+                    sigModal.style.display = 'none';
+                    
+                    const placeUploaded = (e) => {
+                        const pos = getMousePos(e);
+                        // Maintain aspect ratio
+                        const maxWidth = 150;
+                        const ratio = maxWidth / img.width;
+                        const width = maxWidth;
+                        const height = img.height * ratio;
+                        
+                        signatures.push({
+                            img: img,
+                            x: pos.x - width/2,
+                            y: pos.y - height/2,
+                            width: width,
+                            height: height
+                        });
+                        redrawAnnotations();
+                        canvas.removeEventListener('click', placeUploaded);
+                        currentMode = 'text';
+                        document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
+                        document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+                        showStatus('Signature placed');
+                    };
+                    
+                    canvas.addEventListener('click', placeUploaded);
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    document.getElementById('useUploadedBtn').onclick = () => {
+        document.getElementById('uploadSignatureFile').click();
     };
 
     document.getElementById('cancelSigBtn').onclick = () => {
@@ -587,16 +668,21 @@
         document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
         document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
         document.getElementById('typedSignature').value = '';
+        document.getElementById('uploadSignatureFile').value = '';
     };
 
+    // Clear all annotations
     clearDrawBtn.onclick = () => {
-        drawings = [];
-        texts = [];
-        signatures = [];
-        redrawAnnotations();
-        showStatus('All annotations cleared');
+        if (confirm('Clear all drawings, text, and signatures?')) {
+            drawings = [];
+            texts = [];
+            signatures = [];
+            redrawAnnotations();
+            showStatus('All annotations cleared');
+        }
     };
 
+    // Save PDF
     saveBtn.onclick = async () => {
         if (!pdfDoc) {
             alert('Please upload a PDF first');
