@@ -9,7 +9,6 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -52,15 +51,10 @@
 
         button:active {
             transform: scale(0.96);
-            background: #1e3d31;
         }
 
         .btn-primary {
             background: #d97706;
-        }
-
-        .btn-primary:active {
-            background: #b45309;
         }
 
         .toolbar {
@@ -79,6 +73,8 @@
             padding: 8px 16px;
             font-size: 14px;
             white-space: nowrap;
+            cursor: pointer;
+            border-radius: 8px;
         }
 
         .tool-btn.active {
@@ -92,21 +88,17 @@
             overflow: auto;
             background: #374151;
             padding: 20px;
-            position: relative;
-        }
-
-        .canvas-container {
-            position: relative;
-            margin: 0 auto;
-            display: inline-block;
+            display: flex;
+            justify-content: center;
         }
 
         #pdfCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
             box-shadow: 0 8px 25px rgba(0,0,0,0.2);
             border-radius: 4px;
+            background: white;
+            display: block;
+            max-width: 100%;
+            height: auto;
         }
 
         .no-pdf {
@@ -170,11 +162,6 @@
             font-size: 16px;
             margin: 8px 0;
         }
-
-        /* Fix for Fabric.js container */
-        .upper-canvas {
-            cursor: crosshair !important;
-        }
     </style>
 </head>
 <body>
@@ -194,10 +181,12 @@
 
 <div class="pdf-viewer" id="pdfViewer">
     <div class="no-pdf" id="noPdfMsg">
-        📁 Click "Upload PDF" to start<br>
-        Add text, draw, or sign your document
+        📁 Click "Upload PDF" to start<br><br>
+        ✏️ Double-click to add text<br>
+        🖌️ Select Draw to freehand draw<br>
+        🖊️ Select Signature to sign
     </div>
-    <div id="canvasContainer" style="position: relative; display: none;"></div>
+    <canvas id="pdfCanvas" style="display: none;"></canvas>
 </div>
 
 <!-- Signature Modal -->
@@ -217,7 +206,6 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 
 <script>
@@ -225,22 +213,29 @@
 
     let pdfDoc = null;
     let currentPage = 1;
-    let pdfScale = 1.3;
-    let fabricCanvas = null;
+    let pdfScale = 1.5;
+    let canvas = document.getElementById('pdfCanvas');
+    let ctx = canvas.getContext('2d', { willReadFrequently: true });
     let currentMode = 'text';
     let isDrawing = false;
+    let lastX = 0, lastY = 0;
+    let drawings = []; // Store drawings as objects
+    let texts = []; // Store text annotations
+    let signatures = []; // Store signature images
     let currentPdfBytes = null;
+    let currentPageWidth = 0;
+    let currentPageHeight = 0;
 
     const uploadBtn = document.getElementById('uploadBtn');
     const saveBtn = document.getElementById('saveBtn');
     const clearDrawBtn = document.getElementById('clearDraw');
-    const canvasContainer = document.getElementById('canvasContainer');
+    const pdfViewer = document.getElementById('pdfViewer');
     const noPdfMsg = document.getElementById('noPdfMsg');
     const sigModal = document.getElementById('sigModal');
     const sigCanvas = document.getElementById('sigCanvas');
     let sigCtx = sigCanvas.getContext('2d');
     let signing = false;
-    let lastX, lastY;
+    let lastSigX, lastSigY;
 
     uploadBtn.addEventListener('click', () => {
         const input = document.createElement('input');
@@ -265,112 +260,164 @@
         currentPage = 1;
         await renderPage(currentPage);
         noPdfMsg.style.display = 'none';
-        canvasContainer.style.display = 'block';
+        canvas.style.display = 'block';
+        
+        // Clear previous annotations
+        drawings = [];
+        texts = [];
+        signatures = [];
+        redrawCanvas();
     }
 
     async function renderPage(pageNum) {
         if (!pdfDoc) return;
-        
         const page = await pdfDoc.getPage(pageNum);
         const viewport = page.getViewport({ scale: pdfScale });
         
-        // Create PDF canvas
-        const pdfCanvas = document.createElement('canvas');
-        pdfCanvas.id = 'pdfCanvas';
-        pdfCanvas.width = viewport.width;
-        pdfCanvas.height = viewport.height;
-        pdfCanvas.style.width = '100%';
-        pdfCanvas.style.height = 'auto';
-        pdfCanvas.style.position = 'absolute';
-        pdfCanvas.style.top = '0';
-        pdfCanvas.style.left = '0';
+        currentPageWidth = viewport.width;
+        currentPageHeight = viewport.height;
         
-        const ctx = pdfCanvas.getContext('2d', { willReadFrequently: true });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
+        
         await page.render({ canvasContext: ctx, viewport }).promise;
         
-        // Clear container and add PDF canvas
-        canvasContainer.innerHTML = '';
-        canvasContainer.style.position = 'relative';
-        canvasContainer.style.width = `${viewport.width}px`;
-        canvasContainer.style.maxWidth = '100%';
-        canvasContainer.style.margin = '0 auto';
-        canvasContainer.appendChild(pdfCanvas);
+        // Redraw annotations on top
+        redrawCanvas();
+    }
+
+    function redrawCanvas() {
+        if (!pdfDoc) return;
         
-        // Initialize Fabric.js on top of PDF canvas
-        if (fabricCanvas) fabricCanvas.dispose();
+        // Redraw PDF (preserve original)
+        renderPage(currentPage);
         
-        fabricCanvas = new fabric.Canvas(pdfCanvas, {
-            selection: true,
-            allowTouchScrolling: true,
-            width: viewport.width,
-            height: viewport.height,
-            backgroundColor: 'rgba(0,0,0,0)'
-        });
+        // Wait a bit for PDF to render, then draw annotations
+        setTimeout(() => {
+            // Draw drawings
+            drawings.forEach(drawing => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.strokeStyle = drawing.color;
+                ctx.lineWidth = drawing.width;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                
+                if (drawing.points.length > 0) {
+                    ctx.moveTo(drawing.points[0].x, drawing.points[0].y);
+                    for (let i = 1; i < drawing.points.length; i++) {
+                        ctx.lineTo(drawing.points[i].x, drawing.points[i].y);
+                    }
+                    ctx.stroke();
+                }
+                ctx.restore();
+            });
+            
+            // Draw text annotations
+            texts.forEach(text => {
+                ctx.save();
+                ctx.font = `${text.fontSize}px ${text.fontFamily}`;
+                ctx.fillStyle = text.color;
+                ctx.textBaseline = 'top';
+                ctx.fillText(text.content, text.x, text.y);
+                ctx.restore();
+            });
+            
+            // Draw signatures
+            signatures.forEach(sig => {
+                if (sig.img) {
+                    ctx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
+                }
+            });
+        }, 100);
+    }
+
+    // Drawing on canvas
+    function getMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
         
-        // Make Fabric canvas transparent and responsive
-        fabricCanvas.setDimensions({ width: viewport.width, height: viewport.height });
-        fabricCanvas.renderAll();
+        let clientX, clientY;
+        if (e.touches) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
         
-        // Drawing functionality
-        fabricCanvas.on('mouse:down', (opt) => {
-            if (currentMode === 'draw' && opt.e) {
-                isDrawing = true;
-                const pointer = fabricCanvas.getPointer(opt.e);
-                const path = new fabric.Path(`M ${pointer.x} ${pointer.y}`, {
-                    stroke: '#dc2626',
-                    strokeWidth: 3,
-                    fill: '',
-                    selectable: false,
-                    evented: false,
-                    strokeLineCap: 'round',
-                    strokeLineJoin: 'round'
-                });
-                fabricCanvas.add(path);
-                fabricCanvas.currentPath = path;
-            }
-        });
+        let x = (clientX - rect.left) * scaleX;
+        let y = (clientY - rect.top) * scaleY;
         
-        fabricCanvas.on('mouse:move', (opt) => {
-            if (currentMode === 'draw' && isDrawing && fabricCanvas.currentPath) {
-                const pointer = fabricCanvas.getPointer(opt.e);
-                const path = fabricCanvas.currentPath.path;
-                path.push(['L', pointer.x, pointer.y]);
-                fabricCanvas.currentPath.set({ path: path });
-                fabricCanvas.renderAll();
-            }
-        });
+        x = Math.max(0, Math.min(canvas.width, x));
+        y = Math.max(0, Math.min(canvas.height, y));
         
-        fabricCanvas.on('mouse:up', () => {
-            if (fabricCanvas.currentPath) {
-                fabricCanvas.currentPath.set({ selectable: true, evented: true });
-                fabricCanvas.currentPath = null;
-            }
-            isDrawing = false;
-        });
+        return { x, y };
+    }
+
+    function startDrawing(e) {
+        if (currentMode !== 'draw') return;
+        e.preventDefault();
+        isDrawing = true;
+        const pos = getMousePos(e);
+        lastX = pos.x;
+        lastY = pos.y;
         
-        // Double click to add text
-        fabricCanvas.on('mouse:dblclick', (e) => {
-            if (currentMode === 'text') {
-                const pointer = fabricCanvas.getPointer(e.e);
-                const textbox = new fabric.Textbox('Double-click to edit', {
-                    left: pointer.x,
-                    top: pointer.y,
-                    width: 180,
-                    fontSize: 18,
-                    fill: '#000000',
-                    backgroundColor: 'rgba(255, 255, 0, 0.5)',
-                    editable: true,
-                    hasControls: true,
-                    hasBorders: true
-                });
-                fabricCanvas.add(textbox);
-                fabricCanvas.setActiveObject(textbox);
-                fabricCanvas.renderAll();
-                textbox.enterEditing();
-                textbox.hiddenTextarea?.focus();
-            }
+        // Start new drawing path
+        drawings.push({
+            points: [{ x: lastX, y: lastY }],
+            color: '#dc2626',
+            width: 3
         });
     }
+
+    function draw(e) {
+        if (!isDrawing || currentMode !== 'draw') return;
+        e.preventDefault();
+        const pos = getMousePos(e);
+        
+        if (drawings.length > 0) {
+            drawings[drawings.length - 1].points.push({ x: pos.x, y: pos.y });
+            redrawCanvas();
+        }
+        
+        lastX = pos.x;
+        lastY = pos.y;
+    }
+
+    function stopDrawing() {
+        isDrawing = false;
+    }
+
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseleave', stopDrawing);
+    canvas.addEventListener('touchstart', startDrawing);
+    canvas.addEventListener('touchmove', draw);
+    canvas.addEventListener('touchend', stopDrawing);
+
+    // Add text on double-click
+    canvas.addEventListener('dblclick', (e) => {
+        if (currentMode === 'text') {
+            const pos = getMousePos(e);
+            const newText = prompt('Enter your text:', 'Edit this text');
+            if (newText && newText.trim()) {
+                texts.push({
+                    content: newText,
+                    x: pos.x,
+                    y: pos.y,
+                    fontSize: 20,
+                    fontFamily: 'Arial',
+                    color: '#000000'
+                });
+                redrawCanvas();
+            }
+        }
+    });
 
     // Mode switching
     document.querySelectorAll('.tool-btn[data-mode]').forEach(btn => {
@@ -385,6 +432,7 @@
         });
     });
 
+    // Signature functions
     function openSignatureModal() {
         sigModal.style.display = 'flex';
         sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
@@ -396,7 +444,7 @@
         sigCtx.lineJoin = 'round';
     }
 
-    function getCanvasCoords(e, canvasEl) {
+    function getSigCoords(e, canvasEl) {
         const rect = canvasEl.getBoundingClientRect();
         const scaleX = canvasEl.width / rect.width;
         const scaleY = canvasEl.height / rect.height;
@@ -418,23 +466,23 @@
     function startSign(e) {
         e.preventDefault();
         signing = true;
-        const coords = getCanvasCoords(e, sigCanvas);
-        lastX = coords.x;
-        lastY = coords.y;
+        const coords = getSigCoords(e, sigCanvas);
+        lastSigX = coords.x;
+        lastSigY = coords.y;
         sigCtx.beginPath();
-        sigCtx.moveTo(lastX, lastY);
+        sigCtx.moveTo(lastSigX, lastSigY);
     }
 
     function drawSign(e) {
         e.preventDefault();
         if (!signing) return;
-        const coords = getCanvasCoords(e, sigCanvas);
+        const coords = getSigCoords(e, sigCanvas);
         sigCtx.lineTo(coords.x, coords.y);
         sigCtx.stroke();
         sigCtx.beginPath();
         sigCtx.moveTo(coords.x, coords.y);
-        lastX = coords.x;
-        lastY = coords.y;
+        lastSigX = coords.x;
+        lastSigY = coords.y;
     }
 
     function endSign() {
@@ -457,33 +505,58 @@
 
     document.getElementById('saveSigBtn').onclick = () => {
         const dataURL = sigCanvas.toDataURL();
-        fabric.Image.fromURL(dataURL, (img) => {
-            img.scaleToWidth(150);
-            fabricCanvas.add(img);
-            fabricCanvas.renderAll();
-        });
-        sigModal.style.display = 'none';
-        currentMode = 'text';
-        document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
-        document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+        const img = new Image();
+        img.onload = () => {
+            // Ask user where to place signature
+            alert('Click on the PDF to place your signature');
+            sigModal.style.display = 'none';
+            
+            const placeSignature = (e) => {
+                const pos = getMousePos(e);
+                signatures.push({
+                    img: img,
+                    x: pos.x,
+                    y: pos.y,
+                    width: 150,
+                    height: 75
+                });
+                redrawCanvas();
+                canvas.removeEventListener('click', placeSignature);
+                currentMode = 'text';
+                document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
+                document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+            };
+            
+            canvas.addEventListener('click', placeSignature);
+        };
+        img.src = dataURL;
         document.getElementById('typedSignature').value = '';
     };
 
     document.getElementById('useTypedBtn').onclick = () => {
         const typedName = document.getElementById('typedSignature').value;
         if (typedName.trim()) {
-            const text = new fabric.Text(typedName, {
-                fontSize: 28,
-                fontFamily: 'cursive',
-                fill: '#000',
-                fontStyle: 'italic'
-            });
-            fabricCanvas.add(text);
-            fabricCanvas.renderAll();
+            alert('Click on the PDF to place your signature');
             sigModal.style.display = 'none';
-            currentMode = 'text';
-            document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
-            document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+            
+            const placeTyped = (e) => {
+                const pos = getMousePos(e);
+                texts.push({
+                    content: typedName,
+                    x: pos.x,
+                    y: pos.y,
+                    fontSize: 28,
+                    fontFamily: 'cursive',
+                    color: '#000000'
+                });
+                redrawCanvas();
+                canvas.removeEventListener('click', placeTyped);
+                currentMode = 'text';
+                document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
+                document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+            };
+            
+            canvas.addEventListener('click', placeTyped);
             document.getElementById('typedSignature').value = '';
         } else {
             alert('Please type a name or draw a signature');
@@ -498,79 +571,65 @@
         document.getElementById('typedSignature').value = '';
     };
 
+    // Clear all drawings
     clearDrawBtn.onclick = () => {
-        if (fabricCanvas) {
-            const objects = fabricCanvas.getObjects();
-            objects.forEach(obj => {
-                fabricCanvas.remove(obj);
-            });
-            fabricCanvas.renderAll();
-        }
+        drawings = [];
+        texts = [];
+        signatures = [];
+        redrawCanvas();
     };
 
+    // Save PDF
     saveBtn.onclick = async () => {
         if (!pdfDoc) {
             alert('Please upload a PDF first');
             return;
         }
         
-        alert('Generating PDF...');
+        alert('Generating PDF with annotations...');
         
         try {
             const pdfDocLib = await PDFLib.PDFDocument.load(currentPdfBytes);
             const pages = pdfDocLib.getPages();
             const firstPage = pages[0];
             
-            // Get the PDF canvas
-            const pdfCanvas = document.getElementById('pdfCanvas');
-            if (!pdfCanvas) {
-                alert('Error: PDF canvas not found');
-                return;
-            }
-            
-            // Create overlay canvas
+            // Create overlay canvas with all annotations
             const overlayCanvas = document.createElement('canvas');
-            overlayCanvas.width = pdfCanvas.width;
-            overlayCanvas.height = pdfCanvas.height;
+            overlayCanvas.width = canvas.width;
+            overlayCanvas.height = canvas.height;
             const overlayCtx = overlayCanvas.getContext('2d');
             
             // Draw PDF content
-            overlayCtx.drawImage(pdfCanvas, 0, 0);
+            overlayCtx.drawImage(canvas, 0, 0);
             
-            // Draw all Fabric.js objects
-            fabricCanvas.getObjects().forEach(obj => {
-                if (obj.type === 'textbox' || obj.type === 'text') {
-                    overlayCtx.save();
-                    overlayCtx.font = `${obj.fontSize}px ${obj.fontFamily || 'Arial'}`;
-                    overlayCtx.fillStyle = obj.fill;
-                    overlayCtx.textBaseline = 'top';
-                    overlayCtx.fillText(obj.text || obj._text || '', obj.left, obj.top);
-                    overlayCtx.restore();
-                } else if (obj.type === 'image') {
-                    const img = new Image();
-                    img.src = obj.toDataURL();
-                    overlayCtx.drawImage(img, obj.left, obj.top, obj.width * obj.scaleX, obj.height * obj.scaleY);
-                } else if (obj.type === 'path') {
-                    overlayCtx.beginPath();
-                    const path = obj.path;
-                    let first = true;
-                    if (path && path.length) {
-                        path.forEach(cmd => {
-                            if (cmd[0] === 'M') {
-                                if (!first) overlayCtx.stroke();
-                                overlayCtx.beginPath();
-                                overlayCtx.moveTo(cmd[1], cmd[2]);
-                                first = false;
-                            } else if (cmd[0] === 'L') {
-                                overlayCtx.lineTo(cmd[1], cmd[2]);
-                            }
-                        });
-                        overlayCtx.stroke();
-                        overlayCtx.strokeStyle = obj.stroke;
-                        overlayCtx.lineWidth = obj.strokeWidth;
-                        overlayCtx.stroke();
+            // Draw all drawings
+            drawings.forEach(drawing => {
+                overlayCtx.beginPath();
+                overlayCtx.strokeStyle = drawing.color;
+                overlayCtx.lineWidth = drawing.width;
+                overlayCtx.lineCap = 'round';
+                overlayCtx.lineJoin = 'round';
+                
+                if (drawing.points.length > 0) {
+                    overlayCtx.moveTo(drawing.points[0].x, drawing.points[0].y);
+                    for (let i = 1; i < drawing.points.length; i++) {
+                        overlayCtx.lineTo(drawing.points[i].x, drawing.points[i].y);
                     }
+                    overlayCtx.stroke();
                 }
+            });
+            
+            // Draw texts
+            texts.forEach(text => {
+                overlayCtx.font = `${text.fontSize}px ${text.fontFamily}`;
+                overlayCtx.fillStyle = text.color;
+                overlayCtx.textBaseline = 'top';
+                overlayCtx.fillText(text.content, text.x, text.y);
+            });
+            
+            // Draw signatures
+            signatures.forEach(sig => {
+                overlayCtx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
             });
             
             const overlayImage = await pdfDocLib.embedPng(overlayCanvas.toDataURL());
