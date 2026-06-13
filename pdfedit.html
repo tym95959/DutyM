@@ -376,7 +376,7 @@
 <div class="pdf-viewer" id="pdfViewer">
     <div class="no-pdf" id="noPdfMsg">
         📁 Click "Upload PDF" to start<br><br>
-        ✏️ Click to add text, then drag to move<br>
+        ✏️ Click to add text, double-click to edit text<br>
         🖱️ Select Move mode to drag text anywhere<br>
         🧽 Select Eraser to cover PDF content<br>
         🖊️ Create and save signatures, set default, then Quick Sign!
@@ -416,12 +416,14 @@
         <p style="margin: 16px 0 8px;">— OR type signature —</p>
         <input type="text" id="typedSignature" placeholder="Type your name">
         <button id="saveTypedBtn">Save Typed Signature</button>
-        <button id="useTypedBtn" style="margin-top: 5px;">Use & Place Typed</button>
+        <button id="setTypedAsDefaultBtn">⭐ Set Typed as Default</button>
+        <button id="useTypedBtn">Use & Place Typed</button>
         
         <p style="margin: 16px 0 8px;">— OR upload signature image —</p>
         <input type="file" id="uploadSignatureFile" accept="image/png,image/jpeg,image/jpg,image/gif">
         <button id="saveUploadedBtn">Save Uploaded Signature</button>
-        <button id="useUploadedBtn" style="margin-top: 5px;">Use & Place Uploaded</button>
+        <button id="setUploadedAsDefaultBtn">⭐ Set Uploaded as Default</button>
+        <button id="useUploadedBtn">Use & Place Uploaded</button>
         
         <div class="sig-buttons" style="margin-top: 16px;">
             <button id="cancelSigBtn">Close</button>
@@ -465,7 +467,7 @@
     </div>
 </div>
 
-<div class="status" id="status">Ready - Click to add text</div>
+<div class="status" id="status">Ready - Click to add text, double-click to edit</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -498,6 +500,7 @@
     let draggingText = null;
     let dragOffsetX = 0, dragOffsetY = 0;
     let eraserSize = 30;
+    let isPlacingSignature = false; // Flag to prevent text click during signature placement
 
     // Load saved signatures from localStorage
     function loadSavedSignatures() {
@@ -577,6 +580,16 @@
         savedSignatures.push({ id: id, data: dataURL, name: name });
         saveSignaturesToStorage();
         showStatus('Signature saved!');
+        return id;
+    }
+    
+    function setDefaultSignatureFromData(dataURL, name) {
+        const id = 'sig_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        savedSignatures.push({ id: id, data: dataURL, name: name });
+        defaultSignatureId = id;
+        saveSignaturesToStorage();
+        showStatus(`"${name}" saved and set as DEFAULT! Use "Quick Sign" button`);
+        return id;
     }
     
     function placeDefaultSignature() {
@@ -595,6 +608,7 @@
             return;
         }
         
+        isPlacingSignature = true;
         showStatus('Click on PDF to place default signature');
         
         const placeSignature = (e) => {
@@ -610,6 +624,7 @@
                 });
                 redrawAnnotations();
                 canvas.removeEventListener('click', placeSignature);
+                isPlacingSignature = false;
                 showStatus('Default signature placed');
             };
             img.src = defaultSig.data;
@@ -949,6 +964,9 @@
     });
 
     function startDrawing(e) {
+        // Don't start drawing if we're placing signature
+        if (isPlacingSignature) return;
+        
         if (currentMode === 'draw') {
             e.preventDefault();
             isDrawing = true;
@@ -1024,7 +1042,11 @@
     canvas.addEventListener('touchmove', draw);
     canvas.addEventListener('touchend', stopDrawing);
 
+    // Text click handler - only when in text mode and not placing signature
     canvas.addEventListener('click', (e) => {
+        // Don't add text if we're placing a signature
+        if (isPlacingSignature) return;
+        
         if (currentMode === 'text') {
             const pos = getMousePos(e);
             editingTextObj = null;
@@ -1032,11 +1054,13 @@
         }
     });
     
+    // Double-click to edit existing text
     canvas.addEventListener('dblclick', (e) => {
         if (currentMode === 'text') {
             const pos = getMousePos(e);
             const textObj = getTextAtPosition(pos.x, pos.y);
             if (textObj) {
+                // Load text formatting into current UI
                 currentFont = textObj.text.font;
                 currentFontSize = textObj.text.fontSize;
                 isBold = textObj.text.isBold || false;
@@ -1171,6 +1195,7 @@
     }
 
     function placeSignatureOnPDF(dataURL) {
+        isPlacingSignature = true;
         showStatus('Click on PDF to place signature');
         sigModal.style.display = 'none';
         
@@ -1187,6 +1212,7 @@
                 });
                 redrawAnnotations();
                 canvas.removeEventListener('click', placeSignature);
+                isPlacingSignature = false;
                 currentMode = 'text';
                 document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
                 document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
@@ -1218,13 +1244,9 @@
             const dataURL = sigCanvas.toDataURL();
             const name = prompt('Name this default signature:', `Default Signature`);
             if (name) {
-                const id = 'sig_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                savedSignatures.push({ id: id, data: dataURL, name: name });
-                defaultSignatureId = id;
-                saveSignaturesToStorage();
+                setDefaultSignatureFromData(dataURL, name);
                 currentSignatureImage = dataURL;
                 updatePreview();
-                showStatus('Signature saved and set as DEFAULT! Use "Quick Sign" button');
             }
         };
     }
@@ -1266,6 +1288,35 @@
         };
     }
 
+    const setTypedAsDefaultBtn = document.getElementById('setTypedAsDefaultBtn');
+    if (setTypedAsDefaultBtn) {
+        setTypedAsDefaultBtn.onclick = () => {
+            const typedName = document.getElementById('typedSignature').value;
+            if (typedName && typedName.trim()) {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = 300;
+                tempCanvas.height = 80;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.fillStyle = 'white';
+                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                tempCtx.font = '28px cursive';
+                tempCtx.fillStyle = '#000';
+                tempCtx.textBaseline = 'middle';
+                tempCtx.fillText(typedName, 10, 40);
+                const dataURL = tempCanvas.toDataURL();
+                const name = prompt('Name this default signature:', `Default Typed Signature`);
+                if (name) {
+                    setDefaultSignatureFromData(dataURL, name);
+                    currentSignatureImage = dataURL;
+                    updatePreview();
+                    document.getElementById('typedSignature').value = '';
+                }
+            } else {
+                alert('Please type a name first');
+            }
+        };
+    }
+
     const useTypedBtn = document.getElementById('useTypedBtn');
     if (useTypedBtn) {
         useTypedBtn.onclick = () => {
@@ -1298,6 +1349,21 @@
                 if (name) {
                     addSavedSignature(currentSignatureImage, name);
                     showStatus('Signature saved!');
+                }
+            } else {
+                alert('Please upload an image first');
+            }
+        };
+    }
+
+    const setUploadedAsDefaultBtn = document.getElementById('setUploadedAsDefaultBtn');
+    if (setUploadedAsDefaultBtn) {
+        setUploadedAsDefaultBtn.onclick = () => {
+            if (currentSignatureImage) {
+                const name = prompt('Name this default signature:', `Default Uploaded Signature`);
+                if (name) {
+                    setDefaultSignatureFromData(currentSignatureImage, name);
+                    showStatus('Uploaded signature set as default!');
                 }
             } else {
                 alert('Please upload an image first');
@@ -1353,7 +1419,7 @@
                 reader.onload = (ev) => {
                     currentSignatureImage = ev.target.result;
                     updatePreview();
-                    showStatus('Signature uploaded! Click "Save" to keep or "Use & Place" now');
+                    showStatus('Signature uploaded! Click "Save" to keep, "Set as Default", or "Use & Place" now');
                 };
                 reader.readAsDataURL(file);
             }
