@@ -179,7 +179,6 @@
             font-size: 0.75rem;
             margin-top: 1rem;
         }
-        /* FULL-SCREEN EDITOR */
         .editor-fullscreen {
             display: none;
             position: fixed;
@@ -258,7 +257,6 @@
             justify-content: center;
             flex-wrap: wrap;
         }
-        /* CROP MODAL - buttons always visible */
         .crop-modal {
             display: none;
             position: fixed;
@@ -327,7 +325,6 @@
             <i class="fas fa-cloud-upload-alt fa-2x"></i>
             <p>Drag & drop images here</p>
             <div class="btn-row">
-                <!-- Gallery button - only trigger once -->
                 <label class="btn btn-outline" id="galleryLabel">
                     <i class="fas fa-images"></i> Gallery
                     <input type="file" id="fileInput" multiple accept="image/jpeg,image/png,image/webp" hidden>
@@ -355,10 +352,9 @@
         <div class="empty-state">📸 No images — upload or capture</div>
     </div>
     <div id="statusMsg" class="status">✨ Tap any image to open full‑screen editor</div>
-    <footer>✓ Full‑screen editor | Live filters | Rotate & Crop | Installable PWA</footer>
+    <footer>✓ Crop fixed | No double file picker | Installable PWA</footer>
 </div>
 
-<!-- FULL-SCREEN EDITOR -->
 <div id="fullEditor" class="editor-fullscreen">
     <div class="editor-header">
         <h3><i class="fas fa-edit"></i> Image Editor</h3>
@@ -385,7 +381,6 @@
     </div>
 </div>
 
-<!-- CROP MODAL -->
 <div id="cropModal" class="crop-modal">
     <div class="crop-modal-content">
         <div class="crop-image-container">
@@ -399,7 +394,6 @@
 </div>
 
 <script>
-    // ========== STATE ==========
     let images = [];
     let nextId = 1;
     let deferredPrompt = null;
@@ -410,7 +404,6 @@
     let activeCropper = null;
     let cropTempImageId = null;
 
-    // DOM elements
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const cameraBtn = document.getElementById('cameraBtn');
@@ -447,7 +440,6 @@
     const confirmCropBtn = document.getElementById('confirmCropBtn');
     const cancelCropBtn = document.getElementById('cancelCropBtn');
 
-    // ========== UTILITIES ==========
     function setStatus(msg, isErr = false) {
         statusDiv.innerHTML = `<i class="fas ${isErr ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i> ${msg}`;
         statusDiv.style.background = isErr ? '#6B2E2E' : '#1E4A5F';
@@ -504,7 +496,6 @@
         return canvas.toDataURL('image/jpeg', 0.95);
     }
 
-    // ========== GALLERY RENDER ==========
     async function renderGallery() {
         galleryCountSpan.innerText = images.length;
         imageCountBadge.innerText = images.length;
@@ -558,7 +549,6 @@
         renderGallery(); setStatus('Image deleted');
     }
 
-    // ========== FULL-SCREEN EDITOR ==========
     let editorTimeout = null;
     async function updateEditorPreview() {
         if (!currentEditId || !originalEditDataURL) return;
@@ -646,37 +636,65 @@
     editorApplyBtn.onclick = applyEditorChanges;
     closeEditorBtn.onclick = closeFullEditor;
 
-    // ========== CROP ==========
+    // ========== CROP FIX: reliable Cropper initialization ==========
+    function initCropper() {
+        if (activeCropper) activeCropper.destroy();
+        activeCropper = new Cropper(cropImageEl, {
+            viewMode: 1,
+            autoCropArea: 0.8,
+            background: true,
+            responsive: true,
+            checkOrientation: false
+        });
+    }
     async function openCropFromGallery(id) {
         const img = images.find(i => i.id === id);
         if (!img) return;
         cropTempImageId = id;
         cropImageEl.src = img.dataURL;
         cropModal.style.display = 'flex';
-        if (activeCropper) activeCropper.destroy();
-        cropImageEl.onload = () => {
-            activeCropper = new Cropper(cropImageEl, { viewMode: 1, autoCropArea: 0.8, background: true });
-        };
-        if (cropImageEl.complete) cropImageEl.onload();
+        // Wait for the image to load completely
+        if (cropImageEl.complete) {
+            initCropper();
+        } else {
+            cropImageEl.onload = () => {
+                initCropper();
+            };
+        }
     }
     async function applyCrop() {
-        if (!activeCropper || !cropTempImageId) return;
-        const croppedCanvas = activeCropper.getCroppedCanvas();
-        if (!croppedCanvas) return;
-        const croppedURL = croppedCanvas.toDataURL('image/jpeg', 0.95);
-        const idx = images.findIndex(i => i.id === cropTempImageId);
-        if (idx !== -1) {
-            images[idx] = { ...images[idx], dataURL: croppedURL, width: croppedCanvas.width, height: croppedCanvas.height, filters: {} };
-            renderGallery();
-            setStatus('Cropped');
+        if (!activeCropper || !cropTempImageId) {
+            setStatus('Crop error: no active cropper', true);
+            return;
         }
-        closeCropModal();
-        if (currentEditId === cropTempImageId) closeFullEditor();
+        try {
+            const croppedCanvas = activeCropper.getCroppedCanvas();
+            if (!croppedCanvas) {
+                setStatus('Crop failed: canvas empty', true);
+                return;
+            }
+            const croppedURL = croppedCanvas.toDataURL('image/jpeg', 0.95);
+            const idx = images.findIndex(i => i.id === cropTempImageId);
+            if (idx !== -1) {
+                images[idx] = { ...images[idx], dataURL: croppedURL, width: croppedCanvas.width, height: croppedCanvas.height, filters: {} };
+                renderGallery();
+                setStatus('Cropped successfully');
+            }
+            closeCropModal();
+            if (currentEditId === cropTempImageId) closeFullEditor();
+        } catch (err) {
+            console.error(err);
+            setStatus('Crop failed', true);
+        }
     }
     function closeCropModal() {
-        if (activeCropper) activeCropper.destroy();
+        if (activeCropper) {
+            activeCropper.destroy();
+            activeCropper = null;
+        }
         cropModal.style.display = 'none';
         cropTempImageId = null;
+        cropImageEl.onload = null;
     }
     confirmCropBtn.onclick = applyCrop;
     cancelCropBtn.onclick = closeCropModal;
@@ -713,16 +731,11 @@
         }
         renderGallery(); setStatus(`Added ${valid.length} image(s)`);
     }
-    // Only trigger file picker via the label (Gallery button) - no extra click on dropZone
-    // The label naturally triggers the file input because the input is inside it.
-    // No extra click listener on dropZone.
     fileInput.addEventListener('change', e => addFiles(e.target.files));
-    // Drag & drop support on dropZone (does not trigger file picker)
     dropZone.addEventListener('dragover', e => e.preventDefault());
     dropZone.addEventListener('drop', e => { e.preventDefault(); addFiles(e.dataTransfer.files); });
     clearAllBtn.onclick = () => { images = []; renderGallery(); setStatus('All cleared'); };
 
-    // ========== PDF EXPORT ==========
     async function exportPDF() {
         if (images.length === 0) { setStatus('No images', true); return; }
         const orientation = document.querySelector('input[name="orientation"]:checked').value;
@@ -759,7 +772,6 @@
     }
     exportBtn.onclick = exportPDF;
 
-    // ========== PWA INSTALL ==========
     window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
         deferredPrompt = e;
@@ -779,7 +791,7 @@
         navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(console.warn);
     }
     renderGallery();
-    setStatus('Ready — tap any image to open full‑screen editor');
+    setStatus('Ready — tap any image to edit, crop button now works');
 </script>
 </body>
 </html>
