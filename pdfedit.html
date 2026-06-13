@@ -222,7 +222,7 @@
     let currentPage = 1;
     let pdfScale = 1.3;
     let canvas = document.getElementById('pdfCanvas');
-    let ctx = canvas.getContext('2d');
+    let ctx = canvas.getContext('2d', { willReadFrequently: true }); // FIXED: Added willReadFrequently
     let fabricCanvas = null;
     let currentMode = 'text';
     let isDrawing = false;
@@ -260,7 +260,8 @@
         pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         currentPage = 1;
         await renderPage(currentPage);
-        document.querySelector('.no-pdf')?.remove();
+        const noPdfDiv = document.querySelector('.no-pdf');
+        if (noPdfDiv) noPdfDiv.remove();
         canvas.style.display = 'block';
     }
 
@@ -363,7 +364,7 @@
         sigCtx.lineJoin = 'round';
     }
 
-    // Touch drawing on signature canvas
+    // Get canvas coordinates for both mouse and touch
     function getCanvasCoords(e, canvasEl) {
         const rect = canvasEl.getBoundingClientRect();
         const scaleX = canvasEl.width / rect.width;
@@ -434,6 +435,7 @@
         currentMode = 'text';
         document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
         document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+        document.getElementById('typedSignature').value = ''; // Clear input
     };
 
     document.getElementById('useTypedBtn').onclick = () => {
@@ -451,8 +453,9 @@
             currentMode = 'text';
             document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
             document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+            document.getElementById('typedSignature').value = '';
         } else {
-            alert('Please type a name');
+            alert('Please type a name or draw a signature');
         }
     };
 
@@ -461,6 +464,7 @@
         currentMode = 'text';
         document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
         document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+        document.getElementById('typedSignature').value = '';
     };
 
     // Clear drawings
@@ -476,7 +480,7 @@
         }
     };
 
-    // Save PDF with edits
+    // Save PDF with edits - Fixed text baseline issue
     saveBtn.onclick = async () => {
         if (!pdfDoc) {
             alert('Please upload a PDF first');
@@ -502,10 +506,14 @@
             
             // Draw fabric objects
             fabricCanvas.getObjects().forEach(obj => {
-                if (obj.type === 'textbox') {
+                if (obj.type === 'textbox' || obj.type === 'text') {
+                    overlayCtx.save();
                     overlayCtx.font = `${obj.fontSize}px ${obj.fontFamily || 'Arial'}`;
                     overlayCtx.fillStyle = obj.fill;
-                    overlayCtx.fillText(obj.text, obj.left, obj.top + obj.fontSize);
+                    // FIXED: Changed from 'alphabetical' to 'top' (valid baseline)
+                    overlayCtx.textBaseline = 'top';
+                    overlayCtx.fillText(obj.text || obj._text || '', obj.left, obj.top);
+                    overlayCtx.restore();
                 } else if (obj.type === 'image') {
                     const img = new Image();
                     img.src = obj.toDataURL();
@@ -524,6 +532,7 @@
                             overlayCtx.lineTo(cmd[1], cmd[2]);
                         }
                     });
+                    overlayCtx.stroke();
                     overlayCtx.strokeStyle = obj.stroke;
                     overlayCtx.lineWidth = obj.strokeWidth;
                     overlayCtx.stroke();
@@ -555,7 +564,7 @@
             alert('✅ PDF saved successfully!');
         } catch (error) {
             console.error('Save error:', error);
-            alert('Error saving PDF. Check console for details.');
+            alert('Error saving PDF: ' + error.message);
         }
     };
 </script>
