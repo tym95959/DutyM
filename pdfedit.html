@@ -90,6 +90,7 @@
             padding: 20px;
             display: flex;
             justify-content: center;
+            align-items: center;
         }
 
         #pdfCanvas {
@@ -99,6 +100,7 @@
             display: block;
             max-width: 100%;
             height: auto;
+            cursor: crosshair;
         }
 
         .no-pdf {
@@ -107,7 +109,6 @@
             color: #9ca3af;
             background: white;
             border-radius: 12px;
-            margin: 20px;
         }
 
         .modal {
@@ -162,6 +163,18 @@
             font-size: 16px;
             margin: 8px 0;
         }
+        
+        .status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #0f3b2c;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 100;
+        }
     </style>
 </head>
 <body>
@@ -176,7 +189,7 @@
     <button class="tool-btn" data-mode="text">✏️ Add Text</button>
     <button class="tool-btn" data-mode="draw">🖌️ Draw</button>
     <button class="tool-btn" data-mode="sign">🖊️ Add Signature</button>
-    <button class="tool-btn" id="clearDraw">🗑️ Clear Drawings</button>
+    <button class="tool-btn" id="clearDraw">🗑️ Clear All</button>
 </div>
 
 <div class="pdf-viewer" id="pdfViewer">
@@ -189,7 +202,6 @@
     <canvas id="pdfCanvas" style="display: none;"></canvas>
 </div>
 
-<!-- Signature Modal -->
 <div id="sigModal" class="modal">
     <div class="modal-card">
         <h3>✍️ Draw Your Signature</h3>
@@ -205,6 +217,8 @@
     </div>
 </div>
 
+<div class="status" id="status">Ready</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 
@@ -212,30 +226,35 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
     let pdfDoc = null;
-    let currentPage = 1;
-    let pdfScale = 1.5;
     let canvas = document.getElementById('pdfCanvas');
-    let ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let ctx = canvas.getContext('2d');
     let currentMode = 'text';
     let isDrawing = false;
-    let lastX = 0, lastY = 0;
-    let drawings = []; // Store drawings as objects
-    let texts = []; // Store text annotations
-    let signatures = []; // Store signature images
+    let drawings = [];
+    let texts = [];
+    let signatures = [];
     let currentPdfBytes = null;
-    let currentPageWidth = 0;
-    let currentPageHeight = 0;
+    let currentPageImage = null;
+    let currentPageNumber = 1;
+    let totalPages = 1;
 
     const uploadBtn = document.getElementById('uploadBtn');
     const saveBtn = document.getElementById('saveBtn');
     const clearDrawBtn = document.getElementById('clearDraw');
-    const pdfViewer = document.getElementById('pdfViewer');
     const noPdfMsg = document.getElementById('noPdfMsg');
     const sigModal = document.getElementById('sigModal');
     const sigCanvas = document.getElementById('sigCanvas');
+    const statusDiv = document.getElementById('status');
     let sigCtx = sigCanvas.getContext('2d');
     let signing = false;
     let lastSigX, lastSigY;
+
+    function showStatus(msg) {
+        statusDiv.textContent = msg;
+        setTimeout(() => {
+            if (statusDiv.textContent === msg) statusDiv.textContent = 'Ready';
+        }, 2000);
+    }
 
     uploadBtn.addEventListener('click', () => {
         const input = document.createElement('input');
@@ -244,6 +263,7 @@
         input.onchange = async (e) => {
             const file = e.target.files[0];
             if (file) {
+                showStatus('Loading PDF...');
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
                     currentPdfBytes = ev.target.result;
@@ -256,26 +276,29 @@
     });
 
     async function loadPDF(arrayBuffer) {
-        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        currentPage = 1;
-        await renderPage(currentPage);
-        noPdfMsg.style.display = 'none';
-        canvas.style.display = 'block';
-        
-        // Clear previous annotations
-        drawings = [];
-        texts = [];
-        signatures = [];
-        redrawCanvas();
+        try {
+            pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            totalPages = pdfDoc.numPages;
+            currentPageNumber = 1;
+            await renderPage(currentPageNumber);
+            noPdfMsg.style.display = 'none';
+            canvas.style.display = 'block';
+            drawings = [];
+            texts = [];
+            signatures = [];
+            showStatus(`Loaded: ${totalPages} page(s)`);
+        } catch (error) {
+            console.error('Load error:', error);
+            showStatus('Error loading PDF');
+        }
     }
 
     async function renderPage(pageNum) {
         if (!pdfDoc) return;
-        const page = await pdfDoc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: pdfScale });
         
-        currentPageWidth = viewport.width;
-        currentPageHeight = viewport.height;
+        showStatus(`Rendering page ${pageNum}...`);
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.5 });
         
         canvas.width = viewport.width;
         canvas.height = viewport.height;
@@ -284,57 +307,55 @@
         
         await page.render({ canvasContext: ctx, viewport }).promise;
         
-        // Redraw annotations on top
-        redrawCanvas();
+        // Store as image
+        currentPageImage = new Image();
+        currentPageImage.src = canvas.toDataURL();
+        await new Promise(resolve => { currentPageImage.onload = resolve; });
+        
+        // Redraw annotations
+        redrawAnnotations();
+        showStatus('Ready');
     }
 
-    function redrawCanvas() {
-        if (!pdfDoc) return;
+    function redrawAnnotations() {
+        if (!currentPageImage) return;
         
-        // Redraw PDF (preserve original)
-        renderPage(currentPage);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(currentPageImage, 0, 0);
         
-        // Wait a bit for PDF to render, then draw annotations
-        setTimeout(() => {
-            // Draw drawings
-            drawings.forEach(drawing => {
-                ctx.save();
-                ctx.beginPath();
-                ctx.strokeStyle = drawing.color;
-                ctx.lineWidth = drawing.width;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                
-                if (drawing.points.length > 0) {
-                    ctx.moveTo(drawing.points[0].x, drawing.points[0].y);
-                    for (let i = 1; i < drawing.points.length; i++) {
-                        ctx.lineTo(drawing.points[i].x, drawing.points[i].y);
-                    }
-                    ctx.stroke();
-                }
-                ctx.restore();
-            });
+        // Draw drawings
+        drawings.forEach(drawing => {
+            ctx.beginPath();
+            ctx.strokeStyle = drawing.color;
+            ctx.lineWidth = drawing.width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
             
-            // Draw text annotations
-            texts.forEach(text => {
-                ctx.save();
-                ctx.font = `${text.fontSize}px ${text.fontFamily}`;
-                ctx.fillStyle = text.color;
-                ctx.textBaseline = 'top';
-                ctx.fillText(text.content, text.x, text.y);
-                ctx.restore();
-            });
-            
-            // Draw signatures
-            signatures.forEach(sig => {
-                if (sig.img) {
-                    ctx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
+            if (drawing.points.length > 0) {
+                ctx.moveTo(drawing.points[0].x, drawing.points[0].y);
+                for (let i = 1; i < drawing.points.length; i++) {
+                    ctx.lineTo(drawing.points[i].x, drawing.points[i].y);
                 }
-            });
-        }, 100);
+                ctx.stroke();
+            }
+        });
+        
+        // Draw texts
+        texts.forEach(text => {
+            ctx.font = `${text.fontSize}px ${text.fontFamily}`;
+            ctx.fillStyle = text.color;
+            ctx.textBaseline = 'top';
+            ctx.fillText(text.content, text.x, text.y);
+        });
+        
+        // Draw signatures
+        signatures.forEach(sig => {
+            if (sig.img) {
+                ctx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
+            }
+        });
     }
 
-    // Drawing on canvas
     function getMousePos(e) {
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
@@ -358,17 +379,15 @@
         return { x, y };
     }
 
+    // Drawing events
     function startDrawing(e) {
         if (currentMode !== 'draw') return;
         e.preventDefault();
         isDrawing = true;
         const pos = getMousePos(e);
-        lastX = pos.x;
-        lastY = pos.y;
         
-        // Start new drawing path
         drawings.push({
-            points: [{ x: lastX, y: lastY }],
+            points: [{ x: pos.x, y: pos.y }],
             color: '#dc2626',
             width: 3
         });
@@ -381,11 +400,8 @@
         
         if (drawings.length > 0) {
             drawings[drawings.length - 1].points.push({ x: pos.x, y: pos.y });
-            redrawCanvas();
+            redrawAnnotations();
         }
-        
-        lastX = pos.x;
-        lastY = pos.y;
     }
 
     function stopDrawing() {
@@ -400,7 +416,7 @@
     canvas.addEventListener('touchmove', draw);
     canvas.addEventListener('touchend', stopDrawing);
 
-    // Add text on double-click
+    // Add text
     canvas.addEventListener('dblclick', (e) => {
         if (currentMode === 'text') {
             const pos = getMousePos(e);
@@ -414,7 +430,8 @@
                     fontFamily: 'Arial',
                     color: '#000000'
                 });
-                redrawCanvas();
+                redrawAnnotations();
+                showStatus('Text added');
             }
         }
     });
@@ -460,7 +477,7 @@
         
         const x = (clientX - rect.left) * scaleX;
         const y = (clientY - rect.top) * scaleY;
-        return { x, y };
+        return { x: Math.max(0, Math.min(canvasEl.width, x)), y: Math.max(0, Math.min(canvasEl.height, y)) };
     }
 
     function startSign(e) {
@@ -507,24 +524,24 @@
         const dataURL = sigCanvas.toDataURL();
         const img = new Image();
         img.onload = () => {
-            // Ask user where to place signature
-            alert('Click on the PDF to place your signature');
+            showStatus('Click on PDF to place signature');
             sigModal.style.display = 'none';
             
             const placeSignature = (e) => {
                 const pos = getMousePos(e);
                 signatures.push({
                     img: img,
-                    x: pos.x,
-                    y: pos.y,
+                    x: pos.x - 75,
+                    y: pos.y - 37,
                     width: 150,
                     height: 75
                 });
-                redrawCanvas();
+                redrawAnnotations();
                 canvas.removeEventListener('click', placeSignature);
                 currentMode = 'text';
                 document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
                 document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+                showStatus('Signature placed');
             };
             
             canvas.addEventListener('click', placeSignature);
@@ -536,7 +553,7 @@
     document.getElementById('useTypedBtn').onclick = () => {
         const typedName = document.getElementById('typedSignature').value;
         if (typedName.trim()) {
-            alert('Click on the PDF to place your signature');
+            showStatus('Click on PDF to place signature');
             sigModal.style.display = 'none';
             
             const placeTyped = (e) => {
@@ -549,11 +566,12 @@
                     fontFamily: 'cursive',
                     color: '#000000'
                 });
-                redrawCanvas();
+                redrawAnnotations();
                 canvas.removeEventListener('click', placeTyped);
                 currentMode = 'text';
                 document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
                 document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+                showStatus('Signature placed');
             };
             
             canvas.addEventListener('click', placeTyped);
@@ -571,45 +589,42 @@
         document.getElementById('typedSignature').value = '';
     };
 
-    // Clear all drawings
     clearDrawBtn.onclick = () => {
         drawings = [];
         texts = [];
         signatures = [];
-        redrawCanvas();
+        redrawAnnotations();
+        showStatus('All annotations cleared');
     };
 
-    // Save PDF
     saveBtn.onclick = async () => {
         if (!pdfDoc) {
             alert('Please upload a PDF first');
             return;
         }
         
-        alert('Generating PDF with annotations...');
+        showStatus('Saving PDF...');
         
         try {
             const pdfDocLib = await PDFLib.PDFDocument.load(currentPdfBytes);
             const pages = pdfDocLib.getPages();
             const firstPage = pages[0];
             
-            // Create overlay canvas with all annotations
+            // Create overlay canvas
             const overlayCanvas = document.createElement('canvas');
             overlayCanvas.width = canvas.width;
             overlayCanvas.height = canvas.height;
             const overlayCtx = overlayCanvas.getContext('2d');
             
-            // Draw PDF content
-            overlayCtx.drawImage(canvas, 0, 0);
+            overlayCtx.drawImage(currentPageImage, 0, 0);
             
-            // Draw all drawings
+            // Draw drawings
             drawings.forEach(drawing => {
                 overlayCtx.beginPath();
                 overlayCtx.strokeStyle = drawing.color;
                 overlayCtx.lineWidth = drawing.width;
                 overlayCtx.lineCap = 'round';
                 overlayCtx.lineJoin = 'round';
-                
                 if (drawing.points.length > 0) {
                     overlayCtx.moveTo(drawing.points[0].x, drawing.points[0].y);
                     for (let i = 1; i < drawing.points.length; i++) {
@@ -654,9 +669,10 @@
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
             
-            alert('✅ PDF saved successfully!');
+            showStatus('✅ PDF saved!');
         } catch (error) {
             console.error('Save error:', error);
+            showStatus('Error saving PDF');
             alert('Error saving PDF: ' + error.message);
         }
     };
