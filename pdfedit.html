@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>PDF Editor & Signer</title>
+    <title>PDF Editor & Signer - High Quality</title>
     <style>
         * {
             margin: 0;
@@ -311,7 +311,7 @@
             flex-wrap: wrap;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             z-index: 100;
-            max-width: 600px;
+            max-width: 700px;
             align-items: center;
         }
         
@@ -366,6 +366,18 @@
             background: #ef4444;
         }
         
+        .undo-redo {
+            display: flex;
+            gap: 5px;
+            margin-left: 10px;
+            border-left: 1px solid #d1d5db;
+            padding-left: 10px;
+        }
+        
+        .undo-redo button {
+            background: #0f3b2c;
+        }
+        
         .zoom-controls {
             display: flex;
             gap: 5px;
@@ -379,17 +391,12 @@
             padding: 4px 8px;
             font-size: 11px;
         }
-        
-        .selected-text {
-            outline: 2px solid #d97706;
-            outline-offset: 2px;
-        }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h1>📄 PDF Sign & Edit</h1>
+    <h1>📄 PDF Sign & Edit - High Quality</h1>
     <button id="uploadBtn">📂 Upload PDF</button>
     <button id="quickSignBtn" class="btn-sign">✍️ Quick Sign (Default)</button>
     <button id="saveBtn" class="btn-primary">💾 Save PDF</button>
@@ -410,7 +417,7 @@
         ✏️ Click to add text, click text to select, then use toolbar to format<br>
         🖱️ Select Move mode to drag text anywhere<br>
         🧽 Select Eraser to cover PDF content<br>
-        🖊️ Create and save signatures, set default, then Quick Sign!
+        ↩️ Use Undo/Redo buttons to revert changes
     </div>
     <div class="canvas-container" id="canvasContainer" style="display: none;">
         <canvas id="pdfCanvas"></canvas>
@@ -496,12 +503,17 @@
         <button id="applyFormatBtn" style="background: #0f3b2c;">Apply</button>
     </div>
     
+    <div class="undo-redo">
+        <button id="undoBtn">↩️ Undo</button>
+        <button id="redoBtn">↪️ Redo</button>
+    </div>
+    
     <div class="zoom-controls">
         <span style="font-size: 11px;">Zoom:</span>
         <button id="zoomOutBtn">-</button>
         <span id="zoomPercent" style="font-size: 11px; min-width: 45px;">100%</span>
         <button id="zoomInBtn">+</button>
-        <button id="fitPageBtn">Fit Page</button>
+        <button id="fitPageBtn">Fit</button>
     </div>
     
     <div class="eraser-size" id="eraserSizeControl" style="display: none;">
@@ -511,7 +523,7 @@
     </div>
 </div>
 
-<div class="status" id="status">Ready - Click to add text, click text to select and format</div>
+<div class="status" id="status">Ready - High quality rendering</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -525,10 +537,18 @@
     let currentMode = 'text';
     let isDrawing = false;
     let isErasing = false;
+    
+    // Main data structures
     let drawings = [];
     let texts = [];
     let signatures = [];
     let whiteouts = [];
+    
+    // Undo/Redo stacks (max 10 states)
+    let undoStack = [];
+    let redoStack = [];
+    const MAX_UNDO = 10;
+    
     let currentPdfBytes = null;
     let currentPageImage = null;
     let activeTextElement = null;
@@ -545,9 +565,111 @@
     let dragOffsetX = 0, dragOffsetY = 0;
     let eraserSize = 30;
     let isPlacingSignature = false;
-    let currentScale = 1.0;
+    let currentScale = 1.2; // Higher default scale for better quality
     let currentPageNum = 1;
     let totalPages = 1;
+
+    // Save current state to undo stack
+    function saveToUndo() {
+        const state = {
+            drawings: JSON.parse(JSON.stringify(drawings)),
+            texts: JSON.parse(JSON.stringify(texts)),
+            signatures: signatures.map(s => ({ ...s, img: s.img ? s.img.src : null })),
+            whiteouts: JSON.parse(JSON.stringify(whiteouts))
+        };
+        
+        undoStack.push(state);
+        if (undoStack.length > MAX_UNDO) undoStack.shift();
+        redoStack = [];
+        
+        // Update UI
+        document.getElementById('undoBtn').style.opacity = undoStack.length > 0 ? '1' : '0.5';
+        document.getElementById('redoBtn').style.opacity = '0.5';
+    }
+    
+    // Undo last action
+    function undo() {
+        if (undoStack.length === 0) {
+            showStatus('Nothing to undo');
+            return;
+        }
+        
+        const previousState = undoStack.pop();
+        redoStack.push({
+            drawings: JSON.parse(JSON.stringify(drawings)),
+            texts: JSON.parse(JSON.stringify(texts)),
+            signatures: signatures.map(s => ({ ...s, img: s.img ? s.img.src : null })),
+            whiteouts: JSON.parse(JSON.stringify(whiteouts))
+        });
+        
+        // Restore previous state
+        drawings = previousState.drawings;
+        texts = previousState.texts;
+        whiteouts = previousState.whiteouts;
+        
+        // Restore signatures (recreate images)
+        signatures = [];
+        previousState.signatures.forEach(sig => {
+            if (sig.img) {
+                const img = new Image();
+                img.onload = () => {
+                    signatures.push({ ...sig, img: img });
+                    redrawAnnotations();
+                };
+                img.src = sig.img;
+            } else {
+                signatures.push(sig);
+            }
+        });
+        
+        selectedTextIndex = null;
+        redrawAnnotations();
+        showStatus('Undo successful');
+        
+        document.getElementById('redoBtn').style.opacity = redoStack.length > 0 ? '1' : '0.5';
+        document.getElementById('undoBtn').style.opacity = undoStack.length > 0 ? '1' : '0.5';
+    }
+    
+    // Redo last undone action
+    function redo() {
+        if (redoStack.length === 0) {
+            showStatus('Nothing to redo');
+            return;
+        }
+        
+        const nextState = redoStack.pop();
+        undoStack.push({
+            drawings: JSON.parse(JSON.stringify(drawings)),
+            texts: JSON.parse(JSON.stringify(texts)),
+            signatures: signatures.map(s => ({ ...s, img: s.img ? s.img.src : null })),
+            whiteouts: JSON.parse(JSON.stringify(whiteouts))
+        });
+        
+        drawings = nextState.drawings;
+        texts = nextState.texts;
+        whiteouts = nextState.whiteouts;
+        
+        signatures = [];
+        nextState.signatures.forEach(sig => {
+            if (sig.img) {
+                const img = new Image();
+                img.onload = () => {
+                    signatures.push({ ...sig, img: img });
+                    redrawAnnotations();
+                };
+                img.src = sig.img;
+            } else {
+                signatures.push(sig);
+            }
+        });
+        
+        selectedTextIndex = null;
+        redrawAnnotations();
+        showStatus('Redo successful');
+        
+        document.getElementById('redoBtn').style.opacity = redoStack.length > 0 ? '1' : '0.5';
+        document.getElementById('undoBtn').style.opacity = undoStack.length > 0 ? '1' : '0.5';
+    }
 
     // Load saved signatures from localStorage
     function loadSavedSignatures() {
@@ -672,6 +794,7 @@
                     height: 75
                 });
                 redrawAnnotations();
+                saveToUndo();
                 canvas.removeEventListener('click', placeSignature);
                 isPlacingSignature = false;
                 showStatus('Default signature placed');
@@ -692,6 +815,8 @@
     const saveBtn = document.getElementById('saveBtn');
     const quickSignBtn = document.getElementById('quickSignBtn');
     const clearDrawBtn = document.getElementById('clearDrawBtn');
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
     const noPdfMsg = document.getElementById('noPdfMsg');
     const canvasContainer = document.getElementById('canvasContainer');
     const sigModal = document.getElementById('sigModal');
@@ -739,7 +864,7 @@
         input.onchange = async (e) => {
             const file = e.target.files[0];
             if (file) {
-                showStatus('Loading PDF...');
+                showStatus('Loading PDF in high quality...');
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
                     currentPdfBytes = ev.target.result;
@@ -752,13 +877,15 @@
     });
 
     quickSignBtn.addEventListener('click', placeDefaultSignature);
+    undoBtn.addEventListener('click', undo);
+    redoBtn.addEventListener('click', redo);
 
     async function loadPDF(arrayBuffer) {
         try {
             pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             totalPages = pdfDoc.numPages;
             currentPageNum = 1;
-            currentScale = 1.0;
+            currentScale = 1.5; // Higher scale for better quality
             await renderPage(currentPageNum);
             noPdfMsg.style.display = 'none';
             canvasContainer.style.display = 'block';
@@ -768,7 +895,9 @@
             signatures = [];
             whiteouts = [];
             selectedTextIndex = null;
-            showStatus(`PDF loaded - ${totalPages} page(s)`);
+            undoStack = [];
+            redoStack = [];
+            showStatus(`PDF loaded - High quality rendering - ${totalPages} page(s)`);
         } catch (error) {
             console.error('Load error:', error);
             showStatus('Error loading PDF');
@@ -779,7 +908,7 @@
     async function renderPage(pageNum) {
         if (!pdfDoc) return;
         
-        showStatus(`Rendering page ${pageNum}...`);
+        showStatus(`Rendering page ${pageNum} in high quality...`);
         const page = await pdfDoc.getPage(pageNum);
         const viewport = page.getViewport({ scale: currentScale });
         
@@ -796,7 +925,7 @@
         
         redrawAnnotations();
         zoomPercent.textContent = Math.round(currentScale * 100) + '%';
-        showStatus('Ready');
+        showStatus('Ready - High quality');
     }
 
     function redrawAnnotations() {
@@ -950,6 +1079,7 @@
                     });
                 }
                 redrawAnnotations();
+                saveToUndo();
                 showStatus('Text added/updated');
             }
             input.remove();
@@ -1020,6 +1150,7 @@
             text.color = currentColor;
             text.fontString = getFontString();
             redrawAnnotations();
+            saveToUndo();
             showStatus('Format applied to selected text');
         } else {
             showStatus('No text selected. Click on a text to select it first.');
@@ -1032,6 +1163,7 @@
                 texts.splice(selectedTextIndex, 1);
                 selectedTextIndex = null;
                 redrawAnnotations();
+                saveToUndo();
                 showStatus('Text deleted');
             }
         } else {
@@ -1046,7 +1178,7 @@
     });
     
     zoomOutBtn.addEventListener('click', async () => {
-        currentScale = Math.max(currentScale - 0.25, 0.5);
+        currentScale = Math.max(currentScale - 0.25, 0.8);
         await renderPage(currentPageNum);
     });
     
@@ -1071,6 +1203,7 @@
                 color: '#dc2626',
                 width: 3
             });
+            saveToUndo();
         } else if (currentMode === 'eraser') {
             e.preventDefault();
             isErasing = true;
@@ -1082,6 +1215,7 @@
                 height: eraserSize
             });
             redrawAnnotations();
+            saveToUndo();
         } else if (currentMode === 'move') {
             e.preventDefault();
             const pos = getMousePos(e);
@@ -1125,6 +1259,12 @@
     }
 
     function stopDrawing() {
+        if ((currentMode === 'draw' && isDrawing) || (currentMode === 'eraser' && isErasing)) {
+            saveToUndo();
+        }
+        if (currentMode === 'move' && draggingText) {
+            saveToUndo();
+        }
         isDrawing = false;
         isErasing = false;
         draggingText = null;
@@ -1315,6 +1455,7 @@
                     height: 75
                 });
                 redrawAnnotations();
+                saveToUndo();
                 canvas.removeEventListener('click', placeSignature);
                 isPlacingSignature = false;
                 currentMode = 'text';
@@ -1539,6 +1680,7 @@
                 whiteouts = [];
                 selectedTextIndex = null;
                 redrawAnnotations();
+                saveToUndo();
                 showStatus('All annotations cleared');
             }
         };
