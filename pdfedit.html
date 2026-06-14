@@ -95,7 +95,7 @@
             padding: 20px;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
             position: relative;
         }
 
@@ -311,7 +311,7 @@
             flex-wrap: wrap;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             z-index: 100;
-            max-width: 550px;
+            max-width: 600px;
             align-items: center;
         }
         
@@ -364,6 +364,20 @@
         
         .text-controls button {
             background: #ef4444;
+        }
+        
+        .zoom-controls {
+            display: flex;
+            gap: 5px;
+            margin-left: 10px;
+            border-left: 1px solid #d1d5db;
+            padding-left: 10px;
+        }
+        
+        .zoom-controls button {
+            background: #0f3b2c;
+            padding: 4px 8px;
+            font-size: 11px;
         }
         
         .selected-text {
@@ -478,8 +492,16 @@
     <div class="color-preview" id="colorPreview" style="background-color: #000000;"></div>
     
     <div class="text-controls">
-        <button id="deleteTextBtn" style="background: #ef4444;">🗑️ Delete Selected</button>
-        <button id="applyFormatBtn" style="background: #0f3b2c;">Apply Format</button>
+        <button id="deleteTextBtn" style="background: #ef4444;">🗑️ Delete</button>
+        <button id="applyFormatBtn" style="background: #0f3b2c;">Apply</button>
+    </div>
+    
+    <div class="zoom-controls">
+        <span style="font-size: 11px;">Zoom:</span>
+        <button id="zoomOutBtn">-</button>
+        <span id="zoomPercent" style="font-size: 11px; min-width: 45px;">100%</span>
+        <button id="zoomInBtn">+</button>
+        <button id="fitPageBtn">Fit Page</button>
     </div>
     
     <div class="eraser-size" id="eraserSizeControl" style="display: none;">
@@ -523,6 +545,9 @@
     let dragOffsetX = 0, dragOffsetY = 0;
     let eraserSize = 30;
     let isPlacingSignature = false;
+    let currentScale = 1.0;
+    let currentPageNum = 1;
+    let totalPages = 1;
 
     // Load saved signatures from localStorage
     function loadSavedSignatures() {
@@ -533,7 +558,6 @@
         const defaultId = localStorage.getItem('defaultSignatureId');
         if (defaultId) {
             defaultSignatureId = defaultId;
-            console.log('Loaded default signature ID:', defaultSignatureId);
         }
         renderSavedSignatures();
     }
@@ -542,7 +566,6 @@
         localStorage.setItem('pdfSignatures', JSON.stringify(savedSignatures));
         if (defaultSignatureId) {
             localStorage.setItem('defaultSignatureId', defaultSignatureId);
-            console.log('Saved default signature ID:', defaultSignatureId);
         } else {
             localStorage.removeItem('defaultSignatureId');
         }
@@ -678,6 +701,10 @@
     const eraserSizeControl = document.getElementById('eraserSizeControl');
     const eraserSizeSlider = document.getElementById('eraserSize');
     const eraserSizeValue = document.getElementById('eraserSizeValue');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const fitPageBtn = document.getElementById('fitPageBtn');
+    const zoomPercent = document.getElementById('zoomPercent');
     
     const fontSelect = document.getElementById('fontSelect');
     const fontSizeSelect = document.getElementById('fontSizeSelect');
@@ -729,7 +756,10 @@
     async function loadPDF(arrayBuffer) {
         try {
             pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            await renderPage(1);
+            totalPages = pdfDoc.numPages;
+            currentPageNum = 1;
+            currentScale = 1.0;
+            await renderPage(currentPageNum);
             noPdfMsg.style.display = 'none';
             canvasContainer.style.display = 'block';
             formattingToolbar.style.display = 'flex';
@@ -737,7 +767,8 @@
             texts = [];
             signatures = [];
             whiteouts = [];
-            showStatus(`PDF loaded`);
+            selectedTextIndex = null;
+            showStatus(`PDF loaded - ${totalPages} page(s)`);
         } catch (error) {
             console.error('Load error:', error);
             showStatus('Error loading PDF');
@@ -748,9 +779,9 @@
     async function renderPage(pageNum) {
         if (!pdfDoc) return;
         
-        showStatus(`Rendering...`);
+        showStatus(`Rendering page ${pageNum}...`);
         const page = await pdfDoc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 1.5 });
+        const viewport = page.getViewport({ scale: currentScale });
         
         canvas.width = viewport.width;
         canvas.height = viewport.height;
@@ -764,6 +795,7 @@
         await new Promise(resolve => { currentPageImage.onload = resolve; });
         
         redrawAnnotations();
+        zoomPercent.textContent = Math.round(currentScale * 100) + '%';
         showStatus('Ready');
     }
 
@@ -799,7 +831,6 @@
             ctx.textBaseline = 'top';
             ctx.fillText(text.content, text.x, text.y);
             
-            // Draw selection outline if this text is selected
             if (selectedTextIndex === idx) {
                 const metrics = ctx.measureText(text.content);
                 const width = metrics.width;
@@ -979,7 +1010,6 @@
         showStatus(`Color changed`);
     });
     
-    // Apply formatting to selected text
     applyFormatBtn.addEventListener('click', () => {
         if (selectedTextIndex !== null && texts[selectedTextIndex]) {
             const text = texts[selectedTextIndex];
@@ -996,7 +1026,6 @@
         }
     });
     
-    // Delete selected text
     deleteTextBtn.addEventListener('click', () => {
         if (selectedTextIndex !== null && texts[selectedTextIndex]) {
             if (confirm('Delete this text?')) {
@@ -1008,6 +1037,26 @@
         } else {
             showStatus('No text selected. Click on a text to select it first.');
         }
+    });
+    
+    // Zoom controls
+    zoomInBtn.addEventListener('click', async () => {
+        currentScale = Math.min(currentScale + 0.25, 3.0);
+        await renderPage(currentPageNum);
+    });
+    
+    zoomOutBtn.addEventListener('click', async () => {
+        currentScale = Math.max(currentScale - 0.25, 0.5);
+        await renderPage(currentPageNum);
+    });
+    
+    fitPageBtn.addEventListener('click', async () => {
+        const container = document.querySelector('.pdf-viewer');
+        const containerWidth = container.clientWidth - 40;
+        const page = await pdfDoc.getPage(currentPageNum);
+        const originalWidth = page.getViewport({ scale: 1 }).width;
+        currentScale = containerWidth / originalWidth;
+        await renderPage(currentPageNum);
     });
 
     function startDrawing(e) {
@@ -1090,7 +1139,6 @@
     canvas.addEventListener('touchmove', draw);
     canvas.addEventListener('touchend', stopDrawing);
 
-    // Click to add text or select text
     canvas.addEventListener('click', (e) => {
         if (isPlacingSignature) return;
         
@@ -1099,9 +1147,7 @@
             const textObj = getTextAtPosition(pos.x, pos.y);
             
             if (textObj) {
-                // Select the text instead of creating new
                 selectedTextIndex = textObj.index;
-                // Load its formatting into UI
                 currentFont = textObj.text.font;
                 currentFontSize = textObj.text.fontSize;
                 isBold = textObj.text.isBold || false;
@@ -1111,14 +1157,12 @@
                 redrawAnnotations();
                 showStatus(`Text selected. Use toolbar to format or delete.`);
             } else {
-                // Create new text
                 selectedTextIndex = null;
                 createInlineTextInput(pos.x, pos.y);
             }
         }
     });
     
-    // Double-click to edit text inline
     canvas.addEventListener('dblclick', (e) => {
         if (currentMode === 'text') {
             const pos = getMousePos(e);
