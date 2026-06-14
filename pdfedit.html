@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>PDF Editor & Signer - High Res</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <meta name="theme-color" content="#1e3a5f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PDF Editor">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <title>PDF Sign & Edit - Mobile Ready</title>
     <style>
         * {
             margin: 0;
@@ -18,21 +24,24 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            position: fixed;
+            width: 100%;
         }
 
+        /* Header - Responsive */
         .header {
             background: #1e3a5f;
             color: white;
             padding: 12px 16px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
             flex-wrap: wrap;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         .header h1 {
-            font-size: 1.2rem;
+            font-size: clamp(1rem, 4vw, 1.2rem);
             flex: 1;
         }
 
@@ -40,27 +49,21 @@
         #uploadBtn {
             background: #2c5f2d;
         }
-        #uploadBtn:hover {
-            background: #1e4a1f;
-        }
+        #uploadBtn:active { background: #1e4a1f; }
 
         #quickSignBtn {
             background: #e67e22;
         }
-        #quickSignBtn:hover {
-            background: #d35400;
-        }
+        #quickSignBtn:active { background: #d35400; }
 
         #saveBtn {
             background: #27ae60;
         }
-        #saveBtn:hover {
-            background: #1e8449;
-        }
+        #saveBtn:active { background: #1e8449; }
 
         button {
             border: none;
-            padding: 10px 18px;
+            padding: 10px 16px;
             border-radius: 10px;
             color: white;
             font-weight: 600;
@@ -68,32 +71,41 @@
             cursor: pointer;
             transition: all 0.2s ease;
             touch-action: manipulation;
+            min-height: 44px;
         }
 
         button:active {
-            transform: scale(0.96);
+            transform: scale(0.97);
         }
 
+        /* Toolbar - Horizontal scroll on mobile */
         .toolbar {
             background: white;
-            padding: 10px 12px;
+            padding: 8px 12px;
             display: flex;
-            gap: 10px;
+            gap: 8px;
             overflow-x: auto;
+            overflow-y: hidden;
             border-bottom: 1px solid #d1d5db;
+            scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
         }
 
-        /* Toolbar Buttons */
+        .toolbar::-webkit-scrollbar {
+            height: 4px;
+        }
+
         .tool-btn {
             background: #e2e8f0;
             color: #1e293b;
             border: 1px solid #cbd5e1;
-            padding: 8px 16px;
-            font-size: 14px;
+            padding: 8px 14px;
+            font-size: 13px;
             font-weight: 600;
             white-space: nowrap;
             cursor: pointer;
             border-radius: 10px;
+            min-height: 44px;
         }
 
         .tool-btn.active {
@@ -102,24 +114,20 @@
             border-color: #1e3a5f;
         }
 
-        .tool-btn:hover {
-            background: #cbd5e1;
-            transform: translateY(-1px);
-        }
-
-        .tool-btn.active:hover {
-            background: #2c5282;
+        .tool-btn:active {
+            transform: scale(0.97);
         }
 
         .pdf-viewer {
             flex: 1;
             overflow: auto;
             background: #374151;
-            padding: 20px;
+            padding: 16px;
             display: flex;
             justify-content: center;
             align-items: flex-start;
             position: relative;
+            -webkit-overflow-scrolling: touch;
         }
 
         .canvas-container {
@@ -159,13 +167,16 @@
 
         .no-pdf {
             text-align: center;
-            padding: 60px 20px;
+            padding: 40px 20px;
             color: #9ca3af;
             background: white;
             border-radius: 12px;
             font-size: 16px;
+            max-width: 90%;
+            margin: auto;
         }
 
+        /* Modal - Responsive */
         .modal {
             display: none;
             position: fixed;
@@ -177,17 +188,19 @@
             justify-content: center;
             align-items: center;
             z-index: 1000;
+            padding: 16px;
         }
 
         .modal-card {
             background: white;
             border-radius: 20px;
-            width: 90%;
+            width: 100%;
             max-width: 650px;
-            padding: 24px;
+            padding: 20px;
             text-align: center;
             max-height: 85vh;
             overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         .modal-card h3 {
@@ -210,7 +223,7 @@
         }
         
         .preview-box {
-            min-height: 100px;
+            min-height: 80px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -221,7 +234,7 @@
         
         .preview-box img {
             max-width: 100%;
-            max-height: 80px;
+            max-height: 70px;
             object-fit: contain;
         }
 
@@ -250,12 +263,7 @@
             transition: 0.2s;
             text-align: center;
             position: relative;
-            min-width: 100px;
-        }
-        
-        .saved-sig-item:hover {
-            border-color: #e67e22;
-            transform: scale(1.02);
+            min-width: 90px;
         }
         
         .saved-sig-item.default {
@@ -264,21 +272,14 @@
         }
         
         .saved-sig-item img {
-            max-width: 80px;
-            max-height: 40px;
+            max-width: 70px;
+            max-height: 35px;
         }
         
         .saved-sig-item .sig-name {
-            font-size: 11px;
+            font-size: 10px;
             margin-top: 4px;
             word-break: break-word;
-        }
-        
-        .saved-sig-item button {
-            background: #ef4444;
-            padding: 4px 8px;
-            font-size: 11px;
-            margin-top: 5px;
         }
         
         .default-badge {
@@ -304,44 +305,15 @@
 
         .sig-buttons {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             margin: 16px 0;
             justify-content: center;
             flex-wrap: wrap;
         }
         
         .sig-buttons button {
-            padding: 10px 16px;
-            font-size: 14px;
-        }
-
-        /* Signature Modal Buttons */
-        #clearSigBtn {
-            background: #95a5a6;
-        }
-        #clearSigBtn:hover {
-            background: #7f8c8d;
-        }
-        
-        #saveSignatureBtn {
-            background: #27ae60;
-        }
-        #saveSignatureBtn:hover {
-            background: #1e8449;
-        }
-        
-        #setAsDefaultBtn {
-            background: #e67e22;
-        }
-        #setAsDefaultBtn:hover {
-            background: #d35400;
-        }
-        
-        #useDrawnBtn {
-            background: #3498db;
-        }
-        #useDrawnBtn:hover {
-            background: #2980b9;
+            padding: 10px 14px;
+            font-size: 13px;
         }
 
         input[type="text"], input[type="file"], input[type="color"] {
@@ -355,86 +327,82 @@
 
         .status {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            bottom: 16px;
+            right: 16px;
+            left: 16px;
             background: #1e3a5f;
             color: white;
             padding: 10px 16px;
             border-radius: 25px;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 500;
             z-index: 100;
+            text-align: center;
+            max-width: 300px;
+            margin: 0 auto;
         }
         
+        /* Responsive Formatting Toolbar */
         .formatting-toolbar {
             position: fixed;
-            bottom: 20px;
-            left: 20px;
-            right: 20px;
+            bottom: 16px;
+            left: 16px;
+            right: 16px;
             background: white;
-            padding: 12px 16px;
+            padding: 12px;
             border-radius: 16px;
             display: flex;
-            gap: 12px;
+            gap: 8px;
             flex-wrap: wrap;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             z-index: 100;
             justify-content: center;
             align-items: center;
+            max-height: 40vh;
+            overflow-y: auto;
         }
         
-        /* Formatting Toolbar Buttons */
         .formatting-toolbar button {
-            background: #e2e8f0;
-            color: #1e293b;
-            padding: 10px 16px;
-            font-size: 14px;
+            background: #1e3a5f;
+            color: white;
+            padding: 10px 14px;
+            font-size: 13px;
             font-weight: 600;
             border-radius: 10px;
         }
         
         .formatting-toolbar button.active {
-            background: #1e3a5f;
+            background: #e67e22;
             color: white;
-        }
-        
-        .formatting-toolbar button:hover {
-            background: #cbd5e1;
-            transform: translateY(-1px);
-        }
-        
-        .formatting-toolbar button.active:hover {
-            background: #2c5282;
         }
         
         .formatting-toolbar select, .formatting-toolbar input {
             padding: 10px 12px;
             border-radius: 10px;
             border: 1px solid #cbd5e1;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
             background: white;
         }
         
         .formatting-toolbar select {
-            min-width: 100px;
+            min-width: 90px;
             cursor: pointer;
         }
         
         .eraser-size {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-left: 10px;
+            gap: 8px;
         }
         
         .eraser-size input {
-            width: 120px;
+            width: 100px;
             margin: 0;
         }
         
         .eraser-size span {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 500;
         }
         
@@ -448,103 +416,139 @@
         
         .text-controls {
             display: flex;
-            gap: 10px;
-            margin-left: 10px;
-            border-left: 2px solid #e2e8f0;
-            padding-left: 15px;
+            gap: 8px;
+            flex-wrap: wrap;
         }
         
         #deleteTextBtn {
             background: #ef4444;
             color: white;
         }
-        #deleteTextBtn:hover {
-            background: #dc2626;
-        }
         
         #applyFormatBtn {
-            background: #3498db;
+            background: #27ae60;
             color: white;
-        }
-        #applyFormatBtn:hover {
-            background: #2980b9;
         }
         
         .undo-redo {
             display: flex;
-            gap: 10px;
-            margin-left: 10px;
-            border-left: 2px solid #e2e8f0;
-            padding-left: 15px;
+            gap: 8px;
         }
         
         #undoBtn, #redoBtn {
             background: #1e3a5f;
             color: white;
-            font-size: 14px;
-        }
-        #undoBtn:hover, #redoBtn:hover {
-            background: #2c5282;
         }
         
         .zoom-controls {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
-            margin-left: 10px;
-            border-left: 2px solid #e2e8f0;
-            padding-left: 15px;
+            flex-wrap: wrap;
         }
         
         .zoom-controls button {
             background: #1e3a5f;
-            padding: 8px 16px;
-            font-size: 14px;
+            color: white;
+            padding: 8px 14px;
             font-weight: bold;
-        }
-        .zoom-controls button:hover {
-            background: #2c5282;
         }
         
         .zoom-controls span {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
-            min-width: 60px;
+            min-width: 50px;
             text-align: center;
+            color: #1e293b;
         }
         
         #clearDrawBtn {
             background: #ef4444;
             color: white;
         }
-        #clearDrawBtn:hover {
-            background: #dc2626;
+        
+        /* Install prompt */
+        .install-prompt {
+            position: fixed;
+            bottom: 80px;
+            left: 16px;
+            right: 16px;
+            background: #1e3a5f;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            z-index: 200;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
         
+        .install-prompt button {
+            background: #e67e22;
+            padding: 8px 16px;
+        }
+        
+        .hide-install {
+            display: none;
+        }
+        
+        /* Responsive adjustments */
         @media (max-width: 768px) {
-            .formatting-toolbar {
-                bottom: 10px;
-                left: 10px;
-                right: 10px;
-                padding: 10px;
-                gap: 8px;
-            }
-            
-            .formatting-toolbar button,
-            .formatting-toolbar select,
-            .undo-redo button,
-            .zoom-controls button,
-            .text-controls button {
+            .header button {
                 padding: 8px 12px;
                 font-size: 12px;
             }
             
             .tool-btn {
-                padding: 6px 12px;
+                padding: 8px 12px;
                 font-size: 12px;
             }
             
-            .header button {
+            .formatting-toolbar {
+                padding: 10px;
+                gap: 6px;
+            }
+            
+            .formatting-toolbar button,
+            .formatting-toolbar select {
+                padding: 8px 10px;
+                font-size: 12px;
+            }
+            
+            .zoom-controls button {
+                padding: 6px 12px;
+            }
+            
+            .status {
+                bottom: 10px;
+                right: 10px;
+                left: 10px;
+                font-size: 11px;
+                padding: 8px 12px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .header {
+                padding: 10px 12px;
+            }
+            
+            .toolbar {
+                padding: 6px 10px;
+            }
+            
+            .tool-btn {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+            
+            .modal-card {
+                padding: 16px;
+            }
+            
+            .sig-buttons button {
                 padding: 8px 12px;
                 font-size: 12px;
             }
@@ -556,76 +560,81 @@
 <div class="header">
     <h1>📄 PDF Sign & Edit</h1>
     <button id="uploadBtn">📂 Upload PDF</button>
-    <button id="quickSignBtn" class="btn-sign">✍️ Quick Sign</button>
+    <button id="quickSignBtn">✍️ Quick Sign</button>
     <button id="saveBtn">💾 Save PDF</button>
 </div>
 
 <div class="toolbar">
     <button class="tool-btn active" data-mode="text">✏️ Add Text</button>
-    <button class="tool-btn" data-mode="move">🖱️ Move Items</button>
+    <button class="tool-btn" data-mode="move">🖱️ Move</button>
     <button class="tool-btn" data-mode="draw">🖌️ Draw</button>
     <button class="tool-btn" data-mode="eraser">🧽 Eraser</button>
     <button class="tool-btn" data-mode="sign">🖊️ Signatures</button>
-    <button class="tool-btn" id="clearDrawBtn">🗑️ Clear All</button>
+    <button class="tool-btn" id="clearDrawBtn">🗑️ Clear</button>
 </div>
 
 <div class="pdf-viewer" id="pdfViewer">
     <div class="no-pdf" id="noPdfMsg">
         📁 Click "Upload PDF" to start<br><br>
         ✏️ Click to add text<br>
-        🖱️ Move mode - drag text OR signatures<br>
-        🖊️ Create high-resolution signatures<br>
-        ✍️ Set default signature, then Quick Sign!
+        🖱️ Move mode - drag items<br>
+        🖊️ Create & save signatures
     </div>
     <div class="canvas-container" id="canvasContainer" style="display: none;">
         <canvas id="pdfCanvas"></canvas>
     </div>
 </div>
 
+<!-- Install Prompt -->
+<div id="installPrompt" class="install-prompt hide-install">
+    <span>📲 Install App for better experience</span>
+    <button id="installBtn">Install</button>
+</div>
+
 <!-- Signature Modal -->
 <div id="sigModal" class="modal">
     <div class="modal-card">
-        <h3>✍️ High Resolution Signature Manager</h3>
+        <h3>✍️ Signature Manager</h3>
         
         <div class="signature-preview">
-            <p>Current signature preview:</p>
+            <p>Preview:</p>
             <div class="preview-box" id="signaturePreview">
-                <span style="color: #9ca3af;">No signature yet</span>
+                <span>No signature yet</span>
             </div>
         </div>
         
-        <div class="saved-signatures" id="savedSignaturesSection">
-            <p>Saved Signatures (click to load, ⭐ = default):</p>
+        <div class="saved-signatures">
+            <p>Saved Signatures:</p>
             <div class="saved-signatures-grid" id="savedSignaturesGrid"></div>
-            <button id="clearAllSignaturesBtn">Clear All Saved</button>
+            <button id="clearAllSignaturesBtn" style="margin-top: 8px; background: #ef4444;">Clear All</button>
         </div>
         
-        <p style="margin: 8px 0; font-weight: 600;">1. Draw signature (high resolution):</p>
+        <p style="margin: 8px 0; font-weight: 600;">1. Draw signature:</p>
         <canvas id="sigCanvas" width="600" height="300" style="width:100%; height:auto; border:2px solid #e5e7eb; border-radius:12px;"></canvas>
         <div class="sig-buttons">
-            <button id="clearSigBtn">Clear Drawing</button>
-            <button id="saveSignatureBtn">Save Signature</button>
-            <button id="setAsDefaultBtn">⭐ Set as Default</button>
-            <button id="useDrawnBtn">Place Now</button>
+            <button id="clearSigBtn">Clear</button>
+            <button id="saveSignatureBtn" style="background: #27ae60;">Save</button>
+            <button id="setAsDefaultBtn" style="background: #e67e22;">⭐ Set Default</button>
+            <button id="useDrawnBtn" style="background: #3498db;">Place</button>
         </div>
         
-        <p style="margin: 16px 0 8px; font-weight: 600;">2. OR type signature:</p>
+        <p style="margin: 16px 0 8px; font-weight: 600;">2. Type signature:</p>
         <input type="text" id="typedSignature" placeholder="Type your name">
         <div class="sig-buttons">
-            <button id="saveTypedBtn">Save Typed</button>
-            <button id="setTypedAsDefaultBtn">⭐ Set as Default</button>
-            <button id="useTypedBtn">Place Now</button>
+            <button id="saveTypedBtn" style="background: #27ae60;">Save</button>
+            <button id="setTypedAsDefaultBtn" style="background: #e67e22;">⭐ Set Default</button>
+            <button id="useTypedBtn" style="background: #3498db;">Place</button>
         </div>
         
-        <p style="margin: 16px 0 8px; font-weight: 600;">3. OR upload high-res signature image:</p>
+        <p style="margin: 16px 0 8px; font-weight: 600;">3. Upload image:</p>
         <input type="file" id="uploadSignatureFile" accept="image/png,image/jpeg,image/jpg,image/gif">
         <div class="sig-buttons">
-            <button id="saveUploadedBtn">Save Uploaded</button>
-            <button id="setUploadedAsDefaultBtn">⭐ Set as Default</button>
-            <button id="useUploadedBtn">Place Now</button>
+            <button id="saveUploadedBtn" style="background: #27ae60;">Save</button>
+            <button id="setUploadedAsDefaultBtn" style="background: #e67e22;">⭐ Set Default</button>
+            <button id="useUploadedBtn" style="background: #3498db;">Place</button>
         </div>
         
-        <div class="sig-buttons" style="margin-top: 16px;">
+        <div class="sig-buttons">
             <button id="cancelSigBtn">Close</button>
         </div>
     </div>
@@ -636,7 +645,7 @@
     <select id="fontSelect">
         <option value="Arial">Arial</option>
         <option value="Georgia">Georgia</option>
-        <option value="Courier New">Courier New</option>
+        <option value="Courier New">Courier</option>
         <option value="Verdana">Verdana</option>
         <option value="cursive">Cursive</option>
     </select>
@@ -662,7 +671,7 @@
     
     <div class="text-controls">
         <button id="deleteTextBtn">🗑️ Delete</button>
-        <button id="applyFormatBtn">Apply Format</button>
+        <button id="applyFormatBtn">Apply</button>
     </div>
     
     <div class="undo-redo">
@@ -675,11 +684,11 @@
         <button id="zoomOutBtn">−</button>
         <span id="zoomPercent">100%</span>
         <button id="zoomInBtn">+</button>
-        <button id="fitPageBtn">Fit Page</button>
+        <button id="fitPageBtn">Fit</button>
     </div>
     
     <div class="eraser-size" id="eraserSizeControl" style="display: none;">
-        <span>Eraser Size:</span>
+        <span>Size:</span>
         <input type="range" id="eraserSize" min="10" max="80" value="30">
         <span id="eraserSizeValue">30px</span>
     </div>
@@ -692,6 +701,37 @@
 
 <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    // PWA Installation
+    let deferredPrompt;
+    const installPrompt = document.getElementById('installPrompt');
+    const installBtn = document.getElementById('installBtn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installPrompt.classList.remove('hide-install');
+    });
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                installPrompt.classList.add('hide-install');
+            }
+            deferredPrompt = null;
+        }
+    });
+
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').then(reg => {
+            console.log('SW registered:', reg);
+        }).catch(err => {
+            console.log('SW error:', err);
+        });
+    }
 
     let pdfDoc = null;
     let canvas = document.getElementById('pdfCanvas');
@@ -859,7 +899,7 @@
         grid.innerHTML = '';
         
         if (savedSignatures.length === 0) {
-            grid.innerHTML = '<div style="width:100%; text-align:center; color:#9ca3af; padding:10px;">No saved signatures. Create one above!</div>';
+            grid.innerHTML = '<div style="width:100%; text-align:center; color:#9ca3af; padding:10px;">No saved signatures</div>';
             return;
         }
         
@@ -871,10 +911,10 @@
             }
             div.innerHTML = `
                 ${defaultSignatureId === sig.id ? '<div class="default-badge">⭐ Default</div>' : ''}
-                <img src="${sig.data}" style="max-width:80px; max-height:40px">
+                <img src="${sig.data}">
                 <div class="sig-name">${sig.name}</div>
                 <div style="display: flex; gap: 4px; margin-top: 5px; justify-content: center;">
-                    <button class="set-default-sig" data-index="${index}" style="background: #e67e22; padding: 4px 8px;">⭐ Default</button>
+                    <button class="set-default-sig" data-index="${index}" style="background: #e67e22; padding: 4px 8px;">⭐</button>
                     <button class="delete-sig" data-index="${index}" style="background: #ef4444; padding: 4px 8px;">🗑️</button>
                     <button class="place-sig" data-index="${index}" style="background: #3498db; padding: 4px 8px;">Place</button>
                 </div>
@@ -902,7 +942,7 @@
     function setAsDefault(index) {
         defaultSignatureId = savedSignatures[index].id;
         saveSignaturesToStorage();
-        showStatus(`✅ "${savedSignatures[index].name}" is now your DEFAULT signature!`);
+        showStatus(`✅ "${savedSignatures[index].name}" is now DEFAULT!`);
     }
     
     function deleteSignature(index) {
@@ -918,7 +958,7 @@
     function useSavedSignature(dataURL) {
         currentSignatureImage = dataURL;
         updatePreview();
-        showStatus('Signature loaded! Click "Place Now" to put on PDF');
+        showStatus('Signature loaded! Click "Place"');
     }
     
     function useSavedSignatureAndPlace(dataURL) {
@@ -948,7 +988,7 @@
             return;
         }
         if (!defaultSignatureId) {
-            alert('No default signature set.\n\nGo to Signatures → Create a signature → Click "Set as Default"');
+            alert('No default signature set.\n\nGo to Signatures → Create a signature → Click "Set Default"');
             return;
         }
         
@@ -1005,11 +1045,10 @@
 
     function showStatus(msg) {
         statusDiv.textContent = msg;
-        console.log('Status:', msg);
         setTimeout(() => {
             if (statusDiv.textContent === msg) {
                 if (currentMode === 'text') statusDiv.textContent = 'Click to add text';
-                else if (currentMode === 'move') statusDiv.textContent = 'Drag text or signatures to move';
+                else if (currentMode === 'move') statusDiv.textContent = 'Drag to move items';
                 else if (currentMode === 'draw') statusDiv.textContent = 'Draw on PDF';
                 else if (currentMode === 'eraser') statusDiv.textContent = 'Drag to erase';
                 else statusDiv.textContent = 'Ready';
@@ -1071,7 +1110,7 @@
     async function renderPage(pageNum) {
         if (!pdfDoc) return;
         
-        showStatus(`Rendering page ${pageNum}...`);
+        showStatus(`Rendering...`);
         const page = await pdfDoc.getPage(pageNum);
         const viewport = page.getViewport({ scale: currentScale });
         
@@ -1328,7 +1367,7 @@
             saveToUndo();
             showStatus('Format applied');
         } else {
-            showStatus('Click on text first to select it');
+            showStatus('Select text first');
         }
     });
     
@@ -1346,7 +1385,7 @@
             saveToUndo();
             showStatus('Signature deleted');
         } else {
-            showStatus('Click on text or signature first to select it');
+            showStatus('Select item first');
         }
     });
     
@@ -1532,12 +1571,12 @@
                 selectedSignatureIndex = sigItem.index;
                 selectedTextIndex = null;
                 redrawAnnotations();
-                showStatus('Signature selected - drag to move, or click Delete');
+                showStatus('Signature selected');
             } else if (textItem) {
                 selectedTextIndex = textItem.index;
                 selectedSignatureIndex = null;
                 redrawAnnotations();
-                showStatus('Text selected - drag to move, or use format toolbar');
+                showStatus('Text selected');
             } else {
                 selectedTextIndex = null;
                 selectedSignatureIndex = null;
@@ -1576,16 +1615,12 @@
             
             if (currentMode === 'text') {
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
-                showStatus('Click to add text, double-click to edit');
             } else if (currentMode === 'move') {
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
-                showStatus('Click text or signature to select, then drag to move');
             } else if (currentMode === 'draw') {
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
-                showStatus('Draw on the PDF');
             } else if (currentMode === 'eraser') {
                 if (eraserSizeControl) eraserSizeControl.style.display = 'flex';
-                showStatus('Drag to cover PDF content with white');
             } else if (currentMode === 'sign') {
                 openSignatureModal();
             }
@@ -1611,11 +1646,9 @@
             previewBox.innerHTML = '';
             const img = document.createElement('img');
             img.src = currentSignatureImage;
-            img.style.maxWidth = '100%';
-            img.style.maxHeight = '80px';
             previewBox.appendChild(img);
         } else {
-            previewBox.innerHTML = '<span style="color: #9ca3af;">No signature loaded</span>';
+            previewBox.innerHTML = '<span>No signature loaded</span>';
         }
     }
 
@@ -1690,7 +1723,7 @@
         }
         
         isPlacingSignature = true;
-        showStatus('Click on PDF to place high-resolution signature');
+        showStatus('Click on PDF to place signature');
         sigModal.style.display = 'none';
         
         const placeSignature = (e) => {
@@ -1716,7 +1749,7 @@
                 currentMode = 'text';
                 document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
                 document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
-                showStatus('High-res signature placed');
+                showStatus('Signature placed');
             };
             img.src = dataURL;
         };
@@ -1913,7 +1946,7 @@
                 reader.onload = (ev) => {
                     currentSignatureImage = ev.target.result;
                     updatePreview();
-                    showStatus('High-res signature uploaded! Click "Save" or "Set as Default"');
+                    showStatus('Signature uploaded!');
                 };
                 reader.readAsDataURL(file);
             }
@@ -1922,7 +1955,7 @@
 
     if (clearDrawBtn) {
         clearDrawBtn.onclick = () => {
-            if (confirm('Clear all annotations (text, signatures, drawings)?')) {
+            if (confirm('Clear all annotations?')) {
                 drawings = [];
                 texts = [];
                 signatures = [];
