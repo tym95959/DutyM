@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>PDF Editor & Signer - High Quality</title>
+    <title>PDF Editor & Signer - Signatures Fixed</title>
     <style>
         * {
             margin: 0;
@@ -225,6 +225,7 @@
             transition: 0.2s;
             text-align: center;
             position: relative;
+            min-width: 100px;
         }
         
         .saved-sig-item:hover {
@@ -240,6 +241,12 @@
         .saved-sig-item img {
             max-width: 80px;
             max-height: 40px;
+        }
+        
+        .saved-sig-item .sig-name {
+            font-size: 10px;
+            margin-top: 4px;
+            word-break: break-word;
         }
         
         .saved-sig-item button {
@@ -311,7 +318,7 @@
             flex-wrap: wrap;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             z-index: 100;
-            max-width: 700px;
+            max-width: 750px;
             align-items: center;
         }
         
@@ -396,9 +403,9 @@
 <body>
 
 <div class="header">
-    <h1>📄 PDF Sign & Edit - High Quality</h1>
+    <h1>📄 PDF Sign & Edit</h1>
     <button id="uploadBtn">📂 Upload PDF</button>
-    <button id="quickSignBtn" class="btn-sign">✍️ Quick Sign (Default)</button>
+    <button id="quickSignBtn" class="btn-sign">✍️ Quick Sign</button>
     <button id="saveBtn" class="btn-primary">💾 Save PDF</button>
 </div>
 
@@ -406,18 +413,17 @@
     <button class="tool-btn active" data-mode="text">✏️ Add Text</button>
     <button class="tool-btn" data-mode="move">🖱️ Move Text</button>
     <button class="tool-btn" data-mode="draw">🖌️ Draw</button>
-    <button class="tool-btn" data-mode="eraser">🧽 Eraser/Whiteout</button>
-    <button class="tool-btn" data-mode="sign">🖊️ Manage Signatures</button>
+    <button class="tool-btn" data-mode="eraser">🧽 Eraser</button>
+    <button class="tool-btn" data-mode="sign">🖊️ Signatures</button>
     <button class="tool-btn" id="clearDrawBtn">🗑️ Clear All</button>
 </div>
 
 <div class="pdf-viewer" id="pdfViewer">
     <div class="no-pdf" id="noPdfMsg">
         📁 Click "Upload PDF" to start<br><br>
-        ✏️ Click to add text, click text to select, then use toolbar to format<br>
-        🖱️ Select Move mode to drag text anywhere<br>
-        🧽 Select Eraser to cover PDF content<br>
-        ↩️ Use Undo/Redo buttons to revert changes
+        ✏️ Click to add text, click text to select and format<br>
+        🖊️ Go to Signatures to create, save, and set default signature<br>
+        ✍️ Then use Quick Sign button to place it anywhere!
     </div>
     <div class="canvas-container" id="canvasContainer" style="display: none;">
         <canvas id="pdfCanvas"></canvas>
@@ -427,7 +433,7 @@
 <!-- Signature Modal -->
 <div id="sigModal" class="modal">
     <div class="modal-card">
-        <h3>✍️ Manage Signatures</h3>
+        <h3>✍️ Signature Manager</h3>
         
         <div class="signature-preview">
             <p>Current signature preview:</p>
@@ -437,31 +443,35 @@
         </div>
         
         <div class="saved-signatures" id="savedSignaturesSection">
-            <p>Saved Signatures (click to use, ⭐ to set default):</p>
+            <p>Saved Signatures (click to load, ⭐ = default):</p>
             <div class="saved-signatures-grid" id="savedSignaturesGrid"></div>
             <button id="clearAllSignaturesBtn" style="margin-top: 8px; background: #ef4444; font-size: 12px;">Clear All Saved</button>
         </div>
         
-        <p style="margin: 8px 0;">Draw signature:</p>
+        <p style="margin: 8px 0;">1. Draw signature:</p>
         <canvas id="sigCanvas" width="400" height="200"></canvas>
         <div class="sig-buttons">
             <button id="clearSigBtn">Clear Drawing</button>
             <button id="saveSignatureBtn" class="btn-primary">Save Signature</button>
             <button id="setAsDefaultBtn">⭐ Set as Default</button>
-            <button id="useDrawnBtn">Use & Place</button>
+            <button id="useDrawnBtn">Place Now</button>
         </div>
         
-        <p style="margin: 16px 0 8px;">— OR type signature —</p>
+        <p style="margin: 16px 0 8px;">2. OR type signature:</p>
         <input type="text" id="typedSignature" placeholder="Type your name">
-        <button id="saveTypedBtn">Save Typed Signature</button>
-        <button id="setTypedAsDefaultBtn">⭐ Set Typed as Default</button>
-        <button id="useTypedBtn">Use & Place Typed</button>
+        <div class="sig-buttons">
+            <button id="saveTypedBtn">Save Typed</button>
+            <button id="setTypedAsDefaultBtn">⭐ Set as Default</button>
+            <button id="useTypedBtn">Place Now</button>
+        </div>
         
-        <p style="margin: 16px 0 8px;">— OR upload signature image —</p>
+        <p style="margin: 16px 0 8px;">3. OR upload signature image:</p>
         <input type="file" id="uploadSignatureFile" accept="image/png,image/jpeg,image/jpg,image/gif">
-        <button id="saveUploadedBtn">Save Uploaded Signature</button>
-        <button id="setUploadedAsDefaultBtn">⭐ Set Uploaded as Default</button>
-        <button id="useUploadedBtn">Use & Place Uploaded</button>
+        <div class="sig-buttons">
+            <button id="saveUploadedBtn">Save Uploaded</button>
+            <button id="setUploadedAsDefaultBtn">⭐ Set as Default</button>
+            <button id="useUploadedBtn">Place Now</button>
+        </div>
         
         <div class="sig-buttons" style="margin-top: 16px;">
             <button id="cancelSigBtn">Close</button>
@@ -517,13 +527,13 @@
     </div>
     
     <div class="eraser-size" id="eraserSizeControl" style="display: none;">
-        <span>Eraser:</span>
+        <span>Size:</span>
         <input type="range" id="eraserSize" min="10" max="80" value="30">
         <span id="eraserSizeValue">30px</span>
     </div>
 </div>
 
-<div class="status" id="status">Ready - High quality rendering</div>
+<div class="status" id="status">Ready</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -538,13 +548,11 @@
     let isDrawing = false;
     let isErasing = false;
     
-    // Main data structures
     let drawings = [];
     let texts = [];
     let signatures = [];
     let whiteouts = [];
     
-    // Undo/Redo stacks (max 10 states)
     let undoStack = [];
     let redoStack = [];
     const MAX_UNDO = 10;
@@ -565,58 +573,58 @@
     let dragOffsetX = 0, dragOffsetY = 0;
     let eraserSize = 30;
     let isPlacingSignature = false;
-    let currentScale = 1.2; // Higher default scale for better quality
+    let currentScale = 1.5;
     let currentPageNum = 1;
     let totalPages = 1;
 
-    // Save current state to undo stack
     function saveToUndo() {
         const state = {
             drawings: JSON.parse(JSON.stringify(drawings)),
             texts: JSON.parse(JSON.stringify(texts)),
-            signatures: signatures.map(s => ({ ...s, img: s.img ? s.img.src : null })),
+            signatures: signatures.map(s => ({ x: s.x, y: s.y, width: s.width, height: s.height, imgSrc: s.img ? s.img.src : null })),
             whiteouts: JSON.parse(JSON.stringify(whiteouts))
         };
-        
         undoStack.push(state);
         if (undoStack.length > MAX_UNDO) undoStack.shift();
         redoStack = [];
-        
-        // Update UI
-        document.getElementById('undoBtn').style.opacity = undoStack.length > 0 ? '1' : '0.5';
-        document.getElementById('redoBtn').style.opacity = '0.5';
+        updateUndoRedoButtons();
     }
     
-    // Undo last action
+    function updateUndoRedoButtons() {
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        if (undoBtn) undoBtn.style.opacity = undoStack.length > 0 ? '1' : '0.5';
+        if (redoBtn) redoBtn.style.opacity = redoStack.length > 0 ? '1' : '0.5';
+    }
+    
     function undo() {
         if (undoStack.length === 0) {
             showStatus('Nothing to undo');
             return;
         }
         
-        const previousState = undoStack.pop();
-        redoStack.push({
+        const currentState = {
             drawings: JSON.parse(JSON.stringify(drawings)),
             texts: JSON.parse(JSON.stringify(texts)),
-            signatures: signatures.map(s => ({ ...s, img: s.img ? s.img.src : null })),
+            signatures: signatures.map(s => ({ x: s.x, y: s.y, width: s.width, height: s.height, imgSrc: s.img ? s.img.src : null })),
             whiteouts: JSON.parse(JSON.stringify(whiteouts))
-        });
+        };
+        redoStack.push(currentState);
         
-        // Restore previous state
+        const previousState = undoStack.pop();
         drawings = previousState.drawings;
         texts = previousState.texts;
         whiteouts = previousState.whiteouts;
         
-        // Restore signatures (recreate images)
         signatures = [];
         previousState.signatures.forEach(sig => {
-            if (sig.img) {
+            if (sig.imgSrc) {
                 const img = new Image();
                 img.onload = () => {
-                    signatures.push({ ...sig, img: img });
+                    signatures.push({ img: img, x: sig.x, y: sig.y, width: sig.width, height: sig.height });
                     redrawAnnotations();
                 };
-                img.src = sig.img;
+                img.src = sig.imgSrc;
             } else {
                 signatures.push(sig);
             }
@@ -624,40 +632,38 @@
         
         selectedTextIndex = null;
         redrawAnnotations();
-        showStatus('Undo successful');
-        
-        document.getElementById('redoBtn').style.opacity = redoStack.length > 0 ? '1' : '0.5';
-        document.getElementById('undoBtn').style.opacity = undoStack.length > 0 ? '1' : '0.5';
+        showStatus('Undo');
+        updateUndoRedoButtons();
     }
     
-    // Redo last undone action
     function redo() {
         if (redoStack.length === 0) {
             showStatus('Nothing to redo');
             return;
         }
         
-        const nextState = redoStack.pop();
-        undoStack.push({
+        const currentState = {
             drawings: JSON.parse(JSON.stringify(drawings)),
             texts: JSON.parse(JSON.stringify(texts)),
-            signatures: signatures.map(s => ({ ...s, img: s.img ? s.img.src : null })),
+            signatures: signatures.map(s => ({ x: s.x, y: s.y, width: s.width, height: s.height, imgSrc: s.img ? s.img.src : null })),
             whiteouts: JSON.parse(JSON.stringify(whiteouts))
-        });
+        };
+        undoStack.push(currentState);
         
+        const nextState = redoStack.pop();
         drawings = nextState.drawings;
         texts = nextState.texts;
         whiteouts = nextState.whiteouts;
         
         signatures = [];
         nextState.signatures.forEach(sig => {
-            if (sig.img) {
+            if (sig.imgSrc) {
                 const img = new Image();
                 img.onload = () => {
-                    signatures.push({ ...sig, img: img });
+                    signatures.push({ img: img, x: sig.x, y: sig.y, width: sig.width, height: sig.height });
                     redrawAnnotations();
                 };
-                img.src = sig.img;
+                img.src = sig.imgSrc;
             } else {
                 signatures.push(sig);
             }
@@ -665,13 +671,10 @@
         
         selectedTextIndex = null;
         redrawAnnotations();
-        showStatus('Redo successful');
-        
-        document.getElementById('redoBtn').style.opacity = redoStack.length > 0 ? '1' : '0.5';
-        document.getElementById('undoBtn').style.opacity = undoStack.length > 0 ? '1' : '0.5';
+        showStatus('Redo');
+        updateUndoRedoButtons();
     }
 
-    // Load saved signatures from localStorage
     function loadSavedSignatures() {
         const saved = localStorage.getItem('pdfSignatures');
         if (saved) {
@@ -698,6 +701,12 @@
         const grid = document.getElementById('savedSignaturesGrid');
         if (!grid) return;
         grid.innerHTML = '';
+        
+        if (savedSignatures.length === 0) {
+            grid.innerHTML = '<div style="width:100%; text-align:center; color:#9ca3af; padding:10px;">No saved signatures. Create one above!</div>';
+            return;
+        }
+        
         savedSignatures.forEach((sig, index) => {
             const div = document.createElement('div');
             div.className = 'saved-sig-item';
@@ -707,28 +716,40 @@
             div.innerHTML = `
                 ${defaultSignatureId === sig.id ? '<div class="default-badge">⭐ Default</div>' : ''}
                 <img src="${sig.data}" style="max-width:80px; max-height:40px">
-                <div style="font-size:10px; margin-top:4px;">${sig.name}</div>
-                <div style="display: flex; gap: 4px; margin-top: 5px;">
-                    <button onclick="event.stopPropagation(); setAsDefault(${index})" style="background: #d97706; padding: 2px 6px;">⭐</button>
-                    <button onclick="event.stopPropagation(); deleteSignature(${index})" style="background: #ef4444; padding: 2px 6px;">🗑️</button>
+                <div class="sig-name">${sig.name}</div>
+                <div style="display: flex; gap: 4px; margin-top: 5px; justify-content: center;">
+                    <button class="set-default-sig" data-index="${index}" style="background: #d97706; padding: 2px 8px;">⭐ Default</button>
+                    <button class="delete-sig" data-index="${index}" style="background: #ef4444; padding: 2px 8px;">🗑️</button>
+                    <button class="place-sig" data-index="${index}" style="background: #0f3b2c; padding: 2px 8px;">Place</button>
                 </div>
             `;
-            div.onclick = (e) => {
-                if (e.target.tagName !== 'BUTTON') {
-                    useSavedSignature(sig.data);
-                }
+            
+            div.querySelector('.set-default-sig')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setAsDefault(index);
+            });
+            div.querySelector('.delete-sig')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteSignature(index);
+            });
+            div.querySelector('.place-sig')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                useSavedSignatureAndPlace(sig.data);
+            });
+            div.onclick = () => {
+                useSavedSignature(sig.data);
             };
             grid.appendChild(div);
         });
     }
     
-    window.setAsDefault = function(index) {
+    function setAsDefault(index) {
         defaultSignatureId = savedSignatures[index].id;
         saveSignaturesToStorage();
-        showStatus(`"${savedSignatures[index].name}" set as default signature`);
-    };
+        showStatus(`✅ "${savedSignatures[index].name}" is now your DEFAULT signature! Use Quick Sign button.`);
+    }
     
-    window.deleteSignature = function(index) {
+    function deleteSignature(index) {
         const sigId = savedSignatures[index].id;
         savedSignatures.splice(index, 1);
         if (defaultSignatureId === sigId) {
@@ -736,19 +757,23 @@
         }
         saveSignaturesToStorage();
         showStatus('Signature deleted');
-    };
+    }
     
     function useSavedSignature(dataURL) {
         currentSignatureImage = dataURL;
         updatePreview();
-        showStatus('Signature loaded! Click "Use & Place" to put on PDF');
+        showStatus('Signature loaded! Click "Place Now" to put on PDF');
+    }
+    
+    function useSavedSignatureAndPlace(dataURL) {
+        placeSignatureOnPDF(dataURL);
     }
     
     function addSavedSignature(dataURL, name) {
         const id = 'sig_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         savedSignatures.push({ id: id, data: dataURL, name: name });
         saveSignaturesToStorage();
-        showStatus('Signature saved!');
+        showStatus(`✅ "${name}" saved!`);
         return id;
     }
     
@@ -757,7 +782,7 @@
         savedSignatures.push({ id: id, data: dataURL, name: name });
         defaultSignatureId = id;
         saveSignaturesToStorage();
-        showStatus(`✅ "${name}" saved and set as DEFAULT! Use "Quick Sign" button`);
+        showStatus(`✅ "${name}" saved and set as DEFAULT! Use Quick Sign button.`);
         return id;
     }
     
@@ -767,7 +792,7 @@
             return;
         }
         if (!defaultSignatureId) {
-            alert('No default signature set. Please go to Manage Signatures and set a default signature (click ⭐ on any signature)');
+            alert('No default signature set.\n\nGo to Signatures → Create a signature → Click "Set as Default" or click ⭐ on any saved signature.');
             return;
         }
         
@@ -779,29 +804,7 @@
             return;
         }
         
-        isPlacingSignature = true;
-        showStatus('Click on PDF to place default signature');
-        
-        const placeSignature = (e) => {
-            const pos = getMousePos(e);
-            const img = new Image();
-            img.onload = () => {
-                signatures.push({
-                    img: img,
-                    x: pos.x - 75,
-                    y: pos.y - 37,
-                    width: 150,
-                    height: 75
-                });
-                redrawAnnotations();
-                saveToUndo();
-                canvas.removeEventListener('click', placeSignature);
-                isPlacingSignature = false;
-                showStatus('Default signature placed');
-            };
-            img.src = defaultSig.data;
-        };
-        canvas.addEventListener('click', placeSignature);
+        placeSignatureOnPDF(defaultSig.data);
     }
 
     function getFontString() {
@@ -846,15 +849,16 @@
 
     function showStatus(msg) {
         statusDiv.textContent = msg;
+        console.log('Status:', msg);
         setTimeout(() => {
             if (statusDiv.textContent === msg) {
-                if (currentMode === 'text') statusDiv.textContent = 'Click to add text, click text to select and format';
-                else if (currentMode === 'move') statusDiv.textContent = 'Drag any text to move it';
-                else if (currentMode === 'draw') statusDiv.textContent = 'Draw on the PDF';
-                else if (currentMode === 'eraser') statusDiv.textContent = 'Click and drag to cover PDF content';
+                if (currentMode === 'text') statusDiv.textContent = 'Click to add text';
+                else if (currentMode === 'move') statusDiv.textContent = 'Drag text to move';
+                else if (currentMode === 'draw') statusDiv.textContent = 'Draw on PDF';
+                else if (currentMode === 'eraser') statusDiv.textContent = 'Drag to erase';
                 else statusDiv.textContent = 'Ready';
             }
-        }, 2000);
+        }, 3000);
     }
 
     uploadBtn.addEventListener('click', () => {
@@ -864,7 +868,7 @@
         input.onchange = async (e) => {
             const file = e.target.files[0];
             if (file) {
-                showStatus('Loading PDF in high quality...');
+                showStatus('Loading PDF...');
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
                     currentPdfBytes = ev.target.result;
@@ -876,7 +880,10 @@
         input.click();
     });
 
-    quickSignBtn.addEventListener('click', placeDefaultSignature);
+    quickSignBtn.addEventListener('click', () => {
+        placeDefaultSignature();
+    });
+    
     undoBtn.addEventListener('click', undo);
     redoBtn.addEventListener('click', redo);
 
@@ -885,7 +892,7 @@
             pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             totalPages = pdfDoc.numPages;
             currentPageNum = 1;
-            currentScale = 1.5; // Higher scale for better quality
+            currentScale = 1.5;
             await renderPage(currentPageNum);
             noPdfMsg.style.display = 'none';
             canvasContainer.style.display = 'block';
@@ -897,18 +904,17 @@
             selectedTextIndex = null;
             undoStack = [];
             redoStack = [];
-            showStatus(`PDF loaded - High quality rendering - ${totalPages} page(s)`);
+            showStatus(`PDF loaded - ${totalPages} page(s)`);
         } catch (error) {
             console.error('Load error:', error);
             showStatus('Error loading PDF');
-            alert('Error loading PDF. Make sure it\'s a valid PDF file.');
         }
     }
 
     async function renderPage(pageNum) {
         if (!pdfDoc) return;
         
-        showStatus(`Rendering page ${pageNum} in high quality...`);
+        showStatus(`Rendering page ${pageNum}...`);
         const page = await pdfDoc.getPage(pageNum);
         const viewport = page.getViewport({ scale: currentScale });
         
@@ -925,7 +931,7 @@
         
         redrawAnnotations();
         zoomPercent.textContent = Math.round(currentScale * 100) + '%';
-        showStatus('Ready - High quality');
+        showStatus('Ready');
     }
 
     function redrawAnnotations() {
@@ -971,7 +977,7 @@
         });
         
         signatures.forEach(sig => {
-            if (sig.img) {
+            if (sig.img && sig.img.complete) {
                 ctx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
             }
         });
@@ -1080,7 +1086,7 @@
                 }
                 redrawAnnotations();
                 saveToUndo();
-                showStatus('Text added/updated');
+                showStatus('Text added');
             }
             input.remove();
             activeTextElement = null;
@@ -1112,32 +1118,27 @@
     fontSelect.addEventListener('change', () => {
         currentFont = fontSelect.value;
         updateFormattingUI();
-        showStatus(`Font: ${currentFont}`);
     });
     
     fontSizeSelect.addEventListener('change', () => {
         currentFontSize = parseInt(fontSizeSelect.value);
         updateFormattingUI();
-        showStatus(`Size: ${currentFontSize}px`);
     });
     
     boldBtn.addEventListener('click', () => {
         isBold = !isBold;
         updateFormattingUI();
-        showStatus(isBold ? 'Bold ON' : 'Bold OFF');
     });
     
     italicBtn.addEventListener('click', () => {
         isItalic = !isItalic;
         updateFormattingUI();
-        showStatus(isItalic ? 'Italic ON' : 'Italic OFF');
     });
     
     colorPicker.addEventListener('change', () => {
         currentColor = colorPicker.value;
         colorPreview.style.backgroundColor = currentColor;
         updateFormattingUI();
-        showStatus(`Color changed`);
     });
     
     applyFormatBtn.addEventListener('click', () => {
@@ -1151,27 +1152,24 @@
             text.fontString = getFontString();
             redrawAnnotations();
             saveToUndo();
-            showStatus('Format applied to selected text');
+            showStatus('Format applied');
         } else {
-            showStatus('No text selected. Click on a text to select it first.');
+            showStatus('Click on text first to select it');
         }
     });
     
     deleteTextBtn.addEventListener('click', () => {
         if (selectedTextIndex !== null && texts[selectedTextIndex]) {
-            if (confirm('Delete this text?')) {
-                texts.splice(selectedTextIndex, 1);
-                selectedTextIndex = null;
-                redrawAnnotations();
-                saveToUndo();
-                showStatus('Text deleted');
-            }
+            texts.splice(selectedTextIndex, 1);
+            selectedTextIndex = null;
+            redrawAnnotations();
+            saveToUndo();
+            showStatus('Text deleted');
         } else {
-            showStatus('No text selected. Click on a text to select it first.');
+            showStatus('Click on text first to select it');
         }
     });
     
-    // Zoom controls
     zoomInBtn.addEventListener('click', async () => {
         currentScale = Math.min(currentScale + 0.25, 3.0);
         await renderPage(currentPageNum);
@@ -1183,6 +1181,7 @@
     });
     
     fitPageBtn.addEventListener('click', async () => {
+        if (!pdfDoc) return;
         const container = document.querySelector('.pdf-viewer');
         const containerWidth = container.clientWidth - 40;
         const page = await pdfDoc.getPage(currentPageNum);
@@ -1203,7 +1202,6 @@
                 color: '#dc2626',
                 width: 3
             });
-            saveToUndo();
         } else if (currentMode === 'eraser') {
             e.preventDefault();
             isErasing = true;
@@ -1215,7 +1213,6 @@
                 height: eraserSize
             });
             redrawAnnotations();
-            saveToUndo();
         } else if (currentMode === 'move') {
             e.preventDefault();
             const pos = getMousePos(e);
@@ -1295,7 +1292,7 @@
                 currentColor = textObj.text.color;
                 updateFormattingUI();
                 redrawAnnotations();
-                showStatus(`Text selected. Use toolbar to format or delete.`);
+                showStatus('Text selected');
             } else {
                 selectedTextIndex = null;
                 createInlineTextInput(pos.x, pos.y);
@@ -1330,16 +1327,12 @@
             redrawAnnotations();
             
             if (currentMode === 'text') {
-                showStatus('Click to add text, click text to select and format');
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
             } else if (currentMode === 'move') {
-                showStatus('Drag any text to move it');
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
             } else if (currentMode === 'draw') {
-                showStatus('Draw on the PDF');
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
             } else if (currentMode === 'eraser') {
-                showStatus('Click and drag to cover PDF content with white');
                 if (eraserSizeControl) eraserSizeControl.style.display = 'flex';
             } else if (currentMode === 'sign') {
                 openSignatureModal();
@@ -1370,7 +1363,7 @@
             img.style.maxHeight = '80px';
             previewBox.appendChild(img);
         } else {
-            previewBox.innerHTML = '<span style="color: #9ca3af;">No signature yet</span>';
+            previewBox.innerHTML = '<span style="color: #9ca3af;">No signature loaded</span>';
         }
     }
 
@@ -1439,6 +1432,11 @@
     }
 
     function placeSignatureOnPDF(dataURL) {
+        if (!pdfDoc) {
+            alert('Please upload a PDF first');
+            return;
+        }
+        
         isPlacingSignature = true;
         showStatus('Click on PDF to place signature');
         sigModal.style.display = 'none';
@@ -1458,11 +1456,7 @@
                 saveToUndo();
                 canvas.removeEventListener('click', placeSignature);
                 isPlacingSignature = false;
-                currentMode = 'text';
-                document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
-                document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
                 showStatus('Signature placed');
-                currentSignatureImage = null;
             };
             img.src = dataURL;
         };
@@ -1478,7 +1472,6 @@
                 addSavedSignature(dataURL, name);
                 currentSignatureImage = dataURL;
                 updatePreview();
-                showStatus('Signature saved! Click "Use & Place" to put on PDF');
             }
         };
     }
@@ -1487,7 +1480,7 @@
     if (setAsDefaultBtn) {
         setAsDefaultBtn.onclick = () => {
             const dataURL = sigCanvas.toDataURL();
-            const name = prompt('Name this default signature:', `Default Signature`);
+            const name = prompt('Name this default signature:', 'My Default Signature');
             if (name) {
                 setDefaultSignatureFromData(dataURL, name);
                 currentSignatureImage = dataURL;
@@ -1525,10 +1518,9 @@
                     addSavedSignature(dataURL, name);
                     currentSignatureImage = dataURL;
                     updatePreview();
-                    showStatus('Signature saved!');
                 }
             } else {
-                alert('Please type a name first');
+                alert('Please type a name');
             }
         };
     }
@@ -1549,7 +1541,7 @@
                 tempCtx.textBaseline = 'middle';
                 tempCtx.fillText(typedName, 10, 40);
                 const dataURL = tempCanvas.toDataURL();
-                const name = prompt('Name this default signature:', `Default Typed Signature`);
+                const name = prompt('Name this default signature:', 'My Typed Signature');
                 if (name) {
                     setDefaultSignatureFromData(dataURL, name);
                     currentSignatureImage = dataURL;
@@ -1557,7 +1549,7 @@
                     document.getElementById('typedSignature').value = '';
                 }
             } else {
-                alert('Please type a name first');
+                alert('Please type a name');
             }
         };
     }
@@ -1593,7 +1585,6 @@
                 const name = prompt('Name this signature:', `Uploaded ${savedSignatures.length + 1}`);
                 if (name) {
                     addSavedSignature(currentSignatureImage, name);
-                    showStatus('Signature saved!');
                 }
             } else {
                 alert('Please upload an image first');
@@ -1605,10 +1596,9 @@
     if (setUploadedAsDefaultBtn) {
         setUploadedAsDefaultBtn.onclick = () => {
             if (currentSignatureImage) {
-                const name = prompt('Name this default signature:', `Default Uploaded Signature`);
+                const name = prompt('Name this default signature:', 'My Uploaded Signature');
                 if (name) {
                     setDefaultSignatureFromData(currentSignatureImage, name);
-                    showStatus('Uploaded signature set as default!');
                 }
             } else {
                 alert('Please upload an image first');
@@ -1623,7 +1613,7 @@
                 placeSignatureOnPDF(currentSignatureImage);
                 document.getElementById('uploadSignatureFile').value = '';
             } else {
-                alert('Please upload a signature image first');
+                alert('Please upload an image first');
             }
         };
     }
@@ -1648,10 +1638,6 @@
             document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
             document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
             currentSignatureImage = null;
-            const typedInput = document.getElementById('typedSignature');
-            if (typedInput) typedInput.value = '';
-            const fileInput = document.getElementById('uploadSignatureFile');
-            if (fileInput) fileInput.value = '';
         };
     }
 
@@ -1664,7 +1650,7 @@
                 reader.onload = (ev) => {
                     currentSignatureImage = ev.target.result;
                     updatePreview();
-                    showStatus('Signature uploaded! Click "Save" to keep, "Set as Default", or "Use & Place" now');
+                    showStatus('Signature uploaded! Click "Save" or "Set as Default"');
                 };
                 reader.readAsDataURL(file);
             }
@@ -1673,7 +1659,7 @@
 
     if (clearDrawBtn) {
         clearDrawBtn.onclick = () => {
-            if (confirm('Clear all annotations (drawings, text, signatures, whiteouts)?')) {
+            if (confirm('Clear all annotations?')) {
                 drawings = [];
                 texts = [];
                 signatures = [];
@@ -1681,7 +1667,7 @@
                 selectedTextIndex = null;
                 redrawAnnotations();
                 saveToUndo();
-                showStatus('All annotations cleared');
+                showStatus('All cleared');
             }
         };
     }
@@ -1735,7 +1721,9 @@
                 });
                 
                 signatures.forEach(sig => {
-                    overlayCtx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
+                    if (sig.img && sig.img.complete) {
+                        overlayCtx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
+                    }
                 });
                 
                 const overlayImage = await pdfDocLib.embedPng(overlayCanvas.toDataURL());
@@ -1764,7 +1752,6 @@
             } catch (error) {
                 console.error('Save error:', error);
                 showStatus('Error saving PDF');
-                alert('Error saving PDF: ' + error.message);
             }
         };
     }
