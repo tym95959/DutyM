@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>PDF Editor & Signer - Signatures Fixed</title>
+    <title>PDF Editor & Signer - High Res Signatures</title>
     <style>
         * {
             margin: 0;
@@ -318,7 +318,7 @@
             flex-wrap: wrap;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             z-index: 100;
-            max-width: 750px;
+            max-width: 800px;
             align-items: center;
         }
         
@@ -398,12 +398,17 @@
             padding: 4px 8px;
             font-size: 11px;
         }
+        
+        .selected-signature {
+            outline: 3px solid #d97706;
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h1>📄 PDF Sign & Edit</h1>
+    <h1>📄 PDF Sign & Edit - High Res</h1>
     <button id="uploadBtn">📂 Upload PDF</button>
     <button id="quickSignBtn" class="btn-sign">✍️ Quick Sign</button>
     <button id="saveBtn" class="btn-primary">💾 Save PDF</button>
@@ -411,7 +416,7 @@
 
 <div class="toolbar">
     <button class="tool-btn active" data-mode="text">✏️ Add Text</button>
-    <button class="tool-btn" data-mode="move">🖱️ Move Text</button>
+    <button class="tool-btn" data-mode="move">🖱️ Move Items</button>
     <button class="tool-btn" data-mode="draw">🖌️ Draw</button>
     <button class="tool-btn" data-mode="eraser">🧽 Eraser</button>
     <button class="tool-btn" data-mode="sign">🖊️ Signatures</button>
@@ -421,9 +426,10 @@
 <div class="pdf-viewer" id="pdfViewer">
     <div class="no-pdf" id="noPdfMsg">
         📁 Click "Upload PDF" to start<br><br>
-        ✏️ Click to add text, click text to select and format<br>
-        🖊️ Go to Signatures to create, save, and set default signature<br>
-        ✍️ Then use Quick Sign button to place it anywhere!
+        ✏️ Click to add text<br>
+        🖱️ Move mode - drag text OR signatures to reposition<br>
+        🖊️ Create high-resolution signatures<br>
+        ✍️ Set default signature, then Quick Sign!
     </div>
     <div class="canvas-container" id="canvasContainer" style="display: none;">
         <canvas id="pdfCanvas"></canvas>
@@ -433,7 +439,7 @@
 <!-- Signature Modal -->
 <div id="sigModal" class="modal">
     <div class="modal-card">
-        <h3>✍️ Signature Manager</h3>
+        <h3>✍️ High Resolution Signature Manager</h3>
         
         <div class="signature-preview">
             <p>Current signature preview:</p>
@@ -448,8 +454,8 @@
             <button id="clearAllSignaturesBtn" style="margin-top: 8px; background: #ef4444; font-size: 12px;">Clear All Saved</button>
         </div>
         
-        <p style="margin: 8px 0;">1. Draw signature:</p>
-        <canvas id="sigCanvas" width="400" height="200"></canvas>
+        <p style="margin: 8px 0;">1. Draw signature (high resolution):</p>
+        <canvas id="sigCanvas" width="600" height="300" style="width:100%; height:auto; border:2px solid #e5e7eb; border-radius:12px;"></canvas>
         <div class="sig-buttons">
             <button id="clearSigBtn">Clear Drawing</button>
             <button id="saveSignatureBtn" class="btn-primary">Save Signature</button>
@@ -465,7 +471,7 @@
             <button id="useTypedBtn">Place Now</button>
         </div>
         
-        <p style="margin: 16px 0 8px;">3. OR upload signature image:</p>
+        <p style="margin: 16px 0 8px;">3. OR upload high-res signature image:</p>
         <input type="file" id="uploadSignatureFile" accept="image/png,image/jpeg,image/jpg,image/gif">
         <div class="sig-buttons">
             <button id="saveUploadedBtn">Save Uploaded</button>
@@ -561,6 +567,7 @@
     let currentPageImage = null;
     let activeTextElement = null;
     let selectedTextIndex = null;
+    let selectedSignatureIndex = null;
     let currentFont = 'Arial';
     let currentFontSize = 20;
     let isBold = false;
@@ -569,8 +576,9 @@
     let currentSignatureImage = null;
     let savedSignatures = [];
     let defaultSignatureId = null;
-    let draggingText = null;
+    let draggingItem = null;
     let dragOffsetX = 0, dragOffsetY = 0;
+    let dragType = null; // 'text' or 'signature'
     let eraserSize = 30;
     let isPlacingSignature = false;
     let currentScale = 1.5;
@@ -631,6 +639,7 @@
         });
         
         selectedTextIndex = null;
+        selectedSignatureIndex = null;
         redrawAnnotations();
         showStatus('Undo');
         updateUndoRedoButtons();
@@ -670,6 +679,7 @@
         });
         
         selectedTextIndex = null;
+        selectedSignatureIndex = null;
         redrawAnnotations();
         showStatus('Redo');
         updateUndoRedoButtons();
@@ -746,7 +756,7 @@
     function setAsDefault(index) {
         defaultSignatureId = savedSignatures[index].id;
         saveSignaturesToStorage();
-        showStatus(`✅ "${savedSignatures[index].name}" is now your DEFAULT signature! Use Quick Sign button.`);
+        showStatus(`✅ "${savedSignatures[index].name}" is now your DEFAULT signature!`);
     }
     
     function deleteSignature(index) {
@@ -782,7 +792,7 @@
         savedSignatures.push({ id: id, data: dataURL, name: name });
         defaultSignatureId = id;
         saveSignaturesToStorage();
-        showStatus(`✅ "${name}" saved and set as DEFAULT! Use Quick Sign button.`);
+        showStatus(`✅ "${name}" saved and set as DEFAULT!`);
         return id;
     }
     
@@ -792,13 +802,13 @@
             return;
         }
         if (!defaultSignatureId) {
-            alert('No default signature set.\n\nGo to Signatures → Create a signature → Click "Set as Default" or click ⭐ on any saved signature.');
+            alert('No default signature set.\n\nGo to Signatures → Create a signature → Click "Set as Default"');
             return;
         }
         
         const defaultSig = savedSignatures.find(sig => sig.id === defaultSignatureId);
         if (!defaultSig) {
-            alert('Default signature not found. Please set a new default signature.');
+            alert('Default signature not found.');
             defaultSignatureId = null;
             saveSignaturesToStorage();
             return;
@@ -853,7 +863,7 @@
         setTimeout(() => {
             if (statusDiv.textContent === msg) {
                 if (currentMode === 'text') statusDiv.textContent = 'Click to add text';
-                else if (currentMode === 'move') statusDiv.textContent = 'Drag text to move';
+                else if (currentMode === 'move') statusDiv.textContent = 'Drag text or signatures to move';
                 else if (currentMode === 'draw') statusDiv.textContent = 'Draw on PDF';
                 else if (currentMode === 'eraser') statusDiv.textContent = 'Drag to erase';
                 else statusDiv.textContent = 'Ready';
@@ -902,6 +912,7 @@
             signatures = [];
             whiteouts = [];
             selectedTextIndex = null;
+            selectedSignatureIndex = null;
             undoStack = [];
             redoStack = [];
             showStatus(`PDF loaded - ${totalPages} page(s)`);
@@ -976,9 +987,15 @@
             }
         });
         
-        signatures.forEach(sig => {
+        signatures.forEach((sig, idx) => {
             if (sig.img && sig.img.complete) {
                 ctx.drawImage(sig.img, sig.x, sig.y, sig.width, sig.height);
+                
+                if (selectedSignatureIndex === idx) {
+                    ctx.strokeStyle = '#d97706';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(sig.x - 3, sig.y - 3, sig.width + 6, sig.height + 6);
+                }
             }
         });
     }
@@ -1015,7 +1032,17 @@
             const height = text.fontSize;
             
             if (x >= text.x && x <= text.x + width && y >= text.y && y <= text.y + height) {
-                return { text, index: i };
+                return { text, index: i, type: 'text' };
+            }
+        }
+        return null;
+    }
+    
+    function getSignatureAtPosition(x, y) {
+        for (let i = signatures.length - 1; i >= 0; i--) {
+            const sig = signatures[i];
+            if (x >= sig.x && x <= sig.x + sig.width && y >= sig.y && y <= sig.y + sig.height) {
+                return { signature: sig, index: i, type: 'signature' };
             }
         }
         return null;
@@ -1028,6 +1055,7 @@
         }
         
         selectedTextIndex = null;
+        selectedSignatureIndex = null;
         
         const rect = canvas.getBoundingClientRect();
         const scaleX = rect.width / canvas.width;
@@ -1165,8 +1193,14 @@
             redrawAnnotations();
             saveToUndo();
             showStatus('Text deleted');
+        } else if (selectedSignatureIndex !== null && signatures[selectedSignatureIndex]) {
+            signatures.splice(selectedSignatureIndex, 1);
+            selectedSignatureIndex = null;
+            redrawAnnotations();
+            saveToUndo();
+            showStatus('Signature deleted');
         } else {
-            showStatus('Click on text first to select it');
+            showStatus('Click on text or signature first to select it');
         }
     });
     
@@ -1189,6 +1223,66 @@
         currentScale = containerWidth / originalWidth;
         await renderPage(currentPageNum);
     });
+
+    function startMove(e) {
+        if (currentMode !== 'move') return;
+        e.preventDefault();
+        const pos = getMousePos(e);
+        
+        // First check for signature
+        const sigItem = getSignatureAtPosition(pos.x, pos.y);
+        if (sigItem) {
+            draggingItem = sigItem;
+            dragType = 'signature';
+            dragOffsetX = pos.x - sigItem.signature.x;
+            dragOffsetY = pos.y - sigItem.signature.y;
+            canvas.style.cursor = 'grabbing';
+            selectedTextIndex = null;
+            selectedSignatureIndex = sigItem.index;
+            redrawAnnotations();
+            return;
+        }
+        
+        // Then check for text
+        const textItem = getTextAtPosition(pos.x, pos.y);
+        if (textItem) {
+            draggingItem = textItem;
+            dragType = 'text';
+            dragOffsetX = pos.x - textItem.text.x;
+            dragOffsetY = pos.y - textItem.text.y;
+            canvas.style.cursor = 'grabbing';
+            selectedSignatureIndex = null;
+            selectedTextIndex = textItem.index;
+            redrawAnnotations();
+            return;
+        }
+    }
+    
+    function onMove(e) {
+        if (currentMode !== 'move' || !draggingItem) return;
+        e.preventDefault();
+        const pos = getMousePos(e);
+        
+        if (dragType === 'text') {
+            draggingItem.text.x = pos.x - dragOffsetX;
+            draggingItem.text.y = pos.y - dragOffsetY;
+            redrawAnnotations();
+        } else if (dragType === 'signature') {
+            draggingItem.signature.x = pos.x - dragOffsetX;
+            draggingItem.signature.y = pos.y - dragOffsetY;
+            redrawAnnotations();
+        }
+    }
+    
+    function endMove() {
+        if (draggingItem) {
+            saveToUndo();
+            draggingItem = null;
+            dragType = null;
+            canvas.style.cursor = 'crosshair';
+            showStatus('Item moved');
+        }
+    }
 
     function startDrawing(e) {
         if (isPlacingSignature) return;
@@ -1213,22 +1307,10 @@
                 height: eraserSize
             });
             redrawAnnotations();
-        } else if (currentMode === 'move') {
-            e.preventDefault();
-            const pos = getMousePos(e);
-            const textObj = getTextAtPosition(pos.x, pos.y);
-            if (textObj) {
-                draggingText = textObj;
-                dragOffsetX = pos.x - textObj.text.x;
-                dragOffsetY = pos.y - textObj.text.y;
-                canvas.style.cursor = 'grabbing';
-                selectedTextIndex = null;
-                redrawAnnotations();
-            }
         }
     }
 
-    function draw(e) {
+    function onDraw(e) {
         if (currentMode === 'draw' && isDrawing) {
             e.preventDefault();
             const pos = getMousePos(e);
@@ -1246,12 +1328,6 @@
                 height: eraserSize
             });
             redrawAnnotations();
-        } else if (currentMode === 'move' && draggingText) {
-            e.preventDefault();
-            const pos = getMousePos(e);
-            draggingText.text.x = pos.x - dragOffsetX;
-            draggingText.text.y = pos.y - dragOffsetY;
-            redrawAnnotations();
         }
     }
 
@@ -1259,21 +1335,27 @@
         if ((currentMode === 'draw' && isDrawing) || (currentMode === 'eraser' && isErasing)) {
             saveToUndo();
         }
-        if (currentMode === 'move' && draggingText) {
-            saveToUndo();
-        }
         isDrawing = false;
         isErasing = false;
-        draggingText = null;
         canvas.style.cursor = 'crosshair';
     }
 
+    // Event listeners for move mode
+    canvas.addEventListener('mousedown', startMove);
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('mouseup', endMove);
+    canvas.addEventListener('mouseleave', endMove);
+    canvas.addEventListener('touchstart', startMove);
+    canvas.addEventListener('touchmove', onMove);
+    canvas.addEventListener('touchend', endMove);
+    
+    // Drawing events (only active in draw/eraser mode)
     canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mousemove', onDraw);
     canvas.addEventListener('mouseup', stopDrawing);
     canvas.addEventListener('mouseleave', stopDrawing);
     canvas.addEventListener('touchstart', startDrawing);
-    canvas.addEventListener('touchmove', draw);
+    canvas.addEventListener('touchmove', onDraw);
     canvas.addEventListener('touchend', stopDrawing);
 
     canvas.addEventListener('click', (e) => {
@@ -1285,6 +1367,7 @@
             
             if (textObj) {
                 selectedTextIndex = textObj.index;
+                selectedSignatureIndex = null;
                 currentFont = textObj.text.font;
                 currentFontSize = textObj.text.fontSize;
                 isBold = textObj.text.isBold || false;
@@ -1295,7 +1378,28 @@
                 showStatus('Text selected');
             } else {
                 selectedTextIndex = null;
+                selectedSignatureIndex = null;
                 createInlineTextInput(pos.x, pos.y);
+            }
+        } else if (currentMode === 'move') {
+            const pos = getMousePos(e);
+            const sigItem = getSignatureAtPosition(pos.x, pos.y);
+            const textItem = getTextAtPosition(pos.x, pos.y);
+            
+            if (sigItem) {
+                selectedSignatureIndex = sigItem.index;
+                selectedTextIndex = null;
+                redrawAnnotations();
+                showStatus('Signature selected - drag to move, or click Delete');
+            } else if (textItem) {
+                selectedTextIndex = textItem.index;
+                selectedSignatureIndex = null;
+                redrawAnnotations();
+                showStatus('Text selected - drag to move, or use format toolbar');
+            } else {
+                selectedTextIndex = null;
+                selectedSignatureIndex = null;
+                redrawAnnotations();
             }
         }
     });
@@ -1306,6 +1410,7 @@
             const textObj = getTextAtPosition(pos.x, pos.y);
             if (textObj) {
                 selectedTextIndex = null;
+                selectedSignatureIndex = null;
                 createInlineTextInput(textObj.text.x, textObj.text.y, textObj.text, textObj.index);
             }
         }
@@ -1324,16 +1429,21 @@
             document.querySelectorAll('.tool-btn[data-mode]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             selectedTextIndex = null;
+            selectedSignatureIndex = null;
             redrawAnnotations();
             
             if (currentMode === 'text') {
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
+                showStatus('Click to add text, double-click to edit');
             } else if (currentMode === 'move') {
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
+                showStatus('Click text or signature to select, then drag to move');
             } else if (currentMode === 'draw') {
                 if (eraserSizeControl) eraserSizeControl.style.display = 'none';
+                showStatus('Draw on the PDF');
             } else if (currentMode === 'eraser') {
                 if (eraserSizeControl) eraserSizeControl.style.display = 'flex';
+                showStatus('Drag to cover PDF content with white');
             } else if (currentMode === 'sign') {
                 openSignatureModal();
             }
@@ -1346,7 +1456,7 @@
         sigCtx.fillStyle = 'white';
         sigCtx.fillRect(0, 0, sigCanvas.width, sigCanvas.height);
         sigCtx.strokeStyle = '#000';
-        sigCtx.lineWidth = 2;
+        sigCtx.lineWidth = 3;
         sigCtx.lineCap = 'round';
         sigCtx.lineJoin = 'round';
         updatePreview();
@@ -1438,25 +1548,34 @@
         }
         
         isPlacingSignature = true;
-        showStatus('Click on PDF to place signature');
+        showStatus('Click on PDF to place high-resolution signature');
         sigModal.style.display = 'none';
         
         const placeSignature = (e) => {
             const pos = getMousePos(e);
             const img = new Image();
             img.onload = () => {
+                // Calculate size maintaining aspect ratio, higher resolution
+                const maxWidth = 200;
+                const ratio = maxWidth / img.width;
+                const width = maxWidth;
+                const height = img.height * ratio;
+                
                 signatures.push({
                     img: img,
-                    x: pos.x - 75,
-                    y: pos.y - 37,
-                    width: 150,
-                    height: 75
+                    x: pos.x - width/2,
+                    y: pos.y - height/2,
+                    width: width,
+                    height: height
                 });
                 redrawAnnotations();
                 saveToUndo();
                 canvas.removeEventListener('click', placeSignature);
                 isPlacingSignature = false;
-                showStatus('Signature placed');
+                currentMode = 'text';
+                document.querySelector('.tool-btn[data-mode="text"]').classList.add('active');
+                document.querySelector('.tool-btn[data-mode="sign"]').classList.remove('active');
+                showStatus('High-res signature placed');
             };
             img.src = dataURL;
         };
@@ -1466,7 +1585,7 @@
     const saveSignatureBtn = document.getElementById('saveSignatureBtn');
     if (saveSignatureBtn) {
         saveSignatureBtn.onclick = () => {
-            const dataURL = sigCanvas.toDataURL();
+            const dataURL = sigCanvas.toDataURL('image/png');
             const name = prompt('Name this signature:', `Signature ${savedSignatures.length + 1}`);
             if (name) {
                 addSavedSignature(dataURL, name);
@@ -1479,7 +1598,7 @@
     const setAsDefaultBtn = document.getElementById('setAsDefaultBtn');
     if (setAsDefaultBtn) {
         setAsDefaultBtn.onclick = () => {
-            const dataURL = sigCanvas.toDataURL();
+            const dataURL = sigCanvas.toDataURL('image/png');
             const name = prompt('Name this default signature:', 'My Default Signature');
             if (name) {
                 setDefaultSignatureFromData(dataURL, name);
@@ -1492,7 +1611,7 @@
     const useDrawnBtn = document.getElementById('useDrawnBtn');
     if (useDrawnBtn) {
         useDrawnBtn.onclick = () => {
-            const dataURL = sigCanvas.toDataURL();
+            const dataURL = sigCanvas.toDataURL('image/png');
             placeSignatureOnPDF(dataURL);
         };
     }
@@ -1503,16 +1622,17 @@
             const typedName = document.getElementById('typedSignature').value;
             if (typedName && typedName.trim()) {
                 const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = 300;
-                tempCanvas.height = 80;
+                tempCanvas.width = 600;
+                tempCanvas.height = 150;
                 const tempCtx = tempCanvas.getContext('2d');
                 tempCtx.fillStyle = 'white';
                 tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-                tempCtx.font = '28px cursive';
+                tempCtx.font = 'bold 48px cursive';
                 tempCtx.fillStyle = '#000';
                 tempCtx.textBaseline = 'middle';
-                tempCtx.fillText(typedName, 10, 40);
-                const dataURL = tempCanvas.toDataURL();
+                tempCtx.textAlign = 'center';
+                tempCtx.fillText(typedName, tempCanvas.width/2, tempCanvas.height/2);
+                const dataURL = tempCanvas.toDataURL('image/png');
                 const name = prompt('Name this signature:', `Typed ${savedSignatures.length + 1}`);
                 if (name) {
                     addSavedSignature(dataURL, name);
@@ -1531,16 +1651,17 @@
             const typedName = document.getElementById('typedSignature').value;
             if (typedName && typedName.trim()) {
                 const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = 300;
-                tempCanvas.height = 80;
+                tempCanvas.width = 600;
+                tempCanvas.height = 150;
                 const tempCtx = tempCanvas.getContext('2d');
                 tempCtx.fillStyle = 'white';
                 tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-                tempCtx.font = '28px cursive';
+                tempCtx.font = 'bold 48px cursive';
                 tempCtx.fillStyle = '#000';
                 tempCtx.textBaseline = 'middle';
-                tempCtx.fillText(typedName, 10, 40);
-                const dataURL = tempCanvas.toDataURL();
+                tempCtx.textAlign = 'center';
+                tempCtx.fillText(typedName, tempCanvas.width/2, tempCanvas.height/2);
+                const dataURL = tempCanvas.toDataURL('image/png');
                 const name = prompt('Name this default signature:', 'My Typed Signature');
                 if (name) {
                     setDefaultSignatureFromData(dataURL, name);
@@ -1560,16 +1681,17 @@
             const typedName = document.getElementById('typedSignature').value;
             if (typedName && typedName.trim()) {
                 const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = 300;
-                tempCanvas.height = 80;
+                tempCanvas.width = 600;
+                tempCanvas.height = 150;
                 const tempCtx = tempCanvas.getContext('2d');
                 tempCtx.fillStyle = 'white';
                 tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-                tempCtx.font = '28px cursive';
+                tempCtx.font = 'bold 48px cursive';
                 tempCtx.fillStyle = '#000';
                 tempCtx.textBaseline = 'middle';
-                tempCtx.fillText(typedName, 10, 40);
-                const dataURL = tempCanvas.toDataURL();
+                tempCtx.textAlign = 'center';
+                tempCtx.fillText(typedName, tempCanvas.width/2, tempCanvas.height/2);
+                const dataURL = tempCanvas.toDataURL('image/png');
                 placeSignatureOnPDF(dataURL);
                 document.getElementById('typedSignature').value = '';
             } else {
@@ -1650,7 +1772,7 @@
                 reader.onload = (ev) => {
                     currentSignatureImage = ev.target.result;
                     updatePreview();
-                    showStatus('Signature uploaded! Click "Save" or "Set as Default"');
+                    showStatus('High-res signature uploaded! Click "Save" or "Set as Default"');
                 };
                 reader.readAsDataURL(file);
             }
@@ -1659,12 +1781,13 @@
 
     if (clearDrawBtn) {
         clearDrawBtn.onclick = () => {
-            if (confirm('Clear all annotations?')) {
+            if (confirm('Clear all annotations (text, signatures, drawings)?')) {
                 drawings = [];
                 texts = [];
                 signatures = [];
                 whiteouts = [];
                 selectedTextIndex = null;
+                selectedSignatureIndex = null;
                 redrawAnnotations();
                 saveToUndo();
                 showStatus('All cleared');
